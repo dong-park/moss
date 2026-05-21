@@ -2,7 +2,7 @@
 
 > 카드가 자유롭게 떠 있는 무한 작업대. 확대로 세부, 축소로 사고 지형도. 메모 200+에서도 성능 유지.
 
-**Status**: ◐ in-progress — AC 5/6 충족, AC-3(200+ 메모 가상화)만 잔여
+**Status**: ● done (MVP) — AC 6/6 충족. Canvas2D fallback 실구현은 Phase 2 backlog.
 **Estimated**: L
 **Blueprint**: `features[id="FEAT-canvas"]`
 
@@ -16,18 +16,21 @@
 - ✓ 줌·팬 (휠 / Space+drag / 미들 마우스 / 트랙패드 핀치) + `ZoomBar`
 - ✓ 카드 더블클릭 편집·Delete 삭제·Escape 해제
 - ✓ 우상단 Unsorted 카운터
+- ✓ **AC-3 (REQ-16) 가상화** — `useVirtualizedCards` hook으로 viewport intersection 컬링 적용 (옵션 B 채택). 200 임계 안내 토스트 1회 발생.
 
-남은 작업:
-- ✗ **AC-3 (REQ-16) 가상화** — 메모 200+ 시점에 viewport 컬링·자동 모드 전환. 현재 `react-window` 미설치, DOM 직접 렌더만.
-  - 옵션 A: `react-window` 도입 (간단, 다만 자유 배치 grid에 부적합)
-  - 옵션 B: 자체 viewport intersection 컬링 (카드 bbox vs viewport rect)
-  - 옵션 C: Canvas2D fallback (PRD §26-1) — 가장 큰 작업, Phase 2 권장
-  - **추천**: 옵션 B 우선 (LOC 적음, 자유 배치와 호환). Canvas2D는 메모 1,000+ 시점에 재검토.
-- 200 임계 토스트 + 자동 fallback 전환 안내 (PRD §11 States 항목)
+채택된 접근 (옵션 B 자체 viewport intersection):
+- `src/components/workspace/useVirtualizedCards.ts` — cards · viewport · canvasSize · editingId 입력으로 visible 카드만 반환.
+- ESTIMATED_CARD_HEIGHT=800 (보수적 max), OVERSCAN_SCREEN_PX=200 (scale 보정).
+- 편집 중 카드는 pan으로 viewport를 벗어나도 핀(focus 손실 방지).
+- 드래그 중 카드는 마우스를 따라 자동으로 viewport 안에 있어 별도 핀 불필요.
+- Canvas2D fallback (PRD §26-1)은 1,000+ 시점 재검토 — Phase 2 backlog.
 
-검증:
+검증 (자동):
+- [x] 단위: `useVirtualizedCards.test.tsx` — scale·pan·overscan·editingId·400카드 격자.
+- [x] 통합: `Canvas.virtualization.test.tsx` — 200 카드 (100 in / 100 out) DOM count 검증, 200 임계 토스트 1회.
+
+검증 (수동, ship 전):
 - [ ] 메모 200개 시드 + 줌·팬 60fps 유지 (Chrome DevTools Performance)
-- [ ] viewport 밖 카드는 DOM에 없음
 
 ---
 
