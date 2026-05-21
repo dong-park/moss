@@ -2,7 +2,7 @@
 
 > 메모를 벡터화하고, 군집·요약·연결 후보를 계산하는 백엔드 파이프라인. 모든 호출은 사용자 옵트인 + 프라이버시 게이트를 거친다.
 
-**Status**: ◐ in-progress — embed·preview endpoint + 클라이언트 큐·해시 캐싱 완료. summarize·connection-label endpoint 잔여.
+**Status**: ◐ in-progress — embed·preview·summarize·connection-label endpoint + 연결 점수 + 클러스터링 완료. JWT/쿼터(FEAT-freemium 합류) 잔여.
 **Estimated**: L
 **Blueprint**: `features[id="FEAT-ai-pipeline"]`
 
@@ -18,23 +18,17 @@
 - ✓ `state/ai/useAIPipeline.ts` — 클라이언트 hook
 - ✓ tests: `embeddingQueue.test.ts`, `hash.test.ts`, `route.test.ts`
 
-남은 작업:
-- ✗ **`POST /api/ai/summarize`** — 메모 묶음 → 1-2문장 자연어 요약 (Claude Haiku 4.5)
-  - 입력: `{ texts: string[]; kind: "flow" | "cluster" | "rhythm" }`
-  - 출력: `{ text: string; tokensUsed: number }`
-  - 호출 주체: [[FEAT-signals]] flowSummary 섹션 + 클러스터 설명
-- ✗ **`POST /api/ai/connection-label`** — 두 메모 본문 → 1-3 단어 연결 라벨
-  - 입력: `{ textA: string; textB: string }`
-  - 출력: `{ label: string; tokensUsed: number }`
-  - 호출 주체: [[FEAT-home]] `today-connection` 큐레이팅 카드
-- ✗ **연결 점수 계산** (REQ-5) — `cosineSimilarity × temporalDecay × userSignal` 헬퍼
-  - 임계 ≥ 0.78 후보 추출 (PRD §25-2)
-  - 다양성 필터 (같은 보드 페어 감점, 같은 클러스터 하루 1회)
-  - 거절된 쌍 24h 동안 재추천 X (학습 음의 신호)
-  - 노출처: home의 `today-connection` / signals의 cluster
-- ✗ **클러스터링** — 클라이언트 단순 k-means 또는 코사인 N×N (메모 500개까지)
-  - signals의 `clusters` 섹션 데이터원
+P0-1 (2026-05-21 완료):
+- ✓ **`POST /api/ai/summarize`** — Claude Haiku 4.5 (`claude-haiku-4-5-20251001`), `ANTHROPIC_API_KEY` 없으면 결정적 mock
+- ✓ **`POST /api/ai/connection-label`** — 동일 패턴, 1~3 단어 sanitize, MAX_TEXT_LEN 4000 가드
+- ✓ **연결 점수 계산** — `state/ai/connectionScore.ts` (cosine × temporalDecay(30d half-life) × userSignal), 임계 0.78, 24h rejected 차단, 같은 보드/같은 클러스터 다양성 필터
+- ✓ **클러스터링** — `state/ai/cluster.ts` single-pass O(N·K), 500개 가정
+- ✓ `useAIPipeline` Slice 2: `summarizeBoard` / `findConnections` / `clusterRecent` (privacy 게이트 + fetch 단일 진입점 `state/ai/client.ts`)
+
+잔여:
 - ⏸ **쿼터 게이트** — `useQuotaGate()` stub 유지, [[FEAT-freemium]] 4차에서 교체
+- ⏸ JWT 검증(모든 endpoint) — [[FEAT-freemium]] 합류 시 추가
+- ⏸ 외부 API 1회 재시도(spec §8 — 현재는 즉시 fail)
 
 공통 인터페이스 (다음 작업자에게):
 ```ts

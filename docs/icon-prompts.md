@@ -1,6 +1,6 @@
 # moss 사이드바 아이콘 — 오피스 물품 이미지 생성 프롬프트
 
-> Milanote 라인 SVG 아이콘 12종을 **사무실에서 실제로 쓰이는 물품 이미지**(메모패드·페이퍼클립·클립보드·서류 트레이·기계식 연필 등)로 대체하기 위한 프롬프트 모음.
+> Milanote 라인 SVG 아이콘 17종을 **사무실에서 실제로 쓰이는 물품 이미지**(메모패드·페이퍼클립·클립보드·서류 트레이·기계식 연필 등)로 대체하기 위한 프롬프트 모음.
 > Google nano-banana (Gemini 2.5 Flash Image), GPT-4o Image, Imagen, DALL-E 3, Midjourney 등에 그대로 투입 가능.
 > moss 정체성: "감독의 핀보드 · 조용한 사무 책상 · 정리된 지능감 · 미완성 허용". 디지털 cleanness 지양, **실물 오피스 물품·자연광·재질감** 우선.
 
@@ -35,7 +35,7 @@
 ## 후처리 가이드
 
 1. **배경 제거**: `remove.bg` 또는 Photoshop Magic Wand. 투명 PNG로 저장.
-2. **사이즈 정규화**: 12개 모두 44×44 (retina 88×88) PNG로 export. 사물의 중심점·여백 일관성 유지.
+2. **사이즈 정규화**: 17개 모두 44×44 (retina 88×88) PNG로 export. 사물의 중심점·여백 일관성 유지.
 3. **사이드바 적용**: 박스 안에 그대로 `<Image src="/icons/note.png" />`. 박스 배경은 `bg-box-white` 또는 투명.
 4. **활성 상태 처리**: 활성 시 살짝 들어올려 보이는 효과 (CSS `transform: translateY(-1px)` + 강한 그림자). 컬러 박스(파란) 대체 가능 — 또는 활성 상태에서만 채색된 액자/핀 추가 이미지 사용.
 5. **SVG 트레이싱 비권장**: 종이 결·자연 그림자 디테일 손실. PNG 그대로 사용.
@@ -234,9 +234,89 @@
 
 ---
 
-## 일관성 체크리스트 (12개 모두 생성 후)
+## 13. Code — 코드
 
-생성한 이미지들을 12장 한 화면에 나란히 놓고 다음 확인:
+**의미**: 코드 블록, 개발 메모, 구조화된 스니펫.
+**실물 컨셉**: 작은 흰 인덱스 카드에 코드처럼 보이는 기호가 인쇄되고, 검정 파인라이너 펜이 곁에 놓인 모습.
+
+**Prompt (EN)**:
+> A small white office index card photographed from directly above on a neutral light-gray office desktop, with a few dark graphite marks resembling a code snippet: angle-bracket-like symbols, slashes, and short indented lines, but no readable words. A slim black fine-liner pen rests partly beside the card at a slight diagonal. The paper has crisp edges, faint handling marks, and subtle fiber texture. Soft natural daylight from upper-left, gentle diffused shadow lower-right. Centered composition, card and pen occupy 65% of frame. Photorealistic, real office stationery materials. Color palette: white paper, graphite-black ink, matte black pen, brushed steel pen tip, neutral desk surface. Avoid screens, keyboards, glowing UI, blue SaaS colors, or legible text. 1:1 aspect, transparent background preferred.
+
+**한국어 보조**: 작은 흰 인덱스 카드에 코드처럼 보이는 꺾쇠·슬래시·들여쓰기 선이 있지만 읽을 수 있는 단어는 없음. 옆에 검정 파인라이너 펜. 화면/키보드/디지털 UI 느낌 금지.
+
+**Variants**:
+- 프린트된 코드 조각이 있는 흰 종이 카드 + 검정 더블클립
+- 모서리가 살짝 접힌 개발 메모 카드 + 제도 샤프
+
+---
+
+## 14. Highlight — 강조
+
+**의미**: 인용·하이라이트·중요 문장 표시.
+**실물 컨셉**: 무채색 사무용 형광펜과 노란 강조선이 그어진 흰 메모 슬립.
+
+**Prompt (EN)**:
+> A neutral gray office highlighter pen lying beside a small white memo slip, photographed from directly above on a light-gray office desktop. The memo slip has one soft muted-yellow highlighted stripe across faint illegible pencil marks. The highlighter has a matte light-gray barrel, a chisel tip with restrained yellow ink, and slight scuffs from use. Soft natural daylight from upper-left, gentle shadow lower-right. Centered composition, objects occupy 65% of frame. Photorealistic, visible paper grain and plastic marker texture. Color palette: white paper, light-gray plastic, graphite marks, one muted yellow highlight accent, neutral desk surface. Avoid neon yellow, oversaturation, readable text, or digital marker icons. 1:1 aspect, transparent background preferred.
+
+**한국어 보조**: 흰 메모 슬립 위에 차분한 노란 강조선 한 줄, 옆에 밝은 회색 형광펜. 네온 형광색이나 디지털 아이콘 느낌 금지.
+
+**Variants**:
+- 노란 강조선이 그어진 작은 인쇄물 + 은색 페이퍼클립
+- 뚜껑이 열린 회색 형광펜 한 자루
+
+---
+
+## 15. Audio — 녹음
+
+**의미**: 음성 캡처, 녹음 시작, 말로 남긴 생각.
+**실물 컨셉**: 작은 검정 디지털 보이스 레코더 또는 회의용 녹음기.
+
+**Prompt (EN)**:
+> A compact black digital voice recorder photographed from directly above on a neutral light-gray office desktop. The recorder has a matte black body, tiny speaker grille holes, a small blank dark display with no readable text, and one restrained red record button. Slight scuffs and fingerprints make it feel used, not pristine. Soft natural daylight from upper-left, gentle shadow lower-right. Centered composition, recorder occupies 60% of frame. Photorealistic, detailed plastic, rubber button, and brushed metal microphone grille textures. Color palette: graphite black, dark gray, tiny muted red accent, neutral desk surface. Avoid microphones on stands, music equipment, glowing screens, waveform graphics, logos, or legible text. 1:1 aspect, transparent background preferred.
+
+**한국어 보조**: 작은 검정 보이스 레코더. 빈 어두운 디스플레이, 스피커 구멍, 작은 빨간 녹음 버튼. 마이크 스탠드나 음악 장비처럼 보이지 않게.
+
+**Variants**:
+- 미니 회의용 레코더 + 작은 은색 클립
+- 검정 휴대용 녹음기와 짧은 회색 케이블
+
+---
+
+## 16. Mindmap — 마인드맵
+
+**의미**: 중심 생각에서 가지를 뻗는 구조.
+**실물 컨셉**: 작은 흰 메모 카드 여러 장이 얇은 실과 핀으로 연결된 핀보드 조각.
+
+**Prompt (EN)**:
+> Four small white office memo cards arranged like a simple mind map, photographed from directly above on a neutral light-gray office desktop. One central card is connected to three surrounding cards with thin gray cotton thread and tiny office push-pins. Each card has faint illegible pencil marks, slightly uneven paper edges, and subtle curled corners. Pins are muted black, steel, and one restrained red accent. Soft natural daylight from upper-left, gentle shadows from the thread and raised paper corners. Centered composition, cluster occupies 70% of frame. Photorealistic, tactile paper, thread, and pin materials. Color palette: white paper, graphite marks, gray thread, steel/black pins, one muted red accent, neutral desk surface. Avoid digital node graphs, bright colors, or readable text. 1:1 aspect, transparent background preferred.
+
+**한국어 보조**: 중앙 흰 메모 카드 1장과 주변 카드 3장이 얇은 회색 실과 핀으로 연결된 모습. 디지털 노드 그래프가 아니라 실제 책상 위 핀보드 조각처럼.
+
+**Variants**:
+- 작은 코르크 조각 위에 카드 4장 + 실 연결
+- 중심 카드와 주변 인덱스 카드 3장, 선 대신 가는 연필선
+
+---
+
+## 17. Signals — 시그널스
+
+**의미**: 반복 패턴, 연결 제안, 사고의 흐름을 비춰주는 AI 패널.
+**실물 컨셉**: 투명 아크릴 확대 렌즈가 작은 연결 지도 메모 위에 놓인 모습.
+
+**Prompt (EN)**:
+> A small white analysis note card on a neutral light-gray office desktop, photographed from directly above, with a clear acrylic magnifying lens placed over a tiny cluster of graphite dots connected by faint lines. The note card has no readable words, only subtle marks suggesting patterns and connections. One small muted red pin marks a single signal point. The acrylic lens has realistic transparent edges and a soft highlight, but no strong reflections. Soft natural daylight from upper-left, gentle diffused shadow lower-right. Centered composition, card and lens occupy 65% of frame. Photorealistic, real office materials: paper fiber, clear acrylic, graphite, tiny push-pin. Color palette: white paper, graphite gray, clear acrylic, steel/black pin, one muted red accent, neutral desk surface. Avoid radar screens, sparkle icons, glowing UI, sci-fi styling, blue SaaS colors, logos, or readable text. 1:1 aspect, transparent background preferred.
+
+**한국어 보조**: 작은 분석 메모 카드 위에 투명 아크릴 확대 렌즈. 렌즈 아래에는 점과 흐린 연결선, 작은 빨간 핀 하나. 레이더 화면·반짝이·AI 느낌의 빛나는 UI 금지.
+
+**Variants**:
+- 투명 확대경 + 연결선이 그어진 흰 인덱스 카드
+- 작은 메모 3장 위에 붉은 핀 하나와 흐린 연필 연결선
+
+---
+
+## 일관성 체크리스트 (17개 모두 생성 후)
+
+생성한 이미지들을 17장 한 화면에 나란히 놓고 다음 확인:
 
 - [ ] 광원 방향이 모두 동일 (좌상단 45°)
 - [ ] 배경 톤이 모두 같은 off-white / light gray 계열
@@ -246,7 +326,7 @@
 - [ ] 물품별 재질이 구분됨 (종이, 금속, 플라스틱, 코르크, 흑연)
 - [ ] 디테일 수준이 같음 (어느 하나만 너무 정교/단순하지 않음)
 
-일관성 깨진 게 있으면 그 1개만 다시 생성. 12개 한 번에 다시 돌리지 말 것 (token 낭비).
+일관성 깨진 게 있으면 그 1개만 다시 생성. 17개 한 번에 다시 돌리지 말 것 (token 낭비).
 
 ## 모델별 팁
 
@@ -258,7 +338,7 @@
 **GPT-4o Image**:
 - 자연어 단락 prompt 선호. 위 EN prompt 그대로 투입 추천.
 - "no text" / "illegible text" 명시 안 하면 가짜 글씨 들어감.
-- 한 번에 1장씩 — 12회 호출.
+- 한 번에 1장씩 — 17회 호출.
 
 **Imagen / DALL-E 3**:
 - "Style: photorealistic product photography" prefix 추가하면 더 안정적.
@@ -289,6 +369,11 @@ web/public/icons/
   image.png
   upload.png
   draw.png
+  code.png
+  highlight.png
+  audio.png
+  mindmap.png
+  signals.png
   trash.png
 ```
 

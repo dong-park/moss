@@ -2,64 +2,125 @@
 
 > 블루프린트 `features[]` 14개. 완료본은 `complete/`로 이동, 잔여·미시작 8개는 본 디렉토리에 유지.
 
-## 진척 현황 (2026-05-21 기준)
+## 진척 현황 (2026-05-21)
 
-| 상태 | 수 | 비고 |
+| 상태 | 수 | 위치 |
 |---|---|---|
-| ✅ complete | 6 | `complete/` 디렉토리 |
-| ◐ in-progress | 4 | 잔여 작업 명확화됨 |
-| ⏸ pending | 4 | 아직 미시작 |
-| **합계** | **14** | |
+| ✅ complete | 6 | `complete/` |
+| ◐ in-progress | 4 | 본 디렉토리, §0 잔여 작업 명시 |
+| ⏸ pending | 4 | 본 디렉토리, 그대로 |
 
-## ✅ Complete (`complete/` 디렉토리)
+## ✅ Complete (검증 통과)
 
-| FEAT | 차수 | 완료일 | 핵심 산출 |
+storage · i18n · privacy · capture · boards · templates — 모두 `complete/` 디렉토리. 다시 건드릴 일 없음.
+
+---
+
+# 🎯 작업 분배 (병렬 우선순위)
+
+병렬 가능한 단위를 의존성·블로커 기준으로 P0/P1/P2 그룹화. **6명이 동시에 시작 가능**, ai-pipeline 보강(P0)이 끝나면 C 그룹 3명 추가 풀림.
+
+## 그래프
+
+```
+[P0 critical] FEAT-ai-pipeline 보강
+                    │
+                    ▼  (해제 후 C 그룹 풀림)
+[C-1] home 큐레이팅 3종
+[C-2] signals Cluster + FlowSummary
+
+[P1 즉시 병렬, 독립]
+[P1-A] canvas 가상화
+[P1-B] freemium 전체
+[P1-C] export 전체
+[P1-D] mobile 전체
+[P1-E] extras 위젯 3종
+
+[P2 작은 fix, 누구나]
+[P2-A] signals lint 3건 (5분)
+```
+
+## P0 — Critical path (블로커, 1명 단독 우선)
+
+| ID | 작업자 | 작업 | 잔여 | 의존 |
+|---|---|---|---|---|
+| **P0-1** | ai-pipeline | [`FEAT-ai-pipeline.md`](FEAT-ai-pipeline.md) §0 | `/api/ai/summarize` + `/api/ai/connection-label` endpoint, 연결 점수 (cos × temporal × user) 헬퍼, 클러스터링 (k-means or 코사인 N×N) | 없음 |
+
+P0가 끝나야 C-1 (home today-connection·resurfacing)과 C-2 (signals Cluster·FlowSummary)가 풀린다. **가장 빨리 시작해야 할 단일 작업**.
+
+## P1 — 즉시 병렬 (서로 독립, P0와 동시 시작)
+
+| ID | 작업자 | 작업 | 핵심 잔여 | 추정 |
+|---|---|---|---|---|
+| **P1-A** | canvas | [`FEAT-canvas.md`](FEAT-canvas.md) §0 | AC-3 가상화 — viewport intersection 컬링(추천) 또는 react-window | M |
+| **P1-B** | freemium | [`FEAT-freemium.md`](FEAT-freemium.md) | Stripe checkout + webhook + 쿼터 추적 + 페이월 3 variant 모달 + `useQuotaGate()` 실 구현 (현재 stub 교체) | M |
+| **P1-C** | export | [`FEAT-export.md`](FEAT-export.md) | Markdown / JSON Canvas / .moss 번들 3종 + 모달 + 진행/완료 variant + Import | M |
+| **P1-D** | mobile | [`FEAT-mobile.md`](FEAT-mobile.md) | viewport ≤ 768px 분기 + 모바일 피드 + 하단 캡처 바 + 3 variant | M |
+| **P1-E** | extras | [`FEAT-extras.md`](FEAT-extras.md) | 오늘의 질문 / 생각 일기 / 연결 히스토리 위젯 3종 (home 시스템 보드 안 위치만 빌림, 데이터는 자체 query) | S |
+
+5명 동시 시작 가능. 서로 의존 없음. 각자 `docs/specs/FEAT-*.md` + 본인 §0/§1~10 만 보면 됨.
+
+## P2 — Small fix (누구나, 5분~30분)
+
+| ID | 작업 | 위치 | 추정 |
 |---|---|---|---|
-| [storage](complete/FEAT-storage.md) | 1차 | 2026-05-21 | Dexie v1 + OPFS + SW + persist + quota watcher |
-| [i18n](complete/FEAT-i18n.md) | 1차 | 2026-05-21 | Pretendard + Provider + `t()` + ko.json 119 keys |
-| [privacy](complete/FEAT-privacy.md) | 1차 | 2026-05-21 | aiGate 진리표 + AICallPreview + LockIcon |
-| [capture](complete/FEAT-capture.md) | 2차 | 2026-05-21 | 10종 도구 + 단축키 + 클립보드 paste + CardContent |
-| [boards](complete/FEAT-boards.md) | 3차 | 2026-05-21 | BoardPicker 동적화 + CRUD + Cmd+P/B/N + undo |
-| [templates](complete/FEAT-templates.md) | 3차 | 2026-05-21 | 5종 시작 템플릿 + Picker + Preview |
+| **P2-A** | signals lint 3건 fix | `state/signals/useSignals.ts:29` (effect 안 setState), `useSignals.test.tsx:27,161` (lastState mutate) | 5분 |
+| **P2-B** | act 환경 1줄 추가 | `vitest.setup.ts`에 `globalThis.IS_REACT_ACT_ENVIRONMENT = true` | 1분 |
+| **P2-C** | `DatabaseClosedError` cleanup | `useClipboardWatch.test.tsx` 비동기 후처리 정리 | 10분 |
+| **P2-D** | i18n 빌드 검증 스크립트 | `scripts/check-i18n.mjs`를 prebuild에 연결 | 15분 |
 
-## ◐ In-progress (잔여 작업 명확화됨, 각 스펙 §0 참조)
+빠른 정리. P0/P1과 병행 가능.
 
-| FEAT | 차수 | 충족도 | 잔여 작업 요약 |
+## C — P0 완료 후 풀림 (3명 추가 병렬)
+
+P0-1이 끝나면 다음 3개가 동시 가능:
+
+| ID | 작업자 | 작업 | 잔여 |
 |---|---|---|---|
-| [canvas](FEAT-canvas.md) | 2차 | 5/6 | AC-3 가상화 (200+ 메모 컬링 또는 Canvas2D fallback) |
-| [ai-pipeline](FEAT-ai-pipeline.md) | 2차 | 코어 완성 | `/api/ai/{summarize,connection-label}` endpoint + 연결 점수 계산 + 클러스터링 |
-| [home](FEAT-home.md) | 3차 | 1/4 큐레이팅 | `resurfacing` / `today-connection` / `flow-timeline` 카드 3종 + 도구 drop·dismiss·삭제 가드 |
-| [signals](FEAT-signals.md) | 3차 | 2/4 섹션 | **lint 3 fix** + `Cluster` / `FlowSummary` 섹션 + 키워드 필터·dismiss 동작 |
+| **C-1** | home | [`FEAT-home.md`](FEAT-home.md) §0 | 큐레이팅 3종 카드: `resurfacing` (임베딩 cluster 안 시간 거리), `today-connection` (P0-1의 `findConnections` + `connection-label`), `flow-timeline` (자체 SVG) + 도구 drop 무소속·삭제 가드·dismiss 24h |
+| **C-2** | signals | [`FEAT-signals.md`](FEAT-signals.md) §0 | ClusterSection (P0-1의 클러스터링), FlowSummarySection (P0-1의 `/api/ai/summarize`), 키워드 → 캔버스 `filterByKeyword(word)` action, dismiss 24h |
+| (병행) | canvas (P1-A 작업자) | `filterByKeyword` action 추가 + 강조·dim 처리 | C-2와 협조 |
 
-## ⏸ Pending (4차 미시작)
+---
 
-| FEAT | 추정 | 의존 (모두 완료/in-progress) |
-|---|---|---|
-| [extras](FEAT-extras.md) | S | home (큐레이팅과 위젯이 같은 시스템 보드에) |
-| [freemium](FEAT-freemium.md) | M | storage, privacy, ai-pipeline (쿼터 게이트 교체) |
-| [mobile](FEAT-mobile.md) | M | home, capture, boards |
-| [export](FEAT-export.md) | M | storage, canvas |
+## 우선순위 요약 (한 줄)
 
-## 다음 단계 권장 순서
+| 우선순위 | 시작 시점 | 작업 수 | 비고 |
+|---|---|---|---|
+| **P0** | 지금 | 1 | critical path — 가장 빨리 시작 |
+| **P1** | 지금 (P0와 동시) | 5 | 서로 독립, 완전 병렬 |
+| **P2** | 누구나·아무 때 | 4 | 작은 fix, 사이드 작업 |
+| **C** | P0 완료 후 | 2 (+1 협조) | 의존 풀림 |
 
-**Phase 3.5 (마무리)** — 4차 시작 전 in-progress 4개 닫기:
+**최대 동시 작업자 수**:
+- 초기 6명 (P0 1 + P1 5)
+- 작은 fix 별도 (P2)
+- P0 후 → 7명 (canvas 작업자가 C에 협조 또는 다른 P1 마무리)
 
-1. **signals 작업자**: lint 3 fix (즉시), 그 후 Cluster / FlowSummary 섹션 + `/api/ai/summarize` endpoint 신설
-2. **home 작업자**: 큐레이팅 3종 카드 (`/api/ai/connection-label`은 ai-pipeline 작업자와 협업)
-3. **ai-pipeline 작업자**: home·signals 잔여에 필요한 endpoint 동시 보강 (summarize + connection-label + 연결 점수 + 클러스터링)
-4. **canvas 작업자**: AC-3 가상화는 분리 가능 — 4차와 병렬
+---
 
-**Phase 4** — 위 마무리 후 4차 병렬:
-- extras / freemium / mobile / export 4개 모두 독립
+# 기존 스펙 위치 참조
 
-## 1차 잔여 마이너 (배경 정리)
+## ◐ In-progress (잔여 작업 명시됨, §0 참조)
 
-- `quota-watcher.test.tsx`의 `act() 환경` 경고 (테스트는 통과)
-- `useClipboardWatch.test.tsx` 후 `DatabaseClosedError` unhandled rejection (테스트는 통과)
-- i18n 빌드 검증 스크립트 (`scripts/check-i18n.mjs`)는 dev 단계에서만 작동, prod build에 통합 X
+| FEAT | 파일 |
+|---|---|
+| canvas | [FEAT-canvas.md](FEAT-canvas.md) |
+| ai-pipeline | [FEAT-ai-pipeline.md](FEAT-ai-pipeline.md) |
+| home | [FEAT-home.md](FEAT-home.md) |
+| signals | [FEAT-signals.md](FEAT-signals.md) |
+
+## ⏸ Pending (그대로)
+
+| FEAT | 파일 |
+|---|---|
+| extras | [FEAT-extras.md](FEAT-extras.md) |
+| freemium | [FEAT-freemium.md](FEAT-freemium.md) |
+| mobile | [FEAT-mobile.md](FEAT-mobile.md) |
+| export | [FEAT-export.md](FEAT-export.md) |
 
 ## 스펙 작성·갱신 규칙
 
-- **§0 잔여 작업** 섹션: in-progress 스펙은 본문 §1~10 위에 잔여 작업만 압축한 §0 두기
-- complete로 이동 시: 헤더 Status를 `✅ complete (날짜) — 검증 통과, AC 모두 충족`으로
-- 4차 진입 시점에 본 인덱스 재갱신
+- complete 이동 시: `**Status**: ✅ complete (날짜) — 검증 통과, AC 모두 충족`
+- in-progress 진입: 본문 §1 위에 `## 0. 잔여 작업` 섹션 (압축된 todo list)
+- 본 인덱스는 phase 종료마다 재갱신
