@@ -1,0 +1,921 @@
+{
+  "schemaVersion": 2,
+  "name": "moss",
+  "description": "생각이 사라지지 않게 만드는 느슨한 사고 작업대 (Thought Workspace). 정리·관리·완료가 아닌 머무름·응집·연결이 핵심 동사. 웹 PWA 단독, Local-first(IndexedDB+OPFS), AI는 응집기(Claude/OpenAI API proxy), Freemium 구독. NON-GOALS: 팀 협업, 실시간 공동 편집, 업무/태스크 관리, 캘린더, AI 대필, streak·완료율 같은 정량 생산성 지표. DONE: Thought Return Rate / Connection Rate / Revisit Time / Draft Conversion / D30·D90 Retention 5개 지표가 측정 가능한 상태로 출시.",
+  "requirements": [
+    {
+      "id": "REQ-1",
+      "title": "캡처 입력은 2초 이내, 제목·폴더·태그 강제 없음",
+      "description": "Given 사용자가 캡처 진입점(단축키/모바일 입력바/+버튼/브라우저 익스텐션)을 열었을 때\nWhen 텍스트/이미지/링크 등을 입력하고 저장 액션을 취하면\nThen 2초 이내에 저장되며, 제목/폴더/태그/카테고리 입력을 요구하지 않는다.\nThen 카드는 'Untitled' 같은 placeholder 없이 본문만 표시된다.",
+      "priority": "high",
+      "status": "todo",
+      "progress": 0
+    },
+    {
+      "id": "REQ-2",
+      "title": "10종 캡처 타입 지원",
+      "description": "Given 사용자가 캡처 입력을 시작할 때\nWhen 텍스트/손글씨/마인드맵/하이라이트/체크리스트/이미지·스크린샷/링크/음성/파일/코드 블록 중 하나를 선택하면\nThen 각 타입에 맞는 입력 UI가 제공되고, 저장 후 보드/홈에서 동일하게 카드로 다뤄진다.\nThen 링크는 title/summary/thumbnail이 자동 추출되고, 음성은 옵션으로 transcribe된다.",
+      "priority": "high",
+      "status": "todo",
+      "progress": 0
+    },
+    {
+      "id": "REQ-3",
+      "title": "Local-first — 오프라인 작동 보장",
+      "description": "Given 사용자가 오프라인 상태일 때\nWhen 캡처/보드 편집/검색/홈 피드 열람을 시도하면\nThen 모든 비-AI 기능이 정상 동작한다 (IndexedDB + OPFS 기반).\nThen 메모 본문은 기본적으로 서버를 통과하지 않는다.",
+      "priority": "high",
+      "status": "todo",
+      "progress": 0
+    },
+    {
+      "id": "REQ-4",
+      "title": "Giant Canvas + Zoom-based UX",
+      "description": "Given 사용자가 보드를 열었을 때\nWhen 자유롭게 카드를 배치하고 확대/축소하면\nThen 확대 시 세부 메모, 축소 시 사고 지형도가 보인다.\nThen 메모 간 수동 연결선과 AI 추천 연결선이 시각적으로 구분된다 (실선/점선).",
+      "priority": "high",
+      "status": "todo",
+      "progress": 0
+    },
+    {
+      "id": "REQ-5",
+      "title": "AI 연결 제안 — 수락/거절 가능, 거절은 학습됨",
+      "description": "Given AI 옵트인 상태에서 임베딩이 계산된 후\nWhen 두 메모의 score(cos × temporal_decay × user_signal) ≥ 0.78이면\nThen Home의 '오늘의 연결' 섹션에 후보로 노출된다.\nThen 사용자가 거절하면 음의 신호로 기록되고, 같은 페어는 일정 기간 재제안되지 않는다.",
+      "priority": "high",
+      "status": "todo",
+      "progress": 0
+    },
+    {
+      "id": "REQ-6",
+      "title": "시스템 보드 '머무는 생각'은 재노출 기반 자동 큐레이팅",
+      "description": "Given 사용자가 앱에 진입했을 때\nWhen 첫 화면(SCR-workspace의 시스템 보드 '머무는 생각')을 본다면\nThen 캔버스에 '지금 머무는 생각 / 다시 떠오른 생각 / 오늘의 연결 / 사고 흐름 타임라인 / 오늘의 질문' 카드가 AI 자동 큐레이팅으로 배치된다.\nThen 최신순 정렬을 기본으로 쓰지 않으며, 재방문 빈도·반복 키워드·연결 가능성 기반으로 카드가 결정된다.\nThen 시스템 보드는 삭제 불가, 항상 존재.",
+      "priority": "high",
+      "status": "todo",
+      "progress": 0
+    },
+    {
+      "id": "REQ-7",
+      "title": "AI 응집기 — 키워드/군집/흐름 요약 자동 제공",
+      "description": "Given 최근 7일간 메모가 N개 이상 저장되었을 때\nWhen 사용자가 Signals 패널을 열면\nThen 반복 키워드 + 빈도, cluster graph, 자연어 흐름 요약(1-2문장), 사고 리듬 분석이 자동 제공된다.\nThen AI 답을 강제하지 않으며 인사이트는 닫기 가능하다.",
+      "priority": "high",
+      "status": "todo",
+      "progress": 0
+    },
+    {
+      "id": "REQ-8",
+      "title": "미완성 메모 허용 — 빈 상태 압박 금지",
+      "description": "Given 메모가 제목/태그/카테고리 없이 저장되었을 때\nWhen 카드가 표시되면\nThen '아직 아무것도 없네요!' 류의 압박 카피, streak/productivity score, '오늘 기록 안 하셨네요' 류 알림이 노출되지 않는다.\nThen 짧은 텍스트, 스크린샷 한 장, 링크 하나도 카드로 동등하게 다뤄진다.",
+      "priority": "high",
+      "status": "todo",
+      "progress": 0
+    },
+    {
+      "id": "REQ-9",
+      "title": "PWA — 설치 가능 + 오프라인 셸",
+      "description": "Given 사용자가 모바일/데스크톱 브라우저로 진입할 때\nWhen PWA 설치 프롬프트를 수락하면\nThen 홈스크린/Dock에 앱이 추가되고, 오프라인에서도 셸과 데이터가 동작한다.\nThen Service Worker가 셸과 에셋을 캐싱한다.",
+      "priority": "med",
+      "status": "todo",
+      "progress": 0
+    },
+    {
+      "id": "REQ-10",
+      "title": "AI 데이터 프라이버시 — aiOptOut 메모는 절대 서버 통과 X",
+      "description": "Given 메모에 aiOptOut=true가 설정되었을 때\nWhen 임베딩/요약/연결 제안 파이프라인이 실행되면\nThen 해당 메모는 백엔드 proxy를 통과하지 않으며 외부 API에 도달하지 않는다.\nThen AI 호출 직전 UI는 '어떤 메모가 분석되는지' 개수+샘플로 명시한다.\nThen 백엔드 로그는 사용자ID+호출시각+토큰수만 남기며 본문은 저장하지 않는다.",
+      "priority": "high",
+      "status": "todo",
+      "progress": 0
+    },
+    {
+      "id": "REQ-11",
+      "title": "Freemium — Free 쿼터 초과 시 graceful 안내",
+      "description": "Given Free 사용자의 월 AI 호출 쿼터가 소진되었을 때\nWhen 추가 AI 기능을 호출하면\nThen 정리 압박 없는 톤으로 Pro 안내가 노출되고, 비-AI 기능은 정상 동작한다.\nThen 쿼터 초과로 메모 저장이 막히지 않는다.",
+      "priority": "med",
+      "status": "todo",
+      "progress": 0
+    },
+    {
+      "id": "REQ-12",
+      "title": "5종 starter 템플릿 — 자유 캔버스/마인드 확장/프로젝트/리서치/일기",
+      "description": "Given 사용자가 새 보드를 만들 때\nWhen 템플릿을 선택하면\nThen 자유 캔버스/마인드 확장/프로젝트 보드/리서치 보드/일기 보드 중 하나를 시드로 시작할 수 있다.\nThen 템플릿은 '정답'이 아니라 '흐름의 출발점'으로 안내된다.",
+      "priority": "med",
+      "status": "todo",
+      "progress": 0
+    },
+    {
+      "id": "REQ-13",
+      "title": "오늘의 질문 / 생각 일기 / 연결 히스토리 - 시스템 보드 내 위젯 카드",
+      "description": "Given 사용자가 시스템 보드 '머무는 생각'을 볼 때\nWhen 위젯 카드를 본다면\nThen 오늘의 질문 카드는 사용자가 메타 질문을 직접 적는 입력칸으로 표시된다.\nThen 생각 일기 카드는 캘린더 그리드 + 날짜별 메모 수 dot으로 표시된다.\nThen 연결 히스토리 카드는 메모 간 연결이 만들어진 순서를 타임라인으로 보여준다.\nThen 이 위젯 카드들은 사용자 메모 카드와 구분되는 디자인이며, 시스템 보드 내에 고정 배치되거나 사용자가 위치 조정 가능하다.",
+      "priority": "med",
+      "status": "todo",
+      "progress": 0
+    },
+    {
+      "id": "REQ-14",
+      "title": "모바일 반응형 — '머무는 생각' 피드",
+      "description": "Given 모바일 브라우저로 진입했을 때\nWhen Home을 열면\nThen 상단 보드 썸네일 가로 스크롤, 필터 탭(전체/보드/메모/이미지/링크/파일), 카드 그리드가 표시된다.\nThen 하단 캡처 바에서 < 2초 입력이 가능하다.",
+      "priority": "high",
+      "status": "todo",
+      "progress": 0
+    },
+    {
+      "id": "REQ-15",
+      "title": "분위기 기반 보드 — 폴더 대신 추상 컬렉션",
+      "description": "Given 사용자가 보드를 생성할 때\nWhen 이름을 입력하면\nThen 빈 이름도 허용되며, 'soft reassurance', 'unfinished thoughts' 같은 추상 컬렉션이 가이드 예시로 제시된다.\nThen 분류·카테고리 강제가 없고, AI가 관련 생각을 자동 제안할 수 있다.",
+      "priority": "med",
+      "status": "todo",
+      "progress": 0
+    },
+    {
+      "id": "REQ-16",
+      "title": "캔버스 200+ 메모 성능 — Canvas2D fallback",
+      "description": "Given 한 보드의 메모 수가 200을 초과할 때\nWhen 사용자가 보드를 열면\nThen Canvas2D 렌더러로 자동 전환 안내가 표시되고, FPS가 일정 임계 이상으로 유지된다.\nThen 축소 시 thumbnail-only '지형도 모드'로 더 가벼운 렌더링을 제공한다.",
+      "priority": "med",
+      "status": "todo",
+      "progress": 0
+    },
+    {
+      "id": "REQ-17",
+      "title": "Export — Markdown / JSON Canvas / .moss bundle",
+      "description": "Given 사용자가 export 액션을 실행했을 때\nWhen 포맷을 선택하면\nThen Markdown (메모 1개 = 파일 1개), JSON Canvas (Obsidian 호환), .moss bundle(zip+JSON+blob, 무손실) 중 하나로 내보낼 수 있다.\nThen .moss bundle은 import로 복원 가능하다.",
+      "priority": "low",
+      "status": "todo",
+      "progress": 0
+    },
+    {
+      "id": "REQ-18",
+      "title": "한국어 단독 출시 v1 — 톤 손실 방지",
+      "description": "Given v1 출시 시점에\nWhen 사용자가 UI 언어를 본다면\nThen 모든 카피·인사이트·온보딩이 한국어로 제공된다.\nThen 코드 구조는 i18n-ready로 영어 추가가 6개월 후 가능하도록 준비된다.",
+      "priority": "low",
+      "status": "todo",
+      "progress": 0
+    }
+  ],
+  "features": [
+    {
+      "id": "FEAT-capture",
+      "title": "Capture - 10종 빠른 입력",
+      "description": "텍스트/손글씨/마인드맵/하이라이트/체크리스트/이미지/링크/음성/파일/코드 10종 캡처 타입. 진입점: 글로벌 단축키(Cmd+Shift+N), 빠른 추가 +버튼, 모바일 하단 캡처 바, 브라우저 익스텐션. 입력 직후 정리 요구 없음.",
+      "requirementIds": [
+        "REQ-1",
+        "REQ-2",
+        "REQ-8"
+      ],
+      "parentId": null
+    },
+    {
+      "id": "FEAT-canvas",
+      "title": "Workspace - Giant Canvas",
+      "description": "자유 배치(좌표 기반) + 수동/AI 연결선 + Zoom-based UX. 종이 질감(미세 회전, 그림자), 손글씨 라벨, washi tape 데코. DOM+virtualization(MVP) → Canvas2D fallback(200+ 메모).",
+      "requirementIds": [
+        "REQ-4",
+        "REQ-16"
+      ],
+      "parentId": null
+    },
+    {
+      "id": "FEAT-home",
+      "title": "시스템 보드 '머무는 생각' - 자동 큐레이팅, 첫 진입 기본",
+      "description": "별도 Home 화면 없음. 시스템 보드 '머무는 생각'이 첫 진입 보드로 SCR-workspace 캔버스에 자동 카드들을 큐레이팅. 카드 = 지금 머무는 생각(4) / 다시 떠오른 생각 / 오늘의 연결 / 사고 흐름 타임라인 / 오늘의 질문 / 생각 일기 / 연결 히스토리. 삭제 불가, 보드 dropdown에서 항상 첫 항목.",
+      "requirementIds": [
+        "REQ-6"
+      ],
+      "parentId": null
+    },
+    {
+      "id": "FEAT-extras",
+      "title": "시스템 보드 부가 카드 - 오늘의 질문 / 생각 일기 / 연결 히스토리",
+      "description": "시스템 보드 안의 특수 카드. 오늘의 질문(사용자 메타 질문 입력), 생각 일기(캘린더 + 날짜별 dot), 연결 히스토리(연결 생성 순서 타임라인). 일반 카드와 구분되는 위젯형 카드.",
+      "requirementIds": [
+        "REQ-13"
+      ],
+      "parentId": "FEAT-home"
+    },
+    {
+      "id": "FEAT-signals",
+      "title": "Signals - AI 응집기 / 사고 거울",
+      "description": "반복 키워드 빈도, cluster graph, 자연어 흐름 요약(1-2문장), 느슨한 연결 제안, 사고 리듬 분석. 닫기 가능. 강제 답 없음.",
+      "requirementIds": [
+        "REQ-5",
+        "REQ-7"
+      ],
+      "parentId": null
+    },
+    {
+      "id": "FEAT-ai-pipeline",
+      "title": "AI 파이프라인 - 임베딩 + 요약 + 연결 점수",
+      "description": "캡처 → contentHash → opt-in 큐 → 백엔드 proxy → OpenAI embedding(1024d) → IDB 저장 → KNN 재계산. 요약은 Claude Haiku 4.5. 5초 debounce, 32개 batch. 연결 score = cos × temporal_decay × user_signal, 임계값 0.78.",
+      "requirementIds": [
+        "REQ-5",
+        "REQ-7",
+        "REQ-10"
+      ],
+      "parentId": "FEAT-signals"
+    },
+    {
+      "id": "FEAT-privacy",
+      "title": "AI 데이터 프라이버시 - aiOptOut + 투명한 데이터 흐름",
+      "description": "메모 단위 aiOptOut 플래그. AI 호출 직전 UI에 분석 대상 메모 개수+샘플 노출. 백엔드 로그는 본문 제외. 외부 API 응답 저장 안 함(pass-through).",
+      "requirementIds": [
+        "REQ-10"
+      ],
+      "parentId": "FEAT-ai-pipeline"
+    },
+    {
+      "id": "FEAT-boards",
+      "title": "보드 picker dropdown - 분위기 기반 느슨한 컬렉션",
+      "description": "별도 Boards 목록 화면 없음. SCR-workspace 상단 헤더의 보드 dropdown('머무는 생각 ▾')으로 전환·생성·삭제·rename. 항목: [시스템 보드 '머무는 생각' (고정)] + 사용자 보드들 + '+ 새 보드'. 폴더 대신 추상 컬렉션('soft reassurance', 'unfinished thoughts' 등). 빈 이름 허용.",
+      "requirementIds": [
+        "REQ-15"
+      ],
+      "parentId": null
+    },
+    {
+      "id": "FEAT-templates",
+      "title": "5종 starter 템플릿",
+      "description": "자유 캔버스 / 마인드 확장 / 프로젝트 보드 / 리서치 보드 / 일기 보드. '정답' 아닌 '흐름의 출발점'.",
+      "requirementIds": [
+        "REQ-12"
+      ],
+      "parentId": "FEAT-boards"
+    },
+    {
+      "id": "FEAT-mobile",
+      "title": "Mobile - 머무는 생각 피드 + 캡처 바",
+      "description": "반응형(동일 코드베이스). 상단 보드 썸네일 가로 스크롤, 필터 탭(전체/보드/메모/이미지/링크/파일), 카드 그리드, 하단 캡처 바.",
+      "requirementIds": [
+        "REQ-14",
+        "REQ-1"
+      ],
+      "parentId": null
+    },
+    {
+      "id": "FEAT-storage",
+      "title": "Local-first Storage - Dexie + OPFS",
+      "description": "메타데이터/본문 → IndexedDB via Dexie. Blob(이미지/음성/파일/손글씨 preview) → OPFS. 벡터 → IDB. Service Worker로 셸/에셋 캐싱. navigator.storage.persist() 요청.",
+      "requirementIds": [
+        "REQ-3",
+        "REQ-9"
+      ],
+      "parentId": null
+    },
+    {
+      "id": "FEAT-freemium",
+      "title": "Freemium - Stripe + AI 쿼터",
+      "description": "Supabase Auth(매직링크+Google) + Stripe 구독. Free: 캔버스+로컬+월 100회 AI / Pro($8/$80): AI 무제한+멀티 디바이스 sync+백업. 쿼터 초과 시 graceful 안내, 비-AI 기능 정상.",
+      "requirementIds": [
+        "REQ-11"
+      ],
+      "parentId": null
+    },
+    {
+      "id": "FEAT-export",
+      "title": "Export / Import - Markdown / JSON Canvas / .moss bundle",
+      "description": "Markdown(메모=파일), JSON Canvas(Obsidian 호환), .moss bundle(zip+JSON+blob, 무손실, import 가능).",
+      "requirementIds": [
+        "REQ-17"
+      ],
+      "parentId": null
+    },
+    {
+      "id": "FEAT-i18n",
+      "title": "i18n-ready - 한국어 단독 v1",
+      "description": "react-intl / next-intl 구조. messages/ko.json 단독. 영어는 v1+6개월 시점 검토.",
+      "requirementIds": [
+        "REQ-18"
+      ],
+      "parentId": null
+    }
+  ],
+  "flows": [
+    {
+      "id": "FLOW-capture-revisit",
+      "title": "캡처 → Home 재노출 → 다시 머무름",
+      "description": "moss의 핵심 루프. 빠르게 남긴 메모가 며칠 후 Home에서 다시 마주쳐 사고가 응집되는 흐름.",
+      "featureIds": [
+        "FEAT-capture",
+        "FEAT-home",
+        "FEAT-storage",
+        "FEAT-ai-pipeline"
+      ],
+      "steps": [
+        {
+          "id": "S1",
+          "description": "사용자가 단축키(Cmd+Shift+N) 또는 +버튼으로 캡처 입력바를 연다",
+          "screenId": "SCR-capture-bar",
+          "lane": "user",
+          "featureIds": [
+            "FEAT-capture"
+          ]
+        },
+        {
+          "id": "S2",
+          "description": "텍스트/이미지/링크 등 입력 후 저장 (제목/태그/폴더 요구 없음, 2초 이내)",
+          "screenId": "SCR-capture-bar",
+          "lane": "user",
+          "featureIds": [
+            "FEAT-capture"
+          ]
+        },
+        {
+          "id": "S3",
+          "description": "IndexedDB+OPFS에 저장 + AI 임베딩 큐 등록 (옵트인 시, 5초 debounce)",
+          "screenId": "SCR-workspace",
+          "lane": "system",
+          "featureIds": [
+            "FEAT-storage",
+            "FEAT-ai-pipeline"
+          ]
+        },
+        {
+          "id": "S4",
+          "description": "N일 후 사용자가 Home 방문",
+          "screenId": "SCR-workspace",
+          "lane": "user",
+          "featureIds": [
+            "FEAT-home"
+          ]
+        },
+        {
+          "id": "S5",
+          "description": "'다시 떠오른 생각' 섹션에 과거 메모 + 최근 메모의 연결이 노출됨",
+          "screenId": "SCR-workspace",
+          "lane": "system",
+          "featureIds": [
+            "FEAT-home",
+            "FEAT-ai-pipeline"
+          ]
+        },
+        {
+          "id": "S6",
+          "description": "사용자가 카드를 열어 다시 머무름 (lastVisitedAt 갱신, Thought Return Rate 측정)",
+          "screenId": "SCR-workspace",
+          "lane": "user",
+          "featureIds": [
+            "FEAT-home",
+            "FEAT-storage"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "FLOW-board-build",
+      "title": "빈 캔버스 → 캡처 배치 → 수동 연결 → 보드 응집",
+      "description": "사용자가 한 주제에 대한 사고를 보드에 응집해가는 흐름.",
+      "featureIds": [
+        "FEAT-boards",
+        "FEAT-templates",
+        "FEAT-canvas",
+        "FEAT-capture"
+      ],
+      "steps": [
+        {
+          "id": "S1",
+          "description": "사용자가 새 보드 생성 (이름 빈 채로도 OK) + 5종 템플릿 중 선택",
+          "screenId": "SCR-workspace",
+          "lane": "user",
+          "featureIds": [
+            "FEAT-boards",
+            "FEAT-templates"
+          ]
+        },
+        {
+          "id": "S2",
+          "description": "빈 캔버스 진입, 첫 캡처 (텍스트/이미지/링크)",
+          "screenId": "SCR-workspace",
+          "lane": "user",
+          "featureIds": [
+            "FEAT-canvas",
+            "FEAT-capture"
+          ]
+        },
+        {
+          "id": "S3",
+          "description": "추가 캡처 + 자유 배치 (드래그, 종이 질감 미세 회전)",
+          "screenId": "SCR-workspace",
+          "lane": "user",
+          "featureIds": [
+            "FEAT-canvas"
+          ]
+        },
+        {
+          "id": "S4",
+          "description": "두 카드 사이 수동 연결선 (실선) + 옵션 라벨",
+          "screenId": "SCR-workspace",
+          "lane": "user",
+          "featureIds": [
+            "FEAT-canvas"
+          ]
+        },
+        {
+          "id": "S5",
+          "description": "축소(zoom out)로 사고 지형도 확인",
+          "screenId": "SCR-workspace",
+          "lane": "user",
+          "featureIds": [
+            "FEAT-canvas"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "FLOW-ai-connection",
+      "title": "AI 연결 제안 → 사용자 수락/거절 → 학습",
+      "description": "Signals가 멀리 있는 메모를 짝지어 제안하고, 사용자 신호가 임계값에 반영되는 흐름.",
+      "featureIds": [
+        "FEAT-signals",
+        "FEAT-ai-pipeline",
+        "FEAT-home"
+      ],
+      "steps": [
+        {
+          "id": "S1",
+          "description": "메모 임베딩이 계산됨 (백엔드 proxy → OpenAI embedding)",
+          "screenId": "SCR-workspace",
+          "lane": "system",
+          "featureIds": [
+            "FEAT-ai-pipeline"
+          ]
+        },
+        {
+          "id": "S2",
+          "description": "score(cos × temporal_decay × user_signal) ≥ 0.78인 페어 추출",
+          "screenId": "SCR-signals",
+          "lane": "system",
+          "featureIds": [
+            "FEAT-ai-pipeline"
+          ]
+        },
+        {
+          "id": "S3",
+          "description": "다양성 필터 (같은 보드 페어 감점, 같은 클러스터 하루 1회만)",
+          "screenId": "SCR-signals",
+          "lane": "system",
+          "featureIds": [
+            "FEAT-ai-pipeline"
+          ]
+        },
+        {
+          "id": "S4",
+          "description": "Home의 '오늘의 연결' 섹션에 후보 노출",
+          "screenId": "SCR-workspace",
+          "lane": "system",
+          "featureIds": [
+            "FEAT-home",
+            "FEAT-signals"
+          ]
+        },
+        {
+          "id": "S5",
+          "description": "사용자가 수락 → Connection(source: ai-suggested, status: active) 생성",
+          "screenId": "SCR-workspace",
+          "lane": "user",
+          "featureIds": [
+            "FEAT-signals"
+          ]
+        },
+        {
+          "id": "S6",
+          "description": "또는 거절 → status: rejected, 임계값 개인화에 음의 신호로 반영",
+          "screenId": "SCR-workspace",
+          "lane": "user",
+          "featureIds": [
+            "FEAT-signals",
+            "FEAT-ai-pipeline"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "FLOW-onboarding",
+      "title": "첫 진입 → 빈 캔버스 → 첫 캡처",
+      "description": "안티-튜토리얼 기조의 온보딩. 빈 상태 압박 없이 첫 캡처로 자연스럽게 안내.",
+      "featureIds": [
+        "FEAT-capture",
+        "FEAT-canvas",
+        "FEAT-i18n"
+      ],
+      "steps": [
+        {
+          "id": "S1",
+          "description": "사용자가 moss.app 진입 (가입 없이 익명 가능)",
+          "screenId": "SCR-onboarding",
+          "lane": "user",
+          "featureIds": [
+            "FEAT-i18n"
+          ]
+        },
+        {
+          "id": "S2",
+          "description": "한 줄 카피 + 빈 캔버스 노출 ('지금은 그냥 남겨두셔도 좋아요')",
+          "screenId": "SCR-onboarding",
+          "lane": "system",
+          "featureIds": [
+            "FEAT-canvas",
+            "FEAT-i18n"
+          ]
+        },
+        {
+          "id": "S3",
+          "description": "사용자가 +버튼/단축키로 첫 캡처",
+          "screenId": "SCR-capture-bar",
+          "lane": "user",
+          "featureIds": [
+            "FEAT-capture"
+          ]
+        },
+        {
+          "id": "S4",
+          "description": "저장 후 첫 카드가 캔버스에 등장 (잔향 모션, 미세 회전)",
+          "screenId": "SCR-workspace",
+          "lane": "system",
+          "featureIds": [
+            "FEAT-canvas"
+          ]
+        },
+        {
+          "id": "S5",
+          "description": "선택적: PWA 설치 프롬프트 (1회만, 강요 없음)",
+          "screenId": "SCR-workspace",
+          "lane": "system",
+          "featureIds": [
+            "FEAT-storage"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "FLOW-freemium-paywall",
+      "title": "Free 쿼터 소진 → Pro 안내 → 결제",
+      "description": "비-AI 기능을 막지 않으면서 graceful하게 Pro로 유도하는 흐름.",
+      "featureIds": [
+        "FEAT-freemium",
+        "FEAT-ai-pipeline"
+      ],
+      "steps": [
+        {
+          "id": "S1",
+          "description": "Free 사용자가 월 AI 쿼터 100회를 소진",
+          "screenId": "SCR-signals",
+          "lane": "system",
+          "featureIds": [
+            "FEAT-freemium"
+          ]
+        },
+        {
+          "id": "S2",
+          "description": "추가 AI 호출 시도 시 Pro 안내 노출 (정리 압박 없는 톤)",
+          "screenId": "SCR-paywall",
+          "lane": "system",
+          "featureIds": [
+            "FEAT-freemium"
+          ]
+        },
+        {
+          "id": "S3",
+          "description": "메모 저장/캔버스/홈 피드는 정상 동작 유지",
+          "screenId": "SCR-workspace",
+          "lane": "system",
+          "featureIds": [
+            "FEAT-storage"
+          ]
+        },
+        {
+          "id": "S4",
+          "description": "사용자가 Pro 결제 (Stripe checkout)",
+          "screenId": "SCR-paywall",
+          "lane": "user",
+          "featureIds": [
+            "FEAT-freemium"
+          ]
+        },
+        {
+          "id": "S5",
+          "description": "백엔드 webhook → user.plan = 'pro', 쿼터 해제",
+          "screenId": "SCR-paywall",
+          "lane": "system",
+          "featureIds": [
+            "FEAT-freemium"
+          ]
+        }
+      ]
+    }
+  ],
+  "screens": [
+    {
+      "id": "SCR-capture-bar",
+      "name": "Capture Bar - 10종 빠른 입력",
+      "role": "modal",
+      "featureIds": [
+        "FEAT-capture"
+      ]
+    },
+    {
+      "id": "SCR-signals",
+      "name": "Signals - AI 인사이트 패널",
+      "role": "panel",
+      "featureIds": [
+        "FEAT-signals",
+        "FEAT-ai-pipeline"
+      ]
+    },
+    {
+      "id": "SCR-mobile-feed",
+      "name": "Mobile - 머무는 생각 피드",
+      "role": "primary-mobile",
+      "featureIds": [
+        "FEAT-mobile",
+        "FEAT-home"
+      ]
+    },
+    {
+      "id": "SCR-onboarding",
+      "name": "Onboarding - 첫 진입 (안티-튜토리얼)",
+      "role": "entry",
+      "featureIds": [
+        "FEAT-canvas",
+        "FEAT-i18n"
+      ]
+    },
+    {
+      "id": "SCR-export",
+      "name": "Export - Markdown / JSON Canvas / .moss",
+      "role": "modal",
+      "featureIds": [
+        "FEAT-export"
+      ]
+    },
+    {
+      "id": "SCR-paywall",
+      "name": "Paywall - Pro 안내 + Stripe checkout",
+      "role": "modal",
+      "featureIds": [
+        "FEAT-freemium"
+      ]
+    },
+    {
+      "id": "SCR-workspace",
+      "name": "Workspace - 도구 사이드바 + 캔버스 (메인)",
+      "role": "primary",
+      "featureIds": [
+        "FEAT-canvas",
+        "FEAT-boards",
+        "FEAT-capture",
+        "FEAT-home",
+        "FEAT-extras"
+      ],
+      "variants": [
+        {
+          "id": "system",
+          "name": "시스템 보드 '머무는 생각' (첫 진입, AI 자동 큐레이팅)",
+          "grid": {
+            "cols": "220px 1fr",
+            "rows": "56px 1fr 48px"
+          },
+          "areas": [
+            {
+              "id": "sidebar",
+              "row": "1 / 4",
+              "col": "1",
+              "kind": "sidebar",
+              "sketch": "◀  TOOLS\n\nAa  텍스트\n✎   손글씨\n⌒   마인드맵\n⌘   하이라이트\n☑   체크리스트\n🖼  이미지\n🔗  링크\n🎤  음성\n📎  파일\n</> 코드\n────────\n✦   Signals\n↗   Export",
+              "notes": "펼침 220px. 10종 도구는 drag source. 캔버스로 끌어다 놓으면 빈 카드.",
+              "featureIds": [
+                "FEAT-capture"
+              ]
+            },
+            {
+              "id": "header",
+              "row": "1",
+              "col": "2",
+              "kind": "header",
+              "sketch": "moss.  ·  머무는 생각 ▾  (시스템 보드)               🔍  🔔  ⊙ user",
+              "notes": "보드 picker dropdown — 첫 항목 '머무는 생각' 고정."
+            },
+            {
+              "id": "canvas",
+              "row": "2",
+              "col": "2",
+              "kind": "canvas",
+              "sketch": "╭─ 지금 머무는 ──╮  ╭─ 다시 떠오름 ─╮  ╭─ 오늘의 연결 ─╮\n│ 부담 없는 UX  │  │ 5일 전 메모    │  │ 쿠폰 ↔ 안심감 │\n│ 안심의 감각   │  │       ↕        │  │ [수락] [숨기기]│\n│ 브랜드의 잔향 │  │ 어제 스크린샷  │  ╰────────────────╯\n╰───────────────╯  ╰────────────────╯\n\n╭─ 사고 흐름 ──────────────────────────╮\n│  UX 리서치 → 신뢰의 순간 →           │\n│  First Purchase → 브랜드 경험        │\n╰──────────────────────────────────────╯\n\n╭─ 오늘의 질문 ─╮  ╭─ 생각 일기 ─╮  ╭─ 연결 히스토리 ──╮\n│ 떠오르는 질문 │  │ 캘 5/23 ●   │  │ 5/18→5/22→5/24    │\n│ 을 적어보세요 │  ╰─────────────╯  ╰────────────────────╯\n╰───────────────╯\n\n✎ 머무는 생각 (시스템 보드 · 삭제 불가)",
+              "featureIds": [
+                "FEAT-canvas",
+                "FEAT-home",
+                "FEAT-extras"
+              ]
+            },
+            {
+              "id": "toolbar",
+              "row": "3",
+              "col": "2",
+              "kind": "toolbar",
+              "sketch": "                                            [−]  100%  [+]  [▦]"
+            }
+          ]
+        },
+        {
+          "id": "system-empty",
+          "name": "시스템 보드 - 데이터 부족 (메모 < 10)",
+          "grid": {
+            "cols": "220px 1fr",
+            "rows": "56px 1fr 48px"
+          },
+          "areas": [
+            {
+              "id": "sidebar",
+              "row": "1 / 4",
+              "col": "1",
+              "kind": "sidebar",
+              "sketch": "◀  TOOLS\n\nAa  텍스트\n✎   손글씨\n⌒   마인드맵\n⌘   하이라이트\n☑   체크리스트\n🖼  이미지\n🔗  링크\n🎤  음성\n📎  파일\n</> 코드\n────────\n✦   Signals\n↗   Export"
+            },
+            {
+              "id": "header",
+              "row": "1",
+              "col": "2",
+              "kind": "header",
+              "sketch": "moss.  ·  머무는 생각 ▾                                🔍  🔔  ⊙ user"
+            },
+            {
+              "id": "canvas",
+              "row": "2",
+              "col": "2",
+              "kind": "empty",
+              "sketch": "\n\n\n              조금 더 머무르면 패턴이 보일 거예요.\n\n      왼쪽 도구를 끌어다 놓거나, 새 보드를 만들어보세요.\n\n",
+              "notes": "메모가 10개 미만일 때. 큐레이팅 카드 대신 잔잔한 안내."
+            },
+            {
+              "id": "toolbar",
+              "row": "3",
+              "col": "2",
+              "kind": "toolbar",
+              "sketch": "                                            [−]  100%  [+]  [▦]"
+            }
+          ]
+        },
+        {
+          "id": "board",
+          "name": "일반 사용자 보드 (자유 배치)",
+          "grid": {
+            "cols": "220px 1fr",
+            "rows": "56px 1fr 48px"
+          },
+          "areas": [
+            {
+              "id": "sidebar",
+              "row": "1 / 4",
+              "col": "1",
+              "kind": "sidebar",
+              "sketch": "◀  TOOLS\n\nAa  텍스트\n✎   손글씨\n⌒   마인드맵\n⌘   하이라이트\n☑   체크리스트\n🖼  이미지\n🔗  링크\n🎤  음성\n📎  파일\n</> 코드\n────────\n✦   Signals\n↗   Export"
+            },
+            {
+              "id": "header",
+              "row": "1",
+              "col": "2",
+              "kind": "header",
+              "sketch": "moss.  ·  Brand Exploration ▾                          🔍  🔔  ⊙ user"
+            },
+            {
+              "id": "canvas",
+              "row": "2",
+              "col": "2",
+              "kind": "canvas",
+              "sketch": "      ╭───────╮  ╲╲        ╭──────────────╮       ╭─────╮\n      │ memo  │   ╲╲       │ \"신뢰는 정보가│       │ vid │\n      │ 너무  │    ╲       │ 아니라, 안심의│       │  ▷  │\n      │ 많은… │     ╲      │ 순간에 생긴다\"│       ╰─────╯\n      ╰───────╯      ╲     ╰──────────────╯\n          │           ╲\n          ▼            ╲          ╭── First Purchase ──╮\n      ╭───────╮         ╲─ ─ ─ ─ ─│ 사람들은 첫 구매…  │\n      │ 부담  │                   ╰─────────────────────╯\n      │ 없는  │\n      │  UX   │           ✎ Brand Exploration (handwritten)\n      ╰───────╯\n\n  ╲╲ washi tape · ─── 실선 = 수동 연결 · ─ ─ ─ AI 추천",
+              "notes": "사용자가 자유 배치한 메모 + 연결선 + 손글씨 라벨. ±1.5° 미세 회전.",
+              "featureIds": [
+                "FEAT-canvas",
+                "FEAT-boards"
+              ]
+            },
+            {
+              "id": "toolbar",
+              "row": "3",
+              "col": "2",
+              "kind": "toolbar",
+              "sketch": "                                            [−]  100%  [+]  [▦]"
+            }
+          ]
+        },
+        {
+          "id": "board-empty",
+          "name": "빈 새 보드 (Aa 도구 미세 펄스)",
+          "grid": {
+            "cols": "220px 1fr",
+            "rows": "56px 1fr 48px"
+          },
+          "areas": [
+            {
+              "id": "sidebar",
+              "row": "1 / 4",
+              "col": "1",
+              "kind": "sidebar",
+              "sketch": "◀  TOOLS\n\nAa  텍스트  ⊙ (펄스)\n✎   손글씨\n⌒   마인드맵\n⌘   하이라이트\n☑   체크리스트\n🖼  이미지\n🔗  링크\n🎤  음성\n📎  파일\n</> 코드\n────────\n✦   Signals\n↗   Export",
+              "notes": "첫 도구 Aa에 미세 펄스로 시작점 힌트."
+            },
+            {
+              "id": "header",
+              "row": "1",
+              "col": "2",
+              "kind": "header",
+              "sketch": "moss.  ·  새 보드 ▾                                    🔍  🔔  ⊙ user"
+            },
+            {
+              "id": "canvas",
+              "row": "2",
+              "col": "2",
+              "kind": "empty",
+              "sketch": "\n\n\n                   ↶  도구를 끌어다 놓아보세요\n\n      왼쪽 사이드바의 Aa·✎·🖼·🔗 등을 드래그해서\n            캔버스에 떨어뜨리면 빈 카드가 생깁니다\n"
+            },
+            {
+              "id": "toolbar",
+              "row": "3",
+              "col": "2",
+              "kind": "toolbar",
+              "sketch": "                                            [−]  100%  [+]  [▦]"
+            }
+          ]
+        },
+        {
+          "id": "collapsed",
+          "name": "사이드바 접힘 (64px, 아이콘만)",
+          "grid": {
+            "cols": "64px 1fr",
+            "rows": "56px 1fr 48px"
+          },
+          "areas": [
+            {
+              "id": "sidebar",
+              "row": "1 / 4",
+              "col": "1",
+              "kind": "sidebar",
+              "sketch": " ▶\n\n Aa\n ✎\n ⌒\n ⌘\n ☑\n 🖼\n 🔗\n 🎤\n 📎\n</>\n──\n ✦\n ↗",
+              "notes": "접힘 64px. hover 시 tooltip으로 이름 노출."
+            },
+            {
+              "id": "header",
+              "row": "1",
+              "col": "2",
+              "kind": "header",
+              "sketch": "moss.  ·  머무는 생각 ▾                                🔍  🔔  ⊙ user"
+            },
+            {
+              "id": "canvas",
+              "row": "2",
+              "col": "2",
+              "kind": "canvas",
+              "sketch": "\n  (사이드바 접힘으로 캔버스 폭 확장 — 시스템 보드/일반 보드 콘텐츠를 더 넓게 표시)\n\n  도구는 사이드바 아이콘 클릭 또는 hover로 가용.",
+              "notes": "콘텐츠는 system 또는 board variant와 동일. 폭만 더 넓음."
+            },
+            {
+              "id": "toolbar",
+              "row": "3",
+              "col": "2",
+              "kind": "toolbar",
+              "sketch": "                                                  [−]  100%  [+]  [▦]"
+            }
+          ]
+        },
+        {
+          "id": "dragging",
+          "name": "드래그 진행 (도구 → 캔버스)",
+          "grid": {
+            "cols": "220px 1fr",
+            "rows": "56px 1fr 48px"
+          },
+          "areas": [
+            {
+              "id": "sidebar",
+              "row": "1 / 4",
+              "col": "1",
+              "kind": "sidebar",
+              "sketch": "◀  TOOLS\n\nAa  텍스트 🫳 잡힘\n✎   손글씨\n⌒   마인드맵\n⌘   하이라이트\n☑   체크리스트\n🖼  이미지\n🔗  링크\n🎤  음성\n📎  파일\n</> 코드\n────────\n✦   Signals\n↗   Export",
+              "notes": "Aa가 잡힌 상태. 커서가 ghost preview를 따라옴."
+            },
+            {
+              "id": "header",
+              "row": "1",
+              "col": "2",
+              "kind": "header",
+              "sketch": "moss.  ·  머무는 생각 ▾                                🔍  🔔  ⊙ user"
+            },
+            {
+              "id": "canvas",
+              "row": "2",
+              "col": "2",
+              "kind": "canvas",
+              "sketch": "  ▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒\n  ▒                                              ▒\n  ▒        [Aa] 👻  ghost preview                ▒\n  ▒              (커서 위치 따라 이동)             ▒\n  ▒                                              ▒\n  ▒        ↶  여기에 놓으면                     ▒\n  ▒           빈 텍스트 카드 + cursor 즉시 활성  ▒\n  ▒                                              ▒\n  ▒    ▒ 드롭 가능 영역 (캔버스 전체)            ▒\n  ▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒",
+              "notes": "드롭 가능 영역 살짝 하이라이트 + ghost preview가 커서 따라옴.",
+              "featureIds": [
+                "FEAT-canvas",
+                "FEAT-capture"
+              ]
+            },
+            {
+              "id": "toolbar",
+              "row": "3",
+              "col": "2",
+              "kind": "toolbar",
+              "sketch": "                                            [−]  100%  [+]  [▦]"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

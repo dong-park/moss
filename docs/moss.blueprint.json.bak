@@ -1,0 +1,1026 @@
+{
+  "schemaVersion": 2,
+  "name": "moss",
+  "description": "생각이 사라지지 않게 만드는 느슨한 사고 작업대 (Thought Workspace). 정리·관리·완료가 아닌 머무름·응집·연결이 핵심 동사. 웹 PWA 단독, Local-first(IndexedDB+OPFS), AI는 응집기(Claude/OpenAI API proxy), Freemium 구독. NON-GOALS: 팀 협업, 실시간 공동 편집, 업무/태스크 관리, 캘린더, AI 대필, streak·완료율 같은 정량 생산성 지표. DONE: Thought Return Rate / Connection Rate / Revisit Time / Draft Conversion / D30·D90 Retention 5개 지표가 측정 가능한 상태로 출시.",
+  "requirements": [
+    {
+      "id": "REQ-1",
+      "title": "캡처 입력은 2초 이내, 제목·폴더·태그 강제 없음",
+      "description": "Given 사용자가 캡처 진입점(단축키/모바일 입력바/+버튼/브라우저 익스텐션)을 열었을 때\nWhen 텍스트/이미지/링크 등을 입력하고 저장 액션을 취하면\nThen 2초 이내에 저장되며, 제목/폴더/태그/카테고리 입력을 요구하지 않는다.\nThen 카드는 'Untitled' 같은 placeholder 없이 본문만 표시된다.",
+      "priority": "high",
+      "status": "todo",
+      "progress": 0
+    },
+    {
+      "id": "REQ-2",
+      "title": "10종 캡처 타입 지원",
+      "description": "Given 사용자가 캡처 입력을 시작할 때\nWhen 텍스트/손글씨/마인드맵/하이라이트/체크리스트/이미지·스크린샷/링크/음성/파일/코드 블록 중 하나를 선택하면\nThen 각 타입에 맞는 입력 UI가 제공되고, 저장 후 보드/홈에서 동일하게 카드로 다뤄진다.\nThen 링크는 title/summary/thumbnail이 자동 추출되고, 음성은 옵션으로 transcribe된다.",
+      "priority": "high",
+      "status": "todo",
+      "progress": 0
+    },
+    {
+      "id": "REQ-3",
+      "title": "Local-first — 오프라인 작동 보장",
+      "description": "Given 사용자가 오프라인 상태일 때\nWhen 캡처/보드 편집/검색/홈 피드 열람을 시도하면\nThen 모든 비-AI 기능이 정상 동작한다 (IndexedDB + OPFS 기반).\nThen 메모 본문은 기본적으로 서버를 통과하지 않는다.",
+      "priority": "high",
+      "status": "todo",
+      "progress": 0
+    },
+    {
+      "id": "REQ-4",
+      "title": "Giant Canvas + Zoom-based UX",
+      "description": "Given 사용자가 보드를 열었을 때\nWhen 자유롭게 카드를 배치하고 확대/축소하면\nThen 확대 시 세부 메모, 축소 시 사고 지형도가 보인다.\nThen 메모 간 수동 연결선과 AI 추천 연결선이 시각적으로 구분된다 (실선/점선).",
+      "priority": "high",
+      "status": "todo",
+      "progress": 0
+    },
+    {
+      "id": "REQ-5",
+      "title": "AI 연결 제안 — 수락/거절 가능, 거절은 학습됨",
+      "description": "Given AI 옵트인 상태에서 임베딩이 계산된 후\nWhen 두 메모의 score(cos × temporal_decay × user_signal) ≥ 0.78이면\nThen Home의 '오늘의 연결' 섹션에 후보로 노출된다.\nThen 사용자가 거절하면 음의 신호로 기록되고, 같은 페어는 일정 기간 재제안되지 않는다.",
+      "priority": "high",
+      "status": "todo",
+      "progress": 0
+    },
+    {
+      "id": "REQ-6",
+      "title": "Home 피드는 재노출 기반 (최신순이 아님)",
+      "description": "Given 사용자가 Home에 진입했을 때\nWhen 피드를 본다면\nThen 섹션은 '지금 머무는 생각 / 다시 떠오른 생각 / 오늘의 연결 / 사고 흐름 타임라인 / 오늘의 질문' 순서로 구성된다.\nThen 최신순 정렬을 기본으로 쓰지 않으며, 재방문 빈도·반복 키워드·연결 가능성 기반으로 정렬된다.",
+      "priority": "high",
+      "status": "todo",
+      "progress": 0
+    },
+    {
+      "id": "REQ-7",
+      "title": "AI 응집기 — 키워드/군집/흐름 요약 자동 제공",
+      "description": "Given 최근 7일간 메모가 N개 이상 저장되었을 때\nWhen 사용자가 Signals 패널을 열면\nThen 반복 키워드 + 빈도, cluster graph, 자연어 흐름 요약(1-2문장), 사고 리듬 분석이 자동 제공된다.\nThen AI 답을 강제하지 않으며 인사이트는 닫기 가능하다.",
+      "priority": "high",
+      "status": "todo",
+      "progress": 0
+    },
+    {
+      "id": "REQ-8",
+      "title": "미완성 메모 허용 — 빈 상태 압박 금지",
+      "description": "Given 메모가 제목/태그/카테고리 없이 저장되었을 때\nWhen 카드가 표시되면\nThen '아직 아무것도 없네요!' 류의 압박 카피, streak/productivity score, '오늘 기록 안 하셨네요' 류 알림이 노출되지 않는다.\nThen 짧은 텍스트, 스크린샷 한 장, 링크 하나도 카드로 동등하게 다뤄진다.",
+      "priority": "high",
+      "status": "todo",
+      "progress": 0
+    },
+    {
+      "id": "REQ-9",
+      "title": "PWA — 설치 가능 + 오프라인 셸",
+      "description": "Given 사용자가 모바일/데스크톱 브라우저로 진입할 때\nWhen PWA 설치 프롬프트를 수락하면\nThen 홈스크린/Dock에 앱이 추가되고, 오프라인에서도 셸과 데이터가 동작한다.\nThen Service Worker가 셸과 에셋을 캐싱한다.",
+      "priority": "med",
+      "status": "todo",
+      "progress": 0
+    },
+    {
+      "id": "REQ-10",
+      "title": "AI 데이터 프라이버시 — aiOptOut 메모는 절대 서버 통과 X",
+      "description": "Given 메모에 aiOptOut=true가 설정되었을 때\nWhen 임베딩/요약/연결 제안 파이프라인이 실행되면\nThen 해당 메모는 백엔드 proxy를 통과하지 않으며 외부 API에 도달하지 않는다.\nThen AI 호출 직전 UI는 '어떤 메모가 분석되는지' 개수+샘플로 명시한다.\nThen 백엔드 로그는 사용자ID+호출시각+토큰수만 남기며 본문은 저장하지 않는다.",
+      "priority": "high",
+      "status": "todo",
+      "progress": 0
+    },
+    {
+      "id": "REQ-11",
+      "title": "Freemium — Free 쿼터 초과 시 graceful 안내",
+      "description": "Given Free 사용자의 월 AI 호출 쿼터가 소진되었을 때\nWhen 추가 AI 기능을 호출하면\nThen 정리 압박 없는 톤으로 Pro 안내가 노출되고, 비-AI 기능은 정상 동작한다.\nThen 쿼터 초과로 메모 저장이 막히지 않는다.",
+      "priority": "med",
+      "status": "todo",
+      "progress": 0
+    },
+    {
+      "id": "REQ-12",
+      "title": "5종 starter 템플릿 — 자유 캔버스/마인드 확장/프로젝트/리서치/일기",
+      "description": "Given 사용자가 새 보드를 만들 때\nWhen 템플릿을 선택하면\nThen 자유 캔버스/마인드 확장/프로젝트 보드/리서치 보드/일기 보드 중 하나를 시드로 시작할 수 있다.\nThen 템플릿은 '정답'이 아니라 '흐름의 출발점'으로 안내된다.",
+      "priority": "med",
+      "status": "todo",
+      "progress": 0
+    },
+    {
+      "id": "REQ-13",
+      "title": "오늘의 질문 / 생각 일기 / 연결 히스토리 모듈",
+      "description": "Given 사용자가 Home/하단 영역을 볼 때\nWhen 각 모듈을 본다면\nThen 오늘의 질문은 사용자가 메타 질문을 직접 적는 입력칸으로 표시된다.\nThen 생각 일기는 캘린더 그리드 + 날짜별 메모 수 dot으로 표시된다.\nThen 연결 히스토리는 메모 간 연결이 만들어진 순서를 타임라인으로 보여준다.",
+      "priority": "med",
+      "status": "todo",
+      "progress": 0
+    },
+    {
+      "id": "REQ-14",
+      "title": "모바일 반응형 — '머무는 생각' 피드",
+      "description": "Given 모바일 브라우저로 진입했을 때\nWhen Home을 열면\nThen 상단 보드 썸네일 가로 스크롤, 필터 탭(전체/보드/메모/이미지/링크/파일), 카드 그리드가 표시된다.\nThen 하단 캡처 바에서 < 2초 입력이 가능하다.",
+      "priority": "high",
+      "status": "todo",
+      "progress": 0
+    },
+    {
+      "id": "REQ-15",
+      "title": "분위기 기반 보드 — 폴더 대신 추상 컬렉션",
+      "description": "Given 사용자가 보드를 생성할 때\nWhen 이름을 입력하면\nThen 빈 이름도 허용되며, 'soft reassurance', 'unfinished thoughts' 같은 추상 컬렉션이 가이드 예시로 제시된다.\nThen 분류·카테고리 강제가 없고, AI가 관련 생각을 자동 제안할 수 있다.",
+      "priority": "med",
+      "status": "todo",
+      "progress": 0
+    },
+    {
+      "id": "REQ-16",
+      "title": "캔버스 200+ 메모 성능 — Canvas2D fallback",
+      "description": "Given 한 보드의 메모 수가 200을 초과할 때\nWhen 사용자가 보드를 열면\nThen Canvas2D 렌더러로 자동 전환 안내가 표시되고, FPS가 일정 임계 이상으로 유지된다.\nThen 축소 시 thumbnail-only '지형도 모드'로 더 가벼운 렌더링을 제공한다.",
+      "priority": "med",
+      "status": "todo",
+      "progress": 0
+    },
+    {
+      "id": "REQ-17",
+      "title": "Export — Markdown / JSON Canvas / .moss bundle",
+      "description": "Given 사용자가 export 액션을 실행했을 때\nWhen 포맷을 선택하면\nThen Markdown (메모 1개 = 파일 1개), JSON Canvas (Obsidian 호환), .moss bundle(zip+JSON+blob, 무손실) 중 하나로 내보낼 수 있다.\nThen .moss bundle은 import로 복원 가능하다.",
+      "priority": "low",
+      "status": "todo",
+      "progress": 0
+    },
+    {
+      "id": "REQ-18",
+      "title": "한국어 단독 출시 v1 — 톤 손실 방지",
+      "description": "Given v1 출시 시점에\nWhen 사용자가 UI 언어를 본다면\nThen 모든 카피·인사이트·온보딩이 한국어로 제공된다.\nThen 코드 구조는 i18n-ready로 영어 추가가 6개월 후 가능하도록 준비된다.",
+      "priority": "low",
+      "status": "todo",
+      "progress": 0
+    }
+  ],
+  "features": [
+    {
+      "id": "FEAT-capture",
+      "title": "Capture - 10종 빠른 입력",
+      "description": "텍스트/손글씨/마인드맵/하이라이트/체크리스트/이미지/링크/음성/파일/코드 10종 캡처 타입. 진입점: 글로벌 단축키(Cmd+Shift+N), 빠른 추가 +버튼, 모바일 하단 캡처 바, 브라우저 익스텐션. 입력 직후 정리 요구 없음.",
+      "requirementIds": ["REQ-1", "REQ-2", "REQ-8"],
+      "parentId": null
+    },
+    {
+      "id": "FEAT-canvas",
+      "title": "Workspace - Giant Canvas",
+      "description": "자유 배치(좌표 기반) + 수동/AI 연결선 + Zoom-based UX. 종이 질감(미세 회전, 그림자), 손글씨 라벨, washi tape 데코. DOM+virtualization(MVP) → Canvas2D fallback(200+ 메모).",
+      "requirementIds": ["REQ-4", "REQ-16"],
+      "parentId": null
+    },
+    {
+      "id": "FEAT-home",
+      "title": "Home - 지금 머무는 생각",
+      "description": "재노출 기반 피드. 섹션: 지금 머무는 생각 / 다시 떠오른 생각 / 오늘의 연결 / 사고 흐름 타임라인. 최신순 정렬 사용 안 함.",
+      "requirementIds": ["REQ-6"],
+      "parentId": null
+    },
+    {
+      "id": "FEAT-extras",
+      "title": "Home 부가 모듈 - 오늘의 질문 / 생각 일기 / 연결 히스토리",
+      "description": "오늘의 질문(사용자 메타 질문 입력), 생각 일기(캘린더 + 날짜별 dot), 연결 히스토리(연결 생성 순서 타임라인).",
+      "requirementIds": ["REQ-13"],
+      "parentId": "FEAT-home"
+    },
+    {
+      "id": "FEAT-signals",
+      "title": "Signals - AI 응집기 / 사고 거울",
+      "description": "반복 키워드 빈도, cluster graph, 자연어 흐름 요약(1-2문장), 느슨한 연결 제안, 사고 리듬 분석. 닫기 가능. 강제 답 없음.",
+      "requirementIds": ["REQ-5", "REQ-7"],
+      "parentId": null
+    },
+    {
+      "id": "FEAT-ai-pipeline",
+      "title": "AI 파이프라인 - 임베딩 + 요약 + 연결 점수",
+      "description": "캡처 → contentHash → opt-in 큐 → 백엔드 proxy → OpenAI embedding(1024d) → IDB 저장 → KNN 재계산. 요약은 Claude Haiku 4.5. 5초 debounce, 32개 batch. 연결 score = cos × temporal_decay × user_signal, 임계값 0.78.",
+      "requirementIds": ["REQ-5", "REQ-7", "REQ-10"],
+      "parentId": "FEAT-signals"
+    },
+    {
+      "id": "FEAT-privacy",
+      "title": "AI 데이터 프라이버시 - aiOptOut + 투명한 데이터 흐름",
+      "description": "메모 단위 aiOptOut 플래그. AI 호출 직전 UI에 분석 대상 메모 개수+샘플 노출. 백엔드 로그는 본문 제외. 외부 API 응답 저장 안 함(pass-through).",
+      "requirementIds": ["REQ-10"],
+      "parentId": "FEAT-ai-pipeline"
+    },
+    {
+      "id": "FEAT-boards",
+      "title": "Boards - 분위기 기반 느슨한 컬렉션",
+      "description": "폴더 대신 추상 컬렉션('soft reassurance', 'unfinished thoughts' 등). 빈 이름 허용. AI가 관련 생각 자동 제안.",
+      "requirementIds": ["REQ-15"],
+      "parentId": null
+    },
+    {
+      "id": "FEAT-templates",
+      "title": "5종 starter 템플릿",
+      "description": "자유 캔버스 / 마인드 확장 / 프로젝트 보드 / 리서치 보드 / 일기 보드. '정답' 아닌 '흐름의 출발점'.",
+      "requirementIds": ["REQ-12"],
+      "parentId": "FEAT-boards"
+    },
+    {
+      "id": "FEAT-mobile",
+      "title": "Mobile - 머무는 생각 피드 + 캡처 바",
+      "description": "반응형(동일 코드베이스). 상단 보드 썸네일 가로 스크롤, 필터 탭(전체/보드/메모/이미지/링크/파일), 카드 그리드, 하단 캡처 바.",
+      "requirementIds": ["REQ-14", "REQ-1"],
+      "parentId": null
+    },
+    {
+      "id": "FEAT-storage",
+      "title": "Local-first Storage - Dexie + OPFS",
+      "description": "메타데이터/본문 → IndexedDB via Dexie. Blob(이미지/음성/파일/손글씨 preview) → OPFS. 벡터 → IDB. Service Worker로 셸/에셋 캐싱. navigator.storage.persist() 요청.",
+      "requirementIds": ["REQ-3", "REQ-9"],
+      "parentId": null
+    },
+    {
+      "id": "FEAT-freemium",
+      "title": "Freemium - Stripe + AI 쿼터",
+      "description": "Supabase Auth(매직링크+Google) + Stripe 구독. Free: 캔버스+로컬+월 100회 AI / Pro($8/$80): AI 무제한+멀티 디바이스 sync+백업. 쿼터 초과 시 graceful 안내, 비-AI 기능 정상.",
+      "requirementIds": ["REQ-11"],
+      "parentId": null
+    },
+    {
+      "id": "FEAT-export",
+      "title": "Export / Import - Markdown / JSON Canvas / .moss bundle",
+      "description": "Markdown(메모=파일), JSON Canvas(Obsidian 호환), .moss bundle(zip+JSON+blob, 무손실, import 가능).",
+      "requirementIds": ["REQ-17"],
+      "parentId": null
+    },
+    {
+      "id": "FEAT-i18n",
+      "title": "i18n-ready - 한국어 단독 v1",
+      "description": "react-intl / next-intl 구조. messages/ko.json 단독. 영어는 v1+6개월 시점 검토.",
+      "requirementIds": ["REQ-18"],
+      "parentId": null
+    }
+  ],
+  "flows": [
+    {
+      "id": "FLOW-capture-revisit",
+      "title": "캡처 → Home 재노출 → 다시 머무름",
+      "description": "moss의 핵심 루프. 빠르게 남긴 메모가 며칠 후 Home에서 다시 마주쳐 사고가 응집되는 흐름.",
+      "featureIds": ["FEAT-capture", "FEAT-home", "FEAT-storage", "FEAT-ai-pipeline"],
+      "steps": [
+        {
+          "id": "S1",
+          "description": "사용자가 단축키(Cmd+Shift+N) 또는 +버튼으로 캡처 입력바를 연다",
+          "screenId": "SCR-capture-bar",
+          "lane": "user",
+          "featureIds": ["FEAT-capture"]
+        },
+        {
+          "id": "S2",
+          "description": "텍스트/이미지/링크 등 입력 후 저장 (제목/태그/폴더 요구 없음, 2초 이내)",
+          "screenId": "SCR-capture-bar",
+          "lane": "user",
+          "featureIds": ["FEAT-capture"]
+        },
+        {
+          "id": "S3",
+          "description": "IndexedDB+OPFS에 저장 + AI 임베딩 큐 등록 (옵트인 시, 5초 debounce)",
+          "screenId": "SCR-workspace",
+          "lane": "system",
+          "featureIds": ["FEAT-storage", "FEAT-ai-pipeline"]
+        },
+        {
+          "id": "S4",
+          "description": "N일 후 사용자가 Home 방문",
+          "screenId": "SCR-home",
+          "lane": "user",
+          "featureIds": ["FEAT-home"]
+        },
+        {
+          "id": "S5",
+          "description": "'다시 떠오른 생각' 섹션에 과거 메모 + 최근 메모의 연결이 노출됨",
+          "screenId": "SCR-home",
+          "lane": "system",
+          "featureIds": ["FEAT-home", "FEAT-ai-pipeline"]
+        },
+        {
+          "id": "S6",
+          "description": "사용자가 카드를 열어 다시 머무름 (lastVisitedAt 갱신, Thought Return Rate 측정)",
+          "screenId": "SCR-workspace",
+          "lane": "user",
+          "featureIds": ["FEAT-home", "FEAT-storage"]
+        }
+      ]
+    },
+    {
+      "id": "FLOW-board-build",
+      "title": "빈 캔버스 → 캡처 배치 → 수동 연결 → 보드 응집",
+      "description": "사용자가 한 주제에 대한 사고를 보드에 응집해가는 흐름.",
+      "featureIds": ["FEAT-boards", "FEAT-templates", "FEAT-canvas", "FEAT-capture"],
+      "steps": [
+        {
+          "id": "S1",
+          "description": "사용자가 새 보드 생성 (이름 빈 채로도 OK) + 5종 템플릿 중 선택",
+          "screenId": "SCR-boards-list",
+          "lane": "user",
+          "featureIds": ["FEAT-boards", "FEAT-templates"]
+        },
+        {
+          "id": "S2",
+          "description": "빈 캔버스 진입, 첫 캡처 (텍스트/이미지/링크)",
+          "screenId": "SCR-workspace",
+          "lane": "user",
+          "featureIds": ["FEAT-canvas", "FEAT-capture"]
+        },
+        {
+          "id": "S3",
+          "description": "추가 캡처 + 자유 배치 (드래그, 종이 질감 미세 회전)",
+          "screenId": "SCR-workspace",
+          "lane": "user",
+          "featureIds": ["FEAT-canvas"]
+        },
+        {
+          "id": "S4",
+          "description": "두 카드 사이 수동 연결선 (실선) + 옵션 라벨",
+          "screenId": "SCR-workspace",
+          "lane": "user",
+          "featureIds": ["FEAT-canvas"]
+        },
+        {
+          "id": "S5",
+          "description": "축소(zoom out)로 사고 지형도 확인",
+          "screenId": "SCR-workspace",
+          "lane": "user",
+          "featureIds": ["FEAT-canvas"]
+        }
+      ]
+    },
+    {
+      "id": "FLOW-ai-connection",
+      "title": "AI 연결 제안 → 사용자 수락/거절 → 학습",
+      "description": "Signals가 멀리 있는 메모를 짝지어 제안하고, 사용자 신호가 임계값에 반영되는 흐름.",
+      "featureIds": ["FEAT-signals", "FEAT-ai-pipeline", "FEAT-home"],
+      "steps": [
+        {
+          "id": "S1",
+          "description": "메모 임베딩이 계산됨 (백엔드 proxy → OpenAI embedding)",
+          "screenId": "SCR-workspace",
+          "lane": "system",
+          "featureIds": ["FEAT-ai-pipeline"]
+        },
+        {
+          "id": "S2",
+          "description": "score(cos × temporal_decay × user_signal) ≥ 0.78인 페어 추출",
+          "screenId": "SCR-signals",
+          "lane": "system",
+          "featureIds": ["FEAT-ai-pipeline"]
+        },
+        {
+          "id": "S3",
+          "description": "다양성 필터 (같은 보드 페어 감점, 같은 클러스터 하루 1회만)",
+          "screenId": "SCR-signals",
+          "lane": "system",
+          "featureIds": ["FEAT-ai-pipeline"]
+        },
+        {
+          "id": "S4",
+          "description": "Home의 '오늘의 연결' 섹션에 후보 노출",
+          "screenId": "SCR-home",
+          "lane": "system",
+          "featureIds": ["FEAT-home", "FEAT-signals"]
+        },
+        {
+          "id": "S5",
+          "description": "사용자가 수락 → Connection(source: ai-suggested, status: active) 생성",
+          "screenId": "SCR-home",
+          "lane": "user",
+          "featureIds": ["FEAT-signals"]
+        },
+        {
+          "id": "S6",
+          "description": "또는 거절 → status: rejected, 임계값 개인화에 음의 신호로 반영",
+          "screenId": "SCR-home",
+          "lane": "user",
+          "featureIds": ["FEAT-signals", "FEAT-ai-pipeline"]
+        }
+      ]
+    },
+    {
+      "id": "FLOW-onboarding",
+      "title": "첫 진입 → 빈 캔버스 → 첫 캡처",
+      "description": "안티-튜토리얼 기조의 온보딩. 빈 상태 압박 없이 첫 캡처로 자연스럽게 안내.",
+      "featureIds": ["FEAT-capture", "FEAT-canvas", "FEAT-i18n"],
+      "steps": [
+        {
+          "id": "S1",
+          "description": "사용자가 moss.app 진입 (가입 없이 익명 가능)",
+          "screenId": "SCR-onboarding",
+          "lane": "user",
+          "featureIds": ["FEAT-i18n"]
+        },
+        {
+          "id": "S2",
+          "description": "한 줄 카피 + 빈 캔버스 노출 ('지금은 그냥 남겨두셔도 좋아요')",
+          "screenId": "SCR-onboarding",
+          "lane": "system",
+          "featureIds": ["FEAT-canvas", "FEAT-i18n"]
+        },
+        {
+          "id": "S3",
+          "description": "사용자가 +버튼/단축키로 첫 캡처",
+          "screenId": "SCR-capture-bar",
+          "lane": "user",
+          "featureIds": ["FEAT-capture"]
+        },
+        {
+          "id": "S4",
+          "description": "저장 후 첫 카드가 캔버스에 등장 (잔향 모션, 미세 회전)",
+          "screenId": "SCR-workspace",
+          "lane": "system",
+          "featureIds": ["FEAT-canvas"]
+        },
+        {
+          "id": "S5",
+          "description": "선택적: PWA 설치 프롬프트 (1회만, 강요 없음)",
+          "screenId": "SCR-workspace",
+          "lane": "system",
+          "featureIds": ["FEAT-storage"]
+        }
+      ]
+    },
+    {
+      "id": "FLOW-freemium-paywall",
+      "title": "Free 쿼터 소진 → Pro 안내 → 결제",
+      "description": "비-AI 기능을 막지 않으면서 graceful하게 Pro로 유도하는 흐름.",
+      "featureIds": ["FEAT-freemium", "FEAT-ai-pipeline"],
+      "steps": [
+        {
+          "id": "S1",
+          "description": "Free 사용자가 월 AI 쿼터 100회를 소진",
+          "screenId": "SCR-signals",
+          "lane": "system",
+          "featureIds": ["FEAT-freemium"]
+        },
+        {
+          "id": "S2",
+          "description": "추가 AI 호출 시도 시 Pro 안내 노출 (정리 압박 없는 톤)",
+          "screenId": "SCR-paywall",
+          "lane": "system",
+          "featureIds": ["FEAT-freemium"]
+        },
+        {
+          "id": "S3",
+          "description": "메모 저장/캔버스/홈 피드는 정상 동작 유지",
+          "screenId": "SCR-workspace",
+          "lane": "system",
+          "featureIds": ["FEAT-storage"]
+        },
+        {
+          "id": "S4",
+          "description": "사용자가 Pro 결제 (Stripe checkout)",
+          "screenId": "SCR-paywall",
+          "lane": "user",
+          "featureIds": ["FEAT-freemium"]
+        },
+        {
+          "id": "S5",
+          "description": "백엔드 webhook → user.plan = 'pro', 쿼터 해제",
+          "screenId": "SCR-paywall",
+          "lane": "system",
+          "featureIds": ["FEAT-freemium"]
+        }
+      ]
+    }
+  ],
+  "screens": [
+    {
+      "id": "SCR-home",
+      "name": "Home - 머무는 생각",
+      "role": "primary",
+      "featureIds": ["FEAT-home", "FEAT-extras", "FEAT-signals"],
+      "blocks": [
+        {
+          "id": "h-root",
+          "type": "row",
+          "children": [
+            {
+              "id": "h-rail",
+              "type": "sidebar",
+              "label": "rail",
+              "children": [
+                { "id": "h-rail-home", "type": "button", "label": "Home", "action": { "targetScreenId": "SCR-home" } },
+                { "id": "h-rail-boards", "type": "button", "label": "Boards", "action": { "targetScreenId": "SCR-boards-list" } },
+                { "id": "h-rail-cap", "type": "button", "label": "Capture", "action": { "targetScreenId": "SCR-capture-bar" } },
+                { "id": "h-rail-sig", "type": "button", "label": "Signals", "action": { "targetScreenId": "SCR-signals" } },
+                { "id": "h-rail-links", "type": "button", "label": "연결" }
+              ]
+            },
+            {
+              "id": "h-main",
+              "type": "stack",
+              "children": [
+                {
+                  "id": "h-top",
+                  "type": "header",
+                  "children": [
+                    { "id": "h-top-title", "type": "text", "label": "moss.  ·  Home" },
+                    { "id": "h-top-search", "type": "button", "label": "🔍" },
+                    { "id": "h-top-bell", "type": "button", "label": "🔔" },
+                    { "id": "h-top-avatar", "type": "avatar", "label": "user" }
+                  ]
+                },
+                {
+                  "id": "h-staying",
+                  "type": "card",
+                  "label": "지금 머무는 생각",
+                  "featureIds": ["FEAT-home"],
+                  "children": [
+                    {
+                      "id": "h-staying-row",
+                      "type": "row",
+                      "children": [
+                        { "id": "h-staying-1", "type": "card", "label": "부담 없는 UX" },
+                        { "id": "h-staying-2", "type": "card", "label": "안심의 감각" },
+                        { "id": "h-staying-3", "type": "card", "label": "브랜드의 잔향" },
+                        { "id": "h-staying-4", "type": "card", "label": "기억되는 경험" }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "id": "h-mid",
+                  "type": "row",
+                  "children": [
+                    {
+                      "id": "h-resurfaced",
+                      "type": "card",
+                      "label": "다시 떠오른 생각",
+                      "featureIds": ["FEAT-home", "FEAT-ai-pipeline"],
+                      "children": [
+                        { "id": "h-resurf-1", "type": "text", "label": "5일 전 메모 ↔ 어제 스크린샷" },
+                        { "id": "h-resurf-2", "type": "text", "label": "2주 전 링크 ↔ 오늘 키워드 '신뢰'" },
+                        { "id": "h-resurf-3", "type": "text", "label": "한 달 전 음성 ↔ 오늘 메모" }
+                      ]
+                    },
+                    {
+                      "id": "h-today-link",
+                      "type": "card",
+                      "label": "오늘의 연결",
+                      "featureIds": ["FEAT-signals"],
+                      "children": [
+                        { "id": "h-today-a", "type": "text", "label": "쿠폰 심리" },
+                        { "id": "h-today-b", "type": "text", "label": "↕ 관계의 안심감" },
+                        { "id": "h-today-accept", "type": "button", "label": "수락" },
+                        { "id": "h-today-dismiss", "type": "button", "label": "숨기기" }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "id": "h-timeline",
+                  "type": "card",
+                  "label": "사고 흐름 타임라인",
+                  "featureIds": ["FEAT-home"],
+                  "children": [
+                    { "id": "h-timeline-flow", "type": "text", "label": "UX 리서치 → 신뢰의 순간 → First Purchase → 브랜드 경험" }
+                  ]
+                },
+                {
+                  "id": "h-question",
+                  "type": "card",
+                  "label": "오늘의 질문",
+                  "featureIds": ["FEAT-extras"],
+                  "children": [
+                    { "id": "h-question-prompt", "type": "text", "label": "오늘, 당신의 생각을 이끄는 질문은 무엇인가요?" },
+                    { "id": "h-question-input", "type": "input", "label": "떠오르는 질문을 적어보세요..." }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SCR-workspace",
+      "name": "Workspace - 도구 사이드바 + 캔버스",
+      "role": "primary",
+      "featureIds": ["FEAT-canvas", "FEAT-boards", "FEAT-capture"],
+      "blocks": [
+        {
+          "id": "w-root",
+          "type": "row",
+          "children": [
+            {
+              "id": "w-sidebar",
+              "type": "sidebar",
+              "label": "도구 (collapsible · 펼침 220px / 접힘 64px)",
+              "children": [
+                { "id": "w-collapse", "type": "button", "label": "◀ 접기" },
+                { "id": "w-tools-label", "type": "text", "label": "TOOLS — 드래그해서 캔버스로" },
+                { "id": "w-t-text", "type": "button", "label": "Aa  텍스트", "featureIds": ["FEAT-capture"] },
+                { "id": "w-t-hand", "type": "button", "label": "✎   손글씨", "featureIds": ["FEAT-capture"] },
+                { "id": "w-t-mind", "type": "button", "label": "⌒   마인드맵", "featureIds": ["FEAT-capture"] },
+                { "id": "w-t-hi", "type": "button", "label": "⌘   하이라이트", "featureIds": ["FEAT-capture"] },
+                { "id": "w-t-chk", "type": "button", "label": "☑   체크리스트", "featureIds": ["FEAT-capture"] },
+                { "id": "w-t-img", "type": "button", "label": "🖼  이미지", "featureIds": ["FEAT-capture"] },
+                { "id": "w-t-url", "type": "button", "label": "🔗  링크", "featureIds": ["FEAT-capture"] },
+                { "id": "w-t-aud", "type": "button", "label": "🎤  음성", "featureIds": ["FEAT-capture"] },
+                { "id": "w-t-fil", "type": "button", "label": "📎  파일", "featureIds": ["FEAT-capture"] },
+                { "id": "w-t-code", "type": "button", "label": "</> 코드", "featureIds": ["FEAT-capture"] },
+                { "id": "w-divider", "type": "divider" },
+                { "id": "w-nav-home", "type": "button", "label": "🏠  Home", "action": { "targetScreenId": "SCR-home" } },
+                { "id": "w-nav-boards", "type": "button", "label": "📚  Boards", "action": { "targetScreenId": "SCR-boards-list" } },
+                { "id": "w-nav-signals", "type": "button", "label": "✦   Signals", "action": { "targetScreenId": "SCR-signals" } }
+              ]
+            },
+            {
+              "id": "w-main",
+              "type": "stack",
+              "children": [
+                {
+                  "id": "w-top",
+                  "type": "header",
+                  "children": [
+                    { "id": "w-top-board", "type": "text", "label": "moss.  ·  Brand Exploration ▾" },
+                    { "id": "w-top-search", "type": "button", "label": "🔍" },
+                    { "id": "w-top-bell", "type": "button", "label": "🔔" },
+                    { "id": "w-top-avatar", "type": "avatar", "label": "user" }
+                  ]
+                },
+                {
+                  "id": "w-canvas",
+                  "type": "card",
+                  "label": "Canvas — 도구를 끌어다 놓으세요",
+                  "featureIds": ["FEAT-canvas"],
+                  "children": [
+                    { "id": "w-card-1", "type": "card", "label": "메모 — 너무 많은 정보…" },
+                    { "id": "w-card-2", "type": "card", "label": "\"신뢰는 정보가 아니라…\"" },
+                    { "id": "w-card-3", "type": "card", "label": "First Purchase 경험" },
+                    { "id": "w-card-4", "type": "card", "label": "부담 없는 UX" },
+                    { "id": "w-card-5", "type": "image", "label": "studio img" },
+                    { "id": "w-card-6", "type": "image", "label": "vimeo ▷" },
+                    { "id": "w-label", "type": "text", "label": "✎ Brand Exploration (handwritten label)" }
+                  ]
+                },
+                {
+                  "id": "w-controls",
+                  "type": "row",
+                  "children": [
+                    { "id": "w-zoom-out", "type": "button", "label": "−" },
+                    { "id": "w-zoom-pct", "type": "text", "label": "100%" },
+                    { "id": "w-zoom-in", "type": "button", "label": "+" },
+                    { "id": "w-overview", "type": "button", "label": "▦  지형도" }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SCR-capture-bar",
+      "name": "Capture Bar - 10종 빠른 입력",
+      "role": "modal",
+      "featureIds": ["FEAT-capture"],
+      "blocks": [
+        {
+          "id": "c-root",
+          "type": "modal",
+          "label": "Capture",
+          "children": [
+            {
+              "id": "c-types",
+              "type": "row",
+              "children": [
+                { "id": "c-t-text", "type": "button", "label": "Aa" },
+                { "id": "c-t-hand", "type": "button", "label": "✎" },
+                { "id": "c-t-mind", "type": "button", "label": "⌒" },
+                { "id": "c-t-hi", "type": "button", "label": "⌘" },
+                { "id": "c-t-chk", "type": "button", "label": "☑" },
+                { "id": "c-t-img", "type": "button", "label": "🖼" },
+                { "id": "c-t-url", "type": "button", "label": "🔗" },
+                { "id": "c-t-aud", "type": "button", "label": "🎤" },
+                { "id": "c-t-fil", "type": "button", "label": "📎" },
+                { "id": "c-t-code", "type": "button", "label": "</>" },
+                { "id": "c-close", "type": "button", "label": "×" }
+              ]
+            },
+            { "id": "c-input", "type": "input", "label": "지금은 그냥 남겨두셔도 좋아요..." },
+            {
+              "id": "c-footer",
+              "type": "row",
+              "children": [
+                { "id": "c-fmt-b", "type": "button", "label": "B" },
+                { "id": "c-fmt-i", "type": "button", "label": "I" },
+                { "id": "c-fmt-u", "type": "button", "label": "U" },
+                { "id": "c-target", "type": "text", "label": "현재 보드: Brand Exploration ▾" },
+                { "id": "c-save", "type": "button", "label": "⏎ 저장", "action": { "targetScreenId": "SCR-workspace" } }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SCR-signals",
+      "name": "Signals - AI 인사이트 패널",
+      "role": "panel",
+      "featureIds": ["FEAT-signals", "FEAT-ai-pipeline"],
+      "blocks": [
+        {
+          "id": "s-root",
+          "type": "stack",
+          "label": "Signals (slide-in panel)",
+          "children": [
+            {
+              "id": "s-header",
+              "type": "header",
+              "children": [
+                { "id": "s-title", "type": "text", "label": "Signals" },
+                { "id": "s-close", "type": "button", "label": "×" }
+              ]
+            },
+            {
+              "id": "s-keywords",
+              "type": "card",
+              "label": "반복 키워드",
+              "featureIds": ["FEAT-ai-pipeline"],
+              "children": [
+                { "id": "s-kw-1", "type": "text", "label": "신뢰  23" },
+                { "id": "s-kw-2", "type": "text", "label": "경험  17" },
+                { "id": "s-kw-3", "type": "text", "label": "시간  14" },
+                { "id": "s-kw-4", "type": "text", "label": "안심  12" },
+                { "id": "s-kw-5", "type": "text", "label": "흐름  11" }
+              ]
+            },
+            {
+              "id": "s-cluster",
+              "type": "card",
+              "label": "최근 연결된 주제",
+              "featureIds": ["FEAT-ai-pipeline"],
+              "children": [
+                { "id": "s-cluster-graph", "type": "image", "label": "● ─ ● cluster graph (force-directed)" }
+              ]
+            },
+            {
+              "id": "s-summary",
+              "type": "card",
+              "label": "흐름 요약",
+              "featureIds": ["FEAT-signals"],
+              "children": [
+                { "id": "s-summary-text", "type": "text", "label": "최근 7일 동안 142개의 생각을 남기셨어요. 그 중 18%가 서로 연결되었습니다." }
+              ]
+            },
+            {
+              "id": "s-rhythm",
+              "type": "card",
+              "label": "사고 리듬",
+              "children": [
+                { "id": "s-rhythm-1", "type": "text", "label": "오전 9-11시 (구조화)" },
+                { "id": "s-rhythm-2", "type": "image", "label": "▁▂█▅▃▁ sparkline" }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SCR-boards-list",
+      "name": "Boards - 분위기 컬렉션 목록",
+      "role": "navigation",
+      "featureIds": ["FEAT-boards", "FEAT-templates"],
+      "blocks": [
+        {
+          "id": "b-root",
+          "type": "row",
+          "children": [
+            {
+              "id": "b-rail",
+              "type": "sidebar",
+              "label": "rail",
+              "children": [
+                { "id": "b-rail-home", "type": "button", "label": "Home", "action": { "targetScreenId": "SCR-home" } },
+                { "id": "b-rail-boards", "type": "button", "label": "Boards" },
+                { "id": "b-rail-cap", "type": "button", "label": "Capture", "action": { "targetScreenId": "SCR-capture-bar" } },
+                { "id": "b-rail-sig", "type": "button", "label": "Signals", "action": { "targetScreenId": "SCR-signals" } }
+              ]
+            },
+            {
+              "id": "b-main",
+              "type": "stack",
+              "children": [
+                {
+                  "id": "b-top",
+                  "type": "header",
+                  "children": [
+                    { "id": "b-top-title", "type": "text", "label": "moss.  ·  Boards" }
+                  ]
+                },
+                {
+                  "id": "b-actions",
+                  "type": "row",
+                  "children": [
+                    { "id": "b-new", "type": "button", "label": "+ 새 보드", "action": { "targetScreenId": "SCR-workspace" } },
+                    { "id": "b-template", "type": "text", "label": "템플릿 선택 ▾" }
+                  ]
+                },
+                {
+                  "id": "b-grid",
+                  "type": "row",
+                  "featureIds": ["FEAT-boards"],
+                  "children": [
+                    { "id": "b-tile-1", "type": "card", "label": "Brand Exploration · 24개 · 5일 전", "action": { "targetScreenId": "SCR-workspace" } },
+                    { "id": "b-tile-2", "type": "card", "label": "unfinished thoughts · 12개 · 2주 전" },
+                    { "id": "b-tile-3", "type": "card", "label": "soft reassurance · 8개 · 1달 전" },
+                    { "id": "b-tile-4", "type": "card", "label": "Why people stay · 5개 · 1달 전" },
+                    { "id": "b-tile-5", "type": "card", "label": "things that linger · 3개" }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SCR-mobile-feed",
+      "name": "Mobile - 머무는 생각 피드",
+      "role": "primary-mobile",
+      "featureIds": ["FEAT-mobile", "FEAT-home"],
+      "blocks": [
+        {
+          "id": "m-root",
+          "type": "stack",
+          "label": "Mobile (320~430px)",
+          "children": [
+            {
+              "id": "m-header",
+              "type": "header",
+              "children": [
+                { "id": "m-title", "type": "text", "label": "머무는 생각" },
+                { "id": "m-search", "type": "button", "label": "🔍" }
+              ]
+            },
+            {
+              "id": "m-boards",
+              "type": "row",
+              "label": "보드 썸네일 (가로 스크롤)",
+              "children": [
+                { "id": "m-b-1", "type": "card", "label": "브랜드" },
+                { "id": "m-b-2", "type": "card", "label": "사용자" },
+                { "id": "m-b-3", "type": "card", "label": "UX" },
+                { "id": "m-b-4", "type": "card", "label": "커피" },
+                { "id": "m-b-5", "type": "card", "label": "콘텐츠" }
+              ]
+            },
+            {
+              "id": "m-filter",
+              "type": "tabs",
+              "children": [
+                { "id": "m-f-all", "type": "button", "label": "전체" },
+                { "id": "m-f-board", "type": "button", "label": "보드" },
+                { "id": "m-f-memo", "type": "button", "label": "메모" },
+                { "id": "m-f-img", "type": "button", "label": "이미지" },
+                { "id": "m-f-link", "type": "button", "label": "링크" },
+                { "id": "m-f-file", "type": "button", "label": "파일" }
+              ]
+            },
+            {
+              "id": "m-grid",
+              "type": "row",
+              "children": [
+                { "id": "m-c-1", "type": "card", "label": "\"신뢰는 정보가 아니라, 안심의 순간에 생긴다\" · 2시간 전" },
+                { "id": "m-c-2", "type": "card", "label": "First Purchase 경험 · 5시간 전" },
+                { "id": "m-c-3", "type": "card", "label": "메모 — 너무 많은 정보는… · 5시간 전" },
+                { "id": "m-c-4", "type": "card", "label": "타임라인 영상 ▷ vimeo" }
+              ]
+            },
+            {
+              "id": "m-fab",
+              "type": "row",
+              "children": [
+                { "id": "m-fab-plus", "type": "button", "label": "+", "action": { "targetScreenId": "SCR-capture-bar" } },
+                { "id": "m-fab-text", "type": "button", "label": "Aa" }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SCR-onboarding",
+      "name": "Onboarding - 첫 진입 (안티-튜토리얼)",
+      "role": "entry",
+      "featureIds": ["FEAT-canvas", "FEAT-i18n"],
+      "blocks": [
+        {
+          "id": "o-root",
+          "type": "stack",
+          "label": "centered, max-width 720px",
+          "children": [
+            { "id": "o-logo", "type": "text", "label": "moss." },
+            { "id": "o-tagline", "type": "text", "label": "생각은, 머무는 동안 형태가 된다." },
+            { "id": "o-input", "type": "input", "label": "지금은 그냥 남겨두셔도 좋아요..." },
+            { "id": "o-cta", "type": "button", "label": "⏎ 시작", "action": { "targetScreenId": "SCR-workspace" } },
+            { "id": "o-skip", "type": "button", "label": "건너뛰기", "action": { "targetScreenId": "SCR-workspace" } },
+            { "id": "o-trust", "type": "text", "label": "로그인 없이 시작 · 데이터는 이 기기에만 저장됩니다" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SCR-export",
+      "name": "Export - Markdown / JSON Canvas / .moss",
+      "role": "modal",
+      "featureIds": ["FEAT-export"],
+      "blocks": [
+        {
+          "id": "e-root",
+          "type": "modal",
+          "label": "내보내기",
+          "children": [
+            {
+              "id": "e-header",
+              "type": "header",
+              "children": [
+                { "id": "e-title", "type": "text", "label": "내보내기" },
+                { "id": "e-close", "type": "button", "label": "×" }
+              ]
+            },
+            {
+              "id": "e-scope",
+              "type": "card",
+              "label": "범위",
+              "children": [
+                { "id": "e-scope-all", "type": "button", "label": "◉ 전체 (보드 7개 · 메모 142개)" },
+                { "id": "e-scope-board", "type": "button", "label": "○ 현재 보드 (Brand Exploration · 24개)" },
+                { "id": "e-scope-sel", "type": "button", "label": "○ 선택한 메모 (3개)" }
+              ]
+            },
+            {
+              "id": "e-format",
+              "type": "card",
+              "label": "포맷",
+              "children": [
+                { "id": "e-fmt-moss", "type": "button", "label": "◉ .moss bundle — 무손실 백업/이전 (권장)" },
+                { "id": "e-fmt-md", "type": "button", "label": "○ Markdown — 메모 1개 = 파일 1개" },
+                { "id": "e-fmt-jc", "type": "button", "label": "○ JSON Canvas — Obsidian 호환" }
+              ]
+            },
+            {
+              "id": "e-footer",
+              "type": "row",
+              "children": [
+                { "id": "e-cancel", "type": "button", "label": "취소" },
+                { "id": "e-export", "type": "button", "label": "내보내기" }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SCR-paywall",
+      "name": "Paywall - Pro 안내 + Stripe checkout",
+      "role": "modal",
+      "featureIds": ["FEAT-freemium"],
+      "blocks": [
+        {
+          "id": "p-root",
+          "type": "modal",
+          "label": "Pro 안내",
+          "children": [
+            { "id": "p-close", "type": "button", "label": "×" },
+            { "id": "p-headline", "type": "text", "label": "이번 달 AI 인사이트가 소진되었어요." },
+            { "id": "p-reassure", "type": "text", "label": "메모와 캔버스는 그대로 작동합니다. AI를 더 사용하려면 Pro로 전환해보세요." },
+            {
+              "id": "p-compare",
+              "type": "row",
+              "children": [
+                {
+                  "id": "p-free",
+                  "type": "card",
+                  "label": "Free",
+                  "children": [
+                    { "id": "p-f-1", "type": "text", "label": "• 캔버스 + 로컬 저장" },
+                    { "id": "p-f-2", "type": "text", "label": "• 월 100회 AI" },
+                    { "id": "p-f-3", "type": "text", "label": "• 단일 디바이스" }
+                  ]
+                },
+                {
+                  "id": "p-pro",
+                  "type": "card",
+                  "label": "Pro",
+                  "children": [
+                    { "id": "p-p-1", "type": "text", "label": "• 모든 Free 기능" },
+                    { "id": "p-p-2", "type": "text", "label": "• AI 무제한 (fair use)" },
+                    { "id": "p-p-3", "type": "text", "label": "• 멀티 디바이스 sync" },
+                    { "id": "p-p-4", "type": "text", "label": "• 자동 백업" }
+                  ]
+                }
+              ]
+            },
+            { "id": "p-price", "type": "text", "label": "월 $8 · 연 $80 (16% 절약)" },
+            {
+              "id": "p-footer",
+              "type": "row",
+              "children": [
+                { "id": "p-dismiss", "type": "button", "label": "지금은 괜찮아요" },
+                { "id": "p-upgrade", "type": "button", "label": "Pro로 전환" }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
