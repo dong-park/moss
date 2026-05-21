@@ -1,6 +1,3 @@
-# web 앱은 별도 git repo로 운영 (nested 분리)
-web/
-
 # macOS
 .DS_Store
 
