@@ -1,14 +1,15 @@
 # moss 기능 스펙 인덱스
 
-> 블루프린트 `features[]` 14개. 완료본은 `complete/`로 이동, 잔여·미시작 8개는 본 디렉토리에 유지.
+> 블루프린트 `features[]` 14개 + Phase 2 카드 UX 신규 2개 = 16개. 완료본은 `complete/`로 이동, 잔여·미시작은 본 디렉토리에 유지.
 
-## 진척 현황 (2026-05-21)
+## 진척 현황 (2026-05-22)
 
 | 상태 | 수 | 위치 |
 |---|---|---|
 | ✅ complete | 6 | `complete/` |
 | ◐ in-progress | 4 | 본 디렉토리, §0 잔여 작업 명시 |
 | ⏸ pending | 4 | 본 디렉토리, 그대로 |
+| 📋 spec-only (Phase 2) | 2 | 본 디렉토리, 구현 대기 |
 
 ## ✅ Complete (검증 통과)
 
@@ -118,6 +119,17 @@ P0-1이 끝나면 다음 3개가 동시 가능:
 | freemium | [FEAT-freemium.md](FEAT-freemium.md) |
 | mobile | [FEAT-mobile.md](FEAT-mobile.md) |
 | export | [FEAT-export.md](FEAT-export.md) |
+
+## 📋 Phase 2 카드 UX (spec 작성 완료, 구현 대기)
+
+[`SIDEBAR-CARDS-UX.md`](complete/SIDEBAR-CARDS-UX.md) 9종 카드 UX 강화의 §7 D-3 Phase 2 항목을 spec으로 정리. 두 spec은 서로 독립 P1으로 동시 진행 가능하나, `entry-mode`가 먼저 머지되면 `card-flow`의 Cmd+Enter / Cmd+E UX가 매끄러워짐(없어도 동작은 함).
+
+| FEAT | 파일 | 핵심 |
+|---|---|---|
+| card-entry-mode | [FEAT-card-entry-mode.md](FEAT-card-entry-mode.md) | 카드 생성 직후 종류별 기본 포커스 자동 박힘. `useAutoFocusOnEdit` 헬퍼 + 10종 selector 표 |
+| card-flow | [FEAT-card-flow.md](FEAT-card-flow.md) | Cmd+Enter(다음 카드) · Tab/Shift+Tab(선택 이동) · Cmd+E(편집 진입) · Esc. 신규 hook `useCardFlowShortcuts` + store 액션 3개 |
+
+DAG: `[entry-mode] (P1 독립)` + `[card-flow] (P1 독립, entry-mode 효과에 soft-기댐)`. 둘 다 추정 M.
 
 ## 스펙 작성·갱신 규칙
 
