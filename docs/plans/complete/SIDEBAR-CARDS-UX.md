@@ -2,10 +2,11 @@
 
 > 사이드바 캡처 도구로 만드는 카드 9종(text/image/link/code/highlight/audio/handwriting/mindmap/file)에 **checklist 카드의 UX 강화 패턴**을 펼친다. 단일 오케스트레이터 + 워커별 독립 PR.
 
-**Status**: plan 작성 (2026-05-22)
+**Status**: ✅ complete (2026-05-22) — 9개 카드 모두 머지, AC 충족, 회귀 0
 **기준점 커밋**: `1fea4a0 feat(cards): 카드 v2 PNG 표면 도입 + 체크리스트 사용성 개선`
-**산출 위치**: `web/src/components/workspace/cards/CardContent.tsx` (단일 파일, 9개 컴포넌트 분기)
+**산출 위치**: `web/src/components/workspace/cards/{kind}/Content.tsx` (P0에서 10개 파일로 분리됨)
 **완료 정의 (전체)**: 9개 카드 모두 (a) 키보드 표준 통과 (b) v2 PNG 표면 적용 검증 (c) inset PNG 종이 영역 정렬 (d) 카드당 5~6건 단위 테스트 통과
+**최종 결과**: tsc 0 errors, vitest 416/416 통과 (전체 48 파일, P0 머지 시점 367 + 신규 49건). 9개 머지 commit 850b290~3a35eae (web submodule).
 
 ---
 
