@@ -9,7 +9,7 @@
 | ✅ complete | 6 | `complete/` |
 | ◐ in-progress | 4 | 본 디렉토리, §0 잔여 작업 명시 |
 | ⏸ pending | 4 | 본 디렉토리, 그대로 |
-| 📋 spec-only (Phase 2) | 2 | 본 디렉토리, 구현 대기 |
+| 📋 Phase 2 카드 UX | 2 | 본 디렉토리, 구현 완료 (web@0506374) — 시각 QA 대기 |
 
 ## ✅ Complete (검증 통과)
 
@@ -120,16 +120,18 @@ P0-1이 끝나면 다음 3개가 동시 가능:
 | mobile | [FEAT-mobile.md](FEAT-mobile.md) |
 | export | [FEAT-export.md](FEAT-export.md) |
 
-## 📋 Phase 2 카드 UX (spec 작성 완료, 구현 대기)
+## 📋 Phase 2 카드 UX (구현 완료, 시각 QA 대기)
 
-[`SIDEBAR-CARDS-UX.md`](complete/SIDEBAR-CARDS-UX.md) 9종 카드 UX 강화의 §7 D-3 Phase 2 항목을 spec으로 정리. 두 spec은 서로 독립 P1으로 동시 진행 가능하나, `entry-mode`가 먼저 머지되면 `card-flow`의 Cmd+Enter / Cmd+E UX가 매끄러워짐(없어도 동작은 함).
+[`SIDEBAR-CARDS-UX.md`](complete/SIDEBAR-CARDS-UX.md) 9종 카드 UX 강화의 §7 D-3 Phase 2 항목을 squad 패턴으로 2 워커 worktree 격리 dispatch → 머지 완료.
 
-| FEAT | 파일 | 핵심 |
+| FEAT | 파일 | 구현 결과 |
 |---|---|---|
-| card-entry-mode | [FEAT-card-entry-mode.md](FEAT-card-entry-mode.md) | 카드 생성 직후 종류별 기본 포커스 자동 박힘. `useAutoFocusOnEdit` 헬퍼 + 10종 selector 표 |
-| card-flow | [FEAT-card-flow.md](FEAT-card-flow.md) | Cmd+Enter(다음 카드) · Tab/Shift+Tab(선택 이동) · Cmd+E(편집 진입) · Esc. 신규 hook `useCardFlowShortcuts` + store 액션 3개 |
+| card-entry-mode | [FEAT-card-entry-mode.md](FEAT-card-entry-mode.md) | ✅ web@a034539 — `useAutoFocusOnEdit` 헬퍼 + 10종 Content.tsx `data-card-*` attr 표준화. 27건 신규 unit. |
+| card-flow | [FEAT-card-flow.md](FEAT-card-flow.md) | ✅ web@0506374 — `useCardFlowShortcuts` hook + store 액션 3개. 22건 신규 unit. WIP과의 충돌(`kindForTool` export)은 두 변경 보존으로 해소. |
 
-DAG: `[entry-mode] (P1 독립)` + `[card-flow] (P1 독립, entry-mode 효과에 soft-기댐)`. 둘 다 추정 M.
+DAG: `[entry-mode] (P1)` + `[card-flow] (P1)` — 파일 겹침 0. soft 의존(flow의 새 카드 자동 focus가 entry-mode에 기댐)은 정상 동작. web 전체 465/465 통과, 회귀 0.
+
+**다음 단계**: `npm run dev`로 9종 + Phase 2 동시 시각 QA → AC-1~6 / AC-1~5 수동 시나리오 확인 → 통과 시 두 spec `complete/`로 이동.
 
 ## 스펙 작성·갱신 규칙
 

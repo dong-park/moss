@@ -2,8 +2,8 @@
 
 > 캡처 카드를 만들자마자 마우스 없이 입력을 시작할 수 있어야 한다. 종류별 첫 포커스 위치를 명시·표준화.
 
-**Status**: spec 작성
-**Owner**: TBD
+**Status**: ✅ 구현 완료 (2026-05-22) — web@a034539, 27건 신규 unit + 회귀 0 (web 465/465)
+**Owner**: W1 워커 (worktree dispatch)
 **Estimated**: M
 **Blueprint**: `docs/moss.blueprint.json#features[id="FEAT-card-entry-mode"]` (신규)
 **Parent plan**: [[SIDEBAR-CARDS-PHASE2]] · 카드 UX Phase 2 묶음
@@ -103,7 +103,7 @@
 | **image** | `[data-card-dropzone]` (tabindex=0) | 파일 선택 / 붙여넣기 trigger |
 | **file** | `[data-card-dropzone]` (tabindex=0) | 파일 선택 / 드롭 trigger |
 | **audio** | `button[data-card-record]` | 녹음 시작 버튼 (Space로 발동) |
-| **handwriting** | `canvas[data-card-canvas]` (tabindex=0) | 드로잉 시작 영역 |
+| **handwriting** | `[data-card-canvas]` (wrapper `<div>`, tabindex=0) | 드로잉 시작 영역. 실제 element는 `<svg>`를 둘러싼 wrapper div — 의미상 "드로잉 영역 wrapper에 자동 focus" |
 | **mindmap** | `[data-card-node="root"] input` | 루트 노드 텍스트 입력 |
 | **link** | `input[data-card-url]` | URL 입력 |
 

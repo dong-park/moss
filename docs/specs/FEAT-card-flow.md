@@ -2,8 +2,8 @@
 
 > 카드 사이를 마우스 없이 흐를 수 있어야 한다. 편집 종료·다음 카드 진행·카드 선택 이동·편집 진입을 키보드로.
 
-**Status**: spec 작성
-**Owner**: TBD
+**Status**: ✅ 구현 완료 (2026-05-22) — web@0506374, 22건 신규 unit + 회귀 0 (web 465/465)
+**Owner**: W2 워커 (worktree dispatch)
 **Estimated**: M
 **Blueprint**: `docs/moss.blueprint.json#features[id="FEAT-card-flow"]` (신규)
 **Parent plan**: [[SIDEBAR-CARDS-PHASE2]] · 카드 UX Phase 2 묶음
