@@ -1,0 +1,249 @@
+@import "tailwindcss";
+@import "pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css";
+
+/* ─────────────────────────────────────────────────────────────
+ * moss 디자인 토큰 (CSS variables)
+ * src/design/tokens.ts와 1:1 매핑.
+ * ───────────────────────────────────────────────────────────── */
+
+:root {
+  /* color — base (Milanote 톤) */
+  --color-bg: #ebecee;
+  --color-panel: #ffffff;
+  --color-border: #dadbde;
+  --color-border-strong: #c3c5ca;
+  --color-text: #2c2e33;
+  --color-text-muted: #6a6c72;
+  --color-text-soft: #9a9ca2;
+
+  /* color — accent (Milanote 정통 블루) */
+  --color-accent-blue: #4f7cf3;
+  --color-accent-link: #4575e6; /* Reply 텍스트 */
+  --color-accent-lime: #a8b89c;
+  --color-accent-purple: #b8a8c4;
+  --color-accent-yellow: #d4c890;
+  --color-accent-pink: #e8aaa0; /* 아바타 등 */
+
+  /* color — card (살짝 warm 톤으로 종이 느낌) */
+  --color-card-base: #fdfcfa;
+  --color-card-edge: #f5f3ef; /* 카드 하단 그라데이션 끝 */
+  --color-card-comment: #eef1f6;
+  --color-card-comment-edge: #e7eaf0;
+  --color-card-yellow: #fbf5d8;
+  --color-card-blue: #e5edf2;
+  --color-card-lime: #e8eee0;
+  --color-card-purple: #ece5f0;
+
+  /* color — interaction */
+  --color-hover: rgba(0, 0, 0, 0.04);
+  --color-active-bg: var(--color-accent-blue);
+  --color-active-fg: #ffffff;
+
+  /* color — sidebar 아이콘 박스 (Milanote 시안 매칭) */
+  --color-box-white: #ffffff;
+  --color-box-soft: #d8dadf;
+  --color-icon-strong: #4a4d54;
+  --color-icon-muted: #6e7178;
+
+  /* color — etc */
+  --color-dot: #d8d2c4;
+
+  /* font family */
+  --font-sans:
+    "Pretendard Variable", Pretendard, "Apple SD Gothic Neo", system-ui,
+    -apple-system, sans-serif;
+  --font-hand: "Caveat", "Nanum Pen Script", cursive;
+  /* --font-mono은 next/font에서 layout.tsx가 주입 */
+
+  /* layout 토큰 (Milanote 시안 기준) */
+  --layout-sidebar-expanded: 100px;
+  --layout-sidebar-collapsed: 100px; /* Milanote는 접힘 없음 */
+  --layout-header: 0px;
+  --layout-toolbar: 0px;
+
+  /* z-index */
+  --z-canvas: 0;
+  --z-card: 10;
+  --z-connection: 20;
+  --z-selection: 30;
+  --z-panel: 40;
+  --z-modal: 50;
+  --z-toast: 60;
+
+  /* motion */
+  --duration-instant: 80ms;
+  --duration-fast: 120ms;
+  --duration-base: 180ms;
+  --duration-slow: 200ms;
+  --duration-draw-in: 400ms;
+  --easing-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --easing-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --easing-paper: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+
+  /* shadow — 실물감 multi-layer + 상단 highlight */
+
+  /* 사이드바 아이콘 박스 (작고 가벼운 부유) */
+  --shadow-icon-box:
+    0 1px 1px rgba(0, 0, 0, 0.04),
+    0 2px 5px rgba(0, 0, 0, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7);
+
+  /* 회색 박스 (More, Add image, Upload, Draw) */
+  --shadow-icon-soft:
+    inset 0 1px 0 rgba(255, 255, 255, 0.35),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.03);
+
+  /* 활성 박스 (Board) — 명확히 떠 있음 */
+  --shadow-icon-active:
+    0 2px 4px rgba(79, 124, 243, 0.28),
+    0 6px 14px rgba(79, 124, 243, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35),
+    inset 0 -1px 1px rgba(0, 0, 0, 0.12);
+
+  /* 캔버스 카드 — 종이 위에 얹힌 느낌 */
+  --shadow-card:
+    0 1px 1px rgba(42, 39, 34, 0.04),
+    0 2px 4px rgba(42, 39, 34, 0.05),
+    0 8px 20px rgba(42, 39, 34, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.02);
+
+  /* 카드 들어올림 (hover/drag) */
+  --shadow-card-lift:
+    0 3px 6px rgba(42, 39, 34, 0.08),
+    0 10px 30px rgba(42, 39, 34, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+
+  /* 댓글 카드 — 카드보다 살짝 안쪽으로 내려앉음 */
+  --shadow-card-comment:
+    0 1px 2px rgba(42, 39, 34, 0.04),
+    0 4px 12px rgba(42, 39, 34, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+
+  --shadow-modal: 0 8px 32px rgba(42, 39, 34, 0.16);
+
+  /* 카드 표면 그라데이션 (살짝 종이 결) */
+  --gradient-paper: linear-gradient(
+    180deg,
+    var(--color-card-base) 0%,
+    var(--color-card-base) 60%,
+    var(--color-card-edge) 100%
+  );
+  --gradient-paper-comment: linear-gradient(
+    180deg,
+    var(--color-card-comment) 0%,
+    var(--color-card-comment) 60%,
+    var(--color-card-comment-edge) 100%
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────
+ * Tailwind v4 @theme inline — 토큰을 유틸리티로 노출
+ * (bg-bg, text-text-muted, shadow-card 등으로 쓸 수 있게)
+ * ───────────────────────────────────────────────────────────── */
+
+@theme inline {
+  /* color */
+  --color-bg: var(--color-bg);
+  --color-panel: var(--color-panel);
+  --color-border: var(--color-border);
+  --color-border-strong: var(--color-border-strong);
+  --color-text: var(--color-text);
+  --color-text-muted: var(--color-text-muted);
+  --color-text-soft: var(--color-text-soft);
+  --color-accent-lime: var(--color-accent-lime);
+  --color-accent-blue: var(--color-accent-blue);
+  --color-accent-purple: var(--color-accent-purple);
+  --color-accent-yellow: var(--color-accent-yellow);
+  --color-card-base: var(--color-card-base);
+  --color-card-edge: var(--color-card-edge);
+  --color-card-yellow: var(--color-card-yellow);
+  --color-card-blue: var(--color-card-blue);
+  --color-card-lime: var(--color-card-lime);
+  --color-card-purple: var(--color-card-purple);
+  --color-card-comment: var(--color-card-comment);
+  --color-card-comment-edge: var(--color-card-comment-edge);
+  --color-hover: var(--color-hover);
+  --color-active-bg: var(--color-active-bg);
+  --color-active-fg: var(--color-active-fg);
+  --color-box-white: var(--color-box-white);
+  --color-box-soft: var(--color-box-soft);
+  --color-icon-strong: var(--color-icon-strong);
+  --color-icon-muted: var(--color-icon-muted);
+  --color-dot: var(--color-dot);
+
+  /* font */
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-hand: var(--font-hand);
+
+  /* shadow */
+  --shadow-card: var(--shadow-card);
+  --shadow-card-lift: var(--shadow-card-lift);
+  --shadow-card-comment: var(--shadow-card-comment);
+  --shadow-icon-box: var(--shadow-icon-box);
+  --shadow-icon-soft: var(--shadow-icon-soft);
+  --shadow-icon-active: var(--shadow-icon-active);
+  --shadow-modal: var(--shadow-modal);
+}
+
+/* ─────────────────────────────────────────────────────────────
+ * base
+ * ───────────────────────────────────────────────────────────── */
+
+html,
+body {
+  height: 100%;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: 0.9375rem; /* 15px - 한글 가독성 최소 */
+  line-height: 1.6;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* 포커스 링 — 차분한 라임 */
+*:focus-visible {
+  outline: 2px solid var(--color-accent-lime);
+  outline-offset: 2px;
+  border-radius: 0.375rem;
+}
+
+/* ─────────────────────────────────────────────────────────────
+ * Radix UI 애니메이션 (Dialog, DropdownMenu, Tooltip 공통)
+ * ───────────────────────────────────────────────────────────── */
+
+@keyframes moss-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes moss-fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+@keyframes moss-slide-down {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes moss-scale-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+[data-state="open"][data-radix-tooltip-content],
+[data-state="open"][data-radix-dropdown-menu-content] {
+  animation: moss-slide-down var(--duration-fast) var(--easing-out);
+}
+
+[data-state="open"][data-radix-dialog-content] {
+  animation: moss-scale-in var(--duration-slow) var(--easing-out);
+}
+[data-state="open"][data-radix-dialog-overlay] {
+  animation: moss-fade-in var(--duration-slow) var(--easing-out);
+}
+[data-state="closed"][data-radix-dialog-overlay] {
+  animation: moss-fade-out var(--duration-fast) var(--easing-out);
+}
