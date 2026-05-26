@@ -13,6 +13,8 @@
       "title": "메모 편집",
       "close": "닫기",
       "expand": "펼쳐서 편집",
+      "pen": "펜으로 그리기",
+      "eraser": "지우개",
       "toolbar": {
         "label": "서식",
         "bold": "굵게",
