@@ -13,8 +13,6 @@
       "title": "메모 편집",
       "close": "닫기",
       "expand": "펼쳐서 편집",
-      "pen": "펜으로 그리기",
-      "eraser": "지우개",
       "toolbar": {
         "label": "서식",
         "bold": "굵게",
@@ -99,6 +97,15 @@
     },
     "text": {
       "placeholder": "여기에 적어보세요…"
+    },
+    "block": {
+      "add": "블록",
+      "text": "글",
+      "code": "코드",
+      "handwriting": "손글씨",
+      "delete": "블록 삭제",
+      "moveUp": "위로",
+      "moveDown": "아래로"
     },
     "checklist": {
       "addItem": "항목 추가"

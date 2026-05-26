@@ -30,20 +30,15 @@ vi.mock("@/components/workspace/cards/_shared/MarkdownEditor", () => ({
   ExpandedMarkdownEditor: ({
     value,
     onChange,
-    overlay,
   }: {
     value: string;
     onChange: (md: string) => void;
-    overlay?: import("react").ReactNode;
   }) => (
-    <>
-      <textarea
-        data-testid="expanded-editor"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-      />
-      {overlay}
-    </>
+    <textarea
+      data-testid="expanded-editor"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+    />
   ),
 }));
 
@@ -132,59 +127,5 @@ describe("FEAT-memo-expand · 모달", () => {
     wrap(<MemoExpandDialog />);
     fireEvent.click(screen.getByLabelText("닫기"));
     expect(useWorkspace.getState().expandedCardId).toBeNull();
-  });
-});
-
-describe("FEAT-memo-expand · 펜 overlay", () => {
-  const overlayJson = JSON.stringify({
-    paths: [[{ x: 1, y: 1 }, { x: 5, y: 5 }]],
-  });
-
-  // 모달은 Radix Portal(document.body)에 렌더되므로 container가 아닌 document로 쿼리.
-  it("카드의 overlay(손글씨)를 모달에 polyline으로 렌더한다", () => {
-    seed([textCard({ overlay: overlayJson })]);
-    useWorkspace.getState().setExpandedCard("c1");
-    wrap(<MemoExpandDialog />);
-    expect(document.querySelectorAll("polyline")).toHaveLength(1);
-  });
-
-  it("그리기 토글 off에선 overlay가 pointer-events:none(클릭 통과)", () => {
-    seed([textCard({ overlay: overlayJson })]);
-    useWorkspace.getState().setExpandedCard("c1");
-    wrap(<MemoExpandDialog />);
-    const svg = document.querySelector("[data-drawing-layer]") as SVGElement;
-    expect(svg.style.pointerEvents).toBe("none");
-  });
-
-  it("펜 버튼을 누르면 그리기 모드가 active(pointer-events:auto)된다", () => {
-    seed([textCard({ overlay: overlayJson })]);
-    useWorkspace.getState().setExpandedCard("c1");
-    wrap(<MemoExpandDialog />);
-    fireEvent.click(screen.getByLabelText("펜으로 그리기"));
-    const svg = document.querySelector("[data-drawing-layer]") as SVGElement;
-    expect(svg.style.pointerEvents).toBe("auto");
-    expect(
-      screen.getByLabelText("펜으로 그리기").getAttribute("aria-pressed"),
-    ).toBe("true");
-  });
-
-  it("지우개 버튼을 누르면 지우개 모드로 active된다", () => {
-    seed([textCard({ overlay: overlayJson })]);
-    useWorkspace.getState().setExpandedCard("c1");
-    wrap(<MemoExpandDialog />);
-    fireEvent.click(screen.getByLabelText("지우개"));
-    expect(screen.getByLabelText("지우개").getAttribute("aria-pressed")).toBe(
-      "true",
-    );
-    expect(
-      screen.getByLabelText("펜으로 그리기").getAttribute("aria-pressed"),
-    ).toBe("false");
-  });
-
-  it("overlay가 없으면 polyline을 렌더하지 않는다", () => {
-    seed([textCard()]);
-    useWorkspace.getState().setExpandedCard("c1");
-    wrap(<MemoExpandDialog />);
-    expect(document.querySelectorAll("polyline")).toHaveLength(0);
   });
 });

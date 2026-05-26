@@ -6,6 +6,12 @@ import { useStorage } from "./storage";
 import { getDB, type Board, type Note, type NoteKind } from "./db/schema";
 import { migratedContent } from "./markdownMigration";
 import { enqueueEmbed as enqueueEmbedRaw } from "./ai/embeddingQueue";
+import {
+  parseCode,
+  parseHandwriting,
+  serializeBlocks,
+  type CardBlock,
+} from "./cardContent";
 import { getTemplate } from "@/templates";
 import type { Translator } from "@/i18n";
 
@@ -52,8 +58,12 @@ export type ToolId =
   | "trash";
 
 /**
- * 캡처 도구 10종 — Cmd+1~Cmd+0 단축키 매핑 순서이자 사이드바 노출 순서.
+ * 캡처 도구 8종 — Cmd+1~Cmd+8 단축키 매핑 순서이자 사이드바 노출 순서.
  * spec FEAT-capture §3 AC-1 의존.
+ *
+ * FEAT-card-allinone: code·handwriting은 글(text) 카드 블록으로 흡수되어
+ * 단독 캡처 도구에서 제외(10→8종). CardKind/NoteKind에는 호환·마이그레이션
+ * 타겟으로 남는다.
  */
 export const CAPTURE_TOOLS = [
   "text",
@@ -456,15 +466,6 @@ function decodeNoteToCard(note: Note): Card {
   let author: string | undefined;
   let time: string | undefined;
 
-  // FEAT-markdown-memo-pen: Dexie version(2) 업그레이드 누락분 방어.
-  // code/checklist/highlight는 text(마크다운)로 환원한다. 변환 결과는 ```·-·>로
-  // 시작하므로 아래 comment 마커 분기(`{`로 시작)를 오작동시키지 않는다.
-  const md = migratedContent(note.kind, content);
-  if (md !== null) {
-    kind = "text";
-    content = md;
-  }
-
   // comment 메타가 인코딩된 text는 comment로 환원 (현재 + 이전 v0 마커 둘 다).
   if (note.kind === "text" && content.startsWith("{")) {
     try {
@@ -483,6 +484,29 @@ function decodeNoteToCard(note: Note): Card {
       }
     } catch {
       /* plain text — keep as note */
+    }
+  }
+
+  // FEAT-card-allinone + FEAT-markdown-memo-pen: 레거시 단독 카드를 글(text) 카드
+  // 블록 모델로 무손실 환원한다. 단독 캡처 도구(code/checklist/highlight/handwriting)는
+  // 제거됐고 데이터만 글 카드 블록으로 흡수한다.
+  //  - code → code 블록(code/lang 보존), handwriting → handwriting 블록(획 보존)
+  //  - checklist/highlight는 전용 블록이 없어 migratedContent로 마크다운화한 뒤
+  //    text 블록 1개에 담는다(서식은 평문으로 남지만 내용은 보존).
+  if (note.kind === "code") {
+    const { code, lang } = parseCode(content);
+    const block: CardBlock = lang ? { type: "code", code, lang } : { type: "code", code };
+    kind = "text";
+    content = serializeBlocks([block]);
+  } else if (note.kind === "handwriting") {
+    const { paths } = parseHandwriting(content);
+    kind = "text";
+    content = serializeBlocks([{ type: "handwriting", paths }]);
+  } else {
+    const md = migratedContent(note.kind, content);
+    if (md !== null) {
+      kind = "text";
+      content = serializeBlocks([{ type: "text", text: md }]);
     }
   }
 

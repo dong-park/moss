@@ -16,7 +16,7 @@
  * 편집 중에는 value를 deps에서 제외해 키스트로크마다 remount(커서 소실)를 막는다.
  * ───────────────────────────────────────────────────────────── */
 
-import { useEffect, useRef, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 import {
   Editor,
   rootCtx,
@@ -114,40 +114,28 @@ export default function MarkdownEditor(props: MarkdownEditorProps) {
  * FEAT-memo-expand — 펼치기 모달 전용 에디터.
  * 상단 서식 프리셋 툴바 + 항상 편집 가능한 Milkdown 본문.
  * 툴바와 에디터가 같은 MilkdownProvider 아래 있어야 같은 인스턴스를 공유한다.
- *
- * overlay: 펜 그리기 레이어. 본문 영역(툴바 아래)만 덮도록 relative 컨테이너 안에
- * 둔다 — 서식 툴바 위로 그려지거나 그리기 중 툴바 클릭이 막히는 것을 방지. 본문
- * 스크롤과 분리(컨테이너 overflow-hidden)해 overlay는 고정, 텍스트만 스크롤한다.
  * ───────────────────────────────────────────────────────────── */
 export function ExpandedMarkdownEditor({
   value,
   onChange,
-  overlay,
 }: {
   value: string;
   onChange: (markdown: string) => void;
-  overlay?: ReactNode;
 }) {
   const isClient = useIsClient();
   if (!isClient) {
     // SSR/jsdom 폴백 — 원문 마크다운만 표시(ProseMirror 미생성).
     return (
-      <div className="relative min-h-0 flex-1 overflow-hidden">
-        <div className="moss-md h-full overflow-auto whitespace-pre-wrap px-4 py-3 text-[13px] leading-6 text-text">
-          {value}
-        </div>
-        {overlay}
+      <div className="moss-md flex-1 overflow-auto whitespace-pre-wrap px-4 py-3 text-[13px] leading-6 text-text">
+        {value}
       </div>
     );
   }
   return (
     <MilkdownProvider>
       <MarkdownToolbar />
-      <div className="relative min-h-0 flex-1 overflow-hidden">
-        <div className="moss-md h-full overflow-auto px-4 py-3">
-          <MilkdownInner value={value} editable onChange={onChange} />
-        </div>
-        {overlay}
+      <div className="moss-md flex-1 overflow-auto px-4 py-3">
+        <MilkdownInner value={value} editable onChange={onChange} />
       </div>
     </MilkdownProvider>
   );
