@@ -94,6 +94,45 @@ describe("FEAT-memo-expand · 펼치기 버튼", () => {
   });
 });
 
+describe("FEAT-memo-expand · 더블클릭 확대", () => {
+  const cardRoot = (container: HTMLElement) =>
+    container.querySelector("[data-card-id]") as HTMLElement;
+
+  it("text 카드를 더블클릭하면 확대 모달이 열린다(expandedCardId 설정)", () => {
+    const c = textCard();
+    seed([c]);
+    const { container } = wrap(<DraggableCard card={c} />);
+    fireEvent.doubleClick(cardRoot(container));
+    expect(useWorkspace.getState().expandedCardId).toBe("c1");
+  });
+
+  it("text 카드 더블클릭은 인라인 편집(editingId)을 켜지 않는다", () => {
+    const c = textCard();
+    seed([c]);
+    const { container } = wrap(<DraggableCard card={c} />);
+    fireEvent.doubleClick(cardRoot(container));
+    expect(useWorkspace.getState().editingId).toBeNull();
+  });
+
+  it("text가 아닌 카드(image)는 더블클릭 시 기존대로 인라인 편집에 진입한다", () => {
+    const c = textCard({ kind: "image", content: "" });
+    seed([c]);
+    const { container } = wrap(<DraggableCard card={c} />);
+    fireEvent.doubleClick(cardRoot(container));
+    expect(useWorkspace.getState().editingId).toBe("c1");
+    expect(useWorkspace.getState().expandedCardId).toBeNull();
+  });
+
+  it("펜 모드에선 더블클릭으로 확대가 열리지 않는다", () => {
+    const c = textCard();
+    seed([c]);
+    useWorkspace.setState({ penMode: true });
+    const { container } = wrap(<DraggableCard card={c} />);
+    fireEvent.doubleClick(cardRoot(container));
+    expect(useWorkspace.getState().expandedCardId).toBeNull();
+  });
+});
+
 describe("FEAT-memo-expand · 모달", () => {
   it("expandedCardId가 있으면 모달이 열리고 카드 내용을 보여준다", () => {
     seed([textCard({ content: "# 제목" })]);

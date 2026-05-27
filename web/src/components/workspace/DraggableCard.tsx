@@ -4,6 +4,7 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { useWorkspace, type Card } from "@/state/workspace";
 import { CardContent } from "./cards/CardContent";
 import { DrawingLayer } from "./cards/_shared/DrawingLayer";
+import { isExpandable } from "./cards/_shared/expandable";
 import { ResizeHandles } from "./ResizeHandles";
 import { AIOptOutBadge } from "@/components/privacy/AIOptOutBadge";
 import { ExpandIcon, LockIcon } from "@/components/icons";
@@ -139,6 +140,12 @@ export function DraggableCard({ card }: { card: Card }) {
   const onDoubleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (penMode) return; // 펜 모드에선 편집 진입 안 함
+    // FEAT-memo-expand: 확대 지원 카드(text 등)는 더블클릭으로 펼치기 모달을 연다.
+    // 인라인 편집(setEditing)을 완전 대체 — 편집은 모달 안에서 한다.
+    if (isExpandable(card)) {
+      setExpandedCard(card.id);
+      return;
+    }
     if (card.kind === "comment") return;
     setEditing(card.id);
   };
@@ -202,7 +209,7 @@ export function DraggableCard({ card }: { card: Card }) {
        * 클릭하면 모달로 크게 열린다. 펜 모드에선 숨김(그리기 방해 방지).
        * opacity로 호버 토글하되 키보드 포커스(focus-visible) 시에도 노출해 a11y 보장.
        */}
-      {card.kind === "text" && !penMode && (
+      {isExpandable(card) && !penMode && (
         <button
           type="button"
           onMouseDown={(e) => e.stopPropagation()}
