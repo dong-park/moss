@@ -14,18 +14,20 @@ import { DrawingLayer, type DrawingTool } from "./_shared/DrawingLayer";
  * 구독해 해당 카드를 크게(거의 전체 화면) 편집한다. 상단 서식 프리셋 툴바 +
  * Milkdown 본문(ExpandedMarkdownEditor). 편집은 setContent로 실시간 반영·영속.
  *
- * 가로폭 동기 (cycle 2026-05-28):
- *  모달 width = card.width 픽셀. 펜 좌표가 카드 content box 절대 px이므로 가로
- *  폭이 일치해야 카드↔모달 사이 stroke가 같은 좌표(끊김 없이)에 보인다. 세로
- *  (height)만 80vh로 펼쳐 긴 메모 편집 여유를 둔다. 보드 zoom은 모달에 적용
- *  안 됨(모달은 viewport-fixed)이므로 zoom 100% 기준 카드 크기와 1:1 매칭.
+ * 크기 (cycle 2026-05-28 b):
+ *  모달은 w-[90vw] max-w-3xl × h-[80vh]로 본격 펼친다 — 펼치기의 의도(넓은
+ *  편집 공간) 회복. 펜 stroke는 viewBox로 카드 비율 유지하며 함께 확대되므로
+ *  width=card.width 동기 없이도 카드/모달 좌표가 일치한다(viewBox 좌표계 공유).
  *
  * 펜 overlay:
- *  카드의 손글씨(card.overlay)를 본문 위에 같이 렌더한다. 좌표는 카드 content
- *  box 기준 절대 px이며 스케일하지 않는다(카드 리사이즈가 펜을 늘리지 않는 것과
- *  동일). 헤더의 펜/지우개 토글로 그리기 모드(active)를 켜면 그 위에 덧그리거나
- *  지울 수 있고, 꺼두면 SVG가 pointer-events:none → 클릭이 본문(텍스트 편집)
- *  으로 통과한다. 변경은 setOverlay로 카드와 동일한 overlay 데이터에 영속된다.
+ *  카드의 손글씨(card.overlay)를 본문 위에 같이 렌더한다. DrawingLayer에 viewBox
+ *  ={card.width × (card.height ?? card.width)}를 넘겨 비율 유지하며 모달 본문에
+ *  맞춰 확대(preserveAspectRatio="xMinYMin meet")한다 — 펼치면 펜 자국도 같이
+ *  크게 보인다. 새로 그릴 때는 toLocal이 픽셀→viewBox 좌표로 환산해 카드와
+ *  동일 좌표공간에 저장되므로 카드/모달 어디서 그려도 호환된다. 헤더의 펜/지우개
+ *  토글로 그리기 모드(active)를 켜면 덧그리거나 지울 수 있고, 꺼두면 SVG가
+ *  pointer-events:none → 클릭이 본문(텍스트 편집)으로 통과한다. 변경은
+ *  setOverlay로 카드와 동일한 overlay 데이터에 영속된다.
  *
  * 닫기: Esc / 오버레이 클릭 / 완료 버튼 → setExpandedCard(null).
  * 마운트는 page.tsx 루트에서 1회 (전역 오버레이, BoardDeleteDialog와 동일 패턴).
@@ -79,9 +81,7 @@ export function MemoExpandDialog() {
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-[var(--z-overlay)] bg-black/40" />
         <Dialog.Content
-          className="fixed left-1/2 top-1/2 z-[var(--z-modal)] flex h-[80vh] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-lg border border-border bg-bg shadow-card-lift focus:outline-none"
-          // width는 card.width로 동기 — 펜 좌표 1:1 매칭(끊김 방지).
-          style={card ? { width: card.width } : undefined}
+          className="fixed left-1/2 top-1/2 z-[var(--z-modal)] flex h-[80vh] w-[90vw] max-w-3xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-lg border border-border bg-bg shadow-card-lift focus:outline-none"
           aria-describedby={undefined}
         >
           <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
@@ -130,6 +130,12 @@ export function MemoExpandDialog() {
                   penWidth={penWidth}
                   tool={tool}
                   onChange={(json) => setOverlay(card.id, json)}
+                  // 카드 dimensions을 viewBox로 — 비율 유지하며 모달 본문에 맞춰 확대.
+                  // height 미지정(auto)이면 정사각형 fallback(width=height).
+                  viewBox={{
+                    width: card.width,
+                    height: card.height ?? card.width,
+                  }}
                 />
               }
             />

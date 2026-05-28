@@ -172,31 +172,31 @@ describe("FEAT-memo-expand · 모달", () => {
   });
 });
 
-describe("FEAT-memo-expand · 가로폭 동기 + 펜 overlay (cycle 2026-05-28)", () => {
+describe("FEAT-memo-expand · 펜 overlay viewBox 스케일 (cycle 2026-05-28 b)", () => {
   /**
-   * 펜 stroke 좌표가 카드 content box 절대 px이므로, 모달 width를 card.width와
-   * 같게 잡아야 카드↔모달 사이 동일 좌표에 stroke가 보인다(끊김 방지).
+   * 모달은 w-[90vw] max-w-3xl로 펼쳐지고, 펜은 viewBox로 카드 비율 유지하며
+   * 함께 확대된다 — 펼쳤을 때 펜 자국도 같이 크게 보인다.
    */
-  it("SC-1: 모달 width는 card.width 픽셀과 동기된다", () => {
-    seed([textCard({ width: 320 })]);
+  it("SC-1: DrawingLayer는 카드 dimensions을 viewBox로 설정한다", () => {
+    seed([textCard({ width: 320, height: 200 })]);
     useWorkspace.getState().setExpandedCard("c1");
     wrap(<MemoExpandDialog />);
-    const dialog = screen.getByRole("dialog") as HTMLElement;
-    // inline style.width가 card.width px로 잡혀 className w-[90vw] 등을 덮어쓴다.
-    expect(dialog.style.width).toBe("320px");
+    const svg = document.body.querySelector(
+      "[data-drawing-layer]",
+    ) as SVGSVGElement | null;
+    expect(svg).toBeTruthy();
+    expect(svg!.getAttribute("viewBox")).toBe("0 0 320 200");
+    expect(svg!.getAttribute("preserveAspectRatio")).toBe("xMinYMin meet");
   });
 
-  it("SC-1b: 카드 width가 바뀌면 다음 오픈 시 새 width로 따라온다", () => {
+  it("SC-1b: card.height 미지정이면 정사각형(width=height) fallback", () => {
     seed([textCard({ width: 240 })]);
     useWorkspace.getState().setExpandedCard("c1");
-    const { rerender } = wrap(<MemoExpandDialog />);
-    expect((screen.getByRole("dialog") as HTMLElement).style.width).toBe("240px");
-    // 카드 리사이즈 시뮬레이션.
-    useWorkspace.setState({
-      cards: useWorkspace.getState().cards.map((c) => ({ ...c, width: 500 })),
-    });
-    rerender(<I18nProvider locale="ko"><MemoExpandDialog /></I18nProvider>);
-    expect((screen.getByRole("dialog") as HTMLElement).style.width).toBe("500px");
+    wrap(<MemoExpandDialog />);
+    const svg = document.body.querySelector(
+      "[data-drawing-layer]",
+    ) as SVGSVGElement | null;
+    expect(svg!.getAttribute("viewBox")).toBe("0 0 240 240");
   });
 
   it("SC-2: 헤더에 펜·지우개 토글이 노출된다", () => {

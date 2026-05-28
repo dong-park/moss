@@ -13,6 +13,11 @@
  *
  * active=false면 pointer-events:none → 클릭이 카드(드래그/편집)로 통과한다.
  * 좌표는 svg(=카드 content box) 기준 상대좌표(handwriting과 동일, 리사이즈 비스케일).
+ *
+ * viewBox(선택): 지정 시 SVG는 viewBox="0 0 W H" + preserveAspectRatio
+ * "xMinYMin meet"로 비율 유지하며 컨테이너에 맞춰 확대된다. 새 stroke의 좌표는
+ * toLocal에서 픽셀→viewBox 좌표로 환산돼 기존 stroke와 좌표공간이 일치한다
+ * — 카드(viewBox 없음)와 모달(viewBox=카드크기) 사이 동일 데이터로 호환된다.
  * ───────────────────────────────────────────────────────────── */
 
 import { useMemo, useRef, useState } from "react";
@@ -32,6 +37,11 @@ export type DrawingLayerProps = {
   onChange: (json: string) => void;
   /** stroke 색 (CSS 변수). 기본 본문색. */
   stroke?: string;
+  /**
+   * SVG viewBox 좌표계 크기. 지정 시 비율 유지하며 컨테이너에 맞춰 확대된다.
+   * 미지정 시 1:1 픽셀 좌표(카드 본문 — 기존 동작). 자세한 설명은 파일 헤더.
+   */
+  viewBox?: { width: number; height: number };
 };
 
 /** 지우개 근접 판정 임계 (px). */
@@ -44,6 +54,7 @@ export function DrawingLayer({
   tool,
   onChange,
   stroke = "var(--color-text)",
+  viewBox,
 }: DrawingLayerProps) {
   const data = useMemo(() => parseHandwriting(value), [value]);
   const [draft, setDraft] = useState<HandwritingPoint[]>([]);
@@ -53,6 +64,17 @@ export function DrawingLayer({
   const toLocal = (clientX: number, clientY: number): HandwritingPoint => {
     const rect = svgRef.current?.getBoundingClientRect();
     if (!rect) return { x: 0, y: 0 };
+    // viewBox 사용 시 픽셀→viewBox 좌표 환산. xMinYMin meet → 좌상단 anchor,
+    // scale = min(W/vbW, H/vbH), offset 없음.
+    if (viewBox && rect.width > 0 && rect.height > 0) {
+      const s = Math.min(rect.width / viewBox.width, rect.height / viewBox.height);
+      if (s > 0) {
+        return {
+          x: +((clientX - rect.left) / s).toFixed(1),
+          y: +((clientY - rect.top) / s).toFixed(1),
+        };
+      }
+    }
     return {
       x: +(clientX - rect.left).toFixed(1),
       y: +(clientY - rect.top).toFixed(1),
@@ -106,6 +128,8 @@ export function DrawingLayer({
     <svg
       ref={svgRef}
       data-drawing-layer
+      viewBox={viewBox ? `0 0 ${viewBox.width} ${viewBox.height}` : undefined}
+      preserveAspectRatio={viewBox ? "xMinYMin meet" : undefined}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
