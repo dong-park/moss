@@ -27,18 +27,21 @@ vi.mock("@/components/workspace/cards/_shared/MarkdownEditor", () => ({
       onChange={(e) => onChange(e.target.value)}
     />
   ),
-  ExpandedMarkdownEditor: ({
-    value,
-    onChange,
-  }: {
+  // vi.mock factory는 hoisted라 외부 import(React) 식별자를 못 본다 — 타입은
+  // 최소화하고 children은 ReactNode로 그대로 흘려보낸다.
+  ExpandedMarkdownEditor: (props: {
     value: string;
     onChange: (md: string) => void;
+    overlay?: ReactNode;
   }) => (
-    <textarea
-      data-testid="expanded-editor"
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-    />
+    <div data-testid="expanded-editor-wrap">
+      <textarea
+        data-testid="expanded-editor"
+        value={props.value}
+        onChange={(e) => props.onChange(e.target.value)}
+      />
+      {props.overlay}
+    </div>
   ),
 }));
 
@@ -166,5 +169,85 @@ describe("FEAT-memo-expand · 모달", () => {
     wrap(<MemoExpandDialog />);
     fireEvent.click(screen.getByLabelText("닫기"));
     expect(useWorkspace.getState().expandedCardId).toBeNull();
+  });
+});
+
+describe("FEAT-memo-expand · 가로폭 동기 + 펜 overlay (cycle 2026-05-28)", () => {
+  /**
+   * 펜 stroke 좌표가 카드 content box 절대 px이므로, 모달 width를 card.width와
+   * 같게 잡아야 카드↔모달 사이 동일 좌표에 stroke가 보인다(끊김 방지).
+   */
+  it("SC-1: 모달 width는 card.width 픽셀과 동기된다", () => {
+    seed([textCard({ width: 320 })]);
+    useWorkspace.getState().setExpandedCard("c1");
+    wrap(<MemoExpandDialog />);
+    const dialog = screen.getByRole("dialog") as HTMLElement;
+    // inline style.width가 card.width px로 잡혀 className w-[90vw] 등을 덮어쓴다.
+    expect(dialog.style.width).toBe("320px");
+  });
+
+  it("SC-1b: 카드 width가 바뀌면 다음 오픈 시 새 width로 따라온다", () => {
+    seed([textCard({ width: 240 })]);
+    useWorkspace.getState().setExpandedCard("c1");
+    const { rerender } = wrap(<MemoExpandDialog />);
+    expect((screen.getByRole("dialog") as HTMLElement).style.width).toBe("240px");
+    // 카드 리사이즈 시뮬레이션.
+    useWorkspace.setState({
+      cards: useWorkspace.getState().cards.map((c) => ({ ...c, width: 500 })),
+    });
+    rerender(<I18nProvider locale="ko"><MemoExpandDialog /></I18nProvider>);
+    expect((screen.getByRole("dialog") as HTMLElement).style.width).toBe("500px");
+  });
+
+  it("SC-2: 헤더에 펜·지우개 토글이 노출된다", () => {
+    seed([textCard()]);
+    useWorkspace.getState().setExpandedCard("c1");
+    wrap(<MemoExpandDialog />);
+    expect(screen.getByLabelText("펜으로 그리기")).toBeTruthy();
+    expect(screen.getByLabelText("지우개")).toBeTruthy();
+  });
+
+  // Dialog.Portal은 document.body로 portal한다 — render()의 container 바깥이라
+  // 모달 안 요소는 document 전역에서 찾아야 한다.
+  const findDrawingSvg = () =>
+    document.body.querySelector("[data-drawing-layer]") as SVGSVGElement | null;
+  const allPolylines = () =>
+    document.body.querySelectorAll("polyline");
+
+  it("SC-3: 초기엔 drawing=off → DrawingLayer가 pointer-events:none", () => {
+    seed([textCard()]);
+    useWorkspace.getState().setExpandedCard("c1");
+    wrap(<MemoExpandDialog />);
+    const svg = findDrawingSvg();
+    expect(svg).toBeTruthy();
+    expect(svg!.style.pointerEvents).toBe("none");
+  });
+
+  it("SC-3b: 펜 토글을 누르면 active → pointer-events:auto + aria-pressed", () => {
+    seed([textCard()]);
+    useWorkspace.getState().setExpandedCard("c1");
+    wrap(<MemoExpandDialog />);
+    fireEvent.click(screen.getByLabelText("펜으로 그리기"));
+    const svg = findDrawingSvg();
+    expect(svg!.style.pointerEvents).toBe("auto");
+    expect(screen.getByLabelText("펜으로 그리기").getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("SC-5: 카드에 미리 그려둔 overlay 경로가 모달에 polyline으로 렌더된다", () => {
+    seed([
+      textCard({
+        overlay: JSON.stringify({
+          paths: [
+            [
+              { x: 0, y: 0 },
+              { x: 10, y: 10 },
+            ],
+          ],
+        }),
+      }),
+    ]);
+    useWorkspace.getState().setExpandedCard("c1");
+    wrap(<MemoExpandDialog />);
+    expect(allPolylines()).toHaveLength(1);
   });
 });
