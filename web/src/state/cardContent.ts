@@ -317,6 +317,45 @@ export function makeBlock(type: CardBlockType): CardBlock {
   return { type: "text", text: "" };
 }
 
+/**
+ * CardBlock[] JSON → markdown 문자열 (Dexie v3 upgrade·런타임 어댑터 공용).
+ *
+ * 카드와 모달이 같은 Milkdown 렌더러를 쓰기 위한 통일 포맷.
+ *  - text 블록 → 본문 그대로
+ *  - code 블록 → fenced code block ```lang\\ncode\\n```
+ *  - handwriting 블록 → 폐기(펜 overlay로 대체)
+ * 블록은 사이에 빈 줄을 넣어 markdown 단락 경계를 만든다.
+ * content가 JSON 배열이 아니거나 빈 값이면 원문 그대로 반환 — 이미 markdown.
+ */
+export function blocksToMarkdown(content: string): string {
+  if (!content) return "";
+  let v: unknown;
+  try {
+    v = JSON.parse(content);
+  } catch {
+    return content;
+  }
+  if (!Array.isArray(v)) return content;
+  const parts: string[] = [];
+  for (const raw of v) {
+    if (!raw || typeof raw !== "object") continue;
+    const type = (raw as { type?: unknown }).type;
+    if (type === "text") {
+      const text = (raw as { text?: unknown }).text;
+      if (typeof text === "string") parts.push(text);
+    } else if (type === "code") {
+      const o = raw as { code?: unknown; lang?: unknown };
+      const code = typeof o.code === "string" ? o.code : "";
+      const lang = typeof o.lang === "string" ? o.lang.trim() : "";
+      parts.push("```" + lang + "\n" + code + "\n```");
+    }
+    // handwriting: drop. 카드 overlay에 별도 그리기 레이어가 있으므로 손실 의도.
+  }
+  // 정제 결과가 비어있고 원본이 JSON 배열이지만 인식 불가 → 원문 보존(손실 방지).
+  if (parts.length === 0 && v.length > 0) return content;
+  return parts.join("\n\n");
+}
+
 /* ─────────────────── 공통 ─────────────────── */
 
 export function makeChecklistItemId(): string {

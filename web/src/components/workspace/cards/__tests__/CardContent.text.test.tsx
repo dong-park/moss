@@ -1,77 +1,100 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { fireEvent, screen } from "@testing-library/react";
-import { parseBlocks } from "@/state/cardContent";
 import { renderCard } from "./setupCard";
 
-/**
- * Text 카드 — 올인원 블록 스택(FEAT-card-allinone).
- * content는 CardBlock[] JSON으로 직렬화되므로 onChange 페이로드는 parseBlocks로 검증한다.
- */
+/* Milkdown(ProseMirror)은 jsdom에서 신뢰성이 낮아 MarkdownEditor를 textarea
+ * stub으로 모킹한다(MemoExpand.test와 동일 전략). 여기서는 카드↔에디터 사이의
+ * 배선(content 표시, onChange→상위, Esc→onCommit, onBlur→onCommit)만 본다. */
+vi.mock("@/components/workspace/cards/_shared/MarkdownEditor", () => ({
+  default: ({
+    value,
+    onChange,
+    onBlur,
+  }: {
+    value: string;
+    onChange: (md: string) => void;
+    onBlur?: () => void;
+  }) => (
+    <textarea
+      data-testid="text-card-editor"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      onBlur={onBlur}
+    />
+  ),
+  ExpandedMarkdownEditor: () => null,
+}));
+
+/* TextCardContent — Milkdown 인라인 (cycle 2026-05-28 d).
+ * 이전 블록 스택을 Milkdown으로 교체. content는 markdown 문자열로 의미 변경 —
+ * onChange 페이로드를 그대로 검증한다(parseBlocks 불필요). */
 describe("TextCardContent · UX", () => {
   it("render — 카드 표면 background에 cards/v2/text.png 포함", () => {
     const { container } = renderCard("text", {
       content: "안녕",
       editing: false,
     });
-
-    // 표면 컨테이너는 최상위 div (cardSurface 호출 위치).
     const root = container.firstChild as HTMLElement;
     expect(root.style.background).toContain("cards/v2/text.png");
   });
 
-  it("edit-mode — editing=true에서 textarea가 마운트되고 포커스된다", () => {
+  it("edit-mode — editing=true에서 에디터가 마운트된다", () => {
     renderCard("text", { content: "메모", editing: true });
-
-    const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
-    expect(textarea.tagName).toBe("TEXTAREA");
-    // EditableBlock useEffect: editing 시 focus + select
-    expect(document.activeElement).toBe(textarea);
+    const editor = screen.getByTestId("text-card-editor") as HTMLTextAreaElement;
+    expect(editor.value).toBe("메모");
   });
 
-  it("Esc — onCommitEdit 1회 호출 (중복 X)", () => {
+  it("Esc — 카드 컨테이너 onKeyDown이 onCommitEdit 호출", () => {
     const { onCommit } = renderCard("text", {
       content: "안녕",
       editing: true,
     });
-
-    const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
-    // Esc → textarea가 blur → onBlur가 onCommit 호출.
-    // 카드 컨테이너 onKeyDown은 textarea 이벤트를 위임(early return)하므로
-    // 중복 호출되지 않아야 한다.
-    fireEvent.keyDown(textarea, { key: "Escape" });
-
-    expect(onCommit).toHaveBeenCalledTimes(1);
+    const editor = screen.getByTestId("text-card-editor") as HTMLTextAreaElement;
+    // 에디터에서 발생한 Esc가 카드 root onKeyDown(버블)으로 올라가 commit.
+    fireEvent.keyDown(editor, { key: "Escape" });
+    expect(onCommit).toHaveBeenCalled();
   });
 
-  it("Enter — 줄바꿈 (default 유지, onCommitEdit 트리거되지 않음)", () => {
-    const { onChange, onCommit } = renderCard("text", {
+  it("Enter — onCommit 트리거되지 않음(텍스트 입력 보존)", () => {
+    const { onCommit } = renderCard("text", {
       content: "",
       editing: true,
     });
-
-    const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
-    // Enter는 textarea default(줄바꿈)여야 하므로 commit가 호출되지 않아야 한다.
-    fireEvent.keyDown(textarea, { key: "Enter" });
+    const editor = screen.getByTestId("text-card-editor") as HTMLTextAreaElement;
+    fireEvent.keyDown(editor, { key: "Enter" });
     expect(onCommit).not.toHaveBeenCalled();
-
-    // 실제 줄바꿈 페이로드는 onChange로 들어와야 한다(브라우저 default 동작 시뮬).
-    fireEvent.change(textarea, { target: { value: "first\nsecond" } });
-    const payload = onChange.mock.calls.at(-1)![0];
-    expect(parseBlocks(payload)).toEqual([{ type: "text", text: "first\nsecond" }]);
   });
 
-  it("onChange — 입력마다 onChange 호출(페이로드 = 최신 값)", () => {
+  it("onChange — 입력마다 markdown payload 그대로 전달", () => {
     const { onChange } = renderCard("text", {
       content: "",
       editing: true,
     });
-
-    const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
-    fireEvent.change(textarea, { target: { value: "h" } });
-    fireEvent.change(textarea, { target: { value: "hi" } });
-
+    const editor = screen.getByTestId("text-card-editor") as HTMLTextAreaElement;
+    fireEvent.change(editor, { target: { value: "h" } });
+    fireEvent.change(editor, { target: { value: "hi" } });
     expect(onChange).toHaveBeenCalledTimes(2);
-    expect(parseBlocks(onChange.mock.calls[0][0])).toEqual([{ type: "text", text: "h" }]);
-    expect(parseBlocks(onChange.mock.calls[1][0])).toEqual([{ type: "text", text: "hi" }]);
+    expect(onChange.mock.calls[0][0]).toBe("h");
+    expect(onChange.mock.calls[1][0]).toBe("hi");
+  });
+
+  it("onBlur — 에디터 blur 시 onCommitEdit 호출 (밖 클릭으로 편집 종료)", () => {
+    const { onCommit } = renderCard("text", {
+      content: "안녕",
+      editing: true,
+    });
+    const editor = screen.getByTestId("text-card-editor") as HTMLTextAreaElement;
+    fireEvent.blur(editor);
+    expect(onCommit).toHaveBeenCalledTimes(1);
+  });
+
+  it("CardBlock[] JSON 레거시 content는 blocksToMarkdown으로 표시", () => {
+    const json = JSON.stringify([
+      { type: "text", text: "안녕" },
+      { type: "code", code: "x = 1", lang: "py" },
+    ]);
+    renderCard("text", { content: json, editing: true });
+    const editor = screen.getByTestId("text-card-editor") as HTMLTextAreaElement;
+    expect(editor.value).toBe("안녕\n\n```py\nx = 1\n```");
   });
 });

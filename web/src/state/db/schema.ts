@@ -1,5 +1,6 @@
 import Dexie, { type Table } from "dexie";
 import { migratedContent } from "../markdownMigration";
+import { blocksToMarkdown } from "../cardContent";
 
 /**
  * 카드 종류. spec FEAT-storage §5 정의.
@@ -124,6 +125,21 @@ export class MossDB extends Dexie {
               note.kind = "text";
               note.content = md;
             }
+          });
+      });
+    // v3: CardBlock[] JSON content를 markdown 문자열로 통일 — 카드와 모달이
+    // 같은 Milkdown 렌더러로 렌더해 펜 overlay 좌표 정렬 회복(heading/list 등).
+    // text 카드만 영향. JSON 배열이 아니면 no-op(원문 보존).
+    this.version(3)
+      .stores(stores)
+      .upgrade(async (tx) => {
+        await tx
+          .table<Note, string>("notes")
+          .where("kind")
+          .equals("text")
+          .modify((note) => {
+            const md = blocksToMarkdown(note.content);
+            if (md !== note.content) note.content = md;
           });
       });
   }
