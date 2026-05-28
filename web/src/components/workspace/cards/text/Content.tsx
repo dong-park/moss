@@ -2,7 +2,6 @@
 
 import { useMemo } from "react";
 import { blocksToMarkdown } from "@/state/cardContent";
-import { cardSurface } from "../_shared/surface";
 import MarkdownEditor from "../_shared/MarkdownEditor";
 import type { CardContentProps } from "../_shared/types";
 
@@ -31,8 +30,14 @@ export function TextCardContent({
 
   return (
     <div
-      className="relative h-full"
-      style={{ minHeight: 80, borderRadius: 6, ...cardSurface("text") }}
+      className="relative h-full overflow-hidden"
+      style={{
+        minHeight: 80,
+        borderRadius: 6,
+        // background-size 100% 100%로 카드 박스에 맞춰 늘어나게 — content가
+        // 커져 카드가 auto-grow하면 포스트잇 비주얼도 같이 늘어난다.
+        background: `url("/cards/v2/text.png") 0 0 / 100% 100% no-repeat`,
+      }}
       onKeyDown={(e) => {
         // Milkdown(prose-mirror)에 ESC가 도달하면 onCommitEdit.
         if (e.key === "Escape") {
@@ -41,18 +46,11 @@ export function TextCardContent({
         }
       }}
     >
-      <div
-        className="absolute overflow-auto"
-        style={{
-          top: "1%",
-          left: "1%",
-          right: "3%",
-          bottom: "4%",
-          // 모달의 줌 wrapper padding과 동일(6px 9px) — 카드와 모달이 같은 글자
-          // 시작 오프셋을 가져야 펜 overlay 좌표가 양쪽에서 같은 글자를 가리킴.
-          padding: "6px 9px",
-        }}
-      >
+      {/* normal-flow 컨테이너 — content 높이가 카드 root에 전파돼 card.height
+        * 미지정 시 DraggableCard가 auto-grow한다. 모달의 줌 wrapper padding과
+        * 동일(6px 9px) — 카드/모달의 글자 시작 오프셋이 일치해야 펜 좌표가
+        * 양쪽에서 같은 글자를 가리킴. */}
+      <div style={{ padding: "6px 9px" }}>
         <MarkdownEditor
           value={markdown}
           editable={editing}
