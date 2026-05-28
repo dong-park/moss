@@ -16,7 +16,14 @@
  * 편집 중에는 value를 deps에서 제외해 키스트로크마다 remount(커서 소실)를 막는다.
  * ───────────────────────────────────────────────────────────── */
 
-import { useEffect, useRef, useSyncExternalStore, type ReactNode } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 import {
   Editor,
   rootCtx,
@@ -115,20 +122,50 @@ export default function MarkdownEditor(props: MarkdownEditorProps) {
  * 상단 서식 프리셋 툴바 + 항상 편집 가능한 Milkdown 본문.
  * 툴바와 에디터가 같은 MilkdownProvider 아래 있어야 같은 인스턴스를 공유한다.
  *
- * overlay: 펜 그리기 레이어. 본문 영역(툴바 아래)만 덮도록 relative 컨테이너 안에
- * 둔다 — 서식 툴바 위로 그려지거나 그리기 중 툴바 클릭이 막히는 것을 방지. 본문
- * 스크롤과 분리(컨테이너 overflow-hidden)해 overlay는 고정, 텍스트만 스크롤한다.
+ * 진짜 줌 (cycle 2026-05-28 c): contentWidth가 주어지면 본문을 그 폭의 논리
+ * 좌표로 잡고 CSS transform: scale(k)로 통째로 확대한다(k=bodyWidth/contentWidth,
+ * ResizeObserver로 추적). 텍스트(HTML)와 펜(SVG viewBox)이 같은 k로 함께 커져
+ * 카드에서 그린 위치가 모달에서도 그대로 유지된다 — 'pen이 글자 둘레를 두른' 같은
+ * 관계가 보존된다. transform-origin: top-left.
+ *
+ * overlay: 펜 그리기 레이어. relative 컨테이너 안에 있어 absolute inset-0이 본문
+ * 영역만 덮는다. DrawingLayer는 viewBox(=카드 dimensions)를 받아 좌표를 픽셀과
+ * 환산하므로 CSS scale과 자연스럽게 합쳐진다.
  * ───────────────────────────────────────────────────────────── */
 export function ExpandedMarkdownEditor({
   value,
   onChange,
   overlay,
+  contentWidth,
+  contentHeight,
 }: {
   value: string;
   onChange: (markdown: string) => void;
   overlay?: ReactNode;
+  /** 카드 content box 논리 폭. 지정 시 본문을 이 폭으로 잡고 CSS scale로 확대. */
+  contentWidth?: number;
+  /** 카드 content box 논리 높이. 본문 minHeight로 사용(짧은 메모도 펜 영역 확보). */
+  contentHeight?: number;
 }) {
   const isClient = useIsClient();
+  const bodyRef = useRef<HTMLDivElement | null>(null);
+  const [scale, setScale] = useState(1);
+
+  // body 폭 / contentWidth → scale. ResizeObserver로 화면 크기·모달 폭 변화 추적.
+  useLayoutEffect(() => {
+    if (!isClient || !contentWidth) return;
+    const el = bodyRef.current;
+    if (!el) return;
+    const measure = () => {
+      const w = el.clientWidth;
+      if (w > 0) setScale(w / contentWidth);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [isClient, contentWidth]);
+
   if (!isClient) {
     // SSR/jsdom 폴백 — 원문 마크다운만 표시(ProseMirror 미생성).
     return (
@@ -140,14 +177,41 @@ export function ExpandedMarkdownEditor({
       </div>
     );
   }
+  // contentWidth 없으면 원래 동작(스케일 없음).
+  if (!contentWidth) {
+    return (
+      <MilkdownProvider>
+        <MarkdownToolbar />
+        <div className="relative min-h-0 flex-1 overflow-hidden">
+          <div className="moss-md h-full overflow-auto px-4 py-3">
+            <MilkdownInner value={value} editable onChange={onChange} />
+          </div>
+          {overlay}
+        </div>
+      </MilkdownProvider>
+    );
+  }
   return (
     <MilkdownProvider>
       <MarkdownToolbar />
-      <div className="relative min-h-0 flex-1 overflow-hidden">
-        <div className="moss-md h-full overflow-auto px-4 py-3">
-          <MilkdownInner value={value} editable onChange={onChange} />
+      <div ref={bodyRef} className="min-h-0 flex-1 overflow-auto">
+        <div
+          data-zoom-wrapper
+          className="relative"
+          style={{
+            width: contentWidth,
+            minHeight: contentHeight,
+            transform: `scale(${scale})`,
+            transformOrigin: "0 0",
+          }}
+        >
+          {/* padding은 카드의 block-stack 텍스트 오프셋(약 9px,6px)과 맞춰 — 펜이
+            * 카드에서 글자를 둘러쌌다면 모달에서도 같은 위치에 오도록. */}
+          <div className="moss-md" style={{ padding: "6px 9px" }}>
+            <MilkdownInner value={value} editable onChange={onChange} />
+          </div>
+          {overlay}
         </div>
-        {overlay}
       </div>
     </MilkdownProvider>
   );

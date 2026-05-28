@@ -33,8 +33,14 @@ vi.mock("@/components/workspace/cards/_shared/MarkdownEditor", () => ({
     value: string;
     onChange: (md: string) => void;
     overlay?: ReactNode;
+    contentWidth?: number;
+    contentHeight?: number;
   }) => (
-    <div data-testid="expanded-editor-wrap">
+    <div
+      data-testid="expanded-editor-wrap"
+      data-content-width={props.contentWidth}
+      data-content-height={props.contentHeight}
+    >
       <textarea
         data-testid="expanded-editor"
         value={props.value}
