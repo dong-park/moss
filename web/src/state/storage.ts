@@ -27,6 +27,23 @@ interface StorageState {
   loadBoards: () => Promise<Board[]>;
   saveBoard: (patch: Partial<Board> & { id: string }) => Promise<void>;
   removeBoard: (id: string) => Promise<void>;
+  /** FEAT-subcanvas: boardId별 카드 수 — 함 카드의 "카드 N개" 표시용. */
+  countCardsByBoard: (boardIds: string[]) => Promise<Record<string, number>>;
+  /**
+   * FEAT-subcanvas: 서브 보드 트리 cascade 삭제. rootBoardId와 그 모든
+   * 하위 보드(parentBoardId 체인)의 노트·임베딩·연결 DB row를 제거한다.
+   * **OPFS 첨부 blob은 여기서 지우지 않는다** — 5초 undo 동안 복원 가능해야 하므로,
+   * blob 삭제는 undo 만료 시 [[purgeAttachments]]가 담당한다.
+   * @returns 삭제된 row 스냅샷 (undo 시 그대로 re-put).
+   */
+  removeBoardCascade: (rootBoardId: string) => Promise<{
+    boards: Board[];
+    notes: Note[];
+    connections: Connection[];
+    embeddings: EmbeddingCacheEntry[];
+  }>;
+  /** FEAT-subcanvas: undo 만료/확정 시 노트들의 OPFS 첨부 blob을 실제 삭제. */
+  purgeAttachments: (notes: Note[]) => Promise<void>;
 
   loadConnections: (noteIds?: string[]) => Promise<Connection[]>;
   saveConnection: (
@@ -197,6 +214,87 @@ export const useStorage = create<StorageState>((set, get) => ({
       await db.notes.where("boardId").equals(id).modify({ boardId: null });
       await db.boards.delete(id);
     });
+  },
+
+  countCardsByBoard: async (boardIds) => {
+    const db = getDB();
+    const result: Record<string, number> = {};
+    await Promise.all(
+      boardIds.map(async (id) => {
+        result[id] = await db.notes.where("boardId").equals(id).count();
+      }),
+    );
+    return result;
+  },
+
+  removeBoardCascade: async (rootBoardId) => {
+    const db = getDB();
+    // BFS로 삭제 대상 보드 id 수집 (root + 모든 후손). visited-set으로 사이클 방어.
+    const toDelete: string[] = [];
+    const seen = new Set<string>();
+    let frontier = [rootBoardId];
+    while (frontier.length > 0) {
+      const fresh = frontier.filter((id) => !seen.has(id));
+      fresh.forEach((id) => seen.add(id));
+      toDelete.push(...fresh);
+      const children = (await db.boards
+        .where("parentBoardId")
+        .anyOf(fresh)
+        .primaryKeys()) as string[];
+      frontier = children;
+    }
+    const snapshot = {
+      boards: [] as Board[],
+      notes: [] as Note[],
+      connections: [] as Connection[],
+      embeddings: [] as EmbeddingCacheEntry[],
+    };
+    await db.transaction(
+      "rw",
+      db.boards,
+      db.notes,
+      db.connections,
+      db.embeddings,
+      async () => {
+        for (const bid of toDelete) {
+          const board = await db.boards.get(bid);
+          if (board) snapshot.boards.push(board);
+          const notes = await db.notes.where("boardId").equals(bid).toArray();
+          if (notes.length > 0) {
+            const noteIds = notes.map((n) => n.id);
+            const incident = await db.connections
+              .where("sourceNoteId")
+              .anyOf(noteIds)
+              .or("targetNoteId")
+              .anyOf(noteIds)
+              .toArray();
+            const embs = (await db.embeddings.bulkGet(noteIds)).filter(
+              (e): e is EmbeddingCacheEntry => !!e,
+            );
+            snapshot.notes.push(...notes);
+            snapshot.connections.push(...incident);
+            snapshot.embeddings.push(...embs);
+            await db.connections.bulkDelete(incident.map((c) => c.id));
+            await db.embeddings.bulkDelete(noteIds);
+            await db.notes.bulkDelete(noteIds);
+          }
+          await db.boards.delete(bid);
+        }
+      },
+    );
+    // OPFS blob은 의도적으로 보존 — undo 만료 시 purgeAttachments가 정리.
+    return snapshot;
+  },
+
+  purgeAttachments: async (notes) => {
+    for (const n of notes) {
+      if (!n.attachmentRef) continue;
+      try {
+        await deleteBlob(n.attachmentRef);
+      } catch {
+        /* OPFS 삭제 실패는 무시 — 다음 GC에서 재시도 가능 */
+      }
+    }
   },
 
   loadConnections: async (noteIds) => {

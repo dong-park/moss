@@ -209,13 +209,17 @@ describe("FEAT-capture AC-2: ToolId → CardKind 10종 매핑", () => {
     expect(state.editingId).toBe(id);
   });
 
-  it("비-capture toolId(board)는 text 카드로 떨어지고 editing 활성", async () => {
+  // FEAT-subcanvas: board 도구는 이제 "함" 카드(kind:board)를 만든다(편집 비활성).
+  // 실제 함 생성(서브 보드 연결)은 createSubcanvas 경로이고, addCardAt은 kind만 매핑한다.
+  it("board toolId는 함(board) 카드 + editing 비활성", async () => {
     await useStorage.getState().init();
     await useWorkspace.getState().loadFromStorage();
     const id = useWorkspace.getState().addCardAt("board", 0, 0);
     await new Promise((r) => setTimeout(r, 10));
-    const card = useWorkspace.getState().cards.find((c) => c.id === id);
-    expect(card?.kind).toBe("text");
+    const state = useWorkspace.getState();
+    const card = state.cards.find((c) => c.id === id);
+    expect(card?.kind).toBe("board");
+    expect(state.editingId).toBe(null);
   });
 
   it("comment 도구는 comment 카드 + editing 비활성 (system 카드)", async () => {

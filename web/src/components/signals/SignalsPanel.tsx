@@ -15,10 +15,16 @@ export function SignalsPanel({ open, onClose }: { open: boolean; onClose: () => 
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        // FEAT-subcanvas: 패널이 열려 있으면 Esc를 독점한다. capture 단계에서
+        // stopImmediatePropagation으로 Canvas의 Esc→goToParent(상위 캔버스 이동)가
+        // 같은 키에 동시 발동하는 것을 막는다.
+        e.stopImmediatePropagation();
+        onClose();
+      }
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
   }, [open, onClose]);
 
   return (

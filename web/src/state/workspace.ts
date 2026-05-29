@@ -3,7 +3,14 @@
 import { create } from "zustand";
 import type { AINoteRef } from "./aiGate";
 import { useStorage } from "./storage";
-import { getDB, type Board, type Note, type NoteKind } from "./db/schema";
+import {
+  getDB,
+  type Board,
+  type Connection,
+  type EmbeddingCacheEntry,
+  type Note,
+  type NoteKind,
+} from "./db/schema";
 import { migratedContent } from "./markdownMigration";
 import { enqueueEmbed as enqueueEmbedRaw } from "./ai/embeddingQueue";
 import {
@@ -88,6 +95,11 @@ export interface Card {
   attachmentRef?: string;
   mediaType?: string;
   /**
+   * FEAT-subcanvas: kind="board" 함 카드가 가리키는 서브 보드(캔버스) id.
+   * 영속 시 content JSON(`__moss_subcanvas_v1__`)에 인코딩된다.
+   */
+  boardRef?: string;
+  /**
    * FEAT-markdown-memo-pen: 펜 모드로 이 카드 위에 덧그린 손글씨 레이어(JSON `{paths}`).
    * content와 독립 — 마크다운 본문 위에 겹쳐 그린다. 없으면 그림 없음.
    */
@@ -137,6 +149,25 @@ export interface PendingBoardUndo {
 
 export const BOARD_UNDO_MS = 5000;
 
+/**
+ * FEAT-subcanvas: 함 카드(서브 보드 트리) 삭제를 5초간 되돌릴 수 있도록 보관하는 스냅샷.
+ * cascade로 지운 board/note/connection/embedding row 전부와, 화면에서 제거된 함 카드,
+ * 삭제 시점의 보드를 담는다. 만료 시 OPFS blob까지 영구 삭제한다.
+ */
+export interface PendingSubcanvasUndo {
+  /** 화면에서 제거된 함 카드들 (같은 보드면 복원 시 다시 cards에 추가). */
+  funnelCards: Card[];
+  /** 삭제 시점 currentBoardId — 복원 시 같은 보드일 때만 함 카드를 뷰에 되살린다. */
+  boardAtDeletion: string;
+  /** 함 카드 자체의 note row (re-put 대상). */
+  funnelNotes: Note[];
+  boards: Board[];
+  notes: Note[];
+  connections: Connection[];
+  embeddings: EmbeddingCacheEntry[];
+  expiresAt: number;
+}
+
 export const MIN_SCALE = 0.25;
 export const MAX_SCALE = 3;
 
@@ -164,6 +195,8 @@ const CARD_ASPECT_BY_KIND: Record<CardKind, number> = {
   mindmap: 1150 / 1147,
   image: 941 / 1081,
   link: 806 / 1151,
+  // FEAT-subcanvas: 함 카드는 PNG 없이 폴더 스타일로 렌더 — 정사각 비율.
+  board: 1,
 };
 
 export function aspectForKind(kind: CardKind): number {
@@ -322,10 +355,42 @@ interface WorkspaceState {
   /** 사이드바 도구 커스텀 드래그 상태. null = 드래그 중 아님. */
   sidebarDrag: SidebarDrag | null;
   setSidebarDrag: (s: SidebarDrag | null) => void;
+
+  /* ─────────── FEAT-subcanvas: 캔버스 안의 "함" ─────────── */
+  /** 함 카드(boardRef)별 서브 보드의 카드 수 — "카드 N개" 표시용. 보드 로드 시 갱신. */
+  subcanvasCounts: Record<string, number>;
+  /** 카드 드래그 중 위에 올라온 함 카드 id — 드롭 하이라이트용. transient. */
+  dropTargetFunnelId: string | null;
+  setDropTargetFunnel: (id: string | null) => void;
+  /** 현재 보드의 함 카드들에 대한 카드 수를 다시 집계해 subcanvasCounts 갱신. */
+  refreshSubcanvasCounts: () => Promise<void>;
+  /**
+   * 현재 보드 (x,y)에 함 카드 + 연결된 빈 서브 보드(parentBoardId=현재)를 생성한다.
+   * @returns 생성된 함 카드 id.
+   */
+  createSubcanvas: (x: number, y: number) => string;
+  /** 함 카드의 boardRef 서브 보드로 진입(setCurrentBoard). */
+  enterSubcanvas: (cardId: string) => Promise<void>;
+  /** 현재 보드의 부모 보드로 이동. 부모 없으면(루트/시스템) no-op. */
+  goToParent: () => Promise<void>;
+  /** currentBoardId에서 parentBoardId 체인을 거슬러 루트→현재 순 경로. 시스템 보드면 []. */
+  getBreadcrumb: () => { id: string; name: string }[];
+  /**
+   * 카드를 함 카드의 서브 보드로 이동한다. boardId만 바꾸고 현재 뷰에서 제거.
+   * 자기 자신/사이클(함을 자기 자손 보드로) 이동은 no-op.
+   */
+  moveCardToSubcanvas: (cardId: string, funnelCardId: string) => Promise<void>;
+  /** 함 카드 cascade 삭제를 5초간 되돌릴 스냅샷 (없으면 null). UI 토스트가 구독. */
+  pendingSubcanvasUndo: PendingSubcanvasUndo | null;
+  /** 스냅샷의 모든 row를 re-put하고 함 카드를 뷰에 되살린다. */
+  undoSubcanvasRemove: () => Promise<void>;
+  /** undo 포기(×/만료) — 보류 중 blob을 영구 삭제하고 스냅샷 비움. */
+  clearSubcanvasUndo: () => void;
 }
 
 function isCaptureKind(kind: CardKind): boolean {
-  return kind !== "comment";
+  // comment·board는 텍스트 입력 카드가 아니다 — drop/더블클릭 시 편집 모드로 들어가지 않는다.
+  return kind !== "comment" && kind !== "board";
 }
 
 function kindToDefaultToolId(kind: CardKind): ToolId {
@@ -362,7 +427,10 @@ export function kindForTool(toolId: ToolId): CardKind {
       return toolId;
     case "comment":
       return "comment";
-    // 비-capture (board/column/line/more/trash): 사이드바 정리 도구이지 카드 생성 도구가 아니다.
+    // FEAT-subcanvas: board 도구 → 함 카드.
+    case "board":
+      return "board";
+    // 비-capture (column/line/more/trash): 사이드바 정리 도구이지 카드 생성 도구가 아니다.
     // 호출돼도 안전하게 text 카드로 떨어진다 (도구 자체 동작은 FEAT-canvas).
     default:
       return "text";
@@ -386,6 +454,9 @@ export function widthForKind(kind: CardKind): number {
     case "file":
       return 220;
     case "image":
+      return 200;
+    // FEAT-subcanvas: 함 카드 — 폴더 카드 느낌의 작은 정사각.
+    case "board":
       return 200;
     case "text":
     default:
@@ -448,6 +519,9 @@ const COMMENT_MARKER = "__moss_comment_v1__";
 /** 마이그레이션 — 이전 v0 마커("$comment")로 저장된 카드도 인식. */
 const COMMENT_MARKER_V0 = "$comment";
 
+/** FEAT-subcanvas: 함 카드 content에 박는 마커. boardRef와 함께 JSON 인코딩. */
+const SUBCANVAS_MARKER = "__moss_subcanvas_v1__";
+
 function encodeCardContent(card: Card): string {
   if (card.kind === "comment") {
     return JSON.stringify({
@@ -457,10 +531,41 @@ function encodeCardContent(card: Card): string {
       body: card.content,
     });
   }
+  if (card.kind === "board") {
+    return JSON.stringify({
+      [SUBCANVAS_MARKER]: true,
+      boardRef: card.boardRef ?? "",
+    });
+  }
   return card.content;
 }
 
 function decodeNoteToCard(note: Note): Card {
+  // FEAT-subcanvas: 함 카드 — content JSON에서 boardRef 복원. comment/migration 경로 전에 처리.
+  if (note.kind === "board") {
+    let boardRef: string | undefined;
+    try {
+      const parsed = JSON.parse(note.content) as {
+        [SUBCANVAS_MARKER]?: boolean;
+        boardRef?: string;
+      };
+      if (parsed[SUBCANVAS_MARKER]) boardRef = parsed.boardRef || undefined;
+    } catch {
+      /* 손상된 content — boardRef 없음(렌더 시 빈 함으로 표시) */
+    }
+    return {
+      id: note.id,
+      kind: "board",
+      x: note.x,
+      y: note.y,
+      width: note.width,
+      height: note.height,
+      content: "",
+      boardRef,
+      lastVisitedAt: note.lastVisitedAt,
+    };
+  }
+
   let kind: CardKind = note.kind;
   let content = note.content;
   let author: string | undefined;
@@ -533,6 +638,54 @@ function storageBoardId(currentBoardId: CurrentBoardId): string | null {
   return currentBoardId === SYSTEM_BOARD_ID ? null : currentBoardId;
 }
 
+/**
+ * FEAT-subcanvas: candidateId 보드가 ancestorId 보드의 자손(또는 동일)인지.
+ * parentBoardId 체인을 거슬러 올라가며 검사. 함을 자기 자손으로 이동(사이클) 차단용.
+ */
+function isDescendantBoard(
+  boards: Board[],
+  candidateId: string,
+  ancestorId: string,
+): boolean {
+  let id: string | null | undefined = candidateId;
+  const guard = new Set<string>();
+  while (id && !guard.has(id)) {
+    if (id === ancestorId) return true;
+    guard.add(id);
+    id = boards.find((b) => b.id === id)?.parentBoardId ?? null;
+  }
+  return false;
+}
+
+/**
+ * FEAT-subcanvas: currentBoardId에서 parentBoardId 체인을 거슬러 루트→현재 경로.
+ * store.getBreadcrumb()와 Breadcrumb 컴포넌트가 공유하는 단일 소스.
+ * 시스템 보드 직하의 함이면 시스템 보드를 루트 크럼(name="")으로 포함해
+ * "머무는 생각 › …"으로 보이게 한다. 시스템 보드 자체에 있을 땐 [].
+ */
+export function computeBreadcrumb(
+  boards: Board[],
+  currentBoardId: string,
+): { id: string; name: string }[] {
+  if (currentBoardId === SYSTEM_BOARD_ID) return [];
+  const chain: { id: string; name: string }[] = [];
+  let id: string | null | undefined = currentBoardId;
+  const guard = new Set<string>();
+  while (id && id !== SYSTEM_BOARD_ID && !guard.has(id)) {
+    guard.add(id);
+    const b = boards.find((x) => x.id === id);
+    if (!b) break;
+    chain.unshift({ id: b.id, name: b.name });
+    const parent = b.parentBoardId ?? null;
+    if (parent === SYSTEM_BOARD_ID) {
+      chain.unshift({ id: SYSTEM_BOARD_ID, name: "" });
+      break;
+    }
+    id = parent;
+  }
+  return chain;
+}
+
 function persistCard(card: Card, boardId: string | null): Promise<void> {
   const storage = useStorage.getState();
   if (!storage.initialized) return Promise.resolve();
@@ -540,7 +693,8 @@ function persistCard(card: Card, boardId: string | null): Promise<void> {
   // FEAT-ai-pipeline §2: 메모 저장 시 임베딩 큐로 enqueue.
   // moveCard처럼 본문 변경 없이 호출되는 경로에서도 큐 안에서 콘텐츠 해시
   // 비교로 cache hit이면 skip하므로 안전(AC-4).
-  enqueueEmbedRaw(card.id, content, !!card.aiOptOut);
+  // FEAT-subcanvas: 함 카드 content는 boardRef JSON일 뿐이라 임베딩 대상 아님 — skip.
+  if (card.kind !== "board") enqueueEmbedRaw(card.id, content, !!card.aiOptOut);
   return storage.saveNote({
     id: card.id,
     boardId,
@@ -575,6 +729,77 @@ function persistCardDebounced(card: Card, boardId: string | null) {
 /** 보드 전환 페이드 시간 — spec §3 AC-4. */
 export const BOARD_FADE_MS = 200;
 
+type WsSet = (
+  partial:
+    | Partial<WorkspaceState>
+    | ((s: WorkspaceState) => Partial<WorkspaceState>),
+) => void;
+type WsGet = () => WorkspaceState;
+
+/**
+ * FEAT-subcanvas: 함 카드들을 cascade 삭제하고 5초 undo 스냅샷을 건다.
+ * DB row(board/note/connection/embedding)는 즉시 지우되 OPFS blob은 보존하고,
+ * undo 만료(또는 ×) 시에만 purge한다 — 만료 전 undo면 미디어까지 복원되도록.
+ */
+async function cascadeDeleteFunnels(
+  funnelCards: Card[],
+  boardAtDeletion: string,
+  set: WsSet,
+  get: WsGet,
+): Promise<void> {
+  const storage = useStorage.getState();
+  if (!storage.initialized) return;
+  const db = getDB();
+
+  const funnelNotes: Note[] = [];
+  const boards: Board[] = [];
+  const notes: Note[] = [];
+  const connections: Connection[] = [];
+  const embeddings: EmbeddingCacheEntry[] = [];
+
+  for (const fc of funnelCards) {
+    if (!fc.boardRef) continue;
+    const fnote = await db.notes.get(fc.id);
+    if (fnote) funnelNotes.push(fnote);
+    await db.notes.delete(fc.id);
+    const snap = await storage.removeBoardCascade(fc.boardRef);
+    boards.push(...snap.boards);
+    notes.push(...snap.notes);
+    connections.push(...snap.connections);
+    embeddings.push(...snap.embeddings);
+  }
+
+  const freshBoards = await storage.loadBoards();
+  const counts = { ...get().subcanvasCounts };
+  for (const fc of funnelCards) if (fc.boardRef) delete counts[fc.boardRef];
+  set({ boards: freshBoards, subcanvasCounts: counts });
+
+  // 직전 undo가 남아 있으면 그건 즉시 확정(blob purge) — undo 스택은 1개만 유지.
+  const prev = get().pendingSubcanvasUndo;
+  if (prev) void storage.purgeAttachments([...prev.funnelNotes, ...prev.notes]);
+
+  const expiresAt = Date.now() + BOARD_UNDO_MS;
+  set({
+    pendingSubcanvasUndo: {
+      funnelCards,
+      boardAtDeletion,
+      funnelNotes,
+      boards,
+      notes,
+      connections,
+      embeddings,
+      expiresAt,
+    },
+  });
+  setTimeout(() => {
+    const cur = get().pendingSubcanvasUndo;
+    if (cur && cur.expiresAt === expiresAt) {
+      void storage.purgeAttachments([...cur.funnelNotes, ...cur.notes]);
+      set({ pendingSubcanvasUndo: null });
+    }
+  }, BOARD_UNDO_MS);
+}
+
 export const useWorkspace = create<WorkspaceState>((set, get) => ({
   cards: [],
   selectedIds: [],
@@ -596,6 +821,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   deleteDialogBoardId: null,
   pendingRenameBoardId: null,
   sidebarDrag: null,
+  subcanvasCounts: {},
+  dropTargetFunnelId: null,
+  pendingSubcanvasUndo: null,
 
   setSidebarDrag: (s) => set({ sidebarDrag: s }),
 
@@ -624,6 +852,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
     const cards = notes.map(decodeNoteToCard);
     set({ cards, boards });
+    void get().refreshSubcanvasCounts();
   },
 
   setCurrentBoard: async (id) => {
@@ -665,6 +894,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
     // 6) 페이드인 — BOARD_FADE_MS 후 transitioning 해제
     setTimeout(() => set({ boardTransitioning: false }), BOARD_FADE_MS);
+
+    // 7) FEAT-subcanvas: 새 보드의 함 카드들 카드 수 집계
+    void get().refreshSubcanvasCounts();
   },
 
   createBoard: async (name = "") => {
@@ -995,6 +1227,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   remove: (id) => {
+    // FEAT-subcanvas: 함 카드면 연결된 서브 보드 트리까지 cascade 삭제(5초 undo).
+    const card = get().cards.find((c) => c.id === id);
+    const funnel =
+      card && card.kind === "board" && card.boardRef ? card : null;
+    const boardAtDeletion = get().currentBoardId;
     set((s) => ({
       cards: s.cards.filter((c) => c.id !== id),
       selectedIds: s.selectedIds.filter((x) => x !== id),
@@ -1007,13 +1244,24 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       debounceTimers.delete(id);
     }
     const storage = useStorage.getState();
-    if (storage.initialized) void storage.removeNote(id);
+    if (!storage.initialized) return;
+    if (funnel) {
+      void cascadeDeleteFunnels([funnel], boardAtDeletion, set, get);
+    } else {
+      void storage.removeNote(id);
+    }
   },
 
   removeSelected: () => {
     const ids = get().selectedIds;
     if (ids.length === 0) return;
     const idSet = new Set(ids);
+    // FEAT-subcanvas: 선택 중 함 카드 → cascade + 5초 undo. 일반 카드는 즉시 삭제.
+    const funnelCards = get().cards.filter(
+      (c) => idSet.has(c.id) && c.kind === "board" && c.boardRef,
+    );
+    const funnelIdSet = new Set(funnelCards.map((c) => c.id));
+    const boardAtDeletion = get().currentBoardId;
     set((s) => ({
       cards: s.cards.filter((c) => !idSet.has(c.id)),
       selectedIds: [],
@@ -1031,8 +1279,12 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       }
     }
     const storage = useStorage.getState();
-    if (storage.initialized) {
-      for (const id of ids) void storage.removeNote(id);
+    if (!storage.initialized) return;
+    // 함이 아닌 일반 카드는 기존대로 즉시 삭제(blob 해제 포함, undo 없음).
+    for (const id of ids) if (!funnelIdSet.has(id)) void storage.removeNote(id);
+    // 함 카드는 cascade + 5초 undo.
+    if (funnelCards.length > 0) {
+      void cascadeDeleteFunnels(funnelCards, boardAtDeletion, set, get);
     }
   },
 
@@ -1147,6 +1399,164 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     })),
 
   resetViewport: () => set({ viewport: { x: 0, y: 0, scale: 1 } }),
+
+  /* ─────────── FEAT-subcanvas ─────────── */
+
+  setDropTargetFunnel: (id) => set({ dropTargetFunnelId: id }),
+
+  refreshSubcanvasCounts: async () => {
+    const refs = get()
+      .cards.filter((c) => c.kind === "board" && c.boardRef)
+      .map((c) => c.boardRef as string);
+    if (refs.length === 0) {
+      set({ subcanvasCounts: {} });
+      return;
+    }
+    const storage = useStorage.getState();
+    if (!storage.initialized) await storage.init();
+    const counts = await storage.countCardsByBoard(refs);
+    set({ subcanvasCounts: counts });
+  },
+
+  createSubcanvas: (x, y) => {
+    // 시스템 보드("머무는 생각")를 포함해 어느 보드에서든 함을 만들 수 있다.
+    // 함 카드는 현재 보드(시스템이면 boardId=null)에 저장하고, 새 서브 보드의
+    // parentBoardId는 현재 보드 id(시스템이면 "system" sentinel)로 둔다.
+    const parentBoardId = get().currentBoardId;
+    const childBoardId = `b-${Date.now().toString(36)}-${counter++}`;
+    const id = nextId();
+    const width = widthForKind("board");
+    const height = clamp(
+      width / aspectForKind("board"),
+      CARD_MIN_HEIGHT,
+      CARD_MAX_HEIGHT,
+    );
+    const card: Card = {
+      id,
+      kind: "board",
+      x,
+      y,
+      width,
+      height,
+      content: "",
+      boardRef: childBoardId,
+      lastVisitedAt: Date.now(),
+    };
+    set((s) => ({
+      cards: [...s.cards, card],
+      selectedIds: [id],
+      editingId: null,
+      subcanvasCounts: { ...s.subcanvasCounts, [childBoardId]: 0 },
+    }));
+
+    void (async () => {
+      const storage = useStorage.getState();
+      if (!storage.initialized) await storage.init();
+      await storage.saveBoard({
+        id: childBoardId,
+        name: "",
+        isSystem: false,
+        parentBoardId,
+      });
+      await persistCard(card, storageBoardId(parentBoardId));
+      const boards = await storage.loadBoards();
+      set({ boards });
+    })();
+
+    return id;
+  },
+
+  enterSubcanvas: async (cardId) => {
+    const card = get().cards.find((c) => c.id === cardId);
+    if (!card || card.kind !== "board" || !card.boardRef) return;
+    await get().setCurrentBoard(card.boardRef);
+  },
+
+  goToParent: async () => {
+    const cur = get().currentBoardId;
+    if (cur === SYSTEM_BOARD_ID) return;
+    const board = get().boards.find((b) => b.id === cur);
+    // 루트 사용자 보드(부모 없음)는 함을 통해 들어온 게 아니므로 no-op.
+    if (!board || board.parentBoardId == null) return;
+    await get().setCurrentBoard(board.parentBoardId);
+  },
+
+  getBreadcrumb: () => computeBreadcrumb(get().boards, get().currentBoardId),
+
+  moveCardToSubcanvas: async (cardId, funnelCardId) => {
+    if (cardId === funnelCardId) return;
+    const cards = get().cards;
+    const card = cards.find((c) => c.id === cardId);
+    const funnel = cards.find((c) => c.id === funnelCardId);
+    if (!card || !funnel || funnel.kind !== "board" || !funnel.boardRef) return;
+    const targetBoardId = funnel.boardRef;
+
+    // 사이클 가드: 함 카드를 자기 자손(또는 자기 자신) 서브 보드로 넣으면 트리가 깨진다.
+    if (
+      card.kind === "board" &&
+      card.boardRef &&
+      isDescendantBoard(get().boards, targetBoardId, card.boardRef)
+    ) {
+      return;
+    }
+
+    const storage = useStorage.getState();
+    if (!storage.initialized) await storage.init();
+    await storage.saveNote({ id: cardId, boardId: targetBoardId });
+
+    set((s) => ({
+      cards: s.cards.filter((c) => c.id !== cardId),
+      selectedIds: s.selectedIds.filter((x) => x !== cardId),
+      editingId: s.editingId === cardId ? null : s.editingId,
+      dropTargetFunnelId: null,
+      subcanvasCounts: {
+        ...s.subcanvasCounts,
+        [targetBoardId]: (s.subcanvasCounts[targetBoardId] ?? 0) + 1,
+      },
+    }));
+
+    // 함 카드를 옮기면 그 서브 보드의 부모도 새 보드로 따라간다(트리 일관성).
+    if (card.kind === "board" && card.boardRef) {
+      await storage.saveBoard({
+        id: card.boardRef,
+        parentBoardId: targetBoardId,
+      });
+      const boards = await storage.loadBoards();
+      set({ boards });
+    }
+  },
+
+  undoSubcanvasRemove: async () => {
+    const pending = get().pendingSubcanvasUndo;
+    if (!pending) return;
+    set({ pendingSubcanvasUndo: null });
+    const db = getDB();
+    // blob은 아직 안 지웠으므로(만료 전) row만 되돌리면 미디어까지 복원된다.
+    await db.boards.bulkPut(pending.boards);
+    await db.notes.bulkPut([...pending.funnelNotes, ...pending.notes]);
+    if (pending.connections.length)
+      await db.connections.bulkPut(pending.connections);
+    if (pending.embeddings.length)
+      await db.embeddings.bulkPut(pending.embeddings);
+    const storage = useStorage.getState();
+    const boards = await storage.loadBoards();
+    set({ boards });
+    // 삭제 시점과 같은 보드를 보고 있으면 함 카드를 화면에 되살린다.
+    if (get().currentBoardId === pending.boardAtDeletion) {
+      set((s) => ({ cards: [...s.cards, ...pending.funnelCards] }));
+    }
+    await get().refreshSubcanvasCounts();
+  },
+
+  clearSubcanvasUndo: () => {
+    const pending = get().pendingSubcanvasUndo;
+    if (!pending) return;
+    // undo 포기 = 삭제 확정 → 보류했던 OPFS blob 영구 정리.
+    void useStorage
+      .getState()
+      .purgeAttachments([...pending.funnelNotes, ...pending.notes]);
+    set({ pendingSubcanvasUndo: null });
+  },
 }));
 
 /* 테스트·디버깅용 export — 프로덕션 코드는 직접 호출 금지. */
@@ -1157,5 +1567,7 @@ export const __internal = {
   kindForTool,
   widthForKind,
   isCaptureKind,
+  isDescendantBoard,
+  SUBCANVAS_MARKER,
   SEED_CARDS,
 };

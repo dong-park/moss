@@ -74,6 +74,8 @@ export function Canvas() {
   const setPenMode = useWorkspace((s) => s.setPenMode);
   const setPenTool = useWorkspace((s) => s.setPenTool);
   const setPenWidth = useWorkspace((s) => s.setPenWidth);
+  // FEAT-subcanvas: 선택이 없을 때 Esc → 부모 캔버스로 한 단계 위.
+  const goToParent = useWorkspace((s) => s.goToParent);
   const pushToast = useToasts((s) => s.push);
   const t = useT();
 
@@ -166,7 +168,16 @@ export function Canvas() {
       if (editingId) return;
       if (isTyping()) return;
       if (selectedIds.length === 0) {
-        if (e.key === "Escape") clearSelection();
+        // FEAT-subcanvas: 선택이 없으면 Esc로 부모 캔버스로 올라간다(루트면 no-op).
+        // 단, 모달(펼치기·템플릿·삭제 다이얼로그)이 열려 있으면 그쪽 Esc에 양보한다.
+        if (e.key === "Escape") {
+          const ws = useWorkspace.getState();
+          const modalOpen =
+            ws.expandedCardId !== null ||
+            ws.templatePickerOpen ||
+            ws.deleteDialogBoardId !== null;
+          if (!modalOpen) void goToParent();
+        }
         return;
       }
       if (e.key === "Delete" || e.key === "Backspace") {
@@ -196,6 +207,7 @@ export function Canvas() {
     setPenMode,
     setPenTool,
     setPenWidth,
+    goToParent,
   ]);
 
   /* ─ 휠 줌 (캔버스 위에서 wheel은 항상 줌으로 처리) ─ */

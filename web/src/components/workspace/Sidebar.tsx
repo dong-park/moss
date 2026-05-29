@@ -82,6 +82,7 @@ export function Sidebar({ onSignalsClick }: { onSignalsClick?: () => void }) {
   const [activeId, setActiveId] = useState<ToolId>("text");
   const setSidebarDrag = useWorkspace((s) => s.setSidebarDrag);
   const addCardAt = useWorkspace((s) => s.addCardAt);
+  const createSubcanvas = useWorkspace((s) => s.createSubcanvas);
   const promoteCardToNewBoard = useWorkspace((s) => s.promoteCardToNewBoard);
   // FEAT-markdown-memo-pen: 펜 도구 = 펜 모드 토글.
   const penMode = useWorkspace((s) => s.penMode);
@@ -104,6 +105,13 @@ export function Sidebar({ onSignalsClick }: { onSignalsClick?: () => void }) {
       const sy = clientY - rect.top;
       const wx = (sx - viewport.x) / viewport.scale - 120;
       const wy = (sy - viewport.y) / viewport.scale - 20;
+
+      // FEAT-subcanvas: board 도구 = "함" 생성. 시스템 보드 포함 어디서나 가능.
+      if (toolId === "board") {
+        createSubcanvas(wx, wy);
+        return;
+      }
+
       const newCardId = addCardAt(toolId, wx, wy);
       if (useWorkspace.getState().currentBoardId === SYSTEM_BOARD_ID) {
         pushToast({
@@ -120,7 +128,7 @@ export function Sidebar({ onSignalsClick }: { onSignalsClick?: () => void }) {
         });
       }
     },
-    [addCardAt, promoteCardToNewBoard, pushToast, t],
+    [addCardAt, createSubcanvas, promoteCardToNewBoard, pushToast, t],
   );
 
   /**
@@ -166,21 +174,28 @@ export function Sidebar({ onSignalsClick }: { onSignalsClick?: () => void }) {
       <div className="my-2.5 h-px w-8 bg-border" />
 
       <div className="flex flex-col items-center">
-        {CANVAS_GROUP.map((item) => (
-          <SidebarItem
-            key={item.toolId}
-            item={item}
-            label={labelFor(item.labelKey)}
-            active={item.toolId === "pen" ? penMode : item.toolId === activeId}
-            onClick={() => {
-              if (item.toolId === "pen") {
-                togglePenMode();
-                return;
-              }
-              setActiveId(item.toolId);
-            }}
-          />
-        ))}
+        {CANVAS_GROUP.map((item) => {
+          // FEAT-subcanvas: board 도구는 캔버스로 끌어다 놓아 "함"을 만든다 → 드래그 가능.
+          const isDraggable = item.toolId === "board";
+          return (
+            <SidebarItem
+              key={item.toolId}
+              item={item}
+              label={labelFor(item.labelKey)}
+              active={item.toolId === "pen" ? penMode : item.toolId === activeId}
+              onClick={() => {
+                if (item.toolId === "pen") {
+                  togglePenMode();
+                  return;
+                }
+                setActiveId(item.toolId);
+              }}
+              draggable={isDraggable}
+              setSidebarDrag={isDraggable ? setSidebarDrag : undefined}
+              onDrop={isDraggable ? tryDrop : undefined}
+            />
+          );
+        })}
       </div>
 
       <div className="my-2.5 h-px w-8 bg-border" />

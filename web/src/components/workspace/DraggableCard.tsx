@@ -3,7 +3,6 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { useWorkspace, type Card } from "@/state/workspace";
 import { CardContent } from "./cards/CardContent";
-import { DrawingLayer } from "./cards/_shared/DrawingLayer";
 import { isExpandable } from "./cards/_shared/expandable";
 import { ResizeHandles } from "./ResizeHandles";
 import { AIOptOutBadge } from "@/components/privacy/AIOptOutBadge";
@@ -22,11 +21,13 @@ export function DraggableCard({ card }: { card: Card }) {
   const setEditing = useWorkspace((s) => s.setEditing);
   const setExpandedCard = useWorkspace((s) => s.setExpandedCard);
   const toggleAIOptOut = useWorkspace((s) => s.toggleAIOptOut);
-  // FEAT-markdown-memo-pen: 펜 모드 — 메모 카드 위 DrawingLayer overlay.
+  // FEAT-subcanvas: 함 카드 더블클릭 진입 + 드래그로 카드 넣기.
+  const enterSubcanvas = useWorkspace((s) => s.enterSubcanvas);
+  const moveCardToSubcanvas = useWorkspace((s) => s.moveCardToSubcanvas);
+  const setDropTargetFunnel = useWorkspace((s) => s.setDropTargetFunnel);
+  // FEAT-markdown-memo-pen: 펜 모드 — 드래그/편집 진입 차단 분기에 쓰인다.
+  // 펜 overlay 자체는 TextCardContent(컬럼 안)가 렌더한다.
   const penMode = useWorkspace((s) => s.penMode);
-  const penTool = useWorkspace((s) => s.penTool);
-  const penWidth = useWorkspace((s) => s.penWidth);
-  const setOverlay = useWorkspace((s) => s.setOverlay);
   /**
    * 카드별 atomic selector — 자기 ID에 대한 boolean만 구독.
    * selectedIds 배열 전체를 구독하면 다른 카드 선택/해제 때마다 모든 카드가 리렌더.
@@ -101,6 +102,24 @@ export function DraggableCard({ card }: { card: Card }) {
       multi: wasInMulti,
     };
 
+    // FEAT-subcanvas: 단일 카드 드래그 중 커서 아래의 함 카드(자기 제외)를 추적.
+    // elementsFromPoint는 위→아래 순서라, 끌고 있는 카드를 건너뛰고 그 아래 카드를 본다.
+    let hoveredFunnelId: string | null = null;
+    const findFunnelUnder = (clientX: number, clientY: number): string | null => {
+      const els = document.elementsFromPoint(clientX, clientY);
+      for (const el of els) {
+        const host = (el as HTMLElement).closest?.(
+          "[data-card-id]",
+        ) as HTMLElement | null;
+        if (!host) continue;
+        const id = host.dataset.cardId;
+        if (!id || id === card.id) continue;
+        const target = useWorkspace.getState().cards.find((c) => c.id === id);
+        return target?.kind === "board" ? id : null;
+      }
+      return null;
+    };
+
     const onMove = (ev: MouseEvent) => {
       const d = dragRef.current;
       if (!d) return;
@@ -119,6 +138,11 @@ export function DraggableCard({ card }: { card: Card }) {
         d.lastWY = targetY;
       } else {
         moveCard(card.id, d.originX + dx / s, d.originY + dy / s);
+        const funnel = findFunnelUnder(ev.clientX, ev.clientY);
+        if (funnel !== hoveredFunnelId) {
+          hoveredFunnelId = funnel;
+          setDropTargetFunnel(funnel);
+        }
       }
     };
 
@@ -128,6 +152,12 @@ export function DraggableCard({ card }: { card: Card }) {
       if (d && !d.moved && d.multi) {
         selectOne(card.id);
       }
+      // FEAT-subcanvas: 함 위에서 놓았으면 그 서브 캔버스로 카드 이동.
+      if (d && d.moved && !d.multi && hoveredFunnelId) {
+        void moveCardToSubcanvas(card.id, hoveredFunnelId);
+      }
+      setDropTargetFunnel(null);
+      hoveredFunnelId = null;
       dragRef.current = null;
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
@@ -140,6 +170,11 @@ export function DraggableCard({ card }: { card: Card }) {
   const onDoubleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (penMode) return; // 펜 모드에선 편집 진입 안 함
+    // FEAT-subcanvas: 함 카드 더블클릭 → 서브 캔버스 진입.
+    if (card.kind === "board") {
+      void enterSubcanvas(card.id);
+      return;
+    }
     // FEAT-memo-expand: 확대 지원 카드(text 등)는 더블클릭으로 펼치기 모달을 연다.
     // 인라인 편집(setEditing)을 완전 대체 — 편집은 모달 안에서 한다.
     if (isExpandable(card)) {
@@ -149,10 +184,6 @@ export function DraggableCard({ card }: { card: Card }) {
     if (card.kind === "comment") return;
     setEditing(card.id);
   };
-
-  // FEAT-markdown-memo-pen D7: v1은 메모(text) 카드에만 그리기 overlay.
-  // 그림이 있으면 펜 모드가 아니어도 표시(active=false → 클릭 통과).
-  const showOverlay = card.kind === "text" && (penMode || !!card.overlay);
 
   return (
     <div
@@ -190,31 +221,6 @@ export function DraggableCard({ card }: { card: Card }) {
         onChange={(content) => setContent(card.id, content)}
         onCommitEdit={() => setEditing(null)}
       />
-
-      {/* FEAT-markdown-memo-pen: 메모 위 그리기 overlay. 카드에 종속 → 함께 이동·저장.
-        *
-        * inset 5% + overflow-hidden — 포스트잇 PNG의 둥근/접힌 모서리 디자인 안쪽
-        * 사각형 영역으로 그리기 영역을 밀어넣어 stroke가 PNG 밖으로 삐져나가지
-        * 않게 한다. viewBox=카드 dimensions로 카드↔모달 좌표공간 통일 — 카드에서
-        * 그린 stroke가 모달 viewBox와 같은 좌표계라 정렬 유지. */}
-      {showOverlay && (
-        <div
-          className="absolute overflow-hidden"
-          style={{ inset: "5%", zIndex: 25 }}
-        >
-          <DrawingLayer
-            value={card.overlay ?? ""}
-            active={penMode}
-            penWidth={penWidth}
-            tool={penTool}
-            onChange={(json) => setOverlay(card.id, json)}
-            viewBox={{
-              width: card.width,
-              height: card.height ?? measuredHeight,
-            }}
-          />
-        </div>
-      )}
 
       {/*
        * FEAT-memo-expand: 메모(text) 카드 펼치기 버튼 — 호버 시 우상단에 노출.

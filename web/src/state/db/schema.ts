@@ -20,7 +20,9 @@ export type NoteKind =
   | "link"
   | "audio"
   | "file"
-  | "code";
+  | "code"
+  // FEAT-subcanvas: "함" 카드 — content에 {boardRef}를 담아 서브 보드(캔버스)를 가리킨다.
+  | "board";
 
 export interface Note {
   id: string;
@@ -54,6 +56,12 @@ export interface Board {
   name: string;
   isSystem: boolean;
   templateId?: string;
+  /**
+   * FEAT-subcanvas: 이 보드가 다른 보드 안의 "함"에 연결된 서브 캔버스이면
+   * 부모 보드 id. 루트/시스템 보드는 null|undefined. parentBoardId 체인으로
+   * 브레드크럼·사이클 검사를 수행한다.
+   */
+  parentBoardId?: string | null;
   createdAt: number;
   updatedAt: number;
   lastOpenedAt: number;
@@ -142,6 +150,12 @@ export class MossDB extends Dexie {
             if (md !== note.content) note.content = md;
           });
       });
+    // v4 (FEAT-subcanvas): boards에 parentBoardId 인덱스 추가 — 서브 캔버스 트리 조회용.
+    // 기존 보드는 parentBoardId가 undefined(=루트)로 남는다. 데이터 modify 불필요.
+    this.version(4).stores({
+      ...stores,
+      boards: "id, isSystem, lastOpenedAt, parentBoardId",
+    });
   }
 }
 
