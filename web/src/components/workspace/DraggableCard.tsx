@@ -191,15 +191,27 @@ export function DraggableCard({ card }: { card: Card }) {
         onCommitEdit={() => setEditing(null)}
       />
 
-      {/* FEAT-markdown-memo-pen: 메모 위 그리기 overlay. 카드에 종속 → 함께 이동·저장. */}
+      {/* FEAT-markdown-memo-pen: 메모 위 그리기 overlay. 카드에 종속 → 함께 이동·저장.
+        *
+        * inset 5% + overflow-hidden — 포스트잇 PNG의 둥근/접힌 모서리 디자인 안쪽
+        * 사각형 영역으로 그리기 영역을 밀어넣어 stroke가 PNG 밖으로 삐져나가지
+        * 않게 한다. viewBox=카드 dimensions로 카드↔모달 좌표공간 통일 — 카드에서
+        * 그린 stroke가 모달 viewBox와 같은 좌표계라 정렬 유지. */}
       {showOverlay && (
-        <div className="absolute inset-0" style={{ zIndex: 25 }}>
+        <div
+          className="absolute overflow-hidden"
+          style={{ inset: "5%", zIndex: 25 }}
+        >
           <DrawingLayer
             value={card.overlay ?? ""}
             active={penMode}
             penWidth={penWidth}
             tool={penTool}
             onChange={(json) => setOverlay(card.id, json)}
+            viewBox={{
+              width: card.width,
+              height: card.height ?? measuredHeight,
+            }}
           />
         </div>
       )}
