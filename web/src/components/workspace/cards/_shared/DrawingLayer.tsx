@@ -12,12 +12,11 @@
  *  - undo/redo/clear/굵기·도구 토글 = 호출측이 소유(카드 키보드 or 펜 모드 전역).
  *
  * active=false면 pointer-events:none → 클릭이 카드(드래그/편집)로 통과한다.
- * 좌표는 svg(=카드 content box) 기준 상대좌표(handwriting과 동일, 리사이즈 비스케일).
  *
- * viewBox(선택): 지정 시 SVG는 viewBox="0 0 W H" + preserveAspectRatio
- * "xMinYMin meet"로 비율 유지하며 컨테이너에 맞춰 확대된다. 새 stroke의 좌표는
- * toLocal에서 픽셀→viewBox 좌표로 환산돼 기존 stroke와 좌표공간이 일치한다
- * — 카드(viewBox 없음)와 모달(viewBox=카드크기) 사이 동일 데이터로 호환된다.
+ * 좌표계: 부모 컬럼(고정 폭 [[MEMO_CONTENT_WIDTH]])을 가득 채우는 1:1 픽셀 좌표.
+ * 카드와 모달이 같은 고정 폭 컬럼 위에 이 레이어를 1:1로 얹으므로, stroke가 카드↔
+ * 모달 어디서 그려져도 동일 좌표공간에 저장되고 같은 글자 위에 정렬된다. 컬럼이
+ * CSS scale 없이 1:1이라 viewBox/스케일 환산이 불필요하다(과거 viewBox 방식 제거).
  * ───────────────────────────────────────────────────────────── */
 
 import { useMemo, useRef, useState } from "react";
@@ -37,11 +36,6 @@ export type DrawingLayerProps = {
   onChange: (json: string) => void;
   /** stroke 색 (CSS 변수). 기본 본문색. */
   stroke?: string;
-  /**
-   * SVG viewBox 좌표계 크기. 지정 시 비율 유지하며 컨테이너에 맞춰 확대된다.
-   * 미지정 시 1:1 픽셀 좌표(카드 본문 — 기존 동작). 자세한 설명은 파일 헤더.
-   */
-  viewBox?: { width: number; height: number };
 };
 
 /** 지우개 근접 판정 임계 (px). */
@@ -54,27 +48,16 @@ export function DrawingLayer({
   tool,
   onChange,
   stroke = "var(--color-text)",
-  viewBox,
 }: DrawingLayerProps) {
   const data = useMemo(() => parseHandwriting(value), [value]);
   const [draft, setDraft] = useState<HandwritingPoint[]>([]);
   const drawingRef = useRef(false);
   const svgRef = useRef<SVGSVGElement | null>(null);
 
+  // 컬럼이 1:1(CSS scale 없음)이므로 SVG 기준 상대 픽셀이 곧 저장 좌표다.
   const toLocal = (clientX: number, clientY: number): HandwritingPoint => {
     const rect = svgRef.current?.getBoundingClientRect();
     if (!rect) return { x: 0, y: 0 };
-    // viewBox 사용 시 픽셀→viewBox 좌표 환산. xMinYMin meet → 좌상단 anchor,
-    // scale = min(W/vbW, H/vbH), offset 없음.
-    if (viewBox && rect.width > 0 && rect.height > 0) {
-      const s = Math.min(rect.width / viewBox.width, rect.height / viewBox.height);
-      if (s > 0) {
-        return {
-          x: +((clientX - rect.left) / s).toFixed(1),
-          y: +((clientY - rect.top) / s).toFixed(1),
-        };
-      }
-    }
     return {
       x: +(clientX - rect.left).toFixed(1),
       y: +(clientY - rect.top).toFixed(1),
@@ -128,8 +111,6 @@ export function DrawingLayer({
     <svg
       ref={svgRef}
       data-drawing-layer
-      viewBox={viewBox ? `0 0 ${viewBox.width} ${viewBox.height}` : undefined}
-      preserveAspectRatio={viewBox ? "xMinYMin meet" : undefined}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
@@ -146,10 +127,9 @@ export function DrawingLayer({
         pointerEvents: active ? "auto" : "none",
         cursor,
         touchAction: "none",
-        // viewBox 사용 시(=모달) viewBox 밖 stroke도 다 보여야 한다 — 사용자가
-        // 카드 박스(예: 240px) 밖까지 그린 큰 스크리블이 펼치기 모달에선 전부
-        // 보이게. 카드(viewBox 없음)는 hidden(기본) 유지 — 메모 박스 안만 보임.
-        overflow: viewBox ? "visible" : undefined,
+        // 컬럼 밖으로 나간 stroke도 모달에선 다 보이게. 카드는 카드 박스의
+        // overflow-hidden이 컬럼 전체를 크롭하므로 여기 visible이어도 무방.
+        overflow: "visible",
       }}
     >
       {allPaths.map((path, i) => (

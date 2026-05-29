@@ -18,9 +18,7 @@
 
 import {
   useEffect,
-  useLayoutEffect,
   useRef,
-  useState,
   useSyncExternalStore,
   type ReactNode,
 } from "react";
@@ -38,6 +36,7 @@ import { nord } from "@milkdown/theme-nord";
 import { Milkdown, MilkdownProvider, useEditor } from "@milkdown/react";
 
 import { MarkdownToolbar } from "./MarkdownToolbar";
+import { MEMO_CONTENT_WIDTH } from "./memoLayout";
 
 import "@milkdown/theme-nord/style.css";
 import "prosemirror-view/style/prosemirror.css";
@@ -122,99 +121,50 @@ export default function MarkdownEditor(props: MarkdownEditorProps) {
  * 상단 서식 프리셋 툴바 + 항상 편집 가능한 Milkdown 본문.
  * 툴바와 에디터가 같은 MilkdownProvider 아래 있어야 같은 인스턴스를 공유한다.
  *
- * 진짜 줌 (cycle 2026-05-28 c): contentWidth가 주어지면 본문을 그 폭의 논리
- * 좌표로 잡고 CSS transform: scale(k)로 통째로 확대한다(k=bodyWidth/contentWidth,
- * 상한 1.5x, ResizeObserver로 추적). 텍스트(HTML)와 펜(SVG viewBox)이 같은 k로
- * 함께 커져 카드에서 그린 위치가 모달에서도 그대로 유지된다 — 'pen이 글자 둘레를
- * 두른' 같은 관계가 보존된다. transform-origin: top-left. 1.5x 상한을 둔 이유:
- * 좁은 카드를 모달 폭에 꽉 채우면 글자가 2.5–3배 커져 일반 마크다운 노트 앱
- * 느낌이 깨진다. 상한 초과분은 우측 여백으로 둔다.
+ * 고정 폭 1:1 (펜 정렬): 본문을 카드와 동일한 고정 폭([[MEMO_CONTENT_WIDTH]]) 컬럼으로
+ * 잡는다. 카드와 모달이 같은 폭·폰트(13px)·padding(6/9)으로 1:1 배치되므로 줄바꿈이
+ * 동일하고, 컬럼 안에 얹은 펜 overlay가 같은 글자 위에 정렬된다. 카드는 작아서 일부만
+ * 보이고(크롭), 모달은 전체를 다 보여준다("펼치면 항상 최대"). 모달이 컬럼보다 좁으면
+ * 본문이 가로 스크롤된다. (과거 CSS scale + viewBox 방식은 reflow로 펜이 어긋나 제거.)
  *
- * overlay: 펜 그리기 레이어. relative 컨테이너 안에 있어 absolute inset-0이 본문
- * 영역만 덮는다. DrawingLayer는 viewBox(=카드 dimensions)를 받아 좌표를 픽셀과
- * 환산하므로 CSS scale과 자연스럽게 합쳐진다.
+ * overlay: 펜 그리기 레이어. 고정 폭 컬럼(relative) 안에 있어 absolute inset-0이
+ * 컬럼을 1:1로 덮는다 — 카드와 같은 좌표공간.
  * ───────────────────────────────────────────────────────────── */
 export function ExpandedMarkdownEditor({
   value,
   onChange,
   overlay,
-  contentWidth,
-  contentHeight,
 }: {
   value: string;
   onChange: (markdown: string) => void;
   overlay?: ReactNode;
-  /** 카드 content box 논리 폭. 지정 시 본문을 이 폭으로 잡고 CSS scale로 확대. */
-  contentWidth?: number;
-  /** 카드 content box 논리 높이. 본문 minHeight로 사용(짧은 메모도 펜 영역 확보). */
-  contentHeight?: number;
 }) {
   const isClient = useIsClient();
-  const bodyRef = useRef<HTMLDivElement | null>(null);
-  const [scale, setScale] = useState(1);
-
-  // body 폭 / contentWidth → scale. ResizeObserver로 화면 크기·모달 폭 변화 추적.
-  // MAX_SCALE로 상한 — 좁은 카드를 모달 폭에 꽉 채우면 글자가 과하게 커져
-  // 일반 마크다운 노트 앱 느낌이 깨진다. 1.5x에서 캡, 나머지는 우측 여백.
-  useLayoutEffect(() => {
-    if (!isClient || !contentWidth) return;
-    const el = bodyRef.current;
-    if (!el) return;
-    const MAX_SCALE = 1.5;
-    const measure = () => {
-      const w = el.clientWidth;
-      if (w > 0) setScale(Math.min(MAX_SCALE, w / contentWidth));
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [isClient, contentWidth]);
 
   if (!isClient) {
     // SSR/jsdom 폴백 — 원문 마크다운만 표시(ProseMirror 미생성).
     return (
-      <div className="relative min-h-0 flex-1 overflow-hidden">
-        <div className="moss-md h-full overflow-auto whitespace-pre-wrap px-4 py-3 text-[13px] leading-6 text-text">
+      <div className="min-h-0 flex-1 overflow-auto">
+        <div
+          className="moss-md relative whitespace-pre-wrap text-[13px] leading-6 text-text"
+          style={{ width: MEMO_CONTENT_WIDTH, padding: "6px 9px" }}
+        >
           {value}
-        </div>
-        {overlay}
-      </div>
-    );
-  }
-  // contentWidth 없으면 원래 동작(스케일 없음).
-  if (!contentWidth) {
-    return (
-      <MilkdownProvider>
-        <MarkdownToolbar />
-        <div className="relative min-h-0 flex-1 overflow-hidden">
-          <div className="moss-md h-full overflow-auto px-4 py-3">
-            <MilkdownInner value={value} editable onChange={onChange} />
-          </div>
           {overlay}
         </div>
-      </MilkdownProvider>
+      </div>
     );
   }
   return (
     <MilkdownProvider>
       <MarkdownToolbar />
-      <div ref={bodyRef} className="min-h-0 flex-1 overflow-auto">
+      <div className="min-h-0 flex-1 overflow-auto">
+        {/* 카드 컬럼과 동일: 고정 폭 + padding 6/9 + text-[13px]. 펜 정렬의 핵심. */}
         <div
-          data-zoom-wrapper
-          className="relative"
-          style={{
-            width: contentWidth,
-            minHeight: contentHeight,
-            transform: `scale(${scale})`,
-            transformOrigin: "0 0",
-          }}
+          className="moss-md relative text-[13px]"
+          style={{ width: MEMO_CONTENT_WIDTH, padding: "6px 9px" }}
         >
-          {/* padding은 카드의 block-stack 텍스트 오프셋(약 9px,6px)과 맞춰 — 펜이
-            * 카드에서 글자를 둘러쌌다면 모달에서도 같은 위치에 오도록. */}
-          <div className="moss-md text-[13px]" style={{ padding: "6px 9px" }}>
-            <MilkdownInner value={value} editable onChange={onChange} />
-          </div>
+          <MilkdownInner value={value} editable onChange={onChange} />
           {overlay}
         </div>
       </div>

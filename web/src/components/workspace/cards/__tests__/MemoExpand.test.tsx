@@ -178,12 +178,12 @@ describe("FEAT-memo-expand · 모달", () => {
   });
 });
 
-describe("FEAT-memo-expand · 펜 overlay viewBox 스케일 (cycle 2026-05-28 b)", () => {
+describe("FEAT-memo-expand · 펜 overlay 1:1 좌표 (고정 폭 컬럼)", () => {
   /**
-   * 모달은 w-[90vw] max-w-3xl로 펼쳐지고, 펜은 viewBox로 카드 비율 유지하며
-   * 함께 확대된다 — 펼쳤을 때 펜 자국도 같이 크게 보인다.
+   * 카드와 모달이 같은 고정 폭 컬럼에 펜을 1:1로 얹는다 → viewBox/스케일 환산 없이
+   * 같은 좌표공간을 공유한다(줄바꿈 불변이라 펜이 같은 글자 위에 정렬됨).
    */
-  it("SC-1: DrawingLayer는 카드 dimensions을 viewBox로 설정한다", () => {
+  it("SC-1: DrawingLayer는 viewBox 없이 1:1로 렌더된다(카드 크기와 무관)", () => {
     seed([textCard({ width: 320, height: 200 })]);
     useWorkspace.getState().setExpandedCard("c1");
     wrap(<MemoExpandDialog />);
@@ -191,18 +191,8 @@ describe("FEAT-memo-expand · 펜 overlay viewBox 스케일 (cycle 2026-05-28 b)
       "[data-drawing-layer]",
     ) as SVGSVGElement | null;
     expect(svg).toBeTruthy();
-    expect(svg!.getAttribute("viewBox")).toBe("0 0 320 200");
-    expect(svg!.getAttribute("preserveAspectRatio")).toBe("xMinYMin meet");
-  });
-
-  it("SC-1b: card.height 미지정이면 정사각형(width=height) fallback", () => {
-    seed([textCard({ width: 240 })]);
-    useWorkspace.getState().setExpandedCard("c1");
-    wrap(<MemoExpandDialog />);
-    const svg = document.body.querySelector(
-      "[data-drawing-layer]",
-    ) as SVGSVGElement | null;
-    expect(svg!.getAttribute("viewBox")).toBe("0 0 240 240");
+    expect(svg!.getAttribute("viewBox")).toBeNull();
+    expect(svg!.getAttribute("preserveAspectRatio")).toBeNull();
   });
 
   it("SC-2: 헤더에 펜·지우개 토글이 노출된다", () => {
