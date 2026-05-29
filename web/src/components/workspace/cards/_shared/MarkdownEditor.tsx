@@ -212,7 +212,7 @@ export function ExpandedMarkdownEditor({
         >
           {/* padding은 카드의 block-stack 텍스트 오프셋(약 9px,6px)과 맞춰 — 펜이
             * 카드에서 글자를 둘러쌌다면 모달에서도 같은 위치에 오도록. */}
-          <div className="moss-md" style={{ padding: "6px 9px" }}>
+          <div className="moss-md text-[13px]" style={{ padding: "6px 9px" }}>
             <MilkdownInner value={value} editable onChange={onChange} />
           </div>
           {overlay}

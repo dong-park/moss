@@ -49,8 +49,8 @@ export function TextCardContent({
       {/* normal-flow 컨테이너 — content 높이가 카드 root에 전파돼 card.height
         * 미지정 시 DraggableCard가 auto-grow한다. 모달의 줌 wrapper padding과
         * 동일(6px 9px) — 카드/모달의 글자 시작 오프셋이 일치해야 펜 좌표가
-        * 양쪽에서 같은 글자를 가리킴. */}
-      <div style={{ padding: "6px 9px" }}>
+        * 양쪽에서 같은 글자를 가리킴. text-[13px]은 카드/모달 공통 본문 폰트. */}
+      <div className="moss-md text-[13px]" style={{ padding: "6px 9px" }}>
         <MarkdownEditor
           value={markdown}
           editable={editing}

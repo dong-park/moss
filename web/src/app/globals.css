@@ -247,3 +247,20 @@ body {
 [data-state="closed"][data-radix-dialog-overlay] {
   animation: moss-fade-out var(--duration-fast) var(--easing-out);
 }
+
+/* ─────────────────────────────────────────────────────────────
+ * 메모 본문(.moss-md) — 카드/펼침 모달 공용 Milkdown 컨테이너.
+ * body base 15px(한글 가독성 최소) 대신 13px로 줄여, 모달의 CSS scale
+ * 1.5x를 곱해도 시각 ~20px 정도. 카드도 같은 base 13px이라 카드↔모달의
+ * 글자 크기 비율이 일정. ProseMirror prose 테마가 element별 em 단위로
+ * 폰트를 지정하므로 p/li 등 본문 블록도 명시적으로 13px로 잡아 override.
+ * H1/H2는 em 비율 유지(상속) — heading이 본문보다 크게 보이는 위계 유지.
+ * ───────────────────────────────────────────────────────────── */
+.moss-md,
+.moss-md .ProseMirror,
+.moss-md .ProseMirror p,
+.moss-md .ProseMirror li,
+.moss-md .ProseMirror blockquote {
+  font-size: 13px;
+  line-height: 1.6;
+}
