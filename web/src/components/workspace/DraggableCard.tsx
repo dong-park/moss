@@ -1,7 +1,13 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState } from "react";
-import { useWorkspace, type Card } from "@/state/workspace";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import * as ContextMenu from "@radix-ui/react-context-menu";
+import {
+  useWorkspace,
+  computeBreadcrumb,
+  SYSTEM_BOARD_ID,
+  type Card,
+} from "@/state/workspace";
 import { CardContent } from "./cards/CardContent";
 import { isExpandable } from "./cards/_shared/expandable";
 import { ResizeHandles } from "./ResizeHandles";
@@ -25,6 +31,11 @@ export function DraggableCard({ card }: { card: Card }) {
   const enterSubcanvas = useWorkspace((s) => s.enterSubcanvas);
   const moveCardToSubcanvas = useWorkspace((s) => s.moveCardToSubcanvas);
   const setDropTargetFunnel = useWorkspace((s) => s.setDropTargetFunnel);
+  // FEAT-eject: 함 밖(상위/조상 보드)으로 카드를 꺼내는 역방향 — 브레드크럼 드롭 + 우클릭.
+  const moveCardToBoard = useWorkspace((s) => s.moveCardToBoard);
+  const setDropTargetCrumb = useWorkspace((s) => s.setDropTargetCrumb);
+  const boards = useWorkspace((s) => s.boards);
+  const currentBoardId = useWorkspace((s) => s.currentBoardId);
   // 드래그 grab/drop 손맛: 들어올린 카드에 lift 시각효과(scale/shadow/z).
   const setDragging = useWorkspace((s) => s.setDragging);
   // FEAT-markdown-memo-pen: 펜 모드 — 드래그/편집 진입 차단 분기에 쓰인다.
@@ -56,6 +67,16 @@ export function DraggableCard({ card }: { card: Card }) {
       (s.draggingMulti && s.selectedIds.includes(card.id)),
   );
   const getScale = () => useWorkspace.getState().viewport.scale;
+
+  /**
+   * FEAT-eject: 서브캔버스(함) 안일 때만 노출할 "상위로 내보내기" 조상 목록.
+   * computeBreadcrumb는 루트→현재 순 — 현재 보드를 뺀 조상들이 내보낼 수 있는 후보.
+   * 비어 있으면(루트/시스템 보드) 우클릭 메뉴 자체를 렌더하지 않는다.
+   */
+  const ancestors = useMemo(
+    () => computeBreadcrumb(boards, currentBoardId).slice(0, -1),
+    [boards, currentBoardId],
+  );
 
   /**
    * card.height가 없을 때 ResizeHandles에 넘길 실측 높이.
@@ -132,6 +153,20 @@ export function DraggableCard({ card }: { card: Card }) {
       return null;
     };
 
+    // FEAT-eject: 흡수(findFunnelUnder)의 대칭 — 커서 아래 브레드크럼 조상 조각을 탐지.
+    // crumb는 world layer 밖 fixed지만 elementsFromPoint는 화면좌표라 그대로 잡힌다.
+    let hoveredCrumbId: string | null = null;
+    const findCrumbUnder = (clientX: number, clientY: number): string | null => {
+      const els = document.elementsFromPoint(clientX, clientY);
+      for (const el of els) {
+        const host = (el as HTMLElement).closest?.(
+          "[data-crumb-board-id]",
+        ) as HTMLElement | null;
+        if (host) return host.dataset.crumbBoardId ?? null;
+      }
+      return null;
+    };
+
     const onMove = (ev: MouseEvent) => {
       const d = dragRef.current;
       if (!d) return;
@@ -152,7 +187,14 @@ export function DraggableCard({ card }: { card: Card }) {
         d.lastWY = targetY;
       } else {
         moveCard(card.id, d.originX + dx / s, d.originY + dy / s);
-        const funnel = findFunnelUnder(ev.clientX, ev.clientY);
+        // crumb(밖으로)와 funnel(안으로)을 동시에 추적하되, 둘 다 hover면 crumb 우선
+        // — 조각 위에서는 함 하이라이트를 끈다.
+        const crumb = findCrumbUnder(ev.clientX, ev.clientY);
+        if (crumb !== hoveredCrumbId) {
+          hoveredCrumbId = crumb;
+          setDropTargetCrumb(crumb);
+        }
+        const funnel = crumb ? null : findFunnelUnder(ev.clientX, ev.clientY);
         if (funnel !== hoveredFunnelId) {
           hoveredFunnelId = funnel;
           setDropTargetFunnel(funnel);
@@ -206,6 +248,53 @@ export function DraggableCard({ card }: { card: Card }) {
       };
     };
 
+    /**
+     * FEAT-eject: 브레드크럼 조각 위에서 놓았을 때 — runAbsorb의 정확한 역모션.
+     * 카드를 조각 중심으로 날려보내며 fade + 조각 bump → moveCardToBoard로 상위 보드 이동.
+     * WAAPI(element.animate) 미지원 환경(jsdom 등)·요소 없음이면 애니메이션 없이 즉시 이동.
+     */
+    const runEject = (crumbBoardId: string) => {
+      const cardEl = containerRef.current;
+      const crumbEl = document.querySelector<HTMLElement>(
+        `[data-crumb-board-id="${crumbBoardId}"]`,
+      );
+      if (!cardEl || typeof cardEl.animate !== "function" || !crumbEl) {
+        void moveCardToBoard(card.id, crumbBoardId).then(() => {
+          setDragging(null);
+          setDropTargetCrumb(null);
+        });
+        return;
+      }
+      const cr = cardEl.getBoundingClientRect();
+      const br = crumbEl.getBoundingClientRect();
+      const s = getScale();
+      // 화면 좌표 중심차 → 카드 로컬 transform(부모 world layer scale 보정).
+      const dx = (br.left + br.width / 2 - (cr.left + cr.width / 2)) / s;
+      const dy = (br.top + br.height / 2 - (cr.top + cr.height / 2)) / s;
+      // 조각이 콕 받아내는 bump.
+      crumbEl.animate(
+        [{ transform: "scale(1)" }, { transform: "scale(1.12)" }, { transform: "scale(1)" }],
+        { duration: 260, easing: "ease-out" },
+      );
+      const anim = cardEl.animate(
+        [
+          { transform: "scale(1.03) rotate(-1.5deg)", opacity: 1 },
+          { transform: `translate(${dx}px, ${dy}px) scale(0.12)`, opacity: 0 },
+        ],
+        { duration: 240, easing: "cubic-bezier(0.4, 0, 0.6, 1)", fill: "forwards" },
+      );
+      anim.onfinish = () => {
+        void moveCardToBoard(card.id, crumbBoardId).then(() => {
+          // 이동이 거부되면 카드가 남는다 — fill:forwards 투명 고정을 취소해 되돌린다.
+          if (useWorkspace.getState().cards.some((c) => c.id === card.id)) {
+            anim.cancel();
+          }
+          setDragging(null);
+          setDropTargetCrumb(null);
+        });
+      };
+    };
+
     const onUp = () => {
       const d = dragRef.current;
       dragRef.current = null;
@@ -220,6 +309,15 @@ export function DraggableCard({ card }: { card: Card }) {
       // 드래그하지 않은 단순 클릭 — 정리할 lift 없음.
       if (!d || !d.moved) {
         setDropTargetFunnel(null);
+        setDropTargetCrumb(null);
+        return;
+      }
+      // FEAT-eject: 브레드크럼 조각 위에서 놓았으면 역모션 후 상위 보드로 내보낸다(crumb 우선).
+      if (!d.multi && hoveredCrumbId) {
+        runEject(hoveredCrumbId);
+        hoveredCrumbId = null;
+        hoveredFunnelId = null;
+        setDropTargetFunnel(null);
         return;
       }
       // FEAT-subcanvas: 함 위에서 놓았으면 흡수 모션 후 그 서브 캔버스로 이동.
@@ -231,7 +329,9 @@ export function DraggableCard({ card }: { card: Card }) {
       // 일반 드롭 — lift 해제(스프링 안착).
       setDragging(null);
       setDropTargetFunnel(null);
+      setDropTargetCrumb(null);
       hoveredFunnelId = null;
+      hoveredCrumbId = null;
     };
 
     window.addEventListener("mousemove", onMove);
@@ -256,7 +356,7 @@ export function DraggableCard({ card }: { card: Card }) {
     setEditing(card.id);
   };
 
-  return (
+  const cardNode = (
     <div
       ref={containerRef}
       onMouseDown={onMouseDown}
@@ -356,5 +456,57 @@ export function DraggableCard({ card }: { card: Card }) {
         <ResizeHandles card={card} measuredHeight={measuredHeight} />
       )}
     </div>
+  );
+
+  // FEAT-eject: 서브캔버스 밖(루트/시스템)이면 우클릭 메뉴 없이 카드만 렌더.
+  // 편집/펜 모드에선 트리거를 비활성화해 브라우저 기본 메뉴(복사·붙여넣기 등)를 살린다.
+  if (ancestors.length === 0) return cardNode;
+
+  const parent = ancestors[ancestors.length - 1];
+  const crumbLabel = (id: string, name: string) =>
+    id === SYSTEM_BOARD_ID
+      ? t("workspace.boardPicker.system")
+      : name.trim() === ""
+        ? t("cards.board.unnamed")
+        : name;
+
+  return (
+    <ContextMenu.Root>
+      <ContextMenu.Trigger asChild disabled={editing || penMode}>
+        {cardNode}
+      </ContextMenu.Trigger>
+      <ContextMenu.Portal>
+        <ContextMenu.Content className="z-[var(--z-panel)] min-w-44 rounded-lg border border-border bg-bg p-1 shadow-card-lift">
+          <ContextMenu.Item
+            className="cursor-pointer rounded-md px-3 py-1.5 text-sm text-text outline-none transition-colors data-[highlighted]:bg-panel"
+            onSelect={() => void moveCardToBoard(card.id, parent.id)}
+          >
+            {t("workspace.subcanvas.eject.toParent")}
+          </ContextMenu.Item>
+          {/* 조상이 여러 단계면 각 조상으로 보내는 하위 항목 — 즉시 부모가 위 기본 항목. */}
+          {ancestors.length > 1 && (
+            <ContextMenu.Sub>
+              <ContextMenu.SubTrigger className="flex cursor-pointer items-center justify-between rounded-md px-3 py-1.5 text-sm text-text outline-none transition-colors data-[highlighted]:bg-panel data-[state=open]:bg-panel">
+                <span>{t("workspace.subcanvas.eject.toAncestor")}</span>
+                <span className="text-text-soft">›</span>
+              </ContextMenu.SubTrigger>
+              <ContextMenu.Portal>
+                <ContextMenu.SubContent className="z-[var(--z-panel)] min-w-44 rounded-lg border border-border bg-bg p-1 shadow-card-lift">
+                  {ancestors.map((a) => (
+                    <ContextMenu.Item
+                      key={a.id}
+                      className="cursor-pointer rounded-md px-3 py-1.5 text-sm text-text outline-none transition-colors data-[highlighted]:bg-panel"
+                      onSelect={() => void moveCardToBoard(card.id, a.id)}
+                    >
+                      {crumbLabel(a.id, a.name)}
+                    </ContextMenu.Item>
+                  ))}
+                </ContextMenu.SubContent>
+              </ContextMenu.Portal>
+            </ContextMenu.Sub>
+          )}
+        </ContextMenu.Content>
+      </ContextMenu.Portal>
+    </ContextMenu.Root>
   );
 }

@@ -87,7 +87,11 @@
       "breadcrumb": {
         "label": "캔버스 경로"
       },
-      "deletedToast": "함을 지웠습니다"
+      "deletedToast": "함을 지웠습니다",
+      "eject": {
+        "toParent": "상위로 내보내기",
+        "toAncestor": "조상으로 내보내기"
+      }
     }
   },
   "capture": {

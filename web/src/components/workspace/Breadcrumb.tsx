@@ -19,6 +19,8 @@ export function Breadcrumb() {
   const boards = useWorkspace((s) => s.boards);
   const currentBoardId = useWorkspace((s) => s.currentBoardId);
   const setCurrentBoard = useWorkspace((s) => s.setCurrentBoard);
+  // FEAT-eject: 카드를 함 밖으로 드래그할 때 커서가 올라온 조각을 하이라이트.
+  const dropTargetCrumbId = useWorkspace((s) => s.dropTargetCrumbId);
 
   const chain = useMemo(
     () => computeBreadcrumb(boards, currentBoardId),
@@ -46,7 +48,12 @@ export function Breadcrumb() {
           <button
             type="button"
             onClick={() => void setCurrentBoard(b.id)}
-            className="cursor-pointer rounded-md px-1.5 py-1 transition-colors hover:bg-panel hover:text-text"
+            data-crumb-board-id={b.id}
+            className={[
+              "cursor-pointer rounded-md px-1.5 py-1 transition-colors hover:bg-panel hover:text-text",
+              // FEAT-eject: 내보내기 드롭 대상으로 hover 중인 조각 강조.
+              dropTargetCrumbId === b.id ? "bg-accent-lime/30 text-text" : "",
+            ].join(" ")}
           >
             {labelOf(b.id, b.name)}
           </button>

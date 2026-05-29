@@ -370,6 +370,12 @@ interface WorkspaceState {
   /** 카드 드래그 중 위에 올라온 함 카드 id — 드롭 하이라이트용. transient. */
   dropTargetFunnelId: string | null;
   setDropTargetFunnel: (id: string | null) => void;
+  /**
+   * 카드 드래그 중 위에 올라온 브레드크럼 조상 조각의 boardId — 밖으로 내보내기
+   * 드롭 하이라이트용. transient. dropTargetFunnelId(안으로)와 대칭.
+   */
+  dropTargetCrumbId: string | null;
+  setDropTargetCrumb: (id: string | null) => void;
   /** 현재 보드의 함 카드들에 대한 카드 수를 다시 집계해 subcanvasCounts 갱신. */
   refreshSubcanvasCounts: () => Promise<void>;
   /**
@@ -388,6 +394,13 @@ interface WorkspaceState {
    * 자기 자신/사이클(함을 자기 자손 보드로) 이동은 no-op.
    */
   moveCardToSubcanvas: (cardId: string, funnelCardId: string) => Promise<void>;
+  /**
+   * FEAT-eject: 카드를 현재(서브) 보드에서 상위/조상 보드(targetBoardId)로 내보낸다.
+   * moveCardToSubcanvas의 정확한 역방향 — boardId만 바꾸고 현재 뷰에서 제거.
+   * targetBoardId가 시스템 보드면 boardId=null로 저장(storageBoardId). 함 카드면
+   * 그 서브 보드의 parentBoardId를 targetBoardId로 reparent한다.
+   */
+  moveCardToBoard: (cardId: string, targetBoardId: CurrentBoardId) => Promise<void>;
   /** 함 카드 cascade 삭제를 5초간 되돌릴 스냅샷 (없으면 null). UI 토스트가 구독. */
   pendingSubcanvasUndo: PendingSubcanvasUndo | null;
   /** 스냅샷의 모든 row를 re-put하고 함 카드를 뷰에 되살린다. */
@@ -831,6 +844,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   sidebarDrag: null,
   subcanvasCounts: {},
   dropTargetFunnelId: null,
+  dropTargetCrumbId: null,
   pendingSubcanvasUndo: null,
   draggingId: null,
   draggingMulti: false,
@@ -1415,6 +1429,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   /* ─────────── FEAT-subcanvas ─────────── */
 
   setDropTargetFunnel: (id) => set({ dropTargetFunnelId: id }),
+  setDropTargetCrumb: (id) => set({ dropTargetCrumbId: id }),
 
   refreshSubcanvasCounts: async () => {
     const refs = get()
@@ -1528,6 +1543,59 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     }));
 
     // 함 카드를 옮기면 그 서브 보드의 부모도 새 보드로 따라간다(트리 일관성).
+    if (card.kind === "board" && card.boardRef) {
+      await storage.saveBoard({
+        id: card.boardRef,
+        parentBoardId: targetBoardId,
+      });
+      const boards = await storage.loadBoards();
+      set({ boards });
+    }
+  },
+
+  moveCardToBoard: async (cardId, targetBoardId) => {
+    // moveCardToSubcanvas의 역방향: 현재(서브) 보드 → 상위/조상 보드로 꺼낸다.
+    const currentBoardId = get().currentBoardId;
+    if (targetBoardId === currentBoardId) return;
+    const card = get().cards.find((c) => c.id === cardId);
+    if (!card) return;
+
+    // 위(조상)로 올리는 건 항상 안전(사이클 불가). 방어적으로, target이 이 함의
+    // 자손이면(있을 수 없는 호출) 트리가 깨지므로 차단 — moveCardToSubcanvas와 대칭.
+    if (
+      card.kind === "board" &&
+      card.boardRef &&
+      isDescendantBoard(get().boards, targetBoardId, card.boardRef)
+    ) {
+      return;
+    }
+
+    const storage = useStorage.getState();
+    if (!storage.initialized) await storage.init();
+    // 시스템 보드 대상이면 boardId=null로 저장(시스템 카드 규약).
+    await storage.saveNote({ id: cardId, boardId: storageBoardId(targetBoardId) });
+
+    set((s) => {
+      // count 정합성: 떠나는 현재 보드는 -1(0 미만 가드), 대상이 추적 대상(시스템
+      // 아님)이면 +1. 다음 보드 전환 시 refreshSubcanvasCounts가 재집계한다.
+      const counts = { ...s.subcanvasCounts };
+      if (counts[currentBoardId] !== undefined) {
+        counts[currentBoardId] = Math.max(0, counts[currentBoardId] - 1);
+      }
+      if (targetBoardId !== SYSTEM_BOARD_ID) {
+        counts[targetBoardId] = (counts[targetBoardId] ?? 0) + 1;
+      }
+      return {
+        cards: s.cards.filter((c) => c.id !== cardId),
+        selectedIds: s.selectedIds.filter((x) => x !== cardId),
+        editingId: s.editingId === cardId ? null : s.editingId,
+        dropTargetCrumbId: null,
+        subcanvasCounts: counts,
+      };
+    });
+
+    // 함 카드를 꺼내면 그 서브 보드의 부모도 대상 보드로 reparent(트리 일관성).
+    // parentBoardId는 보드 row의 리터럴 id(시스템이면 "system" sentinel)를 그대로 쓴다.
     if (card.kind === "board" && card.boardRef) {
       await storage.saveBoard({
         id: card.boardRef,

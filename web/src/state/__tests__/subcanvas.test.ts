@@ -41,6 +41,7 @@ afterEach(async () => {
     boardTransitioning: false,
     subcanvasCounts: {},
     dropTargetFunnelId: null,
+    dropTargetCrumbId: null,
     pendingSubcanvasUndo: null,
     viewport: { x: 0, y: 0, scale: 1 },
   });
@@ -268,6 +269,136 @@ describe("moveCardToSubcanvas", () => {
     // H(→C)를 Hx(→C2)로: target C2는 C의 자손 → 차단.
     await useWorkspace.getState().moveCardToSubcanvas("H", "Hx");
     expect(useWorkspace.getState().cards.some((c) => c.id === "H")).toBe(true);
+  });
+});
+
+describe("moveCardToBoard (함 밖으로 내보내기)", () => {
+  it("카드를 상위(부모) 보드로 꺼내고 현재 뷰에서 제거한다", async () => {
+    await useStorage.getState().init();
+    await useWorkspace.getState().createBoard("부모");
+    const parentId = useWorkspace.getState().currentBoardId;
+
+    const funnelId = useWorkspace.getState().createSubcanvas(0, 0);
+    const childRef = useWorkspace.getState().cards.find((c) => c.id === funnelId)
+      ?.boardRef as string;
+    await waitFor(() =>
+      useWorkspace.getState().boards.some((b) => b.id === childRef),
+    );
+
+    // 서브 보드로 진입 후 그 안에 카드 생성
+    await useWorkspace.getState().enterSubcanvas(funnelId);
+    expect(useWorkspace.getState().currentBoardId).toBe(childRef);
+    const textId = useWorkspace.getState().addCardAt("text", 50, 50);
+    await new Promise((r) => setTimeout(r, 30));
+
+    // 부모 보드로 내보내기
+    await useWorkspace.getState().moveCardToBoard(textId, parentId);
+
+    // 현재(서브) 뷰에서 사라짐
+    expect(useWorkspace.getState().cards.some((c) => c.id === textId)).toBe(
+      false,
+    );
+    // DB boardId가 부모로 바뀜
+    const note = await getDB().notes.get(textId);
+    expect(note?.boardId).toBe(parentId);
+    // 현재 보드는 그대로(서브)
+    expect(useWorkspace.getState().currentBoardId).toBe(childRef);
+  });
+
+  it("함(board) 카드를 꺼내면 그 서브 보드가 대상 보드로 reparent된다", async () => {
+    await useStorage.getState().init();
+    await useWorkspace.getState().createBoard("부모");
+    const parentId = useWorkspace.getState().currentBoardId;
+
+    const funnelId = useWorkspace.getState().createSubcanvas(0, 0);
+    const childRef = useWorkspace.getState().cards.find((c) => c.id === funnelId)
+      ?.boardRef as string;
+    await waitFor(() =>
+      useWorkspace.getState().boards.some((b) => b.id === childRef),
+    );
+    await useWorkspace.getState().enterSubcanvas(funnelId);
+
+    // 서브 보드 안에 또 다른 함(손주)을 만든다 — parentBoardId = childRef
+    const gfId = useWorkspace.getState().createSubcanvas(0, 0);
+    const gfRef = useWorkspace.getState().cards.find((c) => c.id === gfId)
+      ?.boardRef as string;
+    await waitFor(() =>
+      useWorkspace.getState().boards.some((b) => b.id === gfRef),
+    );
+    expect(
+      useWorkspace.getState().boards.find((b) => b.id === gfRef)?.parentBoardId,
+    ).toBe(childRef);
+
+    // 손주 함을 부모(조부) 보드로 내보내기 → gfRef.parentBoardId가 parentId로 reparent
+    await useWorkspace.getState().moveCardToBoard(gfId, parentId);
+    expect(useWorkspace.getState().cards.some((c) => c.id === gfId)).toBe(false);
+    const note = await getDB().notes.get(gfId);
+    expect(note?.boardId).toBe(parentId);
+    await waitFor(
+      () =>
+        useWorkspace.getState().boards.find((b) => b.id === gfRef)
+          ?.parentBoardId === parentId,
+    );
+  });
+
+  it("시스템 보드 대상이면 boardId=null로 저장한다", async () => {
+    await useStorage.getState().init();
+    await useWorkspace.getState().loadFromStorage();
+    expect(useWorkspace.getState().currentBoardId).toBe(SYSTEM_BOARD_ID);
+
+    // 시스템 보드에 함 생성 → 진입 → 안에 카드
+    const funnelId = useWorkspace.getState().createSubcanvas(0, 0);
+    const childRef = useWorkspace.getState().cards.find((c) => c.id === funnelId)
+      ?.boardRef as string;
+    await waitFor(() =>
+      useWorkspace.getState().boards.some((b) => b.id === childRef),
+    );
+    await useWorkspace.getState().enterSubcanvas(funnelId);
+    const textId = useWorkspace.getState().addCardAt("text", 0, 0);
+    await new Promise((r) => setTimeout(r, 30));
+
+    await useWorkspace.getState().moveCardToBoard(textId, SYSTEM_BOARD_ID);
+
+    expect(useWorkspace.getState().cards.some((c) => c.id === textId)).toBe(
+      false,
+    );
+    const note = await getDB().notes.get(textId);
+    expect(note?.boardId).toBeNull();
+  });
+
+  it("count 정합성 — 떠나는 현재 보드 -1, 대상(비시스템) +1", async () => {
+    // 직접 상태 구성: 부모 P, 현재 C(P의 자식). subcanvasCounts에 둘 다 존재.
+    useWorkspace.setState({
+      currentBoardId: "C",
+      boards: [
+        { id: "P", parentBoardId: null },
+        { id: "C", parentBoardId: "P" },
+      ] as Board[],
+      cards: [
+        { id: "t1", kind: "text", x: 0, y: 0, width: 200, content: "x" },
+      ] as Card[],
+      subcanvasCounts: { C: 2, P: 5 },
+    });
+    await useStorage.getState().init();
+
+    await useWorkspace.getState().moveCardToBoard("t1", "P");
+
+    const counts = useWorkspace.getState().subcanvasCounts;
+    expect(counts.C).toBe(1); // 2 - 1
+    expect(counts.P).toBe(6); // 5 + 1
+    expect(useWorkspace.getState().cards.some((c) => c.id === "t1")).toBe(false);
+  });
+
+  it("대상이 현재 보드와 같으면 no-op", async () => {
+    useWorkspace.setState({
+      currentBoardId: "C",
+      cards: [
+        { id: "t1", kind: "text", x: 0, y: 0, width: 200, content: "x" },
+      ] as Card[],
+    });
+    await useStorage.getState().init();
+    await useWorkspace.getState().moveCardToBoard("t1", "C");
+    expect(useWorkspace.getState().cards.some((c) => c.id === "t1")).toBe(true);
   });
 });
 
