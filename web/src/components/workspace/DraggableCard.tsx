@@ -25,6 +25,8 @@ export function DraggableCard({ card }: { card: Card }) {
   const enterSubcanvas = useWorkspace((s) => s.enterSubcanvas);
   const moveCardToSubcanvas = useWorkspace((s) => s.moveCardToSubcanvas);
   const setDropTargetFunnel = useWorkspace((s) => s.setDropTargetFunnel);
+  // 드래그 grab/drop 손맛: 들어올린 카드에 lift 시각효과(scale/shadow/z).
+  const setDragging = useWorkspace((s) => s.setDragging);
   // FEAT-markdown-memo-pen: 펜 모드 — 드래그/편집 진입 차단 분기에 쓰인다.
   // 펜 overlay 자체는 TextCardContent(컬럼 안)가 렌더한다.
   const penMode = useWorkspace((s) => s.penMode);
@@ -42,6 +44,16 @@ export function DraggableCard({ card }: { card: Card }) {
    */
   const isOnlySelected = useWorkspace(
     (s) => s.selectedIds.length === 1 && s.selectedIds[0] === card.id,
+  );
+  /**
+   * 들어올림(lift) 여부 — 자기가 잡힌 카드이거나, 묶음 드래그 중이고 선택에 포함된 경우.
+   * 단일 boolean으로 좁혀 lift 값이 실제로 바뀌는 카드만 리렌더(line 43 최적화와 동일 철학).
+   * 비선택 카드는 묶음 드래그가 시작돼도 값이 false 그대로라 리렌더되지 않는다.
+   */
+  const lifted = useWorkspace(
+    (s) =>
+      s.draggingId === card.id ||
+      (s.draggingMulti && s.selectedIds.includes(card.id)),
   );
   const getScale = () => useWorkspace.getState().viewport.scale;
 
@@ -127,6 +139,8 @@ export function DraggableCard({ card }: { card: Card }) {
       const dy = ev.clientY - d.startY;
       if (!d.moved && Math.hypot(dx, dy) > DRAG_THRESHOLD) {
         d.moved = true;
+        // 임계를 넘는 순간 카드가 떠오른다(lift). 묶음이면 선택 전체.
+        setDragging(card.id, d.multi);
       }
       if (!d.moved) return;
       const s = getScale();
@@ -146,21 +160,78 @@ export function DraggableCard({ card }: { card: Card }) {
       }
     };
 
+    /**
+     * 함 위에서 놓았을 때 — 카드를 함 중심으로 빨아들이는 흡수 모션 후 이동.
+     * WAAPI(element.animate) 미지원 환경(jsdom 등)이면 애니메이션 없이 즉시 이동.
+     * lift 상태는 흡수 애니메이션이 그대로 이어받고, 카드는 이동으로 언마운트되므로
+     * 여기서 setDragging(null)을 미리 부르지 않는다(이동 완료 후 정리).
+     */
+    const runAbsorb = (funnelId: string) => {
+      const cardEl = containerRef.current;
+      const funnelEl = document.querySelector<HTMLElement>(
+        `[data-card-id="${funnelId}"]`,
+      );
+      // WAAPI 미지원(jsdom 등)·요소 없음 → 애니메이션 없이 즉시 이동.
+      if (!cardEl || typeof cardEl.animate !== "function" || !funnelEl) {
+        void moveCardToSubcanvas(card.id, funnelId).then(() => setDragging(null));
+        return;
+      }
+      const cr = cardEl.getBoundingClientRect();
+      const fr = funnelEl.getBoundingClientRect();
+      const s = getScale();
+      // 화면 좌표 중심차 → 카드 로컬 transform(부모 world layer scale 보정).
+      const dx = (fr.left + fr.width / 2 - (cr.left + cr.width / 2)) / s;
+      const dy = (fr.top + fr.height / 2 - (cr.top + cr.height / 2)) / s;
+      // 함이 콕 받아내는 bump.
+      funnelEl.animate(
+        [{ transform: "scale(1)" }, { transform: "scale(1.08)" }, { transform: "scale(1)" }],
+        { duration: 260, easing: "ease-out" },
+      );
+      const anim = cardEl.animate(
+        [
+          { transform: "scale(1.03) rotate(-1.5deg)", opacity: 1 },
+          { transform: `translate(${dx}px, ${dy}px) scale(0.12)`, opacity: 0 },
+        ],
+        { duration: 240, easing: "cubic-bezier(0.4, 0, 0.6, 1)", fill: "forwards" },
+      );
+      anim.onfinish = () => {
+        void moveCardToSubcanvas(card.id, funnelId).then(() => {
+          // 이동이 거부되면(사이클 가드 등) 카드가 state에 남는다 — fill:forwards로
+          // 투명 고정된 흡수를 취소해 되돌려야 "사라진 것처럼" 보이지 않는다.
+          if (useWorkspace.getState().cards.some((c) => c.id === card.id)) {
+            anim.cancel();
+          }
+          setDragging(null);
+        });
+      };
+    };
+
     const onUp = () => {
       const d = dragRef.current;
-      // 다중선택 중 클릭만 했다면 단일 선택으로 환원 (Figma 스타일).
-      if (d && !d.moved && d.multi) {
-        selectOne(card.id);
-      }
-      // FEAT-subcanvas: 함 위에서 놓았으면 그 서브 캔버스로 카드 이동.
-      if (d && d.moved && !d.multi && hoveredFunnelId) {
-        void moveCardToSubcanvas(card.id, hoveredFunnelId);
-      }
-      setDropTargetFunnel(null);
-      hoveredFunnelId = null;
       dragRef.current = null;
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
+
+      // 다중선택 중 클릭만 했다면 단일 선택으로 환원 (Figma 스타일). lift 없었음.
+      if (d && !d.moved && d.multi) {
+        selectOne(card.id);
+        return;
+      }
+      // 드래그하지 않은 단순 클릭 — 정리할 lift 없음.
+      if (!d || !d.moved) {
+        setDropTargetFunnel(null);
+        return;
+      }
+      // FEAT-subcanvas: 함 위에서 놓았으면 흡수 모션 후 그 서브 캔버스로 이동.
+      if (!d.multi && hoveredFunnelId) {
+        runAbsorb(hoveredFunnelId);
+        hoveredFunnelId = null;
+        return;
+      }
+      // 일반 드롭 — lift 해제(스프링 안착).
+      setDragging(null);
+      setDropTargetFunnel(null);
+      hoveredFunnelId = null;
     };
 
     window.addEventListener("mousemove", onMove);
@@ -204,10 +275,18 @@ export function DraggableCard({ card }: { card: Card }) {
         top: card.y,
         width: card.width,
         height: card.height,
-        zIndex: selected ? 20 : 10,
+        zIndex: lifted ? 40 : selected ? 20 : 10,
         outline: selected ? "2px solid rgba(79, 124, 243, 0.45)" : "none",
         outlineOffset: 2,
         borderRadius: 8,
+        // 들어올림(grab): 살짝 떠오르며 그림자 깊어짐. 손 떼면(lifted=false)
+        // transform이 스프링 곡선으로 1.0 복귀 → 제자리 안착(settle).
+        // left/top은 transition 목록에서 제외해 드래그 중 커서를 즉시 추종한다.
+        transform: lifted ? "scale(1.03) rotate(-1.5deg)" : undefined,
+        boxShadow: lifted ? "var(--shadow-card-lift)" : undefined,
+        transition:
+          "transform 170ms cubic-bezier(0.22, 0.9, 0.3, 1.25), box-shadow 170ms ease-out",
+        willChange: lifted ? "transform" : undefined,
         // height 지정 시 자식 콘텐츠가 카드를 가득 채우도록 flex column.
         // 각 CardContent 루트 div는 h-full을 가져 부모 높이를 상속받는다.
         display: card.height !== undefined ? "flex" : undefined,

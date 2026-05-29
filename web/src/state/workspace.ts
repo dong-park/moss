@@ -356,6 +356,14 @@ interface WorkspaceState {
   sidebarDrag: SidebarDrag | null;
   setSidebarDrag: (s: SidebarDrag | null) => void;
 
+  /**
+   * 현재 들어올린(드래그 중) 카드 id — lift 시각효과(scale/shadow/z)용. transient.
+   * draggingMulti=true면 묶음 드래그라 selectedIds 전체가 함께 떠오른다.
+   */
+  draggingId: string | null;
+  draggingMulti: boolean;
+  setDragging: (id: string | null, multi?: boolean) => void;
+
   /* ─────────── FEAT-subcanvas: 캔버스 안의 "함" ─────────── */
   /** 함 카드(boardRef)별 서브 보드의 카드 수 — "카드 N개" 표시용. 보드 로드 시 갱신. */
   subcanvasCounts: Record<string, number>;
@@ -824,8 +832,12 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   subcanvasCounts: {},
   dropTargetFunnelId: null,
   pendingSubcanvasUndo: null,
+  draggingId: null,
+  draggingMulti: false,
 
   setSidebarDrag: (s) => set({ sidebarDrag: s }),
+  setDragging: (id, multi = false) =>
+    set({ draggingId: id, draggingMulti: id ? multi : false }),
 
   setTemplatePickerOpen: (open) => set({ templatePickerOpen: open }),
   openDeleteDialog: (boardId) => set({ deleteDialogBoardId: boardId }),
