@@ -124,9 +124,11 @@ export default function MarkdownEditor(props: MarkdownEditorProps) {
  *
  * 진짜 줌 (cycle 2026-05-28 c): contentWidth가 주어지면 본문을 그 폭의 논리
  * 좌표로 잡고 CSS transform: scale(k)로 통째로 확대한다(k=bodyWidth/contentWidth,
- * ResizeObserver로 추적). 텍스트(HTML)와 펜(SVG viewBox)이 같은 k로 함께 커져
- * 카드에서 그린 위치가 모달에서도 그대로 유지된다 — 'pen이 글자 둘레를 두른' 같은
- * 관계가 보존된다. transform-origin: top-left.
+ * 상한 1.5x, ResizeObserver로 추적). 텍스트(HTML)와 펜(SVG viewBox)이 같은 k로
+ * 함께 커져 카드에서 그린 위치가 모달에서도 그대로 유지된다 — 'pen이 글자 둘레를
+ * 두른' 같은 관계가 보존된다. transform-origin: top-left. 1.5x 상한을 둔 이유:
+ * 좁은 카드를 모달 폭에 꽉 채우면 글자가 2.5–3배 커져 일반 마크다운 노트 앱
+ * 느낌이 깨진다. 상한 초과분은 우측 여백으로 둔다.
  *
  * overlay: 펜 그리기 레이어. relative 컨테이너 안에 있어 absolute inset-0이 본문
  * 영역만 덮는다. DrawingLayer는 viewBox(=카드 dimensions)를 받아 좌표를 픽셀과
@@ -152,13 +154,16 @@ export function ExpandedMarkdownEditor({
   const [scale, setScale] = useState(1);
 
   // body 폭 / contentWidth → scale. ResizeObserver로 화면 크기·모달 폭 변화 추적.
+  // MAX_SCALE로 상한 — 좁은 카드를 모달 폭에 꽉 채우면 글자가 과하게 커져
+  // 일반 마크다운 노트 앱 느낌이 깨진다. 1.5x에서 캡, 나머지는 우측 여백.
   useLayoutEffect(() => {
     if (!isClient || !contentWidth) return;
     const el = bodyRef.current;
     if (!el) return;
+    const MAX_SCALE = 1.5;
     const measure = () => {
       const w = el.clientWidth;
-      if (w > 0) setScale(w / contentWidth);
+      if (w > 0) setScale(Math.min(MAX_SCALE, w / contentWidth));
     };
     measure();
     const ro = new ResizeObserver(measure);
