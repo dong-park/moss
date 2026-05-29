@@ -146,6 +146,10 @@ export function DrawingLayer({
         pointerEvents: active ? "auto" : "none",
         cursor,
         touchAction: "none",
+        // viewBox 사용 시(=모달) viewBox 밖 stroke도 다 보여야 한다 — 사용자가
+        // 카드 박스(예: 240px) 밖까지 그린 큰 스크리블이 펼치기 모달에선 전부
+        // 보이게. 카드(viewBox 없음)는 hidden(기본) 유지 — 메모 박스 안만 보임.
+        overflow: viewBox ? "visible" : undefined,
       }}
     >
       {allPaths.map((path, i) => (
