@@ -36,6 +36,7 @@ import { nord } from "@milkdown/theme-nord";
 import { Milkdown, MilkdownProvider, useEditor } from "@milkdown/react";
 
 import { MarkdownToolbar } from "./MarkdownToolbar";
+import { markdownPlaceholder } from "./markdownPlaceholder";
 import { MEMO_CONTENT_WIDTH } from "./memoLayout";
 
 import "@milkdown/theme-nord/style.css";
@@ -90,7 +91,8 @@ export function MilkdownInner({ value, editable, onChange, onBlur }: MarkdownEdi
         .config(nord)
         .use(commonmark)
         .use(gfm)
-        .use(listener),
+        .use(listener)
+        .use(markdownPlaceholder),
     // editable 변화 시 재생성. readonly일 때만 value를 deps에 포함해
     // 외부 변경을 반영하고, 편집 중에는 제외해 커서를 보존.
     [editable, editable ? "" : value],
