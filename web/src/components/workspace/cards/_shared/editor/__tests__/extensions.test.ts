@@ -28,8 +28,14 @@ describe("pasteHandlers 슬롯", () => {
 });
 
 describe("bubbleMenuItems 슬롯 + 버블 store", () => {
-  it("초기 빈 배열 → 호스트는 절대 열리지 않음", () => {
-    expect(bubbleMenuItems.length).toBe(0);
+  it("W3 등록 후 항목 보유 → 선택 시 호스트 노출 (id/label/run 구비)", () => {
+    // P0 머지 시점엔 빈 배열이었고, W3(FEAT-memo-incard-format)가 등록한다.
+    expect(bubbleMenuItems.length).toBeGreaterThan(0);
+    for (const item of bubbleMenuItems) {
+      expect(typeof item.id).toBe("string");
+      expect(typeof item.label).toBe("string");
+      expect(typeof item.run).toBe("function");
+    }
   });
 
   it("기본 버블 상태는 닫힘, 서버 스냅샷도 닫힘", () => {

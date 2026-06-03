@@ -21,6 +21,7 @@ import { gfm } from "@milkdown/preset-gfm";
 import { listener } from "@milkdown/plugin-listener";
 
 import { markdownPlaceholder } from "../markdownPlaceholder";
+import { memoBubbleItems } from "./BubbleToolbar"; // (W3) 인카드 버블 서식 항목
 
 /* ── ② paste 슬롯 ──────────────────────────────────────────────
  * true 반환 시 기본 동작 차단(소비). 등록 순서대로 시도, 첫 true에서 중단.
@@ -59,7 +60,7 @@ export type BubbleMenuItem = {
 };
 
 export const bubbleMenuItems: BubbleMenuItem[] = [
-  // (W3) ...memoBubbleItems,
+  ...memoBubbleItems, // (W3)
 ];
 
 export type BubbleState = {
