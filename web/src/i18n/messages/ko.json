@@ -12,6 +12,12 @@
     "memo": {
       "placeholder": {
         "hint": "# 제목 · - [ ] 할일 · > 인용 · ``` 코드"
+      },
+      "editor": {
+        "label": "메모 편집기",
+        "penModeOn": "펜 모드 켜짐",
+        "penModeOff": "펜 모드 꺼짐",
+        "saved": "메모 저장됨"
       }
     },
     "memoEditor": {

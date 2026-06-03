@@ -14,13 +14,31 @@ import {
 import { migratedContent } from "./markdownMigration";
 import { enqueueEmbed as enqueueEmbedRaw } from "./ai/embeddingQueue";
 import {
+  schedulePersist,
+  cancelPersist,
+  flushCard,
+  flushAll,
+} from "./cardPersist";
+import { initLiveSync } from "./db/liveSync"; // W8: 다중 탭 동기화
+import {
   parseCode,
   parseHandwriting,
   serializeBlocks,
   type CardBlock,
 } from "./cardContent";
+// FEAT-memo-fulltext-search (W4): 본문 평문 검색 — 셀렉터/액션이 위임.
+import { searchMemos as searchMemosImpl } from "./memoSearch";
 import { getTemplate } from "@/templates";
 import type { Translator } from "@/i18n";
+// FEAT-memo-empty-cleanup (W7): 빈 메모 자동 정리 — never-filled 추적 + undo 토스트.
+import { useToasts } from "@/state/notifications";
+import {
+  isMemoEmpty,
+  wasNeverFilled,
+  markFilled,
+  forgetCard,
+  startEmptyTracking,
+} from "@/state/emptyCleanup";
 import {
   PEN_MIN_WIDTH,
   PEN_MAX_WIDTH,
@@ -342,6 +360,14 @@ interface WorkspaceState {
   removeSelected: () => void;
 
   /**
+   * FEAT-memo-empty-cleanup (W7): 본문·overlay가 모두 비었고 "한 번도 채워진 적이
+   * 없는"(never-filled) 메모 카드만 삭제한다. text 카드 blur 훅에서 호출.
+   * 보수적 — 내용을 지운 카드(AC-3)나 펜 overlay가 있는 카드(AC-2)는 보존한다.
+   * 삭제는 undo 토스트로 복원 가능(AC-4).
+   */
+  deleteCardIfEmpty: (id: string) => void;
+
+  /**
    * FEAT-card-flow REQ-flow-1/2: 현 카드 편집 종료. 콘텐츠가 비어있지 않으면
    * 같은 종류의 새 카드를 현 카드 아래 64px에 생성·편집 모드로 진입.
    * 빈 카드면 편집만 종료하고 null 반환.
@@ -428,6 +454,27 @@ interface WorkspaceState {
   undoSubcanvasRemove: () => Promise<void>;
   /** undo 포기(×/만료) — 보류 중 blob을 영구 삭제하고 스냅샷 비움. */
   clearSubcanvasUndo: () => void;
+
+  /* ─────────── FEAT-memo-fulltext-search (W4) ─────────── */
+  /** 현재 검색어. 빈 문자열이면 검색 비활성(전체 표시). UI/캔버스가 구독. */
+  memoSearchQuery: string;
+  /** 검색 매칭 카드 id(점수 내림차순). 검색 비활성 시 []. 캔버스 강조/dim·결과목록이 구독. */
+  memoSearchMatchIds: string[];
+  /**
+   * 본문 검색 셀렉터 — 현재 카드들의 text 본문 평문에서 query 매칭(점수순 id+score).
+   * 부수효과 없는 순수 조회. 캔버스 필터를 거는 것은 [[filterByKeyword]].
+   */
+  searchMemos: (query: string) => { id: string; score: number }[];
+  /**
+   * 검색어로 캔버스 필터(강조/dim) 설정. 빈 문자열이면 원상복귀(AC-2).
+   * memoSearchQuery/memoSearchMatchIds를 갱신한다.
+   */
+  filterByKeyword: (word: string) => void;
+  /** 검색 결과 카드로 캔버스를 팬하고 선택한다(AC-3). 카드가 없으면 no-op. */
+  panToCard: (
+    id: string,
+    viewportSize?: { width: number; height: number },
+  ) => void;
 }
 
 function isCaptureKind(kind: CardKind): boolean {
@@ -754,18 +801,13 @@ function persistCard(card: Card, boardId: string | null): Promise<void> {
   });
 }
 
-/** moveCard / setContent 같은 빈번한 변경은 300ms 디바운스 후 영속. */
-const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
-const DEBOUNCE_MS = 300;
+/** moveCard / setContent 같은 빈번한 변경은 300ms 디바운스 후 영속.
+ * 타이머·flush 기계는 cardPersist.ts(seam)로 분리 — 동작 불변, persist 본문만 주입.
+ * flushCard/flushAll은 언마운트·beforeunload 유실 가드(W1)용으로 재노출. */
+export { flushCard, flushAll };
 
 function persistCardDebounced(card: Card, boardId: string | null) {
-  const existing = debounceTimers.get(card.id);
-  if (existing) clearTimeout(existing);
-  const handle = setTimeout(() => {
-    debounceTimers.delete(card.id);
-    persistCard(card, boardId);
-  }, DEBOUNCE_MS);
-  debounceTimers.set(card.id, handle);
+  schedulePersist(card.id, () => persistCard(card, boardId));
 }
 
 /** 보드 전환 페이드 시간 — spec §3 AC-4. */
@@ -872,6 +914,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   pendingSubcanvasUndo: null,
   draggingId: null,
   draggingMulti: false,
+  // FEAT-memo-fulltext-search (W4): 검색 상태 초기값 — 비활성.
+  memoSearchQuery: "",
+  memoSearchMatchIds: [],
 
   setSidebarDrag: (s) => set({ sidebarDrag: s }),
   setDragging: (id, multi = false) =>
@@ -887,6 +932,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   clearRenameRequest: () => set({ pendingRenameBoardId: null }),
 
   loadFromStorage: async () => {
+    initLiveSync(); // W8: 다중 탭 동기화 구독 시작(멱등)
     const storage = useStorage.getState();
     if (!storage.initialized) await storage.init();
     const boards = await storage.loadBoards();
@@ -1359,11 +1405,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       editingId: s.editingId === id ? null : s.editingId,
       expandedCardId: s.expandedCardId === id ? null : s.expandedCardId,
     }));
-    const pending = debounceTimers.get(id);
-    if (pending) {
-      clearTimeout(pending);
-      debounceTimers.delete(id);
-    }
+    cancelPersist(id);
     const storage = useStorage.getState();
     if (!storage.initialized) return;
     if (funnel) {
@@ -1392,13 +1434,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
           ? null
           : s.expandedCardId,
     }));
-    for (const id of ids) {
-      const pending = debounceTimers.get(id);
-      if (pending) {
-        clearTimeout(pending);
-        debounceTimers.delete(id);
-      }
-    }
+    for (const id of ids) cancelPersist(id);
     const storage = useStorage.getState();
     if (!storage.initialized) return;
     // 함이 아닌 일반 카드는 기존대로 즉시 삭제(blob 해제 포함, undo 없음).
@@ -1407,6 +1443,50 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     if (funnelCards.length > 0) {
       void cascadeDeleteFunnels(funnelCards, boardAtDeletion, set, get);
     }
+  },
+
+  deleteCardIfEmpty: (id) => {
+    const card = get().cards.find((c) => c.id === id);
+    // text(포스트잇) 카드만 대상 — 다른 종류는 스펙 범위 밖(§2 제외).
+    if (!card || card.kind !== "text") return;
+    // 보수적 3중 가드(AC-1~3): 본문·overlay 비었고 + 한 번도 채워진 적 없을 때만.
+    // overlay가 있으면 isMemoEmpty=false → 보존(AC-2). 내용을 지운 카드는
+    // everFilled에 남아 wasNeverFilled=false → 보존(AC-3, 데이터 보호 우선).
+    if (!isMemoEmpty(card) || !wasNeverFilled(id)) return;
+
+    const boardId = storageBoardId(get().currentBoardId);
+    // 삭제 전 스냅샷 — undo 복원 대상. 대기 중 persist는 취소(지운 카드 재기록 방지).
+    const snapshot: Card = { ...card };
+    set((s) => ({
+      cards: s.cards.filter((c) => c.id !== id),
+      selectedIds: s.selectedIds.filter((x) => x !== id),
+      editingId: s.editingId === id ? null : s.editingId,
+      expandedCardId: s.expandedCardId === id ? null : s.expandedCardId,
+    }));
+    cancelPersist(id);
+    forgetCard(id);
+    const storage = useStorage.getState();
+    if (storage.initialized) void storage.removeNote(id);
+
+    // AC-4: undo 토스트. 복원 시 카드를 되살리고 다시 영속, 채워졌음으로 표시해
+    // (markFilled) 같은 카드가 즉시 재삭제되는 루프를 막는다.
+    useToasts.getState().push({
+      tone: "calm",
+      title: "빈 메모 삭제됨",
+      duration: 5000,
+      action: {
+        label: "실행취소",
+        onClick: () => {
+          markFilled(snapshot.id);
+          set((s) =>
+            s.cards.some((c) => c.id === snapshot.id)
+              ? {}
+              : { cards: [...s.cards, snapshot] },
+          );
+          void persistCard(snapshot, boardId);
+        },
+      },
+    });
   },
 
   commitAndAddNext: (currentCardId) => {
@@ -1732,7 +1812,52 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       .purgeAttachments([...pending.funnelNotes, ...pending.notes]);
     set({ pendingSubcanvasUndo: null });
   },
+
+  /* ─────────── FEAT-memo-fulltext-search (W4) ─────────── */
+  searchMemos: (query) => searchMemosImpl(get().cards, query),
+
+  filterByKeyword: (word) => {
+    const q = word.trim();
+    if (!q) {
+      // 검색 비우면 원상복귀(AC-2).
+      set({ memoSearchQuery: "", memoSearchMatchIds: [] });
+      return;
+    }
+    const matches = searchMemosImpl(get().cards, q);
+    set({
+      memoSearchQuery: word,
+      memoSearchMatchIds: matches.map((m) => m.id),
+    });
+  },
+
+  panToCard: (id, viewportSize) => {
+    const card = get().cards.find((c) => c.id === id);
+    if (!card) return;
+    const v = get().viewport;
+    // addCardAtViewportCenter와 동일한 화면 크기 폴백 규약.
+    const sidebarW = 148;
+    const fallbackW =
+      typeof window !== "undefined" ? window.innerWidth - sidebarW : 1100;
+    const fallbackH = typeof window !== "undefined" ? window.innerHeight : 700;
+    const w = viewportSize?.width ?? fallbackW;
+    const h = viewportSize?.height ?? fallbackH;
+    // 카드 중심이 화면 중앙에 오도록 viewport 평행이동(scale 유지).
+    const cardCx = card.x + card.width / 2;
+    const cardCy = card.y + (card.height ?? 80) / 2;
+    set({
+      viewport: {
+        ...v,
+        x: w / 2 - cardCx * v.scale,
+        y: h / 2 - cardCy * v.scale,
+      },
+      selectedIds: [id],
+    });
+  },
 }));
+
+// FEAT-memo-empty-cleanup (W7): never-filled 추적 구독 시작(멱등). store 생성 직후
+// 자기 store를 주입 — 순환 의존 없이 deleteCardIfEmpty가 보존 판정에 쓸 기록을 쌓는다.
+startEmptyTracking(useWorkspace);
 
 /* 테스트·디버깅용 export — 프로덕션 코드는 직접 호출 금지. */
 export const __internal = {
