@@ -21,6 +21,7 @@ import { gfm } from "@milkdown/preset-gfm";
 import { listener } from "@milkdown/plugin-listener";
 
 import { markdownPlaceholder } from "../markdownPlaceholder";
+import { imagePasteHandler, opfsImagePlugin } from "./imagePaste";
 
 /* ── ② paste 슬롯 ──────────────────────────────────────────────
  * true 반환 시 기본 동작 차단(소비). 등록 순서대로 시도, 첫 true에서 중단.
@@ -32,7 +33,7 @@ export type PasteHandler = (
 
 export const pasteHandlers: PasteHandler[] = [
   // (W6) sanitizePasteHandler,
-  // (W2) imagePasteHandler,
+  imagePasteHandler /* W2 — sanitize 뒤(배열 나중): 텍스트 정제 후 이미지 추출 */,
 ];
 
 const pasteSlot = $prose(
@@ -130,6 +131,7 @@ export const editorPlugins: MilkdownPlugin[] = [
   markdownPlaceholder,
   pasteSlot,
   bubbleSlot,
+  opfsImagePlugin, // (W2) opfs:// 이미지 → blob URL NodeView (resolver)
   // (W5) ...wikilink,
   // (W10) autolink,
 ].flat();

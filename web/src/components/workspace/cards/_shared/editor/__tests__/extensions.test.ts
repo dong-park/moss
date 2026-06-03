@@ -21,9 +21,10 @@ describe("editorPlugins 슬롯", () => {
 });
 
 describe("pasteHandlers 슬롯", () => {
-  it("초기 빈 배열(워커가 등록) — 빈 상태에서 기본 붙여넣기 통과", () => {
+  it("핸들러는 함수 배열 — 모든 등록 항목이 호출 가능", () => {
     expect(Array.isArray(pasteHandlers)).toBe(true);
-    expect(pasteHandlers.length).toBe(0);
+    // W2(imagePasteHandler) 등록됨. 항목은 모두 (view, event) 핸들러 함수.
+    expect(pasteHandlers.every((h) => typeof h === "function")).toBe(true);
   });
 });
 
