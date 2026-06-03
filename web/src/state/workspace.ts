@@ -25,6 +25,8 @@ import {
   serializeBlocks,
   type CardBlock,
 } from "./cardContent";
+// FEAT-memo-fulltext-search (W4): 본문 평문 검색 — 셀렉터/액션이 위임.
+import { searchMemos as searchMemosImpl } from "./memoSearch";
 import { getTemplate } from "@/templates";
 import type { Translator } from "@/i18n";
 import {
@@ -434,6 +436,27 @@ interface WorkspaceState {
   undoSubcanvasRemove: () => Promise<void>;
   /** undo 포기(×/만료) — 보류 중 blob을 영구 삭제하고 스냅샷 비움. */
   clearSubcanvasUndo: () => void;
+
+  /* ─────────── FEAT-memo-fulltext-search (W4) ─────────── */
+  /** 현재 검색어. 빈 문자열이면 검색 비활성(전체 표시). UI/캔버스가 구독. */
+  memoSearchQuery: string;
+  /** 검색 매칭 카드 id(점수 내림차순). 검색 비활성 시 []. 캔버스 강조/dim·결과목록이 구독. */
+  memoSearchMatchIds: string[];
+  /**
+   * 본문 검색 셀렉터 — 현재 카드들의 text 본문 평문에서 query 매칭(점수순 id+score).
+   * 부수효과 없는 순수 조회. 캔버스 필터를 거는 것은 [[filterByKeyword]].
+   */
+  searchMemos: (query: string) => { id: string; score: number }[];
+  /**
+   * 검색어로 캔버스 필터(강조/dim) 설정. 빈 문자열이면 원상복귀(AC-2).
+   * memoSearchQuery/memoSearchMatchIds를 갱신한다.
+   */
+  filterByKeyword: (word: string) => void;
+  /** 검색 결과 카드로 캔버스를 팬하고 선택한다(AC-3). 카드가 없으면 no-op. */
+  panToCard: (
+    id: string,
+    viewportSize?: { width: number; height: number },
+  ) => void;
 }
 
 function isCaptureKind(kind: CardKind): boolean {
@@ -873,6 +896,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   pendingSubcanvasUndo: null,
   draggingId: null,
   draggingMulti: false,
+  // FEAT-memo-fulltext-search (W4): 검색 상태 초기값 — 비활성.
+  memoSearchQuery: "",
+  memoSearchMatchIds: [],
 
   setSidebarDrag: (s) => set({ sidebarDrag: s }),
   setDragging: (id, multi = false) =>
@@ -1722,6 +1748,47 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       .getState()
       .purgeAttachments([...pending.funnelNotes, ...pending.notes]);
     set({ pendingSubcanvasUndo: null });
+  },
+
+  /* ─────────── FEAT-memo-fulltext-search (W4) ─────────── */
+  searchMemos: (query) => searchMemosImpl(get().cards, query),
+
+  filterByKeyword: (word) => {
+    const q = word.trim();
+    if (!q) {
+      // 검색 비우면 원상복귀(AC-2).
+      set({ memoSearchQuery: "", memoSearchMatchIds: [] });
+      return;
+    }
+    const matches = searchMemosImpl(get().cards, q);
+    set({
+      memoSearchQuery: word,
+      memoSearchMatchIds: matches.map((m) => m.id),
+    });
+  },
+
+  panToCard: (id, viewportSize) => {
+    const card = get().cards.find((c) => c.id === id);
+    if (!card) return;
+    const v = get().viewport;
+    // addCardAtViewportCenter와 동일한 화면 크기 폴백 규약.
+    const sidebarW = 148;
+    const fallbackW =
+      typeof window !== "undefined" ? window.innerWidth - sidebarW : 1100;
+    const fallbackH = typeof window !== "undefined" ? window.innerHeight : 700;
+    const w = viewportSize?.width ?? fallbackW;
+    const h = viewportSize?.height ?? fallbackH;
+    // 카드 중심이 화면 중앙에 오도록 viewport 평행이동(scale 유지).
+    const cardCx = card.x + card.width / 2;
+    const cardCy = card.y + (card.height ?? 80) / 2;
+    set({
+      viewport: {
+        ...v,
+        x: w / 2 - cardCx * v.scale,
+        y: h / 2 - cardCy * v.scale,
+      },
+      selectedIds: [id],
+    });
   },
 }));
 
