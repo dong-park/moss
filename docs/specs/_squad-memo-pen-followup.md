@@ -4,6 +4,13 @@
 >
 > 작성일 2026-06-03 · 출처: `/tldr` 스켈레톤 리뷰 + deep-interview UX 피드백.
 
+## 진행 현황 갱신 (2026-06-03)
+
+- **WS-A/B/C/D(C2a) ✅ 완료** — 4 워커 자율 구현 → 통합 검증(tsc 0·테스트 통과)·브라우저 실측 → `main` 머지·push(`f9d43e8`).
+- **C2b ✅ void (제거 안 함)** — `useHandwriting`는 handwriting 카드의 **컴포넌트 로컬** tool/width/undo를 담당해 살아있음(펜 모드 전역 상태와 별개). WS-A는 `useDrawing` 코어 추출 + 양쪽 위임으로 수렴했을 뿐 死 아님. 제거 대상 아님.
+- **D3 ✅ 완료** — 스파이크 결과 "ambiguity"가 아니라 **펜 모드 overlay undo 전무**(스펙 AC-7 미구현)였음. 전역 cross-card undo/redo 스택 + Cmd+Z/Shift+Z/Cmd+Backspace를 store·Canvas에 배선(+7 테스트).
+- **C3 (vitest 실행)** — 이 APFS 환경에서 545 통과로 사실상 충족. WSL drvfs 한정 이슈는 CI 위임 유지.
+
 ## 워크스페이스 단위
 
 | WS | 스펙 | 묶음 | 우선순위 | 추정 |
@@ -57,13 +64,13 @@ P0-A가 **엔진 API 확정** + `handwriting/Content` 이관을 끝내야 C 그�
 | ID | 작업 | 위치 | 추정 |
 |---|---|---|---|
 | **P2-1** | C3 vitest 실제 실행 | 비-drvfs/CI, 56케이스 GREEN | S |
-| **P2-2** | D3 undo 범위 스파이크 | 실측 → 엔진/UI 라우팅 | S |
+| **P2-2** | D3 undo ✅ 완료 | 펜 overlay undo 전무 발견 → 전역 스택+키 배선(AC-7) | S |
 
 ## C — P0 완료 후 풀림
 
 | ID | 작업자 | 작업 | 의존 해제 조건 |
 |---|---|---|---|
-| **C-1** | WS-D | C2b `useHandwriting` 제거 | WS-A가 `handwriting/Content` 이관 머지 후 grep 0 |
+| **C-1** | WS-D | C2b `useHandwriting` 제거 | ❎ **void** — handwriting 카드가 실사용(로컬 undo/도구). 死 아님, 제거 안 함 |
 
 ---
 

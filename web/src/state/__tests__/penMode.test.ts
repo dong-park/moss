@@ -143,3 +143,89 @@ describe("setOverlay", () => {
     expect(updated?.content).toBe("메모 본문");
   });
 });
+
+describe("펜 모드 undo/redo/clear (D3 — AC-7)", () => {
+  const makeCard = (id: string): Card => ({
+    id,
+    kind: "text",
+    x: 0,
+    y: 0,
+    width: 240,
+    content: "",
+  });
+  const ov = (n: number) => JSON.stringify({ paths: [[{ x: n, y: n }]] });
+  const overlayOf = (id: string) =>
+    useWorkspace.getState().cards.find((c) => c.id === id)?.overlay;
+
+  beforeEach(() => {
+    useWorkspace.setState({
+      cards: [makeCard("c1"), makeCard("c2")],
+      penMode: true,
+      penUndoStack: [],
+      penRedoStack: [],
+      lastPenCardId: null,
+    });
+  });
+
+  it("setOverlay는 변경 직전 값을 undo 스택에 쌓고 lastPenCardId를 기록한다", () => {
+    useWorkspace.getState().setOverlay("c1", ov(1));
+    expect(useWorkspace.getState().penUndoStack).toEqual([
+      { cardId: "c1", overlay: "" },
+    ]);
+    expect(useWorkspace.getState().lastPenCardId).toBe("c1");
+  });
+
+  it("penUndo는 한 획씩 직전 overlay로 되돌린다", () => {
+    const s = useWorkspace.getState();
+    s.setOverlay("c1", ov(1));
+    s.setOverlay("c1", ov(2));
+    useWorkspace.getState().penUndo();
+    expect(overlayOf("c1")).toBe(ov(1));
+    useWorkspace.getState().penUndo();
+    expect(overlayOf("c1")).toBe("");
+  });
+
+  it("undo/redo는 전역 cross-card 스택 — 카드 불문 마지막 획을 되돌린다", () => {
+    const s = useWorkspace.getState();
+    s.setOverlay("c1", ov(1));
+    s.setOverlay("c2", ov(2));
+    useWorkspace.getState().penUndo(); // 마지막 = c2
+    expect(overlayOf("c2")).toBe("");
+    expect(overlayOf("c1")).toBe(ov(1));
+    useWorkspace.getState().penRedo();
+    expect(overlayOf("c2")).toBe(ov(2));
+  });
+
+  it("새 setOverlay는 redo 스택을 무효화한다", () => {
+    useWorkspace.getState().setOverlay("c1", ov(1));
+    useWorkspace.getState().penUndo();
+    expect(useWorkspace.getState().penRedoStack.length).toBe(1);
+    useWorkspace.getState().setOverlay("c1", ov(3));
+    expect(useWorkspace.getState().penRedoStack.length).toBe(0);
+  });
+
+  it("penClear는 마지막 그린 카드를 비우고, undo로 복원된다", () => {
+    useWorkspace.getState().setOverlay("c1", ov(1));
+    useWorkspace.getState().penClear();
+    expect(overlayOf("c1")).toBe("");
+    useWorkspace.getState().penUndo();
+    expect(overlayOf("c1")).toBe(ov(1));
+  });
+
+  it("빈 스택 penUndo/penRedo, 빈 카드 penClear는 no-op", () => {
+    useWorkspace.setState({ penUndoStack: [], penRedoStack: [] });
+    expect(() => {
+      useWorkspace.getState().penUndo();
+      useWorkspace.getState().penRedo();
+      useWorkspace.getState().penClear();
+    }).not.toThrow();
+  });
+
+  it("setPenMode(false)는 undo/redo 히스토리를 비운다 (세션 단위)", () => {
+    useWorkspace.getState().setOverlay("c1", ov(1));
+    useWorkspace.getState().setPenMode(false);
+    expect(useWorkspace.getState().penUndoStack).toEqual([]);
+    expect(useWorkspace.getState().penRedoStack).toEqual([]);
+    expect(useWorkspace.getState().lastPenCardId).toBeNull();
+  });
+});

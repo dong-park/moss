@@ -316,12 +316,27 @@ interface WorkspaceState {
   penMode: boolean;
   penTool: "pen" | "eraser";
   penWidth: number;
+  /**
+   * FEAT-pen-drawing-engine D3: 펜 모드 그리기 undo/redo 스냅샷.
+   * 전역 cross-card 스택 — "내 마지막 획"을 카드 불문 되돌린다. 각 항목은 변경
+   * "직전"의 overlay 값. 펜 모드 종료 시 비운다(undo는 현재 펜 세션 한정).
+   */
+  penUndoStack: { cardId: string; overlay: string }[];
+  penRedoStack: { cardId: string; overlay: string }[];
+  /** 마지막으로 그린 카드 — Cmd+Backspace(전체지움) 대상. */
+  lastPenCardId: string | null;
   setPenMode: (on: boolean) => void;
   togglePenMode: () => void;
   setPenTool: (tool: "pen" | "eraser") => void;
   setPenWidth: (width: number) => void;
   /** overlay(손글씨) 레이어만 갱신 — content는 건드리지 않는다. 디바운스 영속. */
   setOverlay: (id: string, overlay: string) => void;
+  /** 펜 모드 그리기 되돌리기 — 직전 overlay 스냅샷 복원(전역 cross-card). */
+  penUndo: () => void;
+  /** 펜 모드 그리기 다시하기. */
+  penRedo: () => void;
+  /** 마지막으로 그린 카드의 overlay 전체 지움(되돌리기 가능). */
+  penClear: () => void;
 
   remove: (id: string) => void;
   removeSelected: () => void;
@@ -835,6 +850,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   penMode: false,
   penTool: "pen",
   penWidth: PEN_DEFAULT_WIDTH,
+  penUndoStack: [],
+  penRedoStack: [],
+  lastPenCardId: null,
   viewport: { x: 0, y: 0, scale: 1 },
   pendingAIGate: null,
   lastToolId: "text",
@@ -1240,12 +1258,24 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   // FEAT-markdown-memo-pen: 펜 모드. 진입 시 열린 편집을 닫아 상호배타 보장.
   setPenMode: (on) =>
-    set(on ? { penMode: true, editingId: null } : { penMode: false }),
+    set(
+      on
+        ? { penMode: true, editingId: null }
+        : // 펜 모드 종료 = 그리기 세션 종료 → undo/redo 히스토리 비움.
+          {
+            penMode: false,
+            penUndoStack: [],
+            penRedoStack: [],
+            lastPenCardId: null,
+          },
+    ),
   togglePenMode: () => get().setPenMode(!get().penMode),
   setPenTool: (tool) => set({ penTool: tool }),
   setPenWidth: (width) =>
     set({ penWidth: clamp(width, PEN_MIN_WIDTH, PEN_MAX_WIDTH) }),
   setOverlay: (id, overlay) => {
+    // D3: 변경 "직전" overlay를 undo 스택에 적재(새 입력이므로 redo 무효화).
+    const prev = get().cards.find((c) => c.id === id)?.overlay ?? "";
     let updated: Card | undefined;
     set((s) => ({
       cards: s.cards.map((c) => {
@@ -1253,6 +1283,65 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         updated = { ...c, overlay };
         return updated;
       }),
+      penUndoStack: [...s.penUndoStack, { cardId: id, overlay: prev }],
+      penRedoStack: [],
+      lastPenCardId: id,
+    }));
+    if (updated)
+      persistCardDebounced(updated, storageBoardId(get().currentBoardId));
+  },
+  penUndo: () => {
+    const { penUndoStack, cards } = get();
+    if (penUndoStack.length === 0) return;
+    const entry = penUndoStack[penUndoStack.length - 1];
+    const cur = cards.find((c) => c.id === entry.cardId)?.overlay ?? "";
+    let updated: Card | undefined;
+    set((s) => ({
+      cards: s.cards.map((c) => {
+        if (c.id !== entry.cardId) return c;
+        updated = { ...c, overlay: entry.overlay };
+        return updated;
+      }),
+      penUndoStack: s.penUndoStack.slice(0, -1),
+      penRedoStack: [...s.penRedoStack, { cardId: entry.cardId, overlay: cur }],
+      lastPenCardId: entry.cardId,
+    }));
+    if (updated)
+      persistCardDebounced(updated, storageBoardId(get().currentBoardId));
+  },
+  penRedo: () => {
+    const { penRedoStack, cards } = get();
+    if (penRedoStack.length === 0) return;
+    const entry = penRedoStack[penRedoStack.length - 1];
+    const cur = cards.find((c) => c.id === entry.cardId)?.overlay ?? "";
+    let updated: Card | undefined;
+    set((s) => ({
+      cards: s.cards.map((c) => {
+        if (c.id !== entry.cardId) return c;
+        updated = { ...c, overlay: entry.overlay };
+        return updated;
+      }),
+      penRedoStack: s.penRedoStack.slice(0, -1),
+      penUndoStack: [...s.penUndoStack, { cardId: entry.cardId, overlay: cur }],
+      lastPenCardId: entry.cardId,
+    }));
+    if (updated)
+      persistCardDebounced(updated, storageBoardId(get().currentBoardId));
+  },
+  penClear: () => {
+    const id = get().lastPenCardId;
+    if (!id) return;
+    const cur = get().cards.find((c) => c.id === id)?.overlay ?? "";
+    if (!cur) return; // 지울 게 없으면 no-op (스택 오염 방지).
+    let updated: Card | undefined;
+    set((s) => ({
+      cards: s.cards.map((c) => {
+        if (c.id !== id) return c;
+        updated = { ...c, overlay: "" };
+        return updated;
+      }),
+      penUndoStack: [...s.penUndoStack, { cardId: id, overlay: cur }],
+      penRedoStack: [],
     }));
     if (updated)
       persistCardDebounced(updated, storageBoardId(get().currentBoardId));

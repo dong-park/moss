@@ -151,10 +151,19 @@ export function Canvas() {
       }
       // FEAT-markdown-memo-pen: 펜 모드 키 — 다른 캔버스 키보다 우선.
       if (penMode) {
+        const mod = e.metaKey || e.ctrlKey;
         if (e.key === "Escape") {
           e.preventDefault();
           setPenMode(false);
-        } else if (e.key === "e" || e.key === "E") {
+        } else if (mod && (e.key === "z" || e.key === "Z")) {
+          // FEAT-pen-drawing-engine D3: 펜 그리기 undo/redo (스펙 AC-7).
+          e.preventDefault();
+          if (e.shiftKey) useWorkspace.getState().penRedo();
+          else useWorkspace.getState().penUndo();
+        } else if (mod && e.key === "Backspace") {
+          e.preventDefault();
+          useWorkspace.getState().penClear();
+        } else if (!mod && (e.key === "e" || e.key === "E")) {
           e.preventDefault();
           const cur = useWorkspace.getState().penTool;
           setPenTool(cur === "pen" ? "eraser" : "pen");
