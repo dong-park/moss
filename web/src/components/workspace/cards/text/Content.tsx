@@ -5,6 +5,7 @@ import { blocksToMarkdown } from "@/state/cardContent";
 import { useWorkspace } from "@/state/workspace";
 import MarkdownEditor from "../_shared/MarkdownEditor";
 import { DrawingLayer } from "../_shared/DrawingLayer";
+import { MultitabConflictBanner } from "../_shared/MultitabConflictBanner"; // W8
 import { MEMO_CONTENT_WIDTH } from "../_shared/memoLayout";
 import type { CardContentProps } from "../_shared/types";
 
@@ -62,6 +63,7 @@ export function TextCardContent({
         }
       }}
     >
+      <MultitabConflictBanner cardId={card.id} /> {/* W8: 다른 탭 변경 배너 */}
       {/* 고정 폭 컬럼 — 카드/모달 공통 좌표계. 카드 폭보다 넓으면 위 overflow-hidden이
         * 우측을 크롭한다. padding 6/9 + text-[13px]은 모달 컬럼과 정확히 일치해야
         * 펜이 같은 글자를 가리킨다. position:relative로 펜 overlay의 기준 박스. */}

@@ -19,6 +19,7 @@ import {
   flushCard,
   flushAll,
 } from "./cardPersist";
+import { initLiveSync } from "./db/liveSync"; // W8: 다중 탭 동기화
 import {
   parseCode,
   parseHandwriting,
@@ -888,6 +889,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   clearRenameRequest: () => set({ pendingRenameBoardId: null }),
 
   loadFromStorage: async () => {
+    initLiveSync(); // W8: 다중 탭 동기화 구독 시작(멱등)
     const storage = useStorage.getState();
     if (!storage.initialized) await storage.init();
     const boards = await storage.loadBoards();
