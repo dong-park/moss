@@ -1,6 +1,6 @@
 # FEAT-memo-a11y (W9)
 
-**Status**: 📋 todo — C(P0 후). **Squad**: [[_squad-memo-production]] · [[FEAT-memo-editor-seams]]
+**Status**: ✅ complete (2026-06-03) — P0 `EditorRegion` 표면 위 보강. **Squad**: [[_squad-memo-production]] · [[FEAT-memo-editor-seams]]
 **심각도**: 🟡 중(포용성).
 
 ## 1. 목표
@@ -39,6 +39,31 @@ WCAG 2.1 AA 지향(키보드·이름·역할·값). SSR 폴백도 동일 라벨.
 ## 9. 다음 iteration
 펜 입력 키보드 대안, 고대비 테마, axe 자동 검사 CI.
 
+## 9.5 인카드 서식 단축키 (commonmark keymap 실측)
+P0 `editorPlugins`의 commonmark 프리셋이 ProseMirror keymap으로 바인딩한다.
+`Mod`은 mac=⌘, 그 외=Ctrl. EditorRegion이 `aria-keyshortcuts`로 SR에 노출한다.
+
+| 단축 | 동작 | aria-keyshortcuts |
+|---|---|---|
+| `Mod-b` | 굵게(strong) | `Control+B Meta+B` |
+| `Mod-i` | 기울임(emphasis) | `Control+I Meta+I` |
+| `Mod-e` | 인라인 코드 | `Control+E Meta+E` |
+
+> 비고: 스펙 §10 초안의 "`(코드)"는 실제 milkdown 바인딩이 backtick이 아닌
+> `Mod-e`라 실측에 맞춰 정정(증거 우선). 그 외 블록 단축(H1 `Mod-Alt-1`,
+> 인용 `Mod-Shift-b` 등)도 프리셋에 존재하나 노출은 핵심 인라인 3종으로 한정.
+
 ## 10. DOD
-- [ ] EditorRegion role/aria/포커스 링, 인카드 단축 노출, aria-live 안내
-- [ ] AC-1~5, tsc 0, a11y 단위/스냅샷 테스트
+- [x] EditorRegion role/aria/포커스 링, 인카드 단축 노출, aria-live 안내
+- [x] AC-1~5, tsc 0, a11y 단위 테스트(EditorRegion.test.tsx 8 케이스)
+
+### 구현 메모
+- **AC-1** `role=textbox`·`aria-multiline`·`aria-readonly`(editable 연동)·`aria-label`
+  (`workspace.memo.editor.label`, useT i18n). display:contents 유지 → 펜 정렬 불변.
+- **AC-2** `aria-keyshortcuts`로 Mod+B/I/E 노출(§9.5). 키맵은 P0 commonmark가 제공.
+- **AC-3** `[data-memo-editor] .ProseMirror:focus-visible` ink-blue(`--color-accent-blue`)
+  2px outline. outline이라 reflow 0(레이아웃 시프트 0), transition 없음 → reduced-motion 무관.
+  React 19 hoistable `<style href precedence>`로 head 1회 삽입.
+- **AC-4** `aria-live="polite"` 단일 영역(owner 레지스트리로 카드 N개여도 1개만 렌더 →
+  과다 낭독 방지). 펜 모드 토글(owner가 push)·편집 이탈=저장 커밋(편집 카드가 push) 안내.
+- **AC-5** 버블 툴바 `aria-label`/탭 순서는 P0 `BubbleMenuHost`가 유지(W3 항목 채움).
