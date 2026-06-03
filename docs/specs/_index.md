@@ -133,6 +133,14 @@ DAG: `[entry-mode] (P1)` + `[card-flow] (P1)` — 파일 겹침 0. soft 의존(f
 
 **다음 단계**: `npm run dev`로 9종 + Phase 2 동시 시각 QA → AC-1~6 / AC-1~5 수동 시나리오 확인 → 통과 시 두 spec `complete/`로 이동.
 
+## 🧩 진행 중 squad
+
+| squad | 보드 | 단위 | 상태 |
+|---|---|---|---|
+| 메모 툴 프로덕션화 | [_squad-memo-production.md](_squad-memo-production.md) | P0(에디터 슬롯화) + W1~W10 | 📋 스펙 작성 완료, P0 대기 |
+
+> 메모 에디터 사용성 10개 액션(자동저장 가드·이미지 붙여넣기·인카드 서식·전문검색·위키링크·붙여넣기 정제·빈 메모 정리·다중탭 동기화·a11y·자동링크)을 10 워커 1:1 분할. `MarkdownEditor.tsx`/`workspace.ts` 핫스팟을 P0 확장 슬롯화로 충돌 0. 머지 순서 보드 §조율점 참조.
+
 ## 스펙 작성·갱신 규칙
 
 - complete 이동 시: `**Status**: ✅ complete (날짜) — 검증 통과, AC 모두 충족`

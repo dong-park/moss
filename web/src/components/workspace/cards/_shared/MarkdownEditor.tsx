@@ -29,15 +29,15 @@ import {
   editorViewCtx,
   editorViewOptionsCtx,
 } from "@milkdown/core";
-import { commonmark } from "@milkdown/preset-commonmark";
-import { gfm } from "@milkdown/preset-gfm";
-import { listener, listenerCtx } from "@milkdown/plugin-listener";
+import { listenerCtx } from "@milkdown/plugin-listener";
 import { nord } from "@milkdown/theme-nord";
 import { Milkdown, MilkdownProvider, useEditor } from "@milkdown/react";
 
 import { MarkdownToolbar } from "./MarkdownToolbar";
-import { markdownPlaceholder } from "./markdownPlaceholder";
 import { MEMO_CONTENT_WIDTH } from "./memoLayout";
+import { editorPlugins } from "./editor/extensions";
+import { BubbleMenuHost } from "./editor/BubbleMenuHost";
+import { EditorRegion } from "./editor/EditorRegion";
 
 import "@milkdown/theme-nord/style.css";
 import "prosemirror-view/style/prosemirror.css";
@@ -89,16 +89,20 @@ export function MilkdownInner({ value, editable, onChange, onBlur }: MarkdownEdi
           });
         })
         .config(nord)
-        .use(commonmark)
-        .use(gfm)
-        .use(listener)
-        .use(markdownPlaceholder),
+        .use(editorPlugins),
     // editable 변화 시 재생성. readonly일 때만 value를 deps에 포함해
     // 외부 변경을 반영하고, 편집 중에는 제외해 커서를 보존.
     [editable, editable ? "" : value],
   );
 
-  return <Milkdown />;
+  return (
+    <>
+      <EditorRegion editable={editable}>
+        <Milkdown />
+      </EditorRegion>
+      <BubbleMenuHost />
+    </>
+  );
 }
 
 export default function MarkdownEditor(props: MarkdownEditorProps) {

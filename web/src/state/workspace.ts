@@ -14,6 +14,12 @@ import {
 import { migratedContent } from "./markdownMigration";
 import { enqueueEmbed as enqueueEmbedRaw } from "./ai/embeddingQueue";
 import {
+  schedulePersist,
+  cancelPersist,
+  flushCard,
+  flushAll,
+} from "./cardPersist";
+import {
   parseCode,
   parseHandwriting,
   serializeBlocks,
@@ -754,18 +760,13 @@ function persistCard(card: Card, boardId: string | null): Promise<void> {
   });
 }
 
-/** moveCard / setContent 같은 빈번한 변경은 300ms 디바운스 후 영속. */
-const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
-const DEBOUNCE_MS = 300;
+/** moveCard / setContent 같은 빈번한 변경은 300ms 디바운스 후 영속.
+ * 타이머·flush 기계는 cardPersist.ts(seam)로 분리 — 동작 불변, persist 본문만 주입.
+ * flushCard/flushAll은 언마운트·beforeunload 유실 가드(W1)용으로 재노출. */
+export { flushCard, flushAll };
 
 function persistCardDebounced(card: Card, boardId: string | null) {
-  const existing = debounceTimers.get(card.id);
-  if (existing) clearTimeout(existing);
-  const handle = setTimeout(() => {
-    debounceTimers.delete(card.id);
-    persistCard(card, boardId);
-  }, DEBOUNCE_MS);
-  debounceTimers.set(card.id, handle);
+  schedulePersist(card.id, () => persistCard(card, boardId));
 }
 
 /** 보드 전환 페이드 시간 — spec §3 AC-4. */
@@ -1359,11 +1360,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       editingId: s.editingId === id ? null : s.editingId,
       expandedCardId: s.expandedCardId === id ? null : s.expandedCardId,
     }));
-    const pending = debounceTimers.get(id);
-    if (pending) {
-      clearTimeout(pending);
-      debounceTimers.delete(id);
-    }
+    cancelPersist(id);
     const storage = useStorage.getState();
     if (!storage.initialized) return;
     if (funnel) {
@@ -1392,13 +1389,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
           ? null
           : s.expandedCardId,
     }));
-    for (const id of ids) {
-      const pending = debounceTimers.get(id);
-      if (pending) {
-        clearTimeout(pending);
-        debounceTimers.delete(id);
-      }
-    }
+    for (const id of ids) cancelPersist(id);
     const storage = useStorage.getState();
     if (!storage.initialized) return;
     // 함이 아닌 일반 카드는 기존대로 즉시 삭제(blob 해제 포함, undo 없음).
