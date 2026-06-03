@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { blocksToMarkdown } from "@/state/cardContent";
 import { useWorkspace } from "@/state/workspace";
 import MarkdownEditor from "../_shared/MarkdownEditor";
+import { MemoSaveGuard } from "../_shared/editor/MemoSaveGuard"; // W1 자동저장 유실 가드
 import { DrawingLayer } from "../_shared/DrawingLayer";
 import { MEMO_CONTENT_WIDTH } from "../_shared/memoLayout";
 import { BacklinkPanel } from "../_shared/editor/BacklinkPanel"; // W5 위키링크 백링크 패널
@@ -87,6 +88,7 @@ export function TextCardContent({
         )}
         <BacklinkPanel card={card} />
       </div>
+      <MemoSaveGuard cardId={card.id} content={markdown} editing={editing} />
     </div>
   );
 }
