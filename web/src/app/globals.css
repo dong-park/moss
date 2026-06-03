@@ -264,3 +264,19 @@ body {
   font-size: 13px;
   line-height: 1.6;
 }
+
+/* ─────────────────────────────────────────────────────────────
+ * FEAT-memo-learnability — 빈 메모 마크다운 치트시트 placeholder.
+ * MarkdownEditor.tsx의 ProseMirror 데코레이션이 빈 첫 문단에 달아주는
+ * data-placeholder를 저채도 보조 텍스트 한 줄로 렌더한다. float+height:0로
+ * 흐름을 차지하지 않아 커서는 줄 맨 앞에 그대로, 입력 시작 시 데코레이션이
+ * 사라지며 힌트도 사라진다(표준 placeholder 동작).
+ * ───────────────────────────────────────────────────────────── */
+.moss-md .ProseMirror .moss-md-placeholder::before {
+  content: attr(data-placeholder);
+  color: var(--color-text-soft);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  white-space: nowrap;
+}
