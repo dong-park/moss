@@ -1,32 +1,26 @@
 "use client";
 
 /* ─────────────────────────────────────────────────────────────
- * FEAT-markdown-memo-pen — 공유 그리기 레이어.
+ * FEAT-markdown-memo-pen / FEAT-pen-drawing-engine — 공유 그리기 레이어.
  *
- * handwriting 카드의 SVG 펜/지우개 로직을 추출해 두 곳이 공용한다:
- *  (1) handwriting 카드 본문
- *  (2) 펜 모드의 메모 카드 overlay (T-5)
- *
- * 책임 분리:
- *  - DrawingLayer = 포인터→stroke 그리기 + 지우개 + 렌더. value(직렬화 paths)가 source.
- *  - undo/redo/clear/굵기·도구 토글 = 호출측이 소유(카드 키보드 or 펜 모드 전역).
+ * 메모 카드 overlay(text/Content) + 펼침 모달(MemoExpandDialog)이 공용하는
+ * 렌더 컴포넌트. 그리기 코어(toLocal/finishStroke/pathsIntersect/draft)는
+ * 단일 엔진 [[useDrawing]]으로 수렴했고, 여기는 그 얇은 호출부다:
+ *  - value(직렬화 paths) ↔ onChange(json)만 책임지고 나머지는 엔진에 위임.
+ *  - undo/redo/clear/굵기·도구 토글 = 호출측 소유(펜 모드 전역).
  *
  * active=false면 pointer-events:none → 클릭이 카드(드래그/편집)로 통과한다.
  *
  * 좌표계: 부모 컬럼(고정 폭 [[MEMO_CONTENT_WIDTH]])을 가득 채우는 1:1 픽셀 좌표.
  * 카드와 모달이 같은 고정 폭 컬럼 위에 이 레이어를 1:1로 얹으므로, stroke가 카드↔
- * 모달 어디서 그려져도 동일 좌표공간에 저장되고 같은 글자 위에 정렬된다. 컬럼이
- * CSS scale 없이 1:1이라 viewBox/스케일 환산이 불필요하다(과거 viewBox 방식 제거).
+ * 모달 어디서 그려져도 동일 좌표공간에 저장되고 같은 글자 위에 정렬된다(viewBox 없음).
  * ───────────────────────────────────────────────────────────── */
 
-import { useMemo, useRef, useState } from "react";
-import {
-  parseHandwriting,
-  serializeHandwriting,
-  type HandwritingPoint,
-} from "@/state/cardContent";
+import { useMemo, useRef } from "react";
+import { parseHandwriting, serializeHandwriting } from "@/state/cardContent";
+import { useDrawing, type DrawingTool } from "./useDrawing";
 
-export type DrawingTool = "pen" | "eraser";
+export type { DrawingTool };
 
 export type DrawingLayerProps = {
   value: string;
@@ -38,9 +32,6 @@ export type DrawingLayerProps = {
   stroke?: string;
 };
 
-/** 지우개 근접 판정 임계 (px). */
-const ERASER_THRESHOLD = 8;
-
 export function DrawingLayer({
   value,
   active,
@@ -50,71 +41,25 @@ export function DrawingLayer({
   stroke = "var(--color-text)",
 }: DrawingLayerProps) {
   const data = useMemo(() => parseHandwriting(value), [value]);
-  const [draft, setDraft] = useState<HandwritingPoint[]>([]);
-  const drawingRef = useRef(false);
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const drawing = useDrawing({
+    paths: data.paths,
+    active,
+    tool,
+    onPathsChange: (paths) => onChange(serializeHandwriting({ paths })),
+    svgRef,
+  });
 
-  // 컬럼이 1:1(CSS scale 없음)이므로 SVG 기준 상대 픽셀이 곧 저장 좌표다.
-  const toLocal = (clientX: number, clientY: number): HandwritingPoint => {
-    const rect = svgRef.current?.getBoundingClientRect();
-    if (!rect) return { x: 0, y: 0 };
-    return {
-      x: +(clientX - rect.left).toFixed(1),
-      y: +(clientY - rect.top).toFixed(1),
-    };
-  };
-
-  const onPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
-    if (!active) return;
-    e.stopPropagation();
-    e.preventDefault();
-    drawingRef.current = true;
-    svgRef.current?.setPointerCapture(e.pointerId);
-    setDraft([toLocal(e.clientX, e.clientY)]);
-  };
-
-  const onPointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
-    if (!active || !drawingRef.current) return;
-    setDraft((prev) => [...prev, toLocal(e.clientX, e.clientY)]);
-  };
-
-  const finishStroke = () => {
-    if (!drawingRef.current) return;
-    drawingRef.current = false;
-    // onChange는 부모 store(setOverlay)를 갱신하므로 반드시 이벤트 핸들러 본문에서
-    // 호출한다. setDraft 업데이터 안에서 부르면 render 단계의 cross-component
-    // setState가 되어 "Cannot update a component while rendering" 경고가 난다.
-    if (draft.length > 1) {
-      if (tool === "eraser") {
-        const next = data.paths.filter((path) => !pathsIntersect(path, draft));
-        if (next.length !== data.paths.length) {
-          onChange(serializeHandwriting({ paths: next }));
-        }
-      } else {
-        onChange(serializeHandwriting({ paths: [...data.paths, draft] }));
-      }
-    }
-    setDraft([]);
-  };
-
-  const onPointerUp = (e: React.PointerEvent<SVGSVGElement>) => {
-    if (!active) return;
-    e.stopPropagation();
-    finishStroke();
-  };
-
-  const allPaths =
-    draft.length > 1 && tool === "pen" ? [...data.paths, draft] : data.paths;
   const cursor = active ? (tool === "eraser" ? "cell" : "crosshair") : "default";
 
   return (
     <svg
       ref={svgRef}
       data-drawing-layer
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onPointerCancel={onPointerUp}
+      onPointerDown={drawing.onPointerDown}
+      onPointerMove={drawing.onPointerMove}
+      onPointerUp={drawing.onPointerUp}
+      onPointerCancel={drawing.onPointerUp}
       onMouseDown={(e) => {
         // active일 때만 카드 드래그 시작을 차단(그리기 보호).
         if (active) e.stopPropagation();
@@ -132,7 +77,7 @@ export function DrawingLayer({
         overflow: "visible",
       }}
     >
-      {allPaths.map((path, i) => (
+      {drawing.allPaths.map((path, i) => (
         <polyline
           key={i}
           points={path.map((p) => `${p.x},${p.y}`).join(" ")}
@@ -145,17 +90,4 @@ export function DrawingLayer({
       ))}
     </svg>
   );
-}
-
-/** path A·B가 시각적으로 교차하는지 간이 판정 — 점 단위 근접 검사. */
-function pathsIntersect(a: HandwritingPoint[], b: HandwritingPoint[]): boolean {
-  const t2 = ERASER_THRESHOLD * ERASER_THRESHOLD;
-  for (const pa of a) {
-    for (const pb of b) {
-      const dx = pa.x - pb.x;
-      const dy = pa.y - pb.y;
-      if (dx * dx + dy * dy <= t2) return true;
-    }
-  }
-  return false;
 }

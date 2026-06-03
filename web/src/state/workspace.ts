@@ -21,6 +21,11 @@ import {
 } from "./cardContent";
 import { getTemplate } from "@/templates";
 import type { Translator } from "@/i18n";
+import {
+  PEN_MIN_WIDTH,
+  PEN_MAX_WIDTH,
+  PEN_DEFAULT_WIDTH,
+} from "@/components/workspace/cards/_shared/useDrawing";
 
 /**
  * 시스템 보드 "머무는 생각"의 가상 id. DB에는 row를 두지 않고
@@ -177,10 +182,11 @@ export const CARD_MIN_HEIGHT = 60;
 export const CARD_MAX_WIDTH = 1200;
 export const CARD_MAX_HEIGHT = 1200;
 
-/** FEAT-markdown-memo-pen: 펜 굵기 한계·기본값 (handwriting 카드와 동일 시맨틱). */
-export const PEN_MIN_WIDTH = 1;
-export const PEN_MAX_WIDTH = 12;
-export const PEN_DEFAULT_WIDTH = 1.5;
+/**
+ * FEAT-pen-drawing-engine: 펜 굵기 한계·기본값. 단일 소스는 [[useDrawing]]
+ * (handwriting 카드와 메모 overlay 공통). 기존 import 경로 호환을 위해 재노출한다.
+ */
+export { PEN_MIN_WIDTH, PEN_MAX_WIDTH, PEN_DEFAULT_WIDTH };
 
 /** 카드 PNG (/cards/v2/{kind}.png)의 trim된 종이 가로/세로 비율. resize는 이 비율을 강제한다. */
 const CARD_ASPECT_BY_KIND: Record<CardKind, number> = {
