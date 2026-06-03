@@ -25,6 +25,7 @@ import { wikilink } from "./wikilink";
 import { autolink } from "./autolink";
 import { sanitizePasteHandler } from "./sanitizePaste";
 import { imagePasteHandler, opfsImagePlugin } from "./imagePaste";
+import { memoBubbleItems } from "./BubbleToolbar"; // (W3) 인카드 버블 서식 항목
 
 /* ── ② paste 슬롯 ──────────────────────────────────────────────
  * true 반환 시 기본 동작 차단(소비). 등록 순서대로 시도, 첫 true에서 중단.
@@ -63,7 +64,7 @@ export type BubbleMenuItem = {
 };
 
 export const bubbleMenuItems: BubbleMenuItem[] = [
-  // (W3) ...memoBubbleItems,
+  ...memoBubbleItems, // (W3)
 ];
 
 export type BubbleState = {
