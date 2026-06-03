@@ -21,9 +21,11 @@ describe("editorPlugins 슬롯", () => {
 });
 
 describe("pasteHandlers 슬롯", () => {
-  it("초기 빈 배열(워커가 등록) — 빈 상태에서 기본 붙여넣기 통과", () => {
+  it("W6 sanitize 핸들러가 첫 항목으로 등록됨(image보다 먼저 — 순서 계약)", () => {
     expect(Array.isArray(pasteHandlers)).toBe(true);
-    expect(pasteHandlers.length).toBe(0);
+    // W6(sanitize) 등록 후 길이 ≥ 1, 그리고 반드시 첫 항목이어야 한다.
+    expect(pasteHandlers.length).toBeGreaterThanOrEqual(1);
+    expect(typeof pasteHandlers[0]).toBe("function");
   });
 });
 

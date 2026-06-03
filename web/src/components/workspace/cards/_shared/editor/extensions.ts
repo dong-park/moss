@@ -23,6 +23,7 @@ import { listener } from "@milkdown/plugin-listener";
 import { markdownPlaceholder } from "../markdownPlaceholder";
 import { wikilink } from "./wikilink";
 import { autolink } from "./autolink";
+import { sanitizePasteHandler } from "./sanitizePaste";
 
 /* ── ② paste 슬롯 ──────────────────────────────────────────────
  * true 반환 시 기본 동작 차단(소비). 등록 순서대로 시도, 첫 true에서 중단.
@@ -33,7 +34,7 @@ export type PasteHandler = (
 ) => boolean;
 
 export const pasteHandlers: PasteHandler[] = [
-  // (W6) sanitizePasteHandler,
+  sanitizePasteHandler, // (W6) sanitize 먼저
   // (W2) imagePasteHandler,
 ];
 
