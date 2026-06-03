@@ -10,6 +10,7 @@ import { SystemBoardEmpty } from "./cards/SystemBoardEmpty";
 import { ZoomBar } from "./ZoomBar";
 import { PenModeHud } from "./PenModeHud";
 import { PenToolbar } from "./PenToolbar";
+import { MemoSearchLayer } from "./MemoSearchLayer";
 import { useVirtualizedCards } from "./useVirtualizedCards";
 
 /** FEAT-home AC-2: 시스템 보드에서 빈 안내로 전환되는 메모 임계치. */
@@ -461,6 +462,8 @@ export function Canvas() {
       {/* FEAT-pen-mode-ux: 펜 모드 가시화 — HUD(B1)·도구 툴바(B3). 둘 다 penMode ON일 때만 렌더. */}
       <PenModeHud />
       <PenToolbar />
+      {/* FEAT-memo-fulltext-search (W4): 검색 박스 + 강조/dim 오버레이. */}
+      <MemoSearchLayer />
 
       <ZoomBar />
     </div>
