@@ -75,6 +75,20 @@
         "toastBody": "화면 밖 메모는 잠시 숨겨 부드럽게 보여드려요."
       }
     },
+    "pen": {
+      "hud": {
+        "label": "펜 모드",
+        "hint": "Esc 해제"
+      },
+      "toolbar": {
+        "label": "펜 도구",
+        "pen": "펜",
+        "eraser": "지우개",
+        "thinner": "얇게",
+        "thicker": "굵게",
+        "width": "굵기"
+      }
+    },
     "tool": {
       "line": "선",
       "board": "보드",
