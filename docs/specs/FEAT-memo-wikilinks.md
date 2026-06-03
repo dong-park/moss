@@ -1,6 +1,6 @@
 # FEAT-memo-wikilinks (W5)
 
-**Status**: 📋 todo — C(P0 후). **Squad**: [[_squad-memo-production]] · [[FEAT-memo-editor-seams]]
+**Status**: ✅ complete (2026-06-04) — feat/memo-editor-seams 합본 머지. **Squad**: [[_squad-memo-production]] · [[FEAT-memo-editor-seams]]
 **심각도**: 🟠 높음(제품 정체성 — moss는 사고 도구).
 
 ## 1. 목표

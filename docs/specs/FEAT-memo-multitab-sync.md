@@ -1,6 +1,6 @@
 # FEAT-memo-multitab-sync (W8)
 
-**Status**: 📋 todo — C(P0 후). **Squad**: [[_squad-memo-production]] · [[FEAT-memo-editor-seams]]
+**Status**: ✅ complete (2026-06-04) — feat/memo-editor-seams 합본 머지. **Squad**: [[_squad-memo-production]] · [[FEAT-memo-editor-seams]]
 **심각도**: 🟡 중(조용한 덮어쓰기).
 
 ## 1. 목표

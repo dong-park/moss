@@ -1,6 +1,6 @@
 # FEAT-memo-autosave-guard (W1)
 
-**Status**: 📋 todo — C(P0 후). **Squad**: [[_squad-memo-production]] · [[FEAT-memo-editor-seams]]
+**Status**: ✅ complete (2026-06-04) — feat/memo-editor-seams 합본 머지. **Squad**: [[_squad-memo-production]] · [[FEAT-memo-editor-seams]]
 **심각도**: 🔴 블로커(데이터 유실).
 
 ## 1. 목표

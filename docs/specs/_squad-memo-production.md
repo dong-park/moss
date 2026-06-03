@@ -6,21 +6,27 @@
 >
 > 작성일 2026-06-03 · 출처: 메모 에디터 코드 실측(MarkdownEditor/text·Content/MarkdownToolbar/workspace.ts).
 
+## 진행 현황 (2026-06-04)
+
+- **P0 + W1~W10 전원 ✅ 완료** — 11개 모두 `feat/memo-editor-seams`에 머지 순서대로 흡수. 합본 HEAD에서 게이트 실측 그린: **tsc 0 · eslint 0 · vitest 673 pass / 77 files**.
+- `/qu` 재검토 통과(차단 0) — 등록 순서 계약(`pasteHandlers` sanitize→image)·flush 가드 마운트(`MemoSaveGuard`)·liveSync 에코 루프 부재·펜 정렬 불변 실증 확인.
+- **ship: `feat/memo-editor-seams` → main (--no-ff 머지)**.
+
 ## 워커 단위 (10 + P0)
 
 | ID | 스펙 | 액션 | 핫스팟 | 우선 | 추정 |
 |---|---|---|---|---|---|
 | **P0** ✅ | [FEAT-memo-editor-seams.md](FEAT-memo-editor-seams.md) | 에디터 확장 슬롯화 + persist seam | MarkdownEditor·workspace | **P0** | M~L |
-| **W1** | [FEAT-memo-autosave-guard.md](FEAT-memo-autosave-guard.md) | 자동저장 유실 가드 + 저장 인디케이터 | state/cardPersist(신규) | C | M |
-| **W2** | [FEAT-memo-image-paste.md](FEAT-memo-image-paste.md) | 이미지 붙여넣기·드롭 → OPFS | editor/paste(신규) | C | M |
-| **W3** | [FEAT-memo-incard-format.md](FEAT-memo-incard-format.md) | 인카드 버블/슬래시 서식 | editor/bubble(신규) | C | M |
-| **W4** | [FEAT-memo-fulltext-search.md](FEAT-memo-fulltext-search.md) | 메모 전문 검색 + 캔버스 필터 | state/memoSearch(신규) | C | M |
-| **W5** | [FEAT-memo-wikilinks.md](FEAT-memo-wikilinks.md) | `[[위키링크]]` + 백링크 | editor/wikilink(신규) | C | L |
-| **W6** | [FEAT-memo-paste-sanitize.md](FEAT-memo-paste-sanitize.md) | 붙여넣기 정제(HTML→MD) | editor/paste(신규) | C | S |
-| **W7** | [FEAT-memo-empty-cleanup.md](FEAT-memo-empty-cleanup.md) | 빈 메모 자동 정리 | workspace 액션 | C | S |
-| **W8** | [FEAT-memo-multitab-sync.md](FEAT-memo-multitab-sync.md) | 다중 탭 동기화 | state/db/liveSync(신규) | C | M |
-| **W9** | [FEAT-memo-a11y.md](FEAT-memo-a11y.md) | 접근성(role·aria·단축·포커스) | editor 컨테이너 | C | S |
-| **W10** | [FEAT-memo-autolink.md](FEAT-memo-autolink.md) | URL 자동 링크화 | editor/autolink(신규) | C | S |
+| **W1** ✅ | [FEAT-memo-autosave-guard.md](FEAT-memo-autosave-guard.md) | 자동저장 유실 가드 + 저장 인디케이터 | state/cardPersist(신규) | C | M |
+| **W2** ✅ | [FEAT-memo-image-paste.md](FEAT-memo-image-paste.md) | 이미지 붙여넣기·드롭 → OPFS | editor/paste(신규) | C | M |
+| **W3** ✅ | [FEAT-memo-incard-format.md](FEAT-memo-incard-format.md) | 인카드 버블/슬래시 서식 | editor/bubble(신규) | C | M |
+| **W4** ✅ | [FEAT-memo-fulltext-search.md](FEAT-memo-fulltext-search.md) | 메모 전문 검색 + 캔버스 필터 | state/memoSearch(신규) | C | M |
+| **W5** ✅ | [FEAT-memo-wikilinks.md](FEAT-memo-wikilinks.md) | `[[위키링크]]` + 백링크 | editor/wikilink(신규) | C | L |
+| **W6** ✅ | [FEAT-memo-paste-sanitize.md](FEAT-memo-paste-sanitize.md) | 붙여넣기 정제(HTML→MD) | editor/paste(신규) | C | S |
+| **W7** ✅ | [FEAT-memo-empty-cleanup.md](FEAT-memo-empty-cleanup.md) | 빈 메모 자동 정리 | workspace 액션 | C | S |
+| **W8** ✅ | [FEAT-memo-multitab-sync.md](FEAT-memo-multitab-sync.md) | 다중 탭 동기화 | state/db/liveSync(신규) | C | M |
+| **W9** ✅ | [FEAT-memo-a11y.md](FEAT-memo-a11y.md) | 접근성(role·aria·단축·포커스) | editor 컨테이너 | C | S |
+| **W10** ✅ | [FEAT-memo-autolink.md](FEAT-memo-autolink.md) | URL 자동 링크화 | editor/autolink(신규) | C | S |
 
 ---
 
