@@ -21,6 +21,7 @@ import { gfm } from "@milkdown/preset-gfm";
 import { listener } from "@milkdown/plugin-listener";
 
 import { markdownPlaceholder } from "../markdownPlaceholder";
+import { wikilink } from "./wikilink";
 
 /* ── ② paste 슬롯 ──────────────────────────────────────────────
  * true 반환 시 기본 동작 차단(소비). 등록 순서대로 시도, 첫 true에서 중단.
@@ -130,6 +131,6 @@ export const editorPlugins: MilkdownPlugin[] = [
   markdownPlaceholder,
   pasteSlot,
   bubbleSlot,
-  // (W5) ...wikilink,
+  ...wikilink, // (W5) [[위키링크]] — 데코레이션 + 자동완성
   // (W10) autolink,
 ].flat();
