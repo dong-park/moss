@@ -7,6 +7,8 @@ import {
   getBubbleState,
   getBubbleServerSnapshot,
 } from "../extensions";
+import { sanitizePasteHandler } from "../sanitizePaste";
+import { imagePasteHandler } from "../imagePaste";
 
 /* FEAT-memo-editor-seams (P0) — 확장 슬롯 레지스트리 (AC-2~4). */
 
@@ -21,11 +23,14 @@ describe("editorPlugins 슬롯", () => {
 });
 
 describe("pasteHandlers 슬롯", () => {
-  it("W6 sanitize 핸들러가 첫 항목으로 등록됨(image보다 먼저 — 순서 계약)", () => {
+  it("순서 계약: sanitize(W6)가 image(W2)보다 먼저 — 정제 후 이미지 추출", () => {
     expect(Array.isArray(pasteHandlers)).toBe(true);
-    // W6(sanitize) 등록 후 길이 ≥ 1, 그리고 반드시 첫 항목이어야 한다.
-    expect(pasteHandlers.length).toBeGreaterThanOrEqual(1);
-    expect(typeof pasteHandlers[0]).toBe("function");
+    expect(pasteHandlers.every((h) => typeof h === "function")).toBe(true);
+    const si = pasteHandlers.indexOf(sanitizePasteHandler);
+    const ii = pasteHandlers.indexOf(imagePasteHandler);
+    expect(si).toBeGreaterThanOrEqual(0);
+    expect(ii).toBeGreaterThanOrEqual(0);
+    expect(si).toBeLessThan(ii);
   });
 });
 

@@ -24,6 +24,7 @@ import { markdownPlaceholder } from "../markdownPlaceholder";
 import { wikilink } from "./wikilink";
 import { autolink } from "./autolink";
 import { sanitizePasteHandler } from "./sanitizePaste";
+import { imagePasteHandler, opfsImagePlugin } from "./imagePaste";
 
 /* ── ② paste 슬롯 ──────────────────────────────────────────────
  * true 반환 시 기본 동작 차단(소비). 등록 순서대로 시도, 첫 true에서 중단.
@@ -34,8 +35,8 @@ export type PasteHandler = (
 ) => boolean;
 
 export const pasteHandlers: PasteHandler[] = [
-  sanitizePasteHandler, // (W6) sanitize 먼저
-  // (W2) imagePasteHandler,
+  sanitizePasteHandler, // (W6) sanitize 먼저 — 텍스트 정제
+  imagePasteHandler, // (W2) 그 다음 이미지 추출(순서 계약)
 ];
 
 const pasteSlot = $prose(
@@ -133,6 +134,7 @@ export const editorPlugins: MilkdownPlugin[] = [
   markdownPlaceholder,
   pasteSlot,
   bubbleSlot,
+  opfsImagePlugin, // (W2) opfs:// 이미지 → blob URL NodeView (resolver)
   ...wikilink, // (W5) [[위키링크]] — 데코레이션 + 자동완성
   ...autolink, // (W10) URL 자동 링크화
 ].flat();
