@@ -245,60 +245,6 @@ export type CardBlock =
   | { type: "code"; code: string; lang?: string }
   | { type: "handwriting"; paths: HandwritingPoint[][] };
 
-export type CardBlockType = CardBlock["type"];
-
-/** unknown 1개를 CardBlock으로 정제. 알 수 없는 type은 null(스킵). */
-function coerceBlock(raw: unknown): CardBlock | null {
-  if (!raw || typeof raw !== "object") return null;
-  const type = (raw as { type?: unknown }).type;
-  if (type === "text") {
-    const text = (raw as { text?: unknown }).text;
-    return { type: "text", text: typeof text === "string" ? text : "" };
-  }
-  if (type === "code") {
-    const o = raw as { code?: unknown; lang?: unknown };
-    const block: CardBlock = {
-      type: "code",
-      code: typeof o.code === "string" ? o.code : "",
-    };
-    if (typeof o.lang === "string" && o.lang.trim()) block.lang = o.lang.trim();
-    return block;
-  }
-  if (type === "handwriting") {
-    return { type: "handwriting", paths: coercePaths((raw as { paths?: unknown }).paths) };
-  }
-  return null;
-}
-
-/**
- * content → CardBlock[]. graceful default (AC-5):
- *  - 빈 문자열 → [] (UI에서 빈 text 블록 1개로 표현)
- *  - 유효 블록 배열 JSON → 정제 (알 수 없는 type 스킵)
- *  - 배열이지만 블록이 하나도 안 나옴 / 비배열 / 비-JSON → 원문을 단일 text 블록으로 보존
- */
-export function parseBlocks(content: string): CardBlock[] {
-  if (!content) return [];
-  let v: unknown;
-  try {
-    v = JSON.parse(content);
-  } catch {
-    return [{ type: "text", text: content }];
-  }
-  if (!Array.isArray(v)) {
-    return [{ type: "text", text: content }];
-  }
-  const blocks: CardBlock[] = [];
-  for (const raw of v) {
-    const b = coerceBlock(raw);
-    if (b) blocks.push(b);
-  }
-  // 비어있지 않은 배열인데 블록이 0개면 사용자의 평문("[1,2,3]" 등)일 수 있으므로 손실 방지.
-  if (v.length > 0 && blocks.length === 0) {
-    return [{ type: "text", text: content }];
-  }
-  return blocks;
-}
-
 export function serializeBlocks(blocks: CardBlock[]): string {
   // 빈 카드 / 단일 text 블록은 plain string으로 저장 → 레거시 글 카드와 동일 형태 유지.
   // 임베딩·키워드·제목 등 content를 평문으로 읽는 소비자의 회귀를 막는다
@@ -308,13 +254,6 @@ export function serializeBlocks(blocks: CardBlock[]): string {
     return blocks[0].text;
   }
   return JSON.stringify(blocks);
-}
-
-/** "+ 블록 추가"용 빈 블록 생성. */
-export function makeBlock(type: CardBlockType): CardBlock {
-  if (type === "code") return { type: "code", code: "" };
-  if (type === "handwriting") return { type: "handwriting", paths: [] };
-  return { type: "text", text: "" };
 }
 
 /**

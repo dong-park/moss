@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { __internal } from "@/state/workspace";
-import { parseBlocks, serializeCode, serializeHandwriting } from "@/state/cardContent";
+import { serializeBlocks, serializeCode, serializeHandwriting } from "@/state/cardContent";
 import type { Note } from "@/state/db/schema";
 
 /** FEAT-card-allinone AC-6 — 레거시 code·handwriting 노트를 글 카드 단일 블록으로 무손실 환원. */
@@ -28,9 +28,9 @@ describe("decodeNoteToCard · 올인원 마이그레이션", () => {
     const card = __internal.decodeNoteToCard(n);
 
     expect(card.kind).toBe("text");
-    expect(parseBlocks(card.content)).toEqual([
-      { type: "code", code: "const x = 1", lang: "ts" },
-    ]);
+    expect(card.content).toBe(
+      serializeBlocks([{ type: "code", code: "const x = 1", lang: "ts" }]),
+    );
     // 위치 등 메타는 유지.
     expect(card.x).toBe(10);
     expect(card.width).toBe(260);
@@ -39,7 +39,7 @@ describe("decodeNoteToCard · 올인원 마이그레이션", () => {
   it("lang 없는 code 노트도 손실 없이 환원", () => {
     const n = note("code", serializeCode({ code: "x=1" }));
     const card = __internal.decodeNoteToCard(n);
-    expect(parseBlocks(card.content)).toEqual([{ type: "code", code: "x=1" }]);
+    expect(card.content).toBe(serializeBlocks([{ type: "code", code: "x=1" }]));
   });
 
   it("handwriting 노트 → text 카드 + 단일 handwriting 블록 (획 좌표 보존)", () => {
@@ -48,7 +48,7 @@ describe("decodeNoteToCard · 올인원 마이그레이션", () => {
     const card = __internal.decodeNoteToCard(n);
 
     expect(card.kind).toBe("text");
-    expect(parseBlocks(card.content)).toEqual([{ type: "handwriting", paths }]);
+    expect(card.content).toBe(serializeBlocks([{ type: "handwriting", paths }]));
   });
 
   it("일반 text 노트는 그대로 (마이그레이션 대상 아님)", () => {

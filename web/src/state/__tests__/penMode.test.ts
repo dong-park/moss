@@ -7,7 +7,7 @@ import {
   type Card,
 } from "@/state/workspace";
 import type { Note } from "@/state/db/schema";
-import { parseBlocks, serializeChecklist, serializeCode } from "@/state/cardContent";
+import { serializeBlocks, serializeChecklist, serializeCode } from "@/state/cardContent";
 
 const { decodeNoteToCard } = __internal;
 
@@ -61,9 +61,9 @@ describe("decodeNoteToCard — 방어적 마이그레이션", () => {
     });
     const card = decodeNoteToCard(note);
     expect(card.kind).toBe("text");
-    expect(parseBlocks(card.content)).toEqual([
-      { type: "code", code: "const x = 1", lang: "js" },
-    ]);
+    expect(card.content).toBe(
+      serializeBlocks([{ type: "code", code: "const x = 1", lang: "js" }]),
+    );
   });
 
   it("checklist 노트 → text + text 블록 (GFM 마크다운 보존)", () => {
@@ -74,9 +74,7 @@ describe("decodeNoteToCard — 방어적 마이그레이션", () => {
     });
     const card = decodeNoteToCard(note);
     expect(card.kind).toBe("text");
-    expect(parseBlocks(card.content)).toEqual([
-      { type: "text", text: "- [ ] 할 일" },
-    ]);
+    expect(card.content).toBe(serializeBlocks([{ type: "text", text: "- [ ] 할 일" }]));
   });
 
   it("comment 인코딩 text는 건드리지 않고 comment로 환원", () => {
