@@ -69,6 +69,15 @@ export function DraggableCard({ card }: { card: Card }) {
   const getScale = () => useWorkspace.getState().viewport.scale;
 
   /**
+   * FEAT-pen-mode-ux B2 (AC-2): 그릴 수 있는 곳 affordance.
+   * 펜 overlay(DrawingLayer)는 text 카드만 렌더하므로 text=그릴 수 있는 메모, 그 외=불가.
+   * 메모 카드는 호버 시 하이라이트로 "여기 그릴 수 있음"을 알리고, 비메모 카드 위에선
+   * 커서를 not-allowed로 바꿔 잘못된 그리기 시도를 막는다.
+   */
+  const penDrawable = penMode && card.kind === "text";
+  const penBlocked = penMode && card.kind !== "text";
+
+  /**
    * FEAT-eject: 서브캔버스(함) 안일 때만 노출할 "상위로 내보내기" 조상 목록.
    * computeBreadcrumb는 루트→현재 순 — 현재 보드를 뺀 조상들이 내보낼 수 있는 후보.
    * 비어 있으면(루트/시스템 보드) 우클릭 메뉴 자체를 렌더하지 않는다.
@@ -365,7 +374,10 @@ export function DraggableCard({ card }: { card: Card }) {
       className={[
         "group absolute select-none",
         penMode
-          ? "" // 펜 모드: 커서는 Canvas 전역 펜. DrawingLayer가 그리기 커서 담당.
+          ? // 펜 모드: 메모는 전역 펜 커서 유지(그릴 수 있음), 비메모는 not-allowed(B2).
+            penBlocked
+            ? "cursor-not-allowed"
+            : ""
           : editing
             ? "cursor-text"
             : "cursor-grab active:cursor-grabbing",
@@ -400,6 +412,20 @@ export function DraggableCard({ card }: { card: Card }) {
         onChange={(content) => setContent(card.id, content)}
         onCommitEdit={() => setEditing(null)}
       />
+
+      {/*
+       * FEAT-pen-mode-ux B2 (AC-2): 메모 카드 "그릴 수 있음" 하이라이트.
+       * 펜 모드에서 카드 위로 커서를 올리면(group-hover) 점선 링이 들떠 그릴 수 있음을 알린다.
+       * pointer-events-none이라 그리기(DrawingLayer)·드래그 가드를 가로막지 않는다.
+       */}
+      {penDrawable && (
+        <div
+          aria-hidden="true"
+          data-pen-drawable="true"
+          className="pointer-events-none absolute inset-0 z-[30] rounded-[8px] opacity-0 transition-opacity duration-150 group-hover:opacity-100"
+          style={{ boxShadow: "inset 0 0 0 2px rgba(79, 124, 243, 0.55)" }}
+        />
+      )}
 
       {/*
        * FEAT-memo-expand: 메모(text) 카드 펼치기 버튼 — 호버 시 우상단에 노출.
