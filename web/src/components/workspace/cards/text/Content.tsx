@@ -75,7 +75,7 @@ export function TextCardContent({
           value={markdown}
           editable={editing}
           onChange={onChange}
-          onBlur={onCommitEdit}
+          onBlur={() => { onCommitEdit(); useWorkspace.getState().deleteCardIfEmpty(card.id); }} /* W7: 빈 메모 자동 정리 */
         />
         {showOverlay && (
           <DrawingLayer
