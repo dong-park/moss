@@ -6,6 +6,7 @@ import { useWorkspace } from "@/state/workspace";
 import MarkdownEditor from "../_shared/MarkdownEditor";
 import { DrawingLayer } from "../_shared/DrawingLayer";
 import { MEMO_CONTENT_WIDTH } from "../_shared/memoLayout";
+import { BacklinkPanel } from "../_shared/editor/BacklinkPanel"; // W5 위키링크 백링크 패널
 import type { CardContentProps } from "../_shared/types";
 
 /* ─────────────────────────────────────────────────────────────
@@ -84,6 +85,7 @@ export function TextCardContent({
             onChange={(json) => setOverlay(card.id, json)}
           />
         )}
+        <BacklinkPanel card={card} />
       </div>
     </div>
   );
