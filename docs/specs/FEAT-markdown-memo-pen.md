@@ -2,7 +2,7 @@
 
 > 블록을 "노션처럼 종류 골라 찍는" 방식에서 **마크다운 문법이 곧 블록**인 단일 메모 카드로 바꾸고, 그리기는 사이드바에서 펜을 꺼내 **메모지 위에 직접 끄적이는** 모드로 전환한다.
 
-**Status**: 구현 완료 (P0+트랙A+트랙B+T-6, web@feat/markdown-memo-pen) — tsc/eslint/check-i18n 클린. ⏳ vitest(작성됨, drvfs로 로컬 미실행→CI)·브라우저 실측 대기
+**Status**: ✅ complete (2026-06-05) — P0+트랙A+트랙B+T-6 main 머지. tsc·eslint·check-i18n 클린, vitest 673 GREEN(drvfs 이슈 해소). 브라우저 QA: 펜 overlay 정렬·펜 모드·placeholder PASS(undo/clear는 키 입력 환경 제약으로 코드 배선만 확인).
 **Owner**: (미정)
 **Estimated**: L (2트랙 — A 마크다운 메모 M, B 펜 모드 M)
 **Blueprint**: (신규 — 승인 후 `docs/moss.blueprint.json#features`에 등록)

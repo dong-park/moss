@@ -2,10 +2,17 @@
 
 > 숨은 전역 모드를 항상 보이게 만들고, 어디에 그릴 수 있는지·지금 무슨 도구인지 화면에 드러낸다.
 
-**Status**: spec
+**Status**: ✅ complete (2026-06-05) — main 머지(펜 모드 HUD·툴바·affordance). 브라우저 QA: HUD「✏️ 펜 모드 · Esc 해제」+ 툴바 확인. ⚠️ 펜 모드 종료가 Esc 전용 — 클릭 종료 수단 후속 fix(아래 §0).
 **Estimated**: M
 **Owner**: (WS-B)
 **Reference**: deep-interview UX 피드백 (2026-06-03) — B1/B2/B3
+
+---
+
+## 0. 잔여 작업 (브라우저 QA 발견, 2026-06-05)
+
+- **펜 모드 종료가 Esc 키 전용** — 브라우저 실측에서 펜 도구 버튼 재클릭(2회 테스트)·툴바 닫기 모두 펜 모드를 끄지 못했고, `Canvas.tsx:156`상 Escape만 `setPenMode(false)`에 배선됨. HUD가 「Esc 해제」로 안내는 하나, Esc가 불편한 환경(태블릿·터치)에서 사용자가 펜 모드에 갇힐 수 있음.
+- **제안 fix(S)**: HUD 배지 또는 펜 툴바에 클릭 가능한 "펜 모드 종료" 버튼 추가(→ `setPenMode(false)`). 본체는 머지 완료이므로 별도 small fix로 분리.
 
 ---
 

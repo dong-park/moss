@@ -2,7 +2,7 @@
 
 > 메모 overlay와 handwriting 카드가 각각 가진 두 드로잉 구현을 하나로 합쳐, 펜 버그를 한 곳에서만 고치게 한다.
 
-**Status**: spec
+**Status**: ✅ complete (2026-06-05) — main 머지(`useDrawing` 단일 엔진 + `DrawingLayer`, A1·D2 흡수, D3 undo/redo/clear). 브라우저 QA: overlay↔텍스트 컬럼 좌표계 픽셀 일치 실측(정렬 PASS).
 **Estimated**: M~L
 **Owner**: (WS-A)
 **Reference**: `/tldr` 리뷰 (2026-06-03) — 판정표 ⚠️ 2건 + 액션 A1/C1/D2

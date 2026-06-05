@@ -2,7 +2,7 @@
 
 > 마크다운 통일 후 죽은 블록 스택 코드를 걷어내고, 작성만 되고 미실행인 테스트를 실제로 GREEN 확인한다.
 
-**Status**: spec
+**Status**: ✅ complete (2026-06-05) — main 머지(C2a 죽은 블록 제거 · C2b void · C3 vitest 673 GREEN · D3 undo 배선).
 **Estimated**: S (각 항목)
 **Owner**: (WS-D)
 **Reference**: `/tldr` 리뷰 (2026-06-03) — C2/C3 + deep-interview D3

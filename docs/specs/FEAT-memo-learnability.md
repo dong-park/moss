@@ -2,7 +2,7 @@
 
 > 사이드바 블록 버튼이 사라진 빈 메모에서, 무엇을 칠 수 있는지(마크다운 문법)를 한 줄로 알려준다.
 
-**Status**: spec
+**Status**: ✅ complete (2026-06-05) — main 머지. 브라우저 QA: 빈 메모 마크다운 placeholder 「# 제목 · - [ ] 할일 · > 인용 · ``` 코드」 확인.
 **Estimated**: S
 **Owner**: (WS-C)
 **Reference**: deep-interview UX 피드백 (2026-06-03) — D1

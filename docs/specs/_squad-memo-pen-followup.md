@@ -6,10 +6,12 @@
 
 ## 진행 현황 갱신 (2026-06-03)
 
+> **2026-06-05 갱신**: squad **전원 종결**. 브라우저 시각 QA 완료 — 펜 overlay 정렬(overlay↔텍스트 컬럼 좌표계 픽셀 일치, 4카드 실측), 펜 모드 HUD·툴바, 빈 메모 placeholder 모두 PASS. undo/redo/clear는 키 입력 환경 제약으로 런타임 미관측이나 `Canvas.tsx:159-166` 배선 확인. ⚠️ **신규 발견**: 펜 모드 종료 Esc 전용 → small fix로 분리([[FEAT-pen-mode-ux]] §0). 스펙 4종 Status `✅ complete`로 갱신.
+
 - **WS-A/B/C/D(C2a) ✅ 완료** — 4 워커 자율 구현 → 통합 검증(tsc 0·테스트 통과)·브라우저 실측 → `main` 머지·push(`f9d43e8`).
 - **C2b ✅ void (제거 안 함)** — `useHandwriting`는 handwriting 카드의 **컴포넌트 로컬** tool/width/undo를 담당해 살아있음(펜 모드 전역 상태와 별개). WS-A는 `useDrawing` 코어 추출 + 양쪽 위임으로 수렴했을 뿐 死 아님. 제거 대상 아님.
 - **D3 ✅ 완료** — 스파이크 결과 "ambiguity"가 아니라 **펜 모드 overlay undo 전무**(스펙 AC-7 미구현)였음. 전역 cross-card undo/redo 스택 + Cmd+Z/Shift+Z/Cmd+Backspace를 store·Canvas에 배선(+7 테스트).
-- **C3 (vitest 실행)** — 이 APFS 환경에서 545 통과로 사실상 충족. WSL drvfs 한정 이슈는 CI 위임 유지.
+- **C3 (vitest 실행) ✅** — APFS 환경에서 **vitest 673 pass / 77 files** 실행 확인(drvfs 이슈 해소). 충족.
 
 ## 워크스페이스 단위
 
