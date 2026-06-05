@@ -97,7 +97,8 @@
         "eraser": "지우개",
         "thinner": "얇게",
         "thicker": "굵게",
-        "width": "굵기"
+        "width": "굵기",
+        "exit": "펜 모드 종료"
       }
     },
     "tool": {

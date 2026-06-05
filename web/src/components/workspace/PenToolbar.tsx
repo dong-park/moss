@@ -30,6 +30,7 @@ export function PenToolbar() {
   const penWidth = useWorkspace((s) => s.penWidth);
   const setPenTool = useWorkspace((s) => s.setPenTool);
   const setPenWidth = useWorkspace((s) => s.setPenWidth);
+  const setPenMode = useWorkspace((s) => s.setPenMode);
 
   if (!penMode) return null;
 
@@ -92,6 +93,18 @@ export function PenToolbar() {
         onClick={() => setPenWidth(penWidth + 1)}
       >
         +
+      </IconButton>
+
+      <div className="mx-0.5 h-4 w-px bg-border" />
+
+      {/* 펜 모드 종료 — Esc 단축키와 동일. 키보드가 불편한 환경(태블릿·터치)에서
+          클릭으로도 빠져나갈 수 있게 한다(브라우저 QA 발견, FEAT-pen-mode-ux §0). */}
+      <IconButton
+        label={t("workspace.pen.toolbar.exit")}
+        shortcut="Esc"
+        onClick={() => setPenMode(false)}
+      >
+        ✕
       </IconButton>
     </div>
   );

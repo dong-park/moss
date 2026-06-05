@@ -71,4 +71,12 @@ describe("PenToolbar", () => {
     );
     expect(btn("굵게").disabled).toBe(true);
   });
+
+  // §0 잔여작업: 펜 모드 종료가 Esc 전용이던 문제 — 클릭 종료 수단 제공.
+  it("펜 모드 종료 버튼 클릭 → penMode=false 로 빠져나간다", () => {
+    wrap(<PenToolbar />);
+    expect(useWorkspace.getState().penMode).toBe(true);
+    fireEvent.click(btn("펜 모드 종료"));
+    expect(useWorkspace.getState().penMode).toBe(false);
+  });
 });
