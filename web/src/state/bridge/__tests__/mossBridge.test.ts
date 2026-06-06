@@ -115,4 +115,103 @@ describe("dispatchOp", () => {
       await expect(dispatchOp("ai.preview", { url: "https://x.com" })).rejects.toThrow("403");
     });
   });
+
+  describe("boards (useWorkspace 액션 경유)", () => {
+    it("boards.list → 사용자 보드 + current", async () => {
+      useWorkspace.setState({
+        boards: [
+          { id: "b1", name: "아이디어" },
+          { id: "b2", name: "초안" },
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ] as any,
+        currentBoardId: "b1",
+      });
+      const r = (await dispatchOp("boards.list")) as {
+        boards: { id: string; name: string }[];
+        current: string;
+      };
+      expect(r.boards).toEqual([
+        { id: "b1", name: "아이디어" },
+        { id: "b2", name: "초안" },
+      ]);
+      expect(r.current).toBe("b1");
+    });
+
+    it("boards.create → createBoard 호출 + id 반환", async () => {
+      const createBoard = vi.fn(async () => "b-new");
+      useWorkspace.setState({ createBoard });
+      const r = (await dispatchOp("boards.create", { name: "새 보드" })) as { id: string };
+      expect(createBoard).toHaveBeenCalledWith("새 보드");
+      expect(r.id).toBe("b-new");
+    });
+
+    it("boards.rename → renameBoard 호출, 인자 검증", async () => {
+      const renameBoard = vi.fn(async () => {});
+      useWorkspace.setState({ renameBoard });
+      await dispatchOp("boards.rename", { id: "b1", name: "바뀐 이름" });
+      expect(renameBoard).toHaveBeenCalledWith("b1", "바뀐 이름");
+      await expect(dispatchOp("boards.rename", { id: "b1" })).rejects.toThrow("필요");
+    });
+
+    it("boards.delete → removeBoard 호출", async () => {
+      const removeBoard = vi.fn(async () => {});
+      useWorkspace.setState({ removeBoard });
+      await dispatchOp("boards.delete", { id: "b1" });
+      expect(removeBoard).toHaveBeenCalledWith("b1");
+    });
+
+    it("boards.switch → setCurrentBoard 호출 + 현재 보드 반환", async () => {
+      const setCurrentBoard = vi.fn(async (id: string) => {
+        useWorkspace.setState({ currentBoardId: id });
+      });
+      useWorkspace.setState({ setCurrentBoard });
+      const r = (await dispatchOp("boards.switch", { id: "b2" })) as { currentBoardId: string };
+      expect(setCurrentBoard).toHaveBeenCalledWith("b2");
+      expect(r.currentBoardId).toBe("b2");
+    });
+  });
+
+  describe("connections (storage 데이터 경로)", () => {
+    it("connections.list → loadConnections(noteId 필터)", async () => {
+      const conn = {
+        id: "x1",
+        sourceNoteId: "a",
+        targetNoteId: "b",
+        source: "manual" as const,
+        status: "active" as const,
+        createdAt: 0,
+      };
+      const loadConnections = vi.fn(async () => [conn]);
+      useStorage.setState({ loadConnections });
+      const r = await dispatchOp("connections.list", { noteId: "n1" });
+      expect(loadConnections).toHaveBeenCalledWith(["n1"]);
+      expect(r).toEqual([conn]);
+      await dispatchOp("connections.list", {});
+      expect(loadConnections).toHaveBeenLastCalledWith(undefined);
+    });
+
+    it("connections.create → saveConnection(source/target), id 생성", async () => {
+      const saveConnection = vi.fn(async () => {});
+      useStorage.setState({ saveConnection });
+      const r = (await dispatchOp("connections.create", {
+        sourceNoteId: "a",
+        targetNoteId: "b",
+        label: "관련",
+      })) as { id: string };
+      expect(r.id).toMatch(/^cx-/);
+      expect(saveConnection).toHaveBeenCalledWith(
+        expect.objectContaining({ sourceNoteId: "a", targetNoteId: "b", label: "관련" }),
+      );
+      await expect(
+        dispatchOp("connections.create", { sourceNoteId: "a" }),
+      ).rejects.toThrow("필요");
+    });
+
+    it("connections.delete → removeConnection 호출", async () => {
+      const removeConnection = vi.fn(async () => {});
+      useStorage.setState({ removeConnection });
+      await dispatchOp("connections.delete", { id: "x1" });
+      expect(removeConnection).toHaveBeenCalledWith("x1");
+    });
+  });
 });

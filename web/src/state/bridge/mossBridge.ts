@@ -20,6 +20,7 @@
  * ───────────────────────────────────────────────────────────── */
 
 import { useWorkspace, type Card } from "@/state/workspace";
+import { useStorage } from "@/state/storage";
 
 /** 외부로 노출하는 카드 표현 — 내부 Card에서 렌더·영속에 필요한 필드만 추린다. */
 export interface BridgeNote {
@@ -109,6 +110,68 @@ export async function dispatchOp(
         throw new Error(`/api/preview 실패 ${res.status}: ${detail}`);
       }
       return res.json();
+    }
+
+    /* ── boards: useWorkspace 액션 경유(보드 목록·UI 라이브 반영) ── */
+    case "boards.list":
+      return {
+        boards: ws.boards.map((b) => ({ id: b.id, name: b.name })),
+        current: ws.currentBoardId,
+      };
+
+    case "boards.create": {
+      const name = typeof params.name === "string" ? params.name : "";
+      const id = await ws.createBoard(name); // 새 보드로 전환됨
+      return { id };
+    }
+
+    case "boards.rename": {
+      const id = String(params.id ?? "");
+      const name = String(params.name ?? "");
+      if (!id || !name) throw new Error("id와 name이 필요합니다");
+      await ws.renameBoard(id, name);
+      return { id, name };
+    }
+
+    case "boards.delete": {
+      const id = String(params.id ?? "");
+      if (!id) throw new Error("id가 필요합니다");
+      await ws.removeBoard(id);
+      return { id };
+    }
+
+    case "boards.switch": {
+      const id = String(params.id ?? "");
+      if (!id) throw new Error("id가 필요합니다");
+      await ws.setCurrentBoard(id);
+      return { currentBoardId: useWorkspace.getState().currentBoardId };
+    }
+
+    /* ── connections: 캔버스 렌더 대상 아님 → storage(Dexie) 데이터 경로 ── */
+    case "connections.list": {
+      const storage = useStorage.getState();
+      const noteId = typeof params.noteId === "string" ? params.noteId : undefined;
+      return storage.loadConnections(noteId ? [noteId] : undefined);
+    }
+
+    case "connections.create": {
+      const sourceNoteId = String(params.sourceNoteId ?? "");
+      const targetNoteId = String(params.targetNoteId ?? "");
+      if (!sourceNoteId || !targetNoteId) {
+        throw new Error("sourceNoteId와 targetNoteId가 필요합니다");
+      }
+      const label = typeof params.label === "string" ? params.label : undefined;
+      const id = `cx-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6)}`;
+      // mergeConnection이 source="manual"/status="active"/createdAt을 채운다.
+      await useStorage.getState().saveConnection({ id, sourceNoteId, targetNoteId, label });
+      return { id };
+    }
+
+    case "connections.delete": {
+      const id = String(params.id ?? "");
+      if (!id) throw new Error("id가 필요합니다");
+      await useStorage.getState().removeConnection(id);
+      return { id };
     }
 
     default:

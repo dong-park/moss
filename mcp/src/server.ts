@@ -149,6 +149,85 @@ server.registerTool(
   async ({ id }) => viaBridge("notes.delete", { id }),
 );
 
+/* ── T5: boards (브리지 — 보드 목록/UI 라이브) ──────────────── */
+
+server.registerTool(
+  "boards_list",
+  { description: "사용자 보드 목록과 현재 보드 id를 반환한다.", inputSchema: {} },
+  async () => viaBridge("boards.list"),
+);
+
+server.registerTool(
+  "boards_create",
+  {
+    description: "새 보드를 만들고 그 보드로 전환한다. 생성된 보드 id를 반환한다.",
+    inputSchema: { name: z.string().optional().describe("보드 이름(선택)") },
+  },
+  async ({ name }) => viaBridge("boards.create", { name }),
+);
+
+server.registerTool(
+  "boards_rename",
+  {
+    description: "보드 이름을 변경한다(시스템 보드 불가).",
+    inputSchema: { id: z.string().describe("보드 id"), name: z.string().describe("새 이름") },
+  },
+  async ({ id, name }) => viaBridge("boards.rename", { id, name }),
+);
+
+server.registerTool(
+  "boards_delete",
+  {
+    description: "보드를 삭제한다(시스템 보드 불가). 현재 보드였으면 시스템 보드로 복귀.",
+    inputSchema: { id: z.string().describe("보드 id") },
+  },
+  async ({ id }) => viaBridge("boards.delete", { id }),
+);
+
+server.registerTool(
+  "boards_switch",
+  {
+    description:
+      '현재 보드를 전환한다. 이후 notes_* 는 이 보드 기준으로 동작한다. 시스템 보드는 "system".',
+    inputSchema: { id: z.string().describe('보드 id 또는 "system"') },
+  },
+  async ({ id }) => viaBridge("boards.switch", { id }),
+);
+
+/* ── T5: connections (브리지 — Dexie 데이터, 캔버스 렌더 대상 아님) ── */
+
+server.registerTool(
+  "connections_list",
+  {
+    description: "연결 목록을 반환한다. noteId를 주면 그 노트가 끝점인 연결만.",
+    inputSchema: { noteId: z.string().optional().describe("필터할 노트 id(선택)") },
+  },
+  async ({ noteId }) => viaBridge("connections.list", { noteId }),
+);
+
+server.registerTool(
+  "connections_create",
+  {
+    description: "두 노트 사이에 수동 연결을 만든다(status=active). 생성된 연결 id를 반환한다.",
+    inputSchema: {
+      sourceNoteId: z.string().describe("출발 노트 id"),
+      targetNoteId: z.string().describe("도착 노트 id"),
+      label: z.string().optional().describe("연결 라벨(선택)"),
+    },
+  },
+  async ({ sourceNoteId, targetNoteId, label }) =>
+    viaBridge("connections.create", { sourceNoteId, targetNoteId, label }),
+);
+
+server.registerTool(
+  "connections_delete",
+  {
+    description: "연결을 삭제한다.",
+    inputSchema: { id: z.string().describe("연결 id") },
+  },
+  async ({ id }) => viaBridge("connections.delete", { id }),
+);
+
 /* ── T6: AI 도구 (HTTP → 실행 중 moss dev 서버) ──────────────── */
 
 server.registerTool(
