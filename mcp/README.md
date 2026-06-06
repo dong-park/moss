@@ -23,8 +23,17 @@ moss의 사용자 데이터는 브라우저 IndexedDB(Dexie)에만 산다 — No
 | `notes_create` | 현재 보드에 카드 생성(화면 즉시 반영) |
 | `notes_update` | 카드 본문 교체 |
 | `notes_delete` | 카드 삭제 |
+| `boards_list` | 사용자 보드 목록 + 현재 보드 id |
+| `boards_create` | 새 보드 생성(그 보드로 전환) |
+| `boards_rename` | 보드 이름 변경 |
+| `boards_delete` | 보드 삭제 |
+| `boards_switch` | 현재 보드 전환(이후 `notes_*`가 이 보드 기준) |
+| `connections_list` | 연결 목록(noteId 필터 가능) |
+| `connections_create` | 두 노트 사이 수동 연결 생성 |
+| `connections_delete` | 연결 삭제 |
 
-> notes op는 **현재 보드** 기준, **text(마크다운) 카드**. boards/connections는 후속.
+> notes op는 **현재 보드** 기준, **text(마크다운) 카드**. `boards_switch`로 대상 보드를 바꾼다.
+> connections는 캔버스에 렌더되지 않는 데이터(현재 AI 파이프라인이 사용).
 
 ### AI (HTTP — dev 서버만 필요, 브라우저 불필요)
 
