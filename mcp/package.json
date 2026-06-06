@@ -1,0 +1,25 @@
+{
+  "name": "moss-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "외부 에이전트가 실행 중인 moss를 데이터 레벨로 다루는 MCP 서버 (데이터 브리지 + AI/dev 도구)",
+  "bin": {
+    "moss-mcp": "./src/server.ts"
+  },
+  "scripts": {
+    "start": "bun run src/server.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "ws": "^8.18.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.14",
+    "@types/ws": "^8.5.12",
+    "typescript": "^5.6.0"
+  }
+}
