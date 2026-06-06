@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useWorkspace, SYSTEM_BOARD_ID } from "@/state/workspace";
 import { useStorage } from "@/state/storage";
 import { dispatchOp, type BridgeNote } from "@/state/bridge/mossBridge";
@@ -81,5 +81,38 @@ describe("dispatchOp", () => {
 
   it("알 수 없는 op → throw", async () => {
     await expect(dispatchOp("notes.frobnicate")).rejects.toThrow("알 수 없는 op");
+  });
+
+  describe("ai.preview", () => {
+    afterEach(() => vi.unstubAllGlobals());
+
+    it("in-page fetch로 /api/preview 호출(same-origin)", async () => {
+      const fetchMock = vi.fn(async () =>
+        new Response(JSON.stringify({ title: "예시" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+      vi.stubGlobal("fetch", fetchMock);
+      const r = (await dispatchOp("ai.preview", { url: "https://example.com" })) as {
+        title: string;
+      };
+      expect(r.title).toBe("예시");
+      expect(fetchMock).toHaveBeenCalledWith(
+        `/api/preview?url=${encodeURIComponent("https://example.com")}`,
+      );
+    });
+
+    it("url 없으면 throw", async () => {
+      await expect(dispatchOp("ai.preview", {})).rejects.toThrow("url이 필요");
+    });
+
+    it("non-ok 응답 → throw", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => new Response("forbidden", { status: 403 })),
+      );
+      await expect(dispatchOp("ai.preview", { url: "https://x.com" })).rejects.toThrow("403");
+    });
   });
 });

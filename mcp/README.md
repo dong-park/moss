@@ -11,9 +11,9 @@ moss의 사용자 데이터는 브라우저 IndexedDB(Dexie)에만 산다 — No
                                                           └─ useWorkspace 액션 → 화면 반영 + Dexie 영속
 ```
 
-## 구성 (MVP — notes)
+## 도구
 
-도구:
+### 데이터 (브리지 — moss 탭 필요)
 
 | 도구 | 설명 |
 |---|---|
@@ -24,8 +24,30 @@ moss의 사용자 데이터는 브라우저 IndexedDB(Dexie)에만 산다 — No
 | `notes_update` | 카드 본문 교체 |
 | `notes_delete` | 카드 삭제 |
 
-> **MVP 범위**: 모든 notes op는 **현재 보드** 기준, **text(마크다운) 카드**.
-> boards/connections, `ai.*`(HTTP), `dev.*`(fs/CLI)는 후속(T5~).
+> notes op는 **현재 보드** 기준, **text(마크다운) 카드**. boards/connections는 후속.
+
+### AI (HTTP — dev 서버만 필요, 브라우저 불필요)
+
+| 도구 | 라우트 |
+|---|---|
+| `ai_embed` | `POST /api/ai/embed` |
+| `ai_summarize` | `POST /api/ai/summarize` (kind: flow/cluster/rhythm) |
+| `ai_connection_label` | `POST /api/ai/connection-label` |
+| `ai_preview` | `GET /api/preview` — same-origin 가드 때문에 **브리지 경유**(moss 탭 필요) |
+
+### dev / 프로젝트 (fs + child_process — 서버 불필요)
+
+| 도구 | 동작 |
+|---|---|
+| `dev_test` | `vitest run [pattern]` (web) |
+| `dev_lint` | `eslint .` (web) |
+| `dev_typecheck` | `tsc --noEmit` (web) |
+| `dev_build` | `next build` (web, 느림) |
+| `dev_read_doc` | 레포 내 문서 읽기(경로 가드) |
+| `dev_list_docs` | 주요 문서/스펙 목록 |
+
+> **요약**: 데이터·`ai_preview`는 moss 탭(브리지)이 필요하고, `ai_embed/summarize/connection_label`은
+> dev 서버 HTTP만, `dev_*`는 서버 없이도 동작한다.
 
 ## 실행
 
@@ -50,6 +72,7 @@ moss의 사용자 데이터는 브라우저 IndexedDB(Dexie)에만 산다 — No
 |---|---|---|
 | `MOSS_BRIDGE_PORT` | `7333` | WS 릴레이 포트 (서버) |
 | `MOSS_BRIDGE_HOST` | `127.0.0.1` | WS 릴레이 바인드 호스트 |
+| `MOSS_HTTP_BASE` | `http://localhost:3000` | AI 도구가 칠 dev 서버 베이스 URL |
 | `NEXT_PUBLIC_MOSS_BRIDGE` | (off) | moss 측. `1`이면 브리지 클라이언트 활성 |
 | `NEXT_PUBLIC_MOSS_BRIDGE_URL` | `ws://127.0.0.1:7333` | moss 측. 접속할 릴레이 URL |
 

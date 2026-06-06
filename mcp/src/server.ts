@@ -13,6 +13,16 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { MossBridge, MossNotConnectedError } from "./bridge.ts";
+import { aiEmbed, aiSummarize, aiConnectionLabel, type SummarizeKind } from "./ai.ts";
+import {
+  devTest,
+  devLint,
+  devTypecheck,
+  devBuild,
+  devReadDoc,
+  devListDocs,
+  type CommandResult,
+} from "./dev.ts";
 
 const BRIDGE_PORT = Number(process.env.MOSS_BRIDGE_PORT ?? 7333);
 const BRIDGE_HOST = process.env.MOSS_BRIDGE_HOST ?? "127.0.0.1";
@@ -33,6 +43,29 @@ async function viaBridge(op: string, params: Record<string, unknown> = {}) {
           : String(err);
     return { content: [{ type: "text" as const, text: message }], isError: true };
   }
+}
+
+/** 임의 async 작업(HTTP 등)을 MCP 텍스트 결과로 직렬화. 실패는 isError. */
+async function attempt(fn: () => Promise<unknown>) {
+  try {
+    const result = await fn();
+    return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+  } catch (err) {
+    return {
+      content: [{ type: "text" as const, text: err instanceof Error ? err.message : String(err) }],
+      isError: true,
+    };
+  }
+}
+
+/** CommandResult를 사람이 읽을 텍스트로. exit≠0/타임아웃이면 isError로 표시. */
+function commandResult(r: CommandResult) {
+  const status = r.timedOut ? "TIMEOUT" : `exit ${r.code}`;
+  const text =
+    `$ ${r.command}\n[${status}]\n` +
+    (r.stdout ? `\n--- stdout ---\n${r.stdout}` : "") +
+    (r.stderr ? `\n--- stderr ---\n${r.stderr}` : "");
+  return { content: [{ type: "text" as const, text }], isError: r.timedOut || r.code !== 0 };
 }
 
 const server = new McpServer({ name: "moss-mcp", version: "0.1.0" });
@@ -114,6 +147,95 @@ server.registerTool(
     inputSchema: { id: z.string().describe("카드 id") },
   },
   async ({ id }) => viaBridge("notes.delete", { id }),
+);
+
+/* ── T6: AI 도구 (HTTP → 실행 중 moss dev 서버) ──────────────── */
+
+server.registerTool(
+  "ai_embed",
+  {
+    description: "텍스트 배치를 임베딩 벡터로 변환한다(POST /api/ai/embed). 1~50개.",
+    inputSchema: { texts: z.array(z.string().min(1)).min(1).max(50).describe("임베딩할 텍스트들") },
+  },
+  async ({ texts }) => attempt(() => aiEmbed(texts)),
+);
+
+server.registerTool(
+  "ai_summarize",
+  {
+    description: "텍스트들을 흐름/군집/리듬 관점으로 요약한다(POST /api/ai/summarize).",
+    inputSchema: {
+      texts: z.array(z.string().min(1)).min(1).max(50).describe("요약할 텍스트들"),
+      kind: z.enum(["flow", "cluster", "rhythm"]).describe("요약 종류"),
+    },
+  },
+  async ({ texts, kind }) => attempt(() => aiSummarize(texts, kind as SummarizeKind)),
+);
+
+server.registerTool(
+  "ai_connection_label",
+  {
+    description: "두 텍스트 사이 연결의 라벨을 생성한다(POST /api/ai/connection-label).",
+    inputSchema: {
+      textA: z.string().min(1).max(4000).describe("첫 번째 텍스트"),
+      textB: z.string().min(1).max(4000).describe("두 번째 텍스트"),
+    },
+  },
+  async ({ textA, textB }) => attempt(() => aiConnectionLabel(textA, textB)),
+);
+
+server.registerTool(
+  "ai_preview",
+  {
+    description:
+      "URL의 Open Graph 미리보기 메타를 가져온다. /api/preview는 same-origin 가드가 있어 실행 중 moss 탭(브리지)을 통해 호출한다.",
+    inputSchema: { url: z.string().url().describe("미리보기할 URL") },
+  },
+  async ({ url }) => viaBridge("ai.preview", { url }),
+);
+
+/* ── T7: dev/프로젝트 관리 도구 (fs + child_process) ──────────── */
+
+server.registerTool(
+  "dev_test",
+  {
+    description: "web 테스트를 실행한다(vitest run). pattern으로 파일/테스트를 좁힐 수 있다.",
+    inputSchema: { pattern: z.string().optional().describe("파일 경로/이름 패턴(선택)") },
+  },
+  async ({ pattern }) => commandResult(await devTest(pattern)),
+);
+
+server.registerTool(
+  "dev_lint",
+  { description: "web에 ESLint를 실행한다.", inputSchema: {} },
+  async () => commandResult(await devLint()),
+);
+
+server.registerTool(
+  "dev_typecheck",
+  { description: "web에 tsc --noEmit 타입체크를 실행한다.", inputSchema: {} },
+  async () => commandResult(await devTypecheck()),
+);
+
+server.registerTool(
+  "dev_build",
+  { description: "web 프로덕션 빌드(next build)를 실행한다. 느리다(수분).", inputSchema: {} },
+  async () => commandResult(await devBuild()),
+);
+
+server.registerTool(
+  "dev_read_doc",
+  {
+    description: "레포 내 텍스트 문서를 읽는다(예: PRD.md, docs/moss.blueprint.json). 레포 밖 경로는 거부.",
+    inputSchema: { path: z.string().describe("레포 루트 기준 상대 경로") },
+  },
+  async ({ path }) => attempt(() => devReadDoc(path)),
+);
+
+server.registerTool(
+  "dev_list_docs",
+  { description: "주요 문서/스펙 목록(root, docs/, docs/specs/)을 반환한다.", inputSchema: {} },
+  async () => attempt(() => devListDocs()),
 );
 
 async function main(): Promise<void> {

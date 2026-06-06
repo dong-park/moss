@@ -99,6 +99,18 @@ export async function dispatchOp(
       return { id };
     }
 
+    case "ai.preview": {
+      // /api/preview는 same-origin만 허용한다(SSRF 가드). in-page fetch는 정당하게 통과.
+      const url = String(params.url ?? "");
+      if (!url) throw new Error("url이 필요합니다");
+      const res = await fetch(`/api/preview?url=${encodeURIComponent(url)}`);
+      if (!res.ok) {
+        const detail = await res.text().catch(() => "");
+        throw new Error(`/api/preview 실패 ${res.status}: ${detail}`);
+      }
+      return res.json();
+    }
+
     default:
       throw new Error(`알 수 없는 op: ${op}`);
   }
