@@ -14,7 +14,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { MossBridge, MossNotConnectedError } from "./bridge.ts";
 import { aiEmbed, aiSummarize, aiConnectionLabel, type SummarizeKind } from "./ai.ts";
-import { resolveImageInput, resolveMediaInput } from "./image.ts";
+import { resolveImageInput, resolveMediaInput, fetchImageAsBase64 } from "./image.ts";
 import {
   devTest,
   devLint,
@@ -136,10 +136,90 @@ server.registerTool(
         .optional()
         .describe("카드 폭(px). 메모 본문은 720폭 고정 컬럼이라, 긴 글은 ~720으로 넓혀야 안 잘림."),
       height: z.number().optional().describe("카드 높이(px). 생략 시 콘텐츠 자동 높이."),
+      images: z
+        .array(
+          z.object({
+            path: z.string().optional().describe("로컬 이미지 파일 경로"),
+            dataBase64: z.string().optional().describe("base64 이미지(path 미지정 시)"),
+            mimeType: z.string().optional().describe("dataBase64면 필수, path면 추론"),
+            alt: z.string().optional().describe("대체 텍스트"),
+            placeholder: z
+              .string()
+              .optional()
+              .describe('본문 내 {{이름}} 치환 위치(생략 시 본문 끝에 추가)'),
+          }),
+        )
+        .optional()
+        .describe(
+          "본문에 인라인으로 박을 이미지들(OPFS 업로드 후 ![](opfs://..)). text 메모만. 이미지 있으면 width 기본 720.",
+        ),
     },
   },
-  async ({ content, boardId, kind, x, y, width, height }) =>
-    viaBridge("notes.create", { content, boardId, kind, x, y, width, height }),
+  async ({ content, boardId, kind, x, y, width, height, images }) =>
+    attempt(async () => {
+      // 각 이미지를 base64로 정규화(path/dataBase64) 후 브리지로 전달.
+      const resolved = images
+        ? await Promise.all(
+            images.map(async (im) => {
+              const m = await resolveMediaInput(
+                { path: im.path, dataBase64: im.dataBase64, mimeType: im.mimeType },
+                "image",
+              );
+              return {
+                dataBase64: m.dataBase64,
+                mimeType: m.mimeType,
+                alt: im.alt,
+                placeholder: im.placeholder,
+              };
+            }),
+          )
+        : undefined;
+      return bridge.call("notes.create", {
+        content,
+        boardId,
+        kind,
+        x,
+        y,
+        width,
+        height,
+        images: resolved,
+      });
+    }),
+);
+
+server.registerTool(
+  "notes_create_link_preview",
+  {
+    description:
+      "URL의 OG 미리보기(제목·요약·썸네일)를 가져와 '제목 링크 + 인라인 썸네일 + 요약' 메모를 만든다(ai_preview는 브리지 경유 — moss 탭 필요).",
+    inputSchema: {
+      url: z.string().url().describe("미리보기할 URL"),
+      boardId: z.string().optional().describe('대상 보드 id 또는 "system"(생략 시 현재 보드)'),
+      x: z.number().optional().describe("월드 좌표 x (기본 40)"),
+      y: z.number().optional().describe("월드 좌표 y (기본 40)"),
+    },
+  },
+  async ({ url, boardId, x, y }) =>
+    attempt(async () => {
+      const og = (await bridge.call("ai.preview", { url })) as {
+        title?: string;
+        summary?: string;
+        thumbUrl?: string;
+      };
+      const title = og.title?.trim() || url;
+      let content = `[**${title}**](${url})`;
+      if (og.summary?.trim()) content += `\n\n${og.summary.trim()}`;
+      const images: { dataBase64: string; mimeType: string; alt?: string }[] = [];
+      if (og.thumbUrl) {
+        try {
+          const t = await fetchImageAsBase64(og.thumbUrl);
+          images.push({ dataBase64: t.dataBase64, mimeType: t.mimeType, alt: title });
+        } catch {
+          /* 썸네일 실패는 무시 — 제목 링크 + 요약만으로 메모 생성 */
+        }
+      }
+      return bridge.call("notes.create", { content, images, width: 720, boardId, x, y });
+    }),
 );
 
 server.registerTool(

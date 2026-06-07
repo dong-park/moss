@@ -166,6 +166,32 @@ async function createAttachmentCard(
   return { id, kind, attachmentRef: ref, mediaType: mimeType, boardId: storageId };
 }
 
+/**
+ * params.images(base64)를 OPFS에 올려 markdown 본문에 인라인 이미지로 박는다(text 메모용).
+ * 마크다운 URL 스킴은 `opfs://<filename>`(opfsImagePlugin이 blob URL로 렌더).
+ * placeholder가 있으면 본문의 `{{placeholder}}`를 치환, 없으면 본문 끝에 덧붙인다.
+ */
+async function embedInlineImages(content: string, images: unknown): Promise<string> {
+  if (!Array.isArray(images) || images.length === 0) return content;
+  let out = content;
+  for (const img of images) {
+    const o = (img && typeof img === "object" ? img : {}) as {
+      dataBase64?: unknown;
+      mimeType?: unknown;
+      alt?: unknown;
+      placeholder?: unknown;
+    };
+    if (typeof o.dataBase64 !== "string" || typeof o.mimeType !== "string") continue;
+    const filename = makeAttachmentFilename(o.mimeType);
+    await putBlob(filename, base64ToBlob(o.dataBase64, o.mimeType));
+    const md = `![${typeof o.alt === "string" ? o.alt : ""}](opfs://${filename})`;
+    const ph = typeof o.placeholder === "string" ? o.placeholder : "";
+    if (ph && out.includes(`{{${ph}}}`)) out = out.split(`{{${ph}}}`).join(md);
+    else out += (out ? "\n\n" : "") + md;
+  }
+  return out;
+}
+
 /** {text, children?} 트리를 MindmapNode로 재귀 변환. 루트 id는 "root". */
 function buildMindmapNode(raw: unknown, isRoot: boolean): MindmapNode {
   const o = (raw && typeof raw === "object" ? raw : {}) as {
@@ -226,20 +252,30 @@ export async function dispatchOp(
       const height = typeof params.height === "number" ? params.height : undefined;
       const kind = typeof params.kind === "string" && params.kind ? params.kind : "text";
       const { noteKind, toolId, stored } = buildNoteContent(kind, raw);
+      // 인라인 이미지(text 메모만): OPFS 업로드 후 ![](opfs://..)로 본문에 박는다.
+      const hasImages = Array.isArray(params.images) && params.images.length > 0;
+      const finalContent =
+        noteKind === "text" ? await embedInlineImages(stored, params.images) : stored;
+      // 이미지/긴 글은 720 컬럼이 필요 — width 미지정이면 이미지 있을 때 720 기본.
+      const effWidth = width !== undefined ? width : hasImages ? 720 : undefined;
       const { storageId, isCurrent } = resolveBoard(params.boardId);
       if (isCurrent) {
         const id = ws.addCardAt(toolId, x, y);
-        if (width !== undefined || height !== undefined) {
+        if (effWidth !== undefined || height !== undefined) {
           useWorkspace.setState((s) => ({
             cards: s.cards.map((c) =>
               c.id === id
-                ? { ...c, ...(width !== undefined ? { width } : {}), ...(height !== undefined ? { height } : {}) }
+                ? {
+                    ...c,
+                    ...(effWidth !== undefined ? { width: effWidth } : {}),
+                    ...(height !== undefined ? { height } : {}),
+                  }
                 : c,
             ),
           }));
         }
         // width/height 패치 후 영속되도록 setContent를 항상 호출(빈 본문도 OK).
-        ws.setContent(id, stored);
+        ws.setContent(id, finalContent);
         ws.setEditing(null);
         ws.clearSelection();
         return { id, kind: noteKind };
@@ -251,9 +287,9 @@ export async function dispatchOp(
         kind: noteKind,
         x,
         y,
-        ...(width !== undefined ? { width } : {}),
+        ...(effWidth !== undefined ? { width: effWidth } : {}),
         ...(height !== undefined ? { height } : {}),
-        content: stored,
+        content: finalContent,
         aiOptOut: false,
         rotation: 0,
       });

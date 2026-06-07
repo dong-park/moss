@@ -20,7 +20,8 @@ moss의 사용자 데이터는 브라우저 IndexedDB(Dexie)에만 산다 — No
 | `ping` | 브리지 연결 상태 + 현재 보드 id |
 | `notes_list` | 현재 보드의 카드 목록 |
 | `notes_get` | id로 카드 단건 조회 |
-| `notes_create` | 카드 생성(kind: text·link·mindmap, boardId로 타 보드 타겟) |
+| `notes_create` | 카드 생성(kind: text·link·mindmap; `images`로 인라인 이미지; `width`/`height`) |
+| `notes_create_link_preview` | URL의 OG(제목·요약·썸네일)로 미리보기 메모 생성 |
 | `notes_create_image` | 이미지 카드 생성(path 또는 dataBase64 → OPFS 저장) |
 | `notes_create_audio` | 오디오 카드 생성(audio/*, OPFS) |
 | `notes_create_file` | 파일 카드 생성(임의 타입, OPFS) |
