@@ -25,6 +25,8 @@ moss의 사용자 데이터는 브라우저 IndexedDB(Dexie)에만 산다 — No
 | `notes_create_audio` | 오디오 카드 생성(audio/*, OPFS) |
 | `notes_create_file` | 파일 카드 생성(임의 타입, OPFS) |
 | `notes_create_mindmap` | 가지(children) 있는 마인드맵 카드 생성 |
+| `notes_create_comment` | 코멘트(주석) 카드 생성(author/time 메타) |
+| `notes_create_board` | 함(서브캔버스 funnel) 카드 + 빈 서브 보드 생성 |
 | `notes_update` | 카드 본문 교체 |
 | `notes_delete` | 카드 삭제 |
 | `boards_list` | 사용자 보드 목록 + 현재 보드 id |
