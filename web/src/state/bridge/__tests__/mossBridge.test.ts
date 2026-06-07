@@ -48,6 +48,34 @@ describe("dispatchOp", () => {
     expect({ x: cards[1]!.x, y: cards[1]!.y }).toEqual({ x: 40, y: 40 });
   });
 
+  it("notes.create kind=link → link 카드 + URL JSON content", async () => {
+    const r = (await dispatchOp("notes.create", {
+      content: "https://example.com",
+      kind: "link",
+    })) as { id: string; kind: string };
+    expect(r.kind).toBe("link");
+    const card = useWorkspace.getState().cards[0]!;
+    expect(card.kind).toBe("link");
+    expect(JSON.parse(card.content)).toMatchObject({ url: "https://example.com" });
+  });
+
+  it("notes.create kind=mindmap → mindmap 카드 + 루트 토픽", async () => {
+    const r = (await dispatchOp("notes.create", {
+      content: "중심 생각",
+      kind: "mindmap",
+    })) as { kind: string };
+    expect(r.kind).toBe("mindmap");
+    const card = useWorkspace.getState().cards[0]!;
+    expect(card.kind).toBe("mindmap");
+    expect(JSON.parse(card.content).root.text).toBe("중심 생각");
+  });
+
+  it("notes.create 미지원 kind → throw", async () => {
+    await expect(dispatchOp("notes.create", { content: "x", kind: "image" })).rejects.toThrow(
+      "지원하지 않는 kind",
+    );
+  });
+
   it("notes.list → BridgeNote 배열", async () => {
     await dispatchOp("notes.create", { content: "x" });
     const list = (await dispatchOp("notes.list")) as BridgeNote[];
@@ -246,6 +274,18 @@ describe("dispatchOp", () => {
       expect(useWorkspace.getState().cards).toHaveLength(0); // 현재(system) 화면 변화 없음
       const notes = await useStorage.getState().loadCards("b-other");
       expect(notes.map((n) => n.content)).toContain("딴 보드 카드");
+    });
+
+    it("notes.create kind=link + boardId → 그 보드에 link 카드 저장", async () => {
+      const r = (await dispatchOp("notes.create", {
+        content: "https://moss.app",
+        kind: "link",
+        boardId: "b-z",
+      })) as { kind: string; boardId: string | null };
+      expect(r.kind).toBe("link");
+      const notes = await useStorage.getState().loadCards("b-z");
+      expect(notes[0]!.kind).toBe("link");
+      expect(JSON.parse(notes[0]!.content)).toMatchObject({ url: "https://moss.app" });
     });
 
     it("notes.list boardId → 그 보드만 반환, 현재 보드와 분리", async () => {

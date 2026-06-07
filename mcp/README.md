@@ -20,7 +20,7 @@ moss의 사용자 데이터는 브라우저 IndexedDB(Dexie)에만 산다 — No
 | `ping` | 브리지 연결 상태 + 현재 보드 id |
 | `notes_list` | 현재 보드의 카드 목록 |
 | `notes_get` | id로 카드 단건 조회 |
-| `notes_create` | 현재 보드에 카드 생성(화면 즉시 반영) |
+| `notes_create` | 카드 생성(kind: text·link·mindmap, boardId로 타 보드 타겟) |
 | `notes_update` | 카드 본문 교체 |
 | `notes_delete` | 카드 삭제 |
 | `boards_list` | 사용자 보드 목록 + 현재 보드 id |
@@ -32,7 +32,9 @@ moss의 사용자 데이터는 브라우저 IndexedDB(Dexie)에만 산다 — No
 | `connections_create` | 두 노트 사이 수동 연결 생성 |
 | `connections_delete` | 연결 삭제 |
 
-> notes op는 **현재 보드** 기준, **text(마크다운) 카드**. `boards_switch`로 대상 보드를 바꾼다.
+> notes op는 기본 **현재 보드**(또는 `boardId`로 타 보드). `notes_create`의 `kind`:
+> `text`(마크다운)·`link`(content=URL)·`mindmap`(content=중심 토픽). 코드/체크리스트/인용은
+> text 카드에 마크다운으로, image/audio/file은 첨부가 필요해 미지원.
 > connections는 캔버스에 렌더되지 않는 데이터(현재 AI 파이프라인이 사용).
 
 ### AI (HTTP — dev 서버만 필요, 브라우저 불필요)

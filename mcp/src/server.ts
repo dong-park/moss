@@ -118,12 +118,16 @@ server.registerTool(
     description:
       "새 카드를 만들고 id를 반환한다. boardId를 주면 그 보드에 직접 생성한다(현재 보드면 화면 즉시 렌더, 다른 보드면 전환 시 보임). 생략 시 현재 보드.",
     inputSchema: {
-      content: z.string().describe("카드 본문(마크다운). text 카드 기준."),
+      content: z
+        .string()
+        .describe('본문. kind에 따라 해석: text=마크다운, link=URL, mindmap=중심 토픽.'),
       boardId: z.string().optional().describe('대상 보드 id 또는 "system"(생략 시 현재 보드)'),
       kind: z
-        .string()
+        .enum(["text", "link", "mindmap"])
         .optional()
-        .describe('카드 종류. 기본 "text". (text|checklist|code|highlight 등)'),
+        .describe(
+          '카드 종류(기본 "text"). 코드/체크리스트/인용은 text 카드에 마크다운으로 넣는다. image/audio/file은 첨부가 필요해 미지원.',
+        ),
       x: z.number().optional().describe("월드 좌표 x (기본 40)"),
       y: z.number().optional().describe("월드 좌표 y (기본 40)"),
     },

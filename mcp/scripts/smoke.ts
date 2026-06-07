@@ -35,6 +35,16 @@ try {
   const board = (await call("boards.create", { name: `MCP 보드 ${Date.now()}` })) as { id: string };
   const n1 = (await call("notes.create", { content: "연결 출발 카드" })) as { id: string };
   const n2 = (await call("notes.create", { content: "연결 도착 카드" })) as { id: string };
+  // text 외 카드 종류: link / mindmap
+  const link = (await call("notes.create", {
+    content: "https://example.com",
+    kind: "link",
+  })) as { id: string; kind: string };
+  const mind = (await call("notes.create", {
+    content: "중심 생각",
+    kind: "mindmap",
+  })) as { id: string; kind: string };
+  const kindsOk = link.kind === "link" && mind.kind === "mindmap";
   await call("boards.list");
 
   // 현재-보드 외 직접 타겟: system으로 전환한 뒤 boardId로 보드 A에 직접 생성
@@ -48,7 +58,7 @@ try {
   const crossBoardOk =
     remote.boardId === board.id &&
     Array.isArray(boardAList) &&
-    boardAList.length === 3 && // 카드2 + 원격1
+    boardAList.length === 5 && // 텍스트2 + link + mindmap + 원격1
     Array.isArray(sysList) &&
     !sysList.some((n) => (n as { id: string }).id === remote.id);
   console.error(`[smoke] cross-board: boardA=${boardAList.length} sys=${sysList.length} ok=${crossBoardOk}`);
@@ -64,10 +74,14 @@ try {
   // T6 ai_preview (브리지 경유 — same-origin 통과)
   const preview = (await call("ai.preview", { url: "https://example.com" })) as Record<string, unknown>;
 
+  // 화면 확인을 위해 보드 A로 되돌려 끝낸다(스크린샷에 link/mindmap 렌더 노출).
+  await call("boards.switch", { id: board.id });
+
   const ok =
     !!board.id &&
     !!n1.id &&
     !!n2.id &&
+    kindsOk &&
     crossBoardOk &&
     !!conn.id &&
     Array.isArray(list) &&
