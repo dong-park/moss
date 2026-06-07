@@ -14,6 +14,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { MossBridge, MossNotConnectedError } from "./bridge.ts";
 import { aiEmbed, aiSummarize, aiConnectionLabel, type SummarizeKind } from "./ai.ts";
+import { resolveImageInput } from "./image.ts";
 import {
   devTest,
   devLint,
@@ -155,6 +156,38 @@ server.registerTool(
     inputSchema: { id: z.string().describe("카드 id") },
   },
   async ({ id }) => viaBridge("notes.delete", { id }),
+);
+
+server.registerTool(
+  "notes_create_image",
+  {
+    description:
+      "이미지 카드를 만든다. path(로컬 파일) 또는 dataBase64+mimeType로 이미지를 주면 OPFS에 저장하고 image 카드를 생성한다. 현재 보드면 화면 즉시 렌더, boardId로 타 보드 지정 가능.",
+    inputSchema: {
+      path: z.string().optional().describe("로컬 이미지 파일 경로(MCP가 읽음)"),
+      dataBase64: z.string().optional().describe("base64 이미지 데이터(path 미지정 시)"),
+      mimeType: z
+        .string()
+        .optional()
+        .describe("예: image/png. dataBase64면 필수, path면 확장자로 추론"),
+      content: z.string().optional().describe("캡션/대체 텍스트(선택)"),
+      boardId: z.string().optional().describe('대상 보드 id 또는 "system"(생략 시 현재 보드)'),
+      x: z.number().optional().describe("월드 좌표 x (기본 40)"),
+      y: z.number().optional().describe("월드 좌표 y (기본 40)"),
+    },
+  },
+  async ({ path, dataBase64, mimeType, content, boardId, x, y }) =>
+    attempt(async () => {
+      const img = await resolveImageInput({ path, dataBase64, mimeType });
+      return await bridge.call("notes.createImage", {
+        dataBase64: img.dataBase64,
+        mimeType: img.mimeType,
+        content,
+        boardId,
+        x,
+        y,
+      });
+    }),
 );
 
 /* ── T5: boards (브리지 — 보드 목록/UI 라이브) ──────────────── */
