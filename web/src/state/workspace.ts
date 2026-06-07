@@ -619,6 +619,14 @@ export function encodeComment(body: string, author = "", time = ""): string {
   return JSON.stringify({ [COMMENT_MARKER]: true, author, time, body });
 }
 
+/**
+ * 함(board) 카드 content 인코딩(boardRef를 가리킨다). 외부 브리지가 현재 보드 아닌 곳에
+ * funnel 카드를 만들 때 쓴다 — encodeCardContent board 분기와 단일 소스.
+ */
+export function encodeSubcanvas(boardRef: string): string {
+  return JSON.stringify({ [SUBCANVAS_MARKER]: true, boardRef });
+}
+
 function encodeCardContent(card: Card): string {
   if (card.kind === "comment") {
     return JSON.stringify({

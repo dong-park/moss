@@ -25,6 +25,7 @@ import {
   type ToolId,
   SYSTEM_BOARD_ID,
   encodeComment,
+  encodeSubcanvas,
   __internal,
 } from "@/state/workspace";
 import { useStorage } from "@/state/storage";
@@ -48,18 +49,24 @@ export interface BridgeNote {
   height?: number;
   attachmentRef?: string;
   mediaType?: string;
+  boardRef?: string;
 }
 
 /**
  * boardId 파라미터를 storage용 boardId(null=시스템)와 "현재 보드인가"로 해석한다.
  * raw가 없으면 현재 보드를 대상으로 본다.
  */
-function resolveBoard(raw: unknown): { storageId: string | null; isCurrent: boolean } {
+function resolveBoard(raw: unknown): {
+  storageId: string | null;
+  isCurrent: boolean;
+  target: string;
+} {
   const current = useWorkspace.getState().currentBoardId;
   const target = typeof raw === "string" && raw ? raw : current;
   return {
     storageId: target === SYSTEM_BOARD_ID ? null : target,
     isCurrent: target === current,
+    target,
   };
 }
 
@@ -107,6 +114,7 @@ function toBridgeNote(card: Card): BridgeNote {
     height: card.height,
     attachmentRef: card.attachmentRef,
     mediaType: card.mediaType,
+    boardRef: card.boardRef,
   };
 }
 
@@ -335,6 +343,41 @@ export async function dispatchOp(
         rotation: 0,
       });
       return { id, kind: "comment", boardId: storageId };
+    }
+
+    // 함(board) 카드: 서브 캔버스를 가리키는 funnel + 빈 서브 보드 생성.
+    // 현재 보드면 createSubcanvas(즉시 렌더), 타 보드면 saveBoard+saveNote.
+    // 서브 보드 이름은 비움 — 필요하면 boards_rename(boardRef, name)으로.
+    case "notes.createBoard": {
+      const x = typeof params.x === "number" ? params.x : 40;
+      const y = typeof params.y === "number" ? params.y : 40;
+      const { storageId, isCurrent, target } = resolveBoard(params.boardId);
+      if (isCurrent) {
+        const id = ws.createSubcanvas(x, y);
+        const card = useWorkspace.getState().cards.find((c) => c.id === id);
+        ws.clearSelection();
+        return { id, kind: "board", boardRef: card?.boardRef };
+      }
+      const childBoardId = `b-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6)}`;
+      const storage = useStorage.getState();
+      await storage.saveBoard({
+        id: childBoardId,
+        name: "",
+        isSystem: false,
+        parentBoardId: target,
+      });
+      const id = newNoteId();
+      await storage.saveNote({
+        id,
+        boardId: storageId,
+        kind: "board",
+        content: encodeSubcanvas(childBoardId),
+        x,
+        y,
+        aiOptOut: false,
+        rotation: 0,
+      });
+      return { id, kind: "board", boardRef: childBoardId, boardId: storageId };
     }
 
     case "ai.preview": {
