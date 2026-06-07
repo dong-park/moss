@@ -95,16 +95,18 @@ server.registerTool(
   "notes_list",
   {
     description:
-      "현재 보드에 있는 카드(노트) 목록을 반환한다. {id, kind, content, x, y, width, height}.",
-    inputSchema: {},
+      '카드(노트) 목록을 반환한다. boardId를 주면 그 보드를(현재 보드가 아니어도) 조회한다. 생략 시 현재 보드. 시스템 보드는 "system".',
+    inputSchema: {
+      boardId: z.string().optional().describe('대상 보드 id 또는 "system"(생략 시 현재 보드)'),
+    },
   },
-  async () => viaBridge("notes.list"),
+  async ({ boardId }) => viaBridge("notes.list", { boardId }),
 );
 
 server.registerTool(
   "notes_get",
   {
-    description: "id로 카드 하나를 조회한다.",
+    description: "id로 카드 하나를 조회한다(보드 무관).",
     inputSchema: { id: z.string().describe("카드 id") },
   },
   async ({ id }) => viaBridge("notes.get", { id }),
@@ -114,9 +116,10 @@ server.registerTool(
   "notes_create",
   {
     description:
-      "현재 보드에 새 카드를 만든다. 화면에 즉시 렌더되고 IndexedDB에 영속된다. 생성된 카드 id를 반환한다.",
+      "새 카드를 만들고 id를 반환한다. boardId를 주면 그 보드에 직접 생성한다(현재 보드면 화면 즉시 렌더, 다른 보드면 전환 시 보임). 생략 시 현재 보드.",
     inputSchema: {
       content: z.string().describe("카드 본문(마크다운). text 카드 기준."),
+      boardId: z.string().optional().describe('대상 보드 id 또는 "system"(생략 시 현재 보드)'),
       kind: z
         .string()
         .optional()
@@ -125,13 +128,14 @@ server.registerTool(
       y: z.number().optional().describe("월드 좌표 y (기본 40)"),
     },
   },
-  async ({ content, kind, x, y }) => viaBridge("notes.create", { content, kind, x, y }),
+  async ({ content, boardId, kind, x, y }) =>
+    viaBridge("notes.create", { content, boardId, kind, x, y }),
 );
 
 server.registerTool(
   "notes_update",
   {
-    description: "기존 카드의 본문을 교체한다. 화면 반영 + 영속.",
+    description: "기존 카드의 본문을 교체한다(보드 무관, id로). 현재 보드면 화면 반영.",
     inputSchema: {
       id: z.string().describe("카드 id"),
       content: z.string().describe("새 본문(마크다운)"),
@@ -143,7 +147,7 @@ server.registerTool(
 server.registerTool(
   "notes_delete",
   {
-    description: "카드를 삭제한다. 화면 반영 + 영속.",
+    description: "카드를 삭제한다(보드 무관, id로). 현재 보드면 화면 반영.",
     inputSchema: { id: z.string().describe("카드 id") },
   },
   async ({ id }) => viaBridge("notes.delete", { id }),

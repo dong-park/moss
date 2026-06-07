@@ -19,8 +19,9 @@
  * MVP 범위(T4): notes CRUD. 모든 op는 "현재 보드" 기준으로 동작한다.
  * ───────────────────────────────────────────────────────────── */
 
-import { useWorkspace, type Card } from "@/state/workspace";
+import { useWorkspace, type Card, SYSTEM_BOARD_ID, __internal } from "@/state/workspace";
 import { useStorage } from "@/state/storage";
+import { getDB } from "@/state/db/schema";
 
 /** 외부로 노출하는 카드 표현 — 내부 Card에서 렌더·영속에 필요한 필드만 추린다. */
 export interface BridgeNote {
@@ -31,6 +32,23 @@ export interface BridgeNote {
   y: number;
   width: number;
   height?: number;
+}
+
+/**
+ * boardId 파라미터를 storage용 boardId(null=시스템)와 "현재 보드인가"로 해석한다.
+ * raw가 없으면 현재 보드를 대상으로 본다.
+ */
+function resolveBoard(raw: unknown): { storageId: string | null; isCurrent: boolean } {
+  const current = useWorkspace.getState().currentBoardId;
+  const target = typeof raw === "string" && raw ? raw : current;
+  return {
+    storageId: target === SYSTEM_BOARD_ID ? null : target,
+    isCurrent: target === current,
+  };
+}
+
+function newNoteId(): string {
+  return `c-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6)}`;
 }
 
 function toBridgeNote(card: Card): BridgeNote {
@@ -58,45 +76,79 @@ export async function dispatchOp(
     case "ping":
       return { connected: true, boardId: ws.currentBoardId, cards: ws.cards.length };
 
-    case "notes.list":
-      return ws.cards.map(toBridgeNote);
+    // boardId를 주면 현재 보드가 아니어도 그 보드를 직접 타겟한다.
+    // - 현재 보드: store 경유(즉시 렌더 + 영속)
+    // - 다른 보드: storage(Dexie) 직접(화면 밖이라 렌더 불필요, 전환 시 로드됨)
+    case "notes.list": {
+      const { storageId, isCurrent } = resolveBoard(params.boardId);
+      if (isCurrent) return ws.cards.map(toBridgeNote);
+      const notes = await useStorage.getState().loadCards(storageId);
+      return notes.map((n) => toBridgeNote(__internal.decodeNoteToCard(n)));
+    }
 
+    // get/update/delete는 id로 보드 무관하게 동작한다(현재 보드면 store 경유로 렌더).
     case "notes.get": {
       const id = String(params.id ?? "");
-      const card = ws.cards.find((c) => c.id === id);
-      if (!card) throw new Error(`카드를 찾을 수 없습니다: ${id}`);
-      return toBridgeNote(card);
+      if (!id) throw new Error("id가 필요합니다");
+      const inStore = ws.cards.find((c) => c.id === id);
+      if (inStore) return toBridgeNote(inStore);
+      const note = await getDB().notes.get(id);
+      if (!note) throw new Error(`카드를 찾을 수 없습니다: ${id}`);
+      return toBridgeNote(__internal.decodeNoteToCard(note));
     }
 
     case "notes.create": {
       const content = typeof params.content === "string" ? params.content : "";
       const x = typeof params.x === "number" ? params.x : 40;
       const y = typeof params.y === "number" ? params.y : 40;
-      // MVP: 본문 카드(text). kind 인자는 후속 확장용으로만 받아둔다.
-      const id = ws.addCardAt("text", x, y);
-      if (content) ws.setContent(id, content);
-      // 프로그래매틱 생성은 편집 모드/선택을 남기지 않는다.
-      ws.setEditing(null);
-      ws.clearSelection();
-      return { id };
+      const { storageId, isCurrent } = resolveBoard(params.boardId);
+      if (isCurrent) {
+        // MVP: 본문 카드(text). 프로그래매틱 생성은 편집/선택을 남기지 않는다.
+        const id = ws.addCardAt("text", x, y);
+        if (content) ws.setContent(id, content);
+        ws.setEditing(null);
+        ws.clearSelection();
+        return { id };
+      }
+      const id = newNoteId();
+      await useStorage.getState().saveNote({
+        id,
+        boardId: storageId,
+        kind: "text",
+        x,
+        y,
+        content,
+        aiOptOut: false,
+        rotation: 0,
+      });
+      return { id, boardId: storageId };
     }
 
     case "notes.update": {
       const id = String(params.id ?? "");
       const content = typeof params.content === "string" ? params.content : "";
-      if (!ws.cards.some((c) => c.id === id)) {
-        throw new Error(`카드를 찾을 수 없습니다: ${id}`);
+      if (!id) throw new Error("id가 필요합니다");
+      if (ws.cards.some((c) => c.id === id)) {
+        ws.setContent(id, content);
+        return { id };
       }
-      ws.setContent(id, content);
+      // 다른 보드 카드 — 존재 확인 후 content만 병합 저장(없으면 junk 생성 방지).
+      const note = await getDB().notes.get(id);
+      if (!note) throw new Error(`카드를 찾을 수 없습니다: ${id}`);
+      await useStorage.getState().saveNote({ id, content });
       return { id };
     }
 
     case "notes.delete": {
       const id = String(params.id ?? "");
-      if (!ws.cards.some((c) => c.id === id)) {
-        throw new Error(`카드를 찾을 수 없습니다: ${id}`);
+      if (!id) throw new Error("id가 필요합니다");
+      if (ws.cards.some((c) => c.id === id)) {
+        ws.remove(id);
+        return { id };
       }
-      ws.remove(id);
+      const note = await getDB().notes.get(id);
+      if (!note) throw new Error(`카드를 찾을 수 없습니다: ${id}`);
+      await useStorage.getState().removeNote(id);
       return { id };
     }
 

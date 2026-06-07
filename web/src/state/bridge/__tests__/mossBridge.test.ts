@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useWorkspace, SYSTEM_BOARD_ID } from "@/state/workspace";
 import { useStorage } from "@/state/storage";
+import { resetDB } from "@/state/db/schema";
 import { dispatchOp, type BridgeNote } from "@/state/bridge/mossBridge";
 
 // storage 미초기화 → persistCard는 no-op. dispatchOp는 in-memory store만 검증한다.
@@ -212,6 +213,77 @@ describe("dispatchOp", () => {
       useStorage.setState({ removeConnection });
       await dispatchOp("connections.delete", { id: "x1" });
       expect(removeConnection).toHaveBeenCalledWith("x1");
+    });
+  });
+
+  // 실제 fake-indexeddb로 현재 보드가 아닌 보드를 직접 타겟.
+  describe("현재-보드 외 직접 타겟 (real DB)", () => {
+    beforeEach(async () => {
+      Object.defineProperty(navigator, "storage", {
+        value: {
+          persist: vi.fn(async () => true),
+          persisted: vi.fn(async () => false),
+          estimate: vi.fn(async () => ({ usage: 0, quota: 1000 })),
+          getDirectory: vi.fn(),
+        },
+        configurable: true,
+        writable: true,
+      });
+      await useStorage.getState().init();
+      useWorkspace.setState({ cards: [], currentBoardId: SYSTEM_BOARD_ID });
+    });
+    afterEach(async () => {
+      await resetDB();
+      useStorage.setState({ initialized: false, settings: null, quota: null });
+    });
+
+    it("notes.create boardId → 그 보드 DB에 저장, 현재 store엔 없음", async () => {
+      const r = (await dispatchOp("notes.create", {
+        content: "딴 보드 카드",
+        boardId: "b-other",
+      })) as { id: string; boardId: string | null };
+      expect(r.boardId).toBe("b-other");
+      expect(useWorkspace.getState().cards).toHaveLength(0); // 현재(system) 화면 변화 없음
+      const notes = await useStorage.getState().loadCards("b-other");
+      expect(notes.map((n) => n.content)).toContain("딴 보드 카드");
+    });
+
+    it("notes.list boardId → 그 보드만 반환, 현재 보드와 분리", async () => {
+      await dispatchOp("notes.create", { content: "A", boardId: "b-x" });
+      const other = (await dispatchOp("notes.list", { boardId: "b-x" })) as BridgeNote[];
+      expect(other.map((n) => n.content)).toContain("A");
+      const current = (await dispatchOp("notes.list")) as BridgeNote[];
+      expect(current).toHaveLength(0);
+    });
+
+    it("notes.get/update/delete → id로 보드 무관 동작", async () => {
+      const { id } = (await dispatchOp("notes.create", {
+        content: "orig",
+        boardId: "b-y",
+      })) as { id: string };
+
+      expect(((await dispatchOp("notes.get", { id })) as BridgeNote).content).toBe("orig");
+
+      await dispatchOp("notes.update", { id, content: "changed" });
+      expect(((await dispatchOp("notes.get", { id })) as BridgeNote).content).toBe("changed");
+
+      await dispatchOp("notes.delete", { id });
+      await expect(dispatchOp("notes.get", { id })).rejects.toThrow("찾을 수 없습니다");
+    });
+
+    it('boardId "system"은 현재가 사용자 보드여도 시스템 보드(null)를 타겟', async () => {
+      useWorkspace.setState({ currentBoardId: "b-user" });
+      await dispatchOp("notes.create", { content: "시스템행", boardId: "system" });
+      const sys = await useStorage.getState().loadCards(null);
+      expect(sys.map((n) => n.content)).toContain("시스템행");
+    });
+
+    it("notes.update 존재하지 않는 id → throw(junk 생성 안 함)", async () => {
+      await expect(dispatchOp("notes.update", { id: "ghost", content: "x" })).rejects.toThrow(
+        "찾을 수 없습니다",
+      );
+      const all = await useStorage.getState().loadCards(null);
+      expect(all).toHaveLength(0);
     });
   });
 });
