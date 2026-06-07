@@ -39,7 +39,10 @@
         "quote": "인용",
         "code": "인라인 코드",
         "codeBlock": "코드 블록",
-        "divider": "구분선"
+        "divider": "구분선",
+        "link": "링크",
+        "image": "이미지",
+        "linkPrompt": "링크 URL을 입력하세요"
       }
     },
     "boardPicker": {
