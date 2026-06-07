@@ -109,6 +109,49 @@ describe("dispatchOp", () => {
     );
   });
 
+  it("notes.createAudio → audio 카드 + attachmentRef", async () => {
+    const r = (await dispatchOp("notes.createAudio", {
+      dataBase64: "AAAA",
+      mimeType: "audio/mpeg",
+      content: "녹음",
+    })) as { kind: string; attachmentRef: string; mediaType: string };
+    expect(r.kind).toBe("audio");
+    expect(r.mediaType).toBe("audio/mpeg");
+    expect(r.attachmentRef).toMatch(/^opfs:/);
+    const card = useWorkspace.getState().cards[0]!;
+    expect(card.kind).toBe("audio");
+    expect(card.attachmentRef).toMatch(/^opfs:/);
+  });
+
+  it("notes.createFile → file 카드 + attachmentRef", async () => {
+    const r = (await dispatchOp("notes.createFile", {
+      dataBase64: "AAAA",
+      mimeType: "application/pdf",
+    })) as { kind: string; mediaType: string };
+    expect(r.kind).toBe("file");
+    expect(r.mediaType).toBe("application/pdf");
+    expect(useWorkspace.getState().cards[0]!.kind).toBe("file");
+  });
+
+  it("notes.createMindmap → 가지 트리 직렬화", async () => {
+    const r = (await dispatchOp("notes.createMindmap", {
+      tree: { text: "루트", children: [{ text: "가지A" }, { text: "가지B", children: [{ text: "잎" }] }] },
+    })) as { id: string; kind: string };
+    expect(r.kind).toBe("mindmap");
+    const card = useWorkspace.getState().cards[0]!;
+    expect(card.kind).toBe("mindmap");
+    const root = JSON.parse(card.content).root;
+    expect(root.id).toBe("root");
+    expect(root.text).toBe("루트");
+    expect(root.children).toHaveLength(2);
+    expect(root.children[1].children[0].text).toBe("잎");
+    expect(root.children[0].id).not.toBe("root"); // 비루트는 생성 id
+  });
+
+  it("notes.createMindmap tree 누락 → throw", async () => {
+    await expect(dispatchOp("notes.createMindmap", {})).rejects.toThrow("tree");
+  });
+
   it("notes.list → BridgeNote 배열", async () => {
     await dispatchOp("notes.create", { content: "x" });
     const list = (await dispatchOp("notes.list")) as BridgeNote[];

@@ -14,7 +14,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { MossBridge, MossNotConnectedError } from "./bridge.ts";
 import { aiEmbed, aiSummarize, aiConnectionLabel, type SummarizeKind } from "./ai.ts";
-import { resolveImageInput } from "./image.ts";
+import { resolveImageInput, resolveMediaInput } from "./image.ts";
 import {
   devTest,
   devLint,
@@ -188,6 +188,81 @@ server.registerTool(
         y,
       });
     }),
+);
+
+server.registerTool(
+  "notes_create_audio",
+  {
+    description:
+      "오디오 카드를 만든다. path(로컬 파일) 또는 dataBase64+mimeType(audio/*)로 오디오를 주면 OPFS에 저장한다. boardId로 타 보드 지정 가능.",
+    inputSchema: {
+      path: z.string().optional().describe("로컬 오디오 파일 경로(MCP가 읽음)"),
+      dataBase64: z.string().optional().describe("base64 오디오 데이터(path 미지정 시)"),
+      mimeType: z.string().optional().describe("예: audio/mpeg. dataBase64면 필수, path면 추론"),
+      content: z.string().optional().describe("캡션(선택)"),
+      boardId: z.string().optional().describe('대상 보드 id 또는 "system"(생략 시 현재 보드)'),
+      x: z.number().optional().describe("월드 좌표 x (기본 40)"),
+      y: z.number().optional().describe("월드 좌표 y (기본 40)"),
+    },
+  },
+  async ({ path, dataBase64, mimeType, content, boardId, x, y }) =>
+    attempt(async () => {
+      const m = await resolveMediaInput({ path, dataBase64, mimeType }, "audio");
+      return await bridge.call("notes.createAudio", {
+        dataBase64: m.dataBase64,
+        mimeType: m.mimeType,
+        content,
+        boardId,
+        x,
+        y,
+      });
+    }),
+);
+
+server.registerTool(
+  "notes_create_file",
+  {
+    description:
+      "파일 카드를 만든다. path(로컬 파일) 또는 dataBase64(+mimeType)로 임의 파일을 주면 OPFS에 저장한다. mimeType 미상이면 application/octet-stream. boardId로 타 보드 지정 가능.",
+    inputSchema: {
+      path: z.string().optional().describe("로컬 파일 경로(MCP가 읽음)"),
+      dataBase64: z.string().optional().describe("base64 파일 데이터(path 미지정 시)"),
+      mimeType: z.string().optional().describe("미상이면 application/octet-stream"),
+      content: z.string().optional().describe("캡션/파일명(선택)"),
+      boardId: z.string().optional().describe('대상 보드 id 또는 "system"(생략 시 현재 보드)'),
+      x: z.number().optional().describe("월드 좌표 x (기본 40)"),
+      y: z.number().optional().describe("월드 좌표 y (기본 40)"),
+    },
+  },
+  async ({ path, dataBase64, mimeType, content, boardId, x, y }) =>
+    attempt(async () => {
+      const m = await resolveMediaInput({ path, dataBase64, mimeType }, "any");
+      return await bridge.call("notes.createFile", {
+        dataBase64: m.dataBase64,
+        mimeType: m.mimeType,
+        content,
+        boardId,
+        x,
+        y,
+      });
+    }),
+);
+
+server.registerTool(
+  "notes_create_mindmap",
+  {
+    description:
+      "가지(children)가 있는 마인드맵 카드를 만든다. tree = {text, children?:[{text, children?}, ...]} 중첩 구조. 현재 보드면 화면 즉시 렌더, boardId로 타 보드 지정 가능.",
+    inputSchema: {
+      tree: z
+        .record(z.unknown())
+        .describe("중심 노드 {text, children?:[...]} (children도 같은 구조로 중첩)"),
+      boardId: z.string().optional().describe('대상 보드 id 또는 "system"(생략 시 현재 보드)'),
+      x: z.number().optional().describe("월드 좌표 x (기본 40)"),
+      y: z.number().optional().describe("월드 좌표 y (기본 40)"),
+    },
+  },
+  async ({ tree, boardId, x, y }) => viaBridge("notes.createMindmap", { tree, boardId, x, y }),
 );
 
 /* ── T5: boards (브리지 — 보드 목록/UI 라이브) ──────────────── */
