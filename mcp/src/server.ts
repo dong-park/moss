@@ -283,6 +283,23 @@ server.registerTool(
     viaBridge("notes.createComment", { content, author, time, boardId, x, y }),
 );
 
+server.registerTool(
+  "notes_create_board",
+  {
+    description:
+      "함(board) 카드를 만든다 — 서브 캔버스를 가리키는 funnel + 빈 서브 보드를 함께 생성한다. 반환의 boardRef가 새 서브 보드 id다(이름은 boards_rename으로). 현재 보드면 즉시 렌더, boardId로 타 보드 지정 가능.",
+    inputSchema: {
+      boardId: z
+        .string()
+        .optional()
+        .describe('함 카드를 놓을 보드 id 또는 "system"(생략 시 현재 보드)'),
+      x: z.number().optional().describe("월드 좌표 x (기본 40)"),
+      y: z.number().optional().describe("월드 좌표 y (기본 40)"),
+    },
+  },
+  async ({ boardId, x, y }) => viaBridge("notes.createBoard", { boardId, x, y }),
+);
+
 /* ── T5: boards (브리지 — 보드 목록/UI 라이브) ──────────────── */
 
 server.registerTool(

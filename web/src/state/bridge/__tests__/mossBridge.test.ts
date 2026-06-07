@@ -401,6 +401,33 @@ describe("dispatchOp", () => {
       await expect(dispatchOp("notes.get", { id })).rejects.toThrow("찾을 수 없습니다");
     });
 
+    it("notes.createBoard (현재 보드) → funnel 카드 + 서브 보드 생성", async () => {
+      const r = (await dispatchOp("notes.createBoard", {})) as {
+        id: string;
+        kind: string;
+        boardRef: string;
+      };
+      expect(r.kind).toBe("board");
+      expect(r.boardRef).toBeTruthy();
+      const card = useWorkspace.getState().cards.find((c) => c.id === r.id)!;
+      expect(card.kind).toBe("board");
+      expect(card.boardRef).toBe(r.boardRef);
+      await new Promise((res) => setTimeout(res, 40)); // createSubcanvas 비동기 보드 저장 대기
+      const boards = await useStorage.getState().loadBoards();
+      expect(boards.some((b) => b.id === r.boardRef)).toBe(true);
+    });
+
+    it("notes.createBoard boardId(타 보드) → funnel + 서브 보드 parentBoardId", async () => {
+      const r = (await dispatchOp("notes.createBoard", { boardId: "b-host" })) as {
+        boardRef: string;
+      };
+      const list = (await dispatchOp("notes.list", { boardId: "b-host" })) as BridgeNote[];
+      expect(list[0]!.kind).toBe("board");
+      expect(list[0]!.boardRef).toBe(r.boardRef);
+      const boards = await useStorage.getState().loadBoards();
+      expect(boards.find((b) => b.id === r.boardRef)?.parentBoardId).toBe("b-host");
+    });
+
     it("notes.createComment boardId → 그 보드에 저장, list에서 comment로 환원", async () => {
       await dispatchOp("notes.createComment", {
         content: "원격 코멘트",
