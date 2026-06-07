@@ -6,6 +6,10 @@
 
 import { MossBridge } from "../src/bridge.ts";
 
+// 1x1 PNG (이미지 카드 e2e용).
+const PNG_B64 =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+
 const port = Number(process.env.MOSS_BRIDGE_PORT ?? 7333);
 const bridge = new MossBridge({ port });
 await bridge.start();
@@ -44,7 +48,18 @@ try {
     content: "중심 생각",
     kind: "mindmap",
   })) as { id: string; kind: string };
-  const kindsOk = link.kind === "link" && mind.kind === "mindmap";
+  // OPFS 이미지 카드
+  const img = (await call("notes.createImage", {
+    dataBase64: PNG_B64,
+    mimeType: "image/png",
+    content: "MCP 이미지",
+  })) as { id: string; kind: string; attachmentRef: string };
+  const kindsOk =
+    link.kind === "link" &&
+    mind.kind === "mindmap" &&
+    img.kind === "image" &&
+    typeof img.attachmentRef === "string" &&
+    img.attachmentRef.startsWith("opfs:");
   await call("boards.list");
 
   // 현재-보드 외 직접 타겟: system으로 전환한 뒤 boardId로 보드 A에 직접 생성
@@ -58,7 +73,7 @@ try {
   const crossBoardOk =
     remote.boardId === board.id &&
     Array.isArray(boardAList) &&
-    boardAList.length === 5 && // 텍스트2 + link + mindmap + 원격1
+    boardAList.length === 6 && // 텍스트2 + link + mindmap + image + 원격1
     Array.isArray(sysList) &&
     !sysList.some((n) => (n as { id: string }).id === remote.id);
   console.error(`[smoke] cross-board: boardA=${boardAList.length} sys=${sysList.length} ok=${crossBoardOk}`);

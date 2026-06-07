@@ -1,8 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// OPFS putBlob은 브라우저 전용 — jsdom엔 없으므로 스텁(나머지 opfs는 실제 유지).
+vi.mock("@/state/db/opfs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/state/db/opfs")>();
+  return { ...actual, putBlob: vi.fn(async (filename: string) => `opfs:${filename}`) };
+});
+
 import { useWorkspace, SYSTEM_BOARD_ID } from "@/state/workspace";
 import { useStorage } from "@/state/storage";
 import { resetDB } from "@/state/db/schema";
 import { dispatchOp, type BridgeNote } from "@/state/bridge/mossBridge";
+
+// 1x1 PNG.
+const PNG_B64 =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
 
 // storage 미초기화 → persistCard는 no-op. dispatchOp는 in-memory store만 검증한다.
 beforeEach(() => {
@@ -73,6 +84,28 @@ describe("dispatchOp", () => {
   it("notes.create 미지원 kind → throw", async () => {
     await expect(dispatchOp("notes.create", { content: "x", kind: "image" })).rejects.toThrow(
       "지원하지 않는 kind",
+    );
+  });
+
+  it("notes.createImage → image 카드 + OPFS attachmentRef", async () => {
+    const r = (await dispatchOp("notes.createImage", {
+      dataBase64: PNG_B64,
+      mimeType: "image/png",
+      content: "캡션",
+    })) as { kind: string; attachmentRef: string; mediaType: string };
+    expect(r.kind).toBe("image");
+    expect(r.mediaType).toBe("image/png");
+    expect(r.attachmentRef).toMatch(/^opfs:/);
+    const card = useWorkspace.getState().cards[0]!;
+    expect(card.kind).toBe("image");
+    expect(card.attachmentRef).toMatch(/^opfs:/);
+    expect(card.mediaType).toBe("image/png");
+    expect(card.content).toBe("캡션");
+  });
+
+  it("notes.createImage 인자 누락 → throw", async () => {
+    await expect(dispatchOp("notes.createImage", { mimeType: "image/png" })).rejects.toThrow(
+      "필요",
     );
   });
 
