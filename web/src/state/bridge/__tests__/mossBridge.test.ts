@@ -59,6 +59,18 @@ describe("dispatchOp", () => {
     expect({ x: cards[1]!.x, y: cards[1]!.y }).toEqual({ x: 40, y: 40 });
   });
 
+  it("notes.create width/height → 카드 크기 반영", async () => {
+    const r = (await dispatchOp("notes.create", {
+      content: "긴 메모",
+      width: 700,
+      height: 200,
+    })) as { id: string };
+    const card = useWorkspace.getState().cards.find((c) => c.id === r.id)!;
+    expect(card.width).toBe(700);
+    expect(card.height).toBe(200);
+    expect(card.content).toBe("긴 메모");
+  });
+
   it("notes.create kind=link → link 카드 + URL JSON content", async () => {
     const r = (await dispatchOp("notes.create", {
       content: "https://example.com",
