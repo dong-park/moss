@@ -220,13 +220,26 @@ export async function dispatchOp(
       const raw = typeof params.content === "string" ? params.content : "";
       const x = typeof params.x === "number" ? params.x : 40;
       const y = typeof params.y === "number" ? params.y : 40;
+      // 메모 본문은 고정 폭(MEMO_CONTENT_WIDTH=720) 컬럼이라, 카드가 그보다 좁으면
+      // 우측이 잘린다. 긴 텍스트는 width로 넓혀야 보인다.
+      const width = typeof params.width === "number" ? params.width : undefined;
+      const height = typeof params.height === "number" ? params.height : undefined;
       const kind = typeof params.kind === "string" && params.kind ? params.kind : "text";
       const { noteKind, toolId, stored } = buildNoteContent(kind, raw);
       const { storageId, isCurrent } = resolveBoard(params.boardId);
       if (isCurrent) {
-        // 프로그래매틱 생성은 편집/선택을 남기지 않는다.
         const id = ws.addCardAt(toolId, x, y);
-        if (stored) ws.setContent(id, stored);
+        if (width !== undefined || height !== undefined) {
+          useWorkspace.setState((s) => ({
+            cards: s.cards.map((c) =>
+              c.id === id
+                ? { ...c, ...(width !== undefined ? { width } : {}), ...(height !== undefined ? { height } : {}) }
+                : c,
+            ),
+          }));
+        }
+        // width/height 패치 후 영속되도록 setContent를 항상 호출(빈 본문도 OK).
+        ws.setContent(id, stored);
         ws.setEditing(null);
         ws.clearSelection();
         return { id, kind: noteKind };
@@ -238,6 +251,8 @@ export async function dispatchOp(
         kind: noteKind,
         x,
         y,
+        ...(width !== undefined ? { width } : {}),
+        ...(height !== undefined ? { height } : {}),
         content: stored,
         aiOptOut: false,
         rotation: 0,

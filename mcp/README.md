@@ -38,6 +38,9 @@ moss의 사용자 데이터는 브라우저 IndexedDB(Dexie)에만 산다 — No
 | `connections_create` | 두 노트 사이 수동 연결 생성 |
 | `connections_delete` | 연결 삭제 |
 
+> ⚠️ 메모 본문은 **720px 고정 컬럼**이라 카드가 좁으면 우측이 잘린다. 제목/요약이 긴 글은
+> `notes_create`에 `width: 720`(+필요시 `height`)을 줘서 넓혀야 안 잘린다. 짧은 한 줄 메모는 기본 폭으로 OK.
+>
 > notes op는 기본 **현재 보드**(또는 `boardId`로 타 보드). `notes_create`의 `kind`:
 > `text`(마크다운)·`link`(content=URL)·`mindmap`(content=중심 토픽, 가지는 `notes_create_mindmap`).
 > 코드/체크리스트/인용은 text 카드에 마크다운으로. 첨부 카드는 `notes_create_{image,audio,file}`.

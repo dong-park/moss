@@ -131,10 +131,15 @@ server.registerTool(
         ),
       x: z.number().optional().describe("월드 좌표 x (기본 40)"),
       y: z.number().optional().describe("월드 좌표 y (기본 40)"),
+      width: z
+        .number()
+        .optional()
+        .describe("카드 폭(px). 메모 본문은 720폭 고정 컬럼이라, 긴 글은 ~720으로 넓혀야 안 잘림."),
+      height: z.number().optional().describe("카드 높이(px). 생략 시 콘텐츠 자동 높이."),
     },
   },
-  async ({ content, boardId, kind, x, y }) =>
-    viaBridge("notes.create", { content, boardId, kind, x, y }),
+  async ({ content, boardId, kind, x, y, width, height }) =>
+    viaBridge("notes.create", { content, boardId, kind, x, y, width, height }),
 );
 
 server.registerTool(
