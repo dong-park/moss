@@ -54,12 +54,29 @@ try {
     mimeType: "image/png",
     content: "MCP 이미지",
   })) as { id: string; kind: string; attachmentRef: string };
+  const audio = (await call("notes.createAudio", {
+    dataBase64: "AAAA",
+    mimeType: "audio/mpeg",
+    content: "녹음",
+  })) as { kind: string; attachmentRef: string };
+  const file = (await call("notes.createFile", {
+    dataBase64: "AAAA",
+    mimeType: "application/pdf",
+    content: "문서.pdf",
+  })) as { kind: string; attachmentRef: string };
+  const mtree = (await call("notes.createMindmap", {
+    tree: { text: "루트", children: [{ text: "가지A" }, { text: "가지B", children: [{ text: "잎" }] }] },
+  })) as { id: string; kind: string };
   const kindsOk =
     link.kind === "link" &&
     mind.kind === "mindmap" &&
     img.kind === "image" &&
-    typeof img.attachmentRef === "string" &&
-    img.attachmentRef.startsWith("opfs:");
+    img.attachmentRef?.startsWith("opfs:") &&
+    audio.kind === "audio" &&
+    audio.attachmentRef?.startsWith("opfs:") &&
+    file.kind === "file" &&
+    file.attachmentRef?.startsWith("opfs:") &&
+    mtree.kind === "mindmap";
   await call("boards.list");
 
   // 현재-보드 외 직접 타겟: system으로 전환한 뒤 boardId로 보드 A에 직접 생성
@@ -73,7 +90,7 @@ try {
   const crossBoardOk =
     remote.boardId === board.id &&
     Array.isArray(boardAList) &&
-    boardAList.length === 6 && // 텍스트2 + link + mindmap + image + 원격1
+    boardAList.length === 9 && // 텍스트2 + link + mindmap + image + audio + file + mindmapTree + 원격1
     Array.isArray(sysList) &&
     !sysList.some((n) => (n as { id: string }).id === remote.id);
   console.error(`[smoke] cross-board: boardA=${boardAList.length} sys=${sysList.length} ok=${crossBoardOk}`);

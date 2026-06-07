@@ -22,6 +22,9 @@ moss의 사용자 데이터는 브라우저 IndexedDB(Dexie)에만 산다 — No
 | `notes_get` | id로 카드 단건 조회 |
 | `notes_create` | 카드 생성(kind: text·link·mindmap, boardId로 타 보드 타겟) |
 | `notes_create_image` | 이미지 카드 생성(path 또는 dataBase64 → OPFS 저장) |
+| `notes_create_audio` | 오디오 카드 생성(audio/*, OPFS) |
+| `notes_create_file` | 파일 카드 생성(임의 타입, OPFS) |
+| `notes_create_mindmap` | 가지(children) 있는 마인드맵 카드 생성 |
 | `notes_update` | 카드 본문 교체 |
 | `notes_delete` | 카드 삭제 |
 | `boards_list` | 사용자 보드 목록 + 현재 보드 id |
@@ -34,10 +37,10 @@ moss의 사용자 데이터는 브라우저 IndexedDB(Dexie)에만 산다 — No
 | `connections_delete` | 연결 삭제 |
 
 > notes op는 기본 **현재 보드**(또는 `boardId`로 타 보드). `notes_create`의 `kind`:
-> `text`(마크다운)·`link`(content=URL)·`mindmap`(content=중심 토픽). 코드/체크리스트/인용은
-> text 카드에 마크다운으로. 이미지는 `notes_create_image`(audio/file은 아직 미지원).
+> `text`(마크다운)·`link`(content=URL)·`mindmap`(content=중심 토픽, 가지는 `notes_create_mindmap`).
+> 코드/체크리스트/인용은 text 카드에 마크다운으로. 첨부 카드는 `notes_create_{image,audio,file}`.
 >
-> ⚠️ `notes_create_image`는 OPFS `createWritable`을 쓴다 — Chromium 계열 브라우저에서 동작하고
+> ⚠️ 첨부 생성(image/audio/file)은 OPFS `createWritable`을 쓴다 — Chromium 계열 브라우저에서 동작하고
 > WebKit(WKWebView/pharos webview/Safari)에서는 실패한다(moss 전반의 webview 한계).
 > connections는 캔버스에 렌더되지 않는 데이터(현재 AI 파이프라인이 사용).
 

@@ -28,7 +28,12 @@ import {
 } from "@/state/workspace";
 import { useStorage } from "@/state/storage";
 import { getDB, type NoteKind } from "@/state/db/schema";
-import { serializeLink, serializeMindmap } from "@/state/cardContent";
+import {
+  serializeLink,
+  serializeMindmap,
+  makeMindmapNodeId,
+  type MindmapNode,
+} from "@/state/cardContent";
 import { putBlob, makeAttachmentFilename } from "@/state/db/opfs";
 
 /** 외부로 노출하는 카드 표현 — 내부 Card에서 렌더·영속에 필요한 필드만 추린다. */
@@ -104,12 +109,68 @@ function toBridgeNote(card: Card): BridgeNote {
   };
 }
 
-/** base64 → Blob (브라우저). 이미지 첨부를 OPFS에 넣기 위한 디코딩. */
+/** base64 → Blob (브라우저). 첨부를 OPFS에 넣기 위한 디코딩. */
 function base64ToBlob(dataBase64: string, mimeType: string): Blob {
   const bin = atob(dataBase64);
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
   return new Blob([bytes], { type: mimeType });
+}
+
+/**
+ * 첨부(image/audio/file) 카드 공통 생성. base64 → OPFS blob(putBlob) → attachmentRef.
+ * OPFS는 브라우저 전용이라 blob 저장이 여기(moss 탭)서 일어난다. kind는 곧 ToolId.
+ */
+async function createAttachmentCard(
+  kind: "image" | "audio" | "file",
+  params: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const dataBase64 = typeof params.dataBase64 === "string" ? params.dataBase64 : "";
+  const mimeType = typeof params.mimeType === "string" ? params.mimeType : "";
+  if (!dataBase64 || !mimeType) throw new Error("dataBase64와 mimeType이 필요합니다");
+  const caption = typeof params.content === "string" ? params.content : "";
+  const x = typeof params.x === "number" ? params.x : 40;
+  const y = typeof params.y === "number" ? params.y : 40;
+  const ref = await putBlob(makeAttachmentFilename(mimeType), base64ToBlob(dataBase64, mimeType));
+  const { storageId, isCurrent } = resolveBoard(params.boardId);
+  if (isCurrent) {
+    const ws = useWorkspace.getState();
+    const id = ws.addCardAt(kind, x, y);
+    ws.setAttachment(id, ref, { mediaType: mimeType, content: caption });
+    ws.setEditing(null);
+    ws.clearSelection();
+    return { id, kind, attachmentRef: ref, mediaType: mimeType };
+  }
+  const id = newNoteId();
+  await useStorage.getState().saveNote({
+    id,
+    boardId: storageId,
+    kind,
+    attachmentRef: ref,
+    mediaType: mimeType,
+    content: caption,
+    x,
+    y,
+    aiOptOut: false,
+    rotation: 0,
+  });
+  return { id, kind, attachmentRef: ref, mediaType: mimeType, boardId: storageId };
+}
+
+/** {text, children?} 트리를 MindmapNode로 재귀 변환. 루트 id는 "root". */
+function buildMindmapNode(raw: unknown, isRoot: boolean): MindmapNode {
+  const o = (raw && typeof raw === "object" ? raw : {}) as {
+    text?: unknown;
+    children?: unknown;
+  };
+  const children = Array.isArray(o.children)
+    ? o.children.map((c) => buildMindmapNode(c, false))
+    : [];
+  return {
+    id: isRoot ? "root" : makeMindmapNodeId(),
+    text: typeof o.text === "string" ? o.text : "",
+    children,
+  };
 }
 
 /**
@@ -203,39 +264,42 @@ export async function dispatchOp(
       return { id };
     }
 
-    // 이미지 카드: base64 → OPFS blob(putBlob) → attachmentRef로 image 카드 생성.
-    // OPFS는 브라우저 전용이라 blob 저장이 여기(moss 탭)서 일어난다.
-    case "notes.createImage": {
-      const dataBase64 = typeof params.dataBase64 === "string" ? params.dataBase64 : "";
-      const mimeType = typeof params.mimeType === "string" ? params.mimeType : "";
-      if (!dataBase64 || !mimeType) throw new Error("dataBase64와 mimeType이 필요합니다");
-      const caption = typeof params.content === "string" ? params.content : "";
+    // 첨부 카드(image/audio/file): base64 → OPFS blob → attachmentRef.
+    case "notes.createImage":
+      return createAttachmentCard("image", params);
+    case "notes.createAudio":
+      return createAttachmentCard("audio", params);
+    case "notes.createFile":
+      return createAttachmentCard("file", params);
+
+    // 가지 있는 마인드맵: {text, children?} 트리 → MindmapNode → mindmap 카드.
+    case "notes.createMindmap": {
+      if (!params.tree || typeof params.tree !== "object") {
+        throw new Error("tree가 필요합니다");
+      }
+      const stored = serializeMindmap({ root: buildMindmapNode(params.tree, true) });
       const x = typeof params.x === "number" ? params.x : 40;
       const y = typeof params.y === "number" ? params.y : 40;
-      const blob = base64ToBlob(dataBase64, mimeType);
-      const ref = await putBlob(makeAttachmentFilename(mimeType), blob);
       const { storageId, isCurrent } = resolveBoard(params.boardId);
       if (isCurrent) {
-        const id = ws.addCardAt("image", x, y);
-        ws.setAttachment(id, ref, { mediaType: mimeType, content: caption });
+        const id = ws.addCardAt("mindmap", x, y);
+        ws.setContent(id, stored);
         ws.setEditing(null);
         ws.clearSelection();
-        return { id, kind: "image", attachmentRef: ref, mediaType: mimeType };
+        return { id, kind: "mindmap" };
       }
       const id = newNoteId();
       await useStorage.getState().saveNote({
         id,
         boardId: storageId,
-        kind: "image",
-        attachmentRef: ref,
-        mediaType: mimeType,
-        content: caption,
+        kind: "mindmap",
+        content: stored,
         x,
         y,
         aiOptOut: false,
         rotation: 0,
       });
-      return { id, kind: "image", attachmentRef: ref, mediaType: mimeType, boardId: storageId };
+      return { id, kind: "mindmap", boardId: storageId };
     }
 
     case "ai.preview": {
