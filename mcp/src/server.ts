@@ -265,6 +265,24 @@ server.registerTool(
   async ({ tree, boardId, x, y }) => viaBridge("notes.createMindmap", { tree, boardId, x, y }),
 );
 
+server.registerTool(
+  "notes_create_comment",
+  {
+    description:
+      "코멘트(주석) 카드를 만든다. 작성자(author)·시간(time) 메타가 붙는다. 현재 보드면 화면 즉시 렌더, boardId로 타 보드 지정 가능.",
+    inputSchema: {
+      content: z.string().describe("코멘트 본문"),
+      author: z.string().optional().describe('작성자(기본 "MCP")'),
+      time: z.string().optional().describe('표시용 시간 문자열(예: "방금", "2일 전")'),
+      boardId: z.string().optional().describe('대상 보드 id 또는 "system"(생략 시 현재 보드)'),
+      x: z.number().optional().describe("월드 좌표 x (기본 40)"),
+      y: z.number().optional().describe("월드 좌표 y (기본 40)"),
+    },
+  },
+  async ({ content, author, time, boardId, x, y }) =>
+    viaBridge("notes.createComment", { content, author, time, boardId, x, y }),
+);
+
 /* ── T5: boards (브리지 — 보드 목록/UI 라이브) ──────────────── */
 
 server.registerTool(
