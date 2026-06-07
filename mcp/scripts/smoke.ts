@@ -37,6 +37,22 @@ try {
   const n2 = (await call("notes.create", { content: "연결 도착 카드" })) as { id: string };
   await call("boards.list");
 
+  // 현재-보드 외 직접 타겟: system으로 전환한 뒤 boardId로 보드 A에 직접 생성
+  await call("boards.switch", { id: "system" });
+  const remote = (await call("notes.create", {
+    content: "현재 보드 아닌 곳에 직접 생성",
+    boardId: board.id,
+  })) as { id: string; boardId: string | null };
+  const boardAList = (await call("notes.list", { boardId: board.id })) as unknown[];
+  const sysList = (await call("notes.list")) as unknown[]; // 현재=system
+  const crossBoardOk =
+    remote.boardId === board.id &&
+    Array.isArray(boardAList) &&
+    boardAList.length === 3 && // 카드2 + 원격1
+    Array.isArray(sysList) &&
+    !sysList.some((n) => (n as { id: string }).id === remote.id);
+  console.error(`[smoke] cross-board: boardA=${boardAList.length} sys=${sysList.length} ok=${crossBoardOk}`);
+
   // T5 connections: 두 카드 연결 → 조회
   const conn = (await call("connections.create", {
     sourceNoteId: n1.id,
@@ -52,6 +68,7 @@ try {
     !!board.id &&
     !!n1.id &&
     !!n2.id &&
+    crossBoardOk &&
     !!conn.id &&
     Array.isArray(list) &&
     list.length > 0 &&
