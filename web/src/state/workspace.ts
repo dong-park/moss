@@ -611,6 +611,14 @@ const COMMENT_MARKER_V0 = "$comment";
 /** FEAT-subcanvas: 함 카드 content에 박는 마커. boardRef와 함께 JSON 인코딩. */
 const SUBCANVAS_MARKER = "__moss_subcanvas_v1__";
 
+/**
+ * comment 카드 content 인코딩(저장은 kind="text" + 이 마커 JSON, decode 시 comment로 환원).
+ * 외부 브리지(mossBridge)가 현재 보드 아닌 곳에 comment를 만들 때 쓴다 — encodeCardContent와 단일 소스.
+ */
+export function encodeComment(body: string, author = "", time = ""): string {
+  return JSON.stringify({ [COMMENT_MARKER]: true, author, time, body });
+}
+
 function encodeCardContent(card: Card): string {
   if (card.kind === "comment") {
     return JSON.stringify({

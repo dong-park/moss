@@ -152,6 +152,20 @@ describe("dispatchOp", () => {
     await expect(dispatchOp("notes.createMindmap", {})).rejects.toThrow("tree");
   });
 
+  it("notes.createComment → comment 카드(author/time + 본문)", async () => {
+    const r = (await dispatchOp("notes.createComment", {
+      content: "리뷰 코멘트",
+      author: "리뷰어",
+      time: "방금",
+    })) as { kind: string };
+    expect(r.kind).toBe("comment");
+    const card = useWorkspace.getState().cards[0]!;
+    expect(card.kind).toBe("comment");
+    expect(card.content).toBe("리뷰 코멘트");
+    expect(card.author).toBe("리뷰어");
+    expect(card.time).toBe("방금");
+  });
+
   it("notes.list → BridgeNote 배열", async () => {
     await dispatchOp("notes.create", { content: "x" });
     const list = (await dispatchOp("notes.list")) as BridgeNote[];
@@ -385,6 +399,17 @@ describe("dispatchOp", () => {
 
       await dispatchOp("notes.delete", { id });
       await expect(dispatchOp("notes.get", { id })).rejects.toThrow("찾을 수 없습니다");
+    });
+
+    it("notes.createComment boardId → 그 보드에 저장, list에서 comment로 환원", async () => {
+      await dispatchOp("notes.createComment", {
+        content: "원격 코멘트",
+        author: "봇",
+        boardId: "b-cm",
+      });
+      const list = (await dispatchOp("notes.list", { boardId: "b-cm" })) as BridgeNote[];
+      expect(list[0]!.kind).toBe("comment");
+      expect(list[0]!.content).toBe("원격 코멘트");
     });
 
     it('boardId "system"은 현재가 사용자 보드여도 시스템 보드(null)를 타겟', async () => {
