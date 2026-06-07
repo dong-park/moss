@@ -91,6 +91,24 @@ export function resolveImageInput(input: MediaInput): Promise<ResolvedMedia> {
   return resolveMediaInput(input, "image");
 }
 
+/** 원격 이미지 URL을 받아 base64+mimeType로. OG 썸네일을 메모에 인라인 박을 때 사용. */
+export async function fetchImageAsBase64(
+  url: string,
+  fetcher: typeof fetch = fetch,
+): Promise<ResolvedMedia> {
+  const res = await fetcher(url);
+  if (!res.ok) throw new Error(`이미지 fetch 실패 ${res.status}: ${url}`);
+  const mimeType = (res.headers.get("content-type") ?? "application/octet-stream")
+    .split(";")[0]!
+    .trim();
+  assertAllowed(mimeType, "image");
+  const buf = Buffer.from(await res.arrayBuffer());
+  if (buf.length > MAX_MEDIA_BYTES) {
+    throw new Error(`썸네일이 너무 큽니다(${buf.length} bytes).`);
+  }
+  return { dataBase64: buf.toString("base64"), mimeType, bytes: buf.length };
+}
+
 function inferMime(path: string, allow: MediaKind): string {
   const mime = EXT_MIME[extname(path).toLowerCase()];
   if (mime) return mime;

@@ -71,6 +71,27 @@ describe("dispatchOp", () => {
     expect(card.content).toBe("긴 메모");
   });
 
+  it("notes.create images → 본문에 인라인 ![](opfs://..) 박고 width 720 기본", async () => {
+    const r = (await dispatchOp("notes.create", {
+      content: "사진 메모",
+      images: [{ dataBase64: PNG_B64, mimeType: "image/png", alt: "썸네일" }],
+    })) as { id: string };
+    const card = useWorkspace.getState().cards.find((c) => c.id === r.id)!;
+    expect(card.content).toContain("사진 메모");
+    expect(card.content).toMatch(/!\[썸네일\]\(opfs:\/\/.+\)/);
+    expect(card.width).toBe(720);
+  });
+
+  it("notes.create images placeholder → {{이름}} 치환", async () => {
+    const r = (await dispatchOp("notes.create", {
+      content: "위\n\n{{shot}}\n\n아래",
+      images: [{ dataBase64: PNG_B64, mimeType: "image/png", placeholder: "shot" }],
+    })) as { id: string };
+    const content = useWorkspace.getState().cards.find((c) => c.id === r.id)!.content;
+    expect(content).not.toContain("{{shot}}");
+    expect(content).toMatch(/위\n\n!\[\]\(opfs:\/\/.+\)\n\n아래/);
+  });
+
   it("notes.create kind=link → link 카드 + URL JSON content", async () => {
     const r = (await dispatchOp("notes.create", {
       content: "https://example.com",
