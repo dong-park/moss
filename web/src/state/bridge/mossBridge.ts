@@ -19,9 +19,16 @@
  * MVP 범위(T4): notes CRUD. 모든 op는 "현재 보드" 기준으로 동작한다.
  * ───────────────────────────────────────────────────────────── */
 
-import { useWorkspace, type Card, SYSTEM_BOARD_ID, __internal } from "@/state/workspace";
+import {
+  useWorkspace,
+  type Card,
+  type ToolId,
+  SYSTEM_BOARD_ID,
+  __internal,
+} from "@/state/workspace";
 import { useStorage } from "@/state/storage";
-import { getDB } from "@/state/db/schema";
+import { getDB, type NoteKind } from "@/state/db/schema";
+import { serializeLink, serializeMindmap } from "@/state/cardContent";
 
 /** 외부로 노출하는 카드 표현 — 내부 Card에서 렌더·영속에 필요한 필드만 추린다. */
 export interface BridgeNote {
@@ -49,6 +56,35 @@ function resolveBoard(raw: unknown): { storageId: string | null; isCurrent: bool
 
 function newNoteId(): string {
   return `c-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6)}`;
+}
+
+/**
+ * 생성 가능한 카드 종류 → 저장 content 인코딩.
+ * - text: 마크다운 그대로(코드/체크리스트/인용도 moss는 text 카드의 마크다운으로 다룬다).
+ * - link: content=URL → LinkContent JSON.
+ * - mindmap: content=중심 토픽 → 루트 노드 1개.
+ * image/audio/file(첨부 필요), comment/board(특수 인코딩), handwriting(획)은 미지원.
+ */
+function buildNoteContent(
+  kind: string,
+  raw: string,
+): { noteKind: NoteKind; toolId: ToolId; stored: string } {
+  switch (kind) {
+    case "text":
+      return { noteKind: "text", toolId: "text", stored: raw };
+    case "link":
+      return { noteKind: "link", toolId: "link", stored: serializeLink({ url: raw }) };
+    case "mindmap":
+      return {
+        noteKind: "mindmap",
+        toolId: "mindmap",
+        stored: serializeMindmap({ root: { id: "root", text: raw, children: [] } }),
+      };
+    default:
+      throw new Error(
+        `지원하지 않는 kind: ${kind}. (text|link|mindmap) — 코드/체크리스트/인용은 text 카드에 마크다운으로, image/audio/file은 첨부가 필요해 미지원.`,
+      );
+  }
 }
 
 function toBridgeNote(card: Card): BridgeNote {
@@ -98,30 +134,32 @@ export async function dispatchOp(
     }
 
     case "notes.create": {
-      const content = typeof params.content === "string" ? params.content : "";
+      const raw = typeof params.content === "string" ? params.content : "";
       const x = typeof params.x === "number" ? params.x : 40;
       const y = typeof params.y === "number" ? params.y : 40;
+      const kind = typeof params.kind === "string" && params.kind ? params.kind : "text";
+      const { noteKind, toolId, stored } = buildNoteContent(kind, raw);
       const { storageId, isCurrent } = resolveBoard(params.boardId);
       if (isCurrent) {
-        // MVP: 본문 카드(text). 프로그래매틱 생성은 편집/선택을 남기지 않는다.
-        const id = ws.addCardAt("text", x, y);
-        if (content) ws.setContent(id, content);
+        // 프로그래매틱 생성은 편집/선택을 남기지 않는다.
+        const id = ws.addCardAt(toolId, x, y);
+        if (stored) ws.setContent(id, stored);
         ws.setEditing(null);
         ws.clearSelection();
-        return { id };
+        return { id, kind: noteKind };
       }
       const id = newNoteId();
       await useStorage.getState().saveNote({
         id,
         boardId: storageId,
-        kind: "text",
+        kind: noteKind,
         x,
         y,
-        content,
+        content: stored,
         aiOptOut: false,
         rotation: 0,
       });
-      return { id, boardId: storageId };
+      return { id, kind: noteKind, boardId: storageId };
     }
 
     case "notes.update": {
