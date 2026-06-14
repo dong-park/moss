@@ -36,6 +36,7 @@ import { Milkdown, MilkdownProvider, useEditor } from "@milkdown/react";
 import { MarkdownToolbar } from "./MarkdownToolbar";
 import { MEMO_CONTENT_WIDTH } from "./memoLayout";
 import { editorPlugins } from "./editor/extensions";
+import { markdownPlaceholder } from "./markdownPlaceholder";
 import { BubbleMenuHost } from "./editor/BubbleMenuHost";
 import { EditorRegion } from "./editor/EditorRegion";
 
@@ -47,6 +48,9 @@ export type MarkdownEditorProps = {
   editable: boolean;
   onChange: (markdown: string) => void;
   onBlur?: () => void;
+  // 펼치기 모달 본문이면 true — 포커스 링과 placeholder 힌트를 끈다(모달은
+  // 항상 편집 모드라 링/힌트가 군더더기). 카드 인라인 편집은 그대로 유지.
+  expanded?: boolean;
 };
 
 // 서버에선 false, client에선 true — setState-in-effect 없이 클라이언트 감지.
@@ -59,7 +63,7 @@ function useIsClient() {
   );
 }
 
-export function MilkdownInner({ value, editable, onChange, onBlur }: MarkdownEditorProps) {
+export function MilkdownInner({ value, editable, onChange, onBlur, expanded }: MarkdownEditorProps) {
   // 콜백은 ref로 고정해 에디터 재생성 없이 최신 핸들러를 부른다.
   // ref 갱신은 render가 아닌 effect에서 (react-hooks/refs).
   const onChangeRef = useRef(onChange);
@@ -89,7 +93,8 @@ export function MilkdownInner({ value, editable, onChange, onBlur }: MarkdownEdi
           });
         })
         .config(nord)
-        .use(editorPlugins),
+        // 펼치기 모달은 placeholder 힌트를 끈다 — 그 외엔 카드와 동일.
+        .use(expanded ? editorPlugins.filter((p) => p !== markdownPlaceholder) : editorPlugins),
     // editable 변화 시 재생성. readonly일 때만 value를 deps에 포함해
     // 외부 변경을 반영하고, 편집 중에는 제외해 커서를 보존.
     [editable, editable ? "" : value],
@@ -97,7 +102,7 @@ export function MilkdownInner({ value, editable, onChange, onBlur }: MarkdownEdi
 
   return (
     <>
-      <EditorRegion editable={editable}>
+      <EditorRegion editable={editable} expanded={expanded}>
         <Milkdown />
       </EditorRegion>
       <BubbleMenuHost />
@@ -170,7 +175,7 @@ export function ExpandedMarkdownEditor({
           className="moss-md relative text-[13px]"
           style={{ width: MEMO_CONTENT_WIDTH, padding: "6px 9px" }}
         >
-          <MilkdownInner value={value} editable onChange={onChange} />
+          <MilkdownInner value={value} editable expanded onChange={onChange} />
           {overlay}
         </div>
       </div>

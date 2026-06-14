@@ -12,6 +12,11 @@ import { PenModeHud } from "./PenModeHud";
 import { PenToolbar } from "./PenToolbar";
 import { MemoSearchLayer } from "./MemoSearchLayer";
 import { useVirtualizedCards } from "./useVirtualizedCards";
+import {
+  fetchLinkPreview,
+  isUrlOnly,
+  serializeLink,
+} from "@/state/cardContent";
 
 /** FEAT-home AC-2: 시스템 보드에서 빈 안내로 전환되는 메모 임계치. */
 const SYSTEM_EMPTY_THRESHOLD = 10;
@@ -72,6 +77,11 @@ export function Canvas() {
   const removeSelected = useWorkspace((s) => s.removeSelected);
   const panBy = useWorkspace((s) => s.panBy);
   const zoomAt = useWorkspace((s) => s.zoomAt);
+  const fitToCards = useWorkspace((s) => s.fitToCards);
+  // 캔버스 붙여넣기 — clipboard가 URL만일 때 link 위젯을 바로 생성.
+  const addCardAtViewportCenter = useWorkspace((s) => s.addCardAtViewportCenter);
+  const setContent = useWorkspace((s) => s.setContent);
+  const setEditing = useWorkspace((s) => s.setEditing);
   // FEAT-markdown-memo-pen: 펜 모드 — 전역 커서 변경 + E/[/]/Esc 키.
   const penMode = useWorkspace((s) => s.penMode);
   const setPenMode = useWorkspace((s) => s.setPenMode);
@@ -123,6 +133,16 @@ export function Canvas() {
     };
   }, []);
 
+  /* ─ 새로고침 직후 1회: 메모들이 화면에 꽉 차도록 포커싱 ─ */
+  const didFitRef = useRef(false);
+  useEffect(() => {
+    if (didFitRef.current) return;
+    if (cards.length === 0) return;
+    if (canvasRect.width <= 0 || canvasRect.height <= 0) return;
+    didFitRef.current = true;
+    fitToCards({ width: canvasRect.width, height: canvasRect.height });
+  }, [cards.length, canvasRect.width, canvasRect.height, fitToCards]);
+
   /* ─ FEAT-canvas AC-3: 200 임계 도달 시 1회 안내 토스트 ─ */
   const toastFiredRef = useRef(false);
   useEffect(() => {
@@ -136,6 +156,35 @@ export function Canvas() {
       duration: 6000,
     });
   }, [cards.length, pushToast, t]);
+
+  /* ─ 캔버스 붙여넣기: clipboard가 "URL만"이면 link 위젯 카드를 바로 생성·채움 ─ */
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      // 입력 중(카드 편집 input·textarea·contenteditable)이면 기본 붙여넣기에 양보.
+      const active = document.activeElement as HTMLElement | null;
+      if (active?.matches("input, textarea, [contenteditable='true']")) return;
+
+      const text = e.clipboardData?.getData("text/plain") ?? "";
+      const url = text.trim();
+      if (!isUrlOnly(url)) return;
+
+      e.preventDefault();
+      const size =
+        canvasRect.width > 0 && canvasRect.height > 0
+          ? { width: canvasRect.width, height: canvasRect.height }
+          : undefined;
+      const id = addCardAtViewportCenter("link", size);
+      // 위젯(표시 형태)으로 바로 보이게 — 편집 모드 진입 없이 url만 채운다.
+      setEditing(null);
+      setContent(id, serializeLink({ url }));
+      // OG 메타는 비동기로 채운다. 실패해도 url만으로 카드 유지.
+      void fetchLinkPreview(url).then((meta) => {
+        if (meta) setContent(id, serializeLink(meta));
+      });
+    };
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  }, [canvasRect, addCardAtViewportCenter, setContent, setEditing]);
 
   /* ─ Space + Delete/Backspace 키 처리 ─ */
   useEffect(() => {

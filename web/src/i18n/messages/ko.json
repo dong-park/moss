@@ -11,7 +11,7 @@
   "workspace": {
     "memo": {
       "placeholder": {
-        "hint": "# 제목 · - [ ] 할일 · > 인용 · ``` 코드"
+        "hint": "무슨 생각이 드나요?"
       },
       "editor": {
         "label": "메모 편집기",

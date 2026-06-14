@@ -265,6 +265,13 @@ body {
   line-height: 1.6;
 }
 
+/* 본문 이미지는 고정 폭 컬럼(MEMO_CONTENT_WIDTH=720)에 맞춘다 — 원본이 더 커도
+ * 컬럼을 넘지 않게(카드 밖으로 튀어나오던 문제). height:auto로 종횡비 유지. */
+.moss-md .ProseMirror img {
+  max-width: 100%;
+  height: auto;
+}
+
 /* ─────────────────────────────────────────────────────────────
  * FEAT-memo-learnability — 빈 메모 마크다운 치트시트 placeholder.
  * MarkdownEditor.tsx의 ProseMirror 데코레이션이 빈 첫 문단에 달아주는
@@ -279,4 +286,25 @@ body {
   height: 0;
   pointer-events: none;
   white-space: nowrap;
+}
+
+/* ─────────────────────────────────────────────────────────────
+ * 읽기 전용(미리보기) 메모 — 링크/이미지 비활성화.
+ * 편집 중이 아닌 카드(EditorRegion aria-readonly="true")에서는 본문 안의
+ * 링크·이미지를 클릭해도 이동/열기가 일어나지 않게 한다. pointer-events:none이라
+ * 클릭이 카드 프레임으로 통과 → 카드 자체 확대/이동/크기조절·더블클릭 편집 진입만
+ * 동작. 편집 모드(aria-readonly="false")와 펼치기 모달은 영향 없음.
+ * (정적 전역 규칙 — EditorRegion의 hoistable <style> dedup 영향을 받지 않음.)
+ * ───────────────────────────────────────────────────────────── */
+[data-memo-editor][aria-readonly="true"] .ProseMirror a,
+[data-memo-editor][aria-readonly="true"] .ProseMirror img {
+  pointer-events: none;
+}
+
+/* 메모 본문 인라인 이미지 — 컬럼 폭에 맞춰 축소(넘침 방지).
+ * 원본이 컬럼보다 크면 가로 100%로 줄이고 비율 유지. 카드 박스의 overflow:hidden과
+ * 함께 이미지가 회색 종이 영역 밖으로 삐져나가지 않게 한다. */
+.moss-md .ProseMirror img {
+  max-width: 100%;
+  height: auto;
 }

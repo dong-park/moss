@@ -42,10 +42,18 @@ const FORMAT_SHORTCUTS = "Control+B Meta+B Control+I Meta+I Control+E Meta+E";
  * 않아 레이아웃 시프트 0, transition 없음 → reduced-motion 영향 없음.
  * React 19 hoistable <style>(href+precedence)로 head에 1회만 삽입·중복 제거. */
 const FOCUS_RING_CSS = `
-[data-memo-editor] .ProseMirror:focus-visible {
+[data-memo-editor]:not([data-memo-expanded]) .ProseMirror:focus-visible {
   outline: 2px solid var(--color-accent-blue);
   outline-offset: 2px;
   border-radius: 4px;
+}
+/* 펼치기 모달은 포커스 시 ProseMirror 자체 outline과 노드 선택(이미지 등) 시 뜨는
+ * 기본 파란 outline을 모두 끈다 — "펼치면 파란 라인 없음". */
+[data-memo-editor][data-memo-expanded] .ProseMirror,
+[data-memo-editor][data-memo-expanded] .ProseMirror:focus,
+[data-memo-editor][data-memo-expanded] .ProseMirror:focus-visible,
+[data-memo-editor][data-memo-expanded] .ProseMirror-selectednode {
+  outline: none;
 }`;
 
 /* ── SR 라이브 안내 store(모듈 싱글톤) ─────────────────────────
@@ -102,10 +110,13 @@ export function EditorRegion({
   children,
   editable,
   label,
+  expanded,
 }: {
   children: ReactNode;
   editable: boolean;
   label?: string;
+  // 펼치기 모달 본문이면 포커스 링을 끈다(data-memo-expanded로 CSS 스코프).
+  expanded?: boolean;
 }) {
   const t = useT();
   const resolvedLabel = label ?? t("workspace.memo.editor.label");
@@ -145,6 +156,7 @@ export function EditorRegion({
       </style>
       <div
         data-memo-editor
+        data-memo-expanded={expanded ? "" : undefined}
         role="textbox"
         aria-multiline="true"
         aria-readonly={!editable}

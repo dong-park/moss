@@ -14,12 +14,7 @@ import type { CardContentProps } from "../_shared/types";
  * Image — 카드 mount 시 파일 dialog 자동, OPFS putBlob, alt 텍스트 편집
  * ───────────────────────────────────────────────────────────── */
 
-export function ImageCardContent({
-  card,
-  editing,
-  onChange,
-  onCommitEdit,
-}: CardContentProps) {
+export function ImageCardContent({ card, editing }: CardContentProps) {
   const t = useT();
   const setAttachment = useWorkspace((s) => s.setAttachment);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -84,6 +79,33 @@ export function ImageCardContent({
     }
   };
 
+  /*
+   * 종이(PNG) 박스는 root에 background `contain`으로 그려진다 — root 박스 비율이
+   * PNG 비율과 다르면(가져온/레거시 카드 등) 종이가 좌우/상하로 레터박스되어
+   * root보다 좁/짧아진다. 콘텐츠를 root의 %로 깔면 그 종이 밖으로 흘러넘친다(버그).
+   * → root 실측 후 contain 종이 사각형을 직접 계산해 그 안에 콘텐츠를 앉힌다.
+   */
+  const PAPER_W = 941;
+  const PAPER_H = 1081;
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [box, setBox] = useState({ w: 0, h: 0 });
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    const update = () => setBox({ w: el.clientWidth, h: el.clientHeight });
+    update();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const scale =
+    box.w > 0 && box.h > 0 ? Math.min(box.w / PAPER_W, box.h / PAPER_H) : 0;
+  const paperW = PAPER_W * scale;
+  const paperH = PAPER_H * scale;
+  const paperLeft = (box.w - paperW) / 2;
+  const paperTop = (box.h - paperH) / 2;
+
   // 이미지 영역(placeholder 또는 img) 키보드 — Space로 파일 피커 열기.
   // 현재 클릭과 동등한 효과. 캔버스 단축키와 충돌 회피 위해 stopPropagation+preventDefault.
   const onPickerKey = (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -93,20 +115,31 @@ export function ImageCardContent({
       inputRef.current?.click();
     }
   };
+  // 이미지 영역에서 시작한 드래그로 카드를 이동할 수 있게 mousedown을 막지 않는다.
+  // (이전엔 stopPropagation으로 DraggableCard 드래그 시작이 차단됐다.)
+  // 대신 mousedown 좌표를 기록해, 임계를 넘긴 드래그면 click에서 피커를 열지 않는다.
+  const PICK_DRAG_THRESHOLD = 3;
+  const pickerDownPos = useRef<{ x: number; y: number } | null>(null);
+  const onPickerMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    pickerDownPos.current = { x: e.clientX, y: e.clientY };
+  };
   const onPickerClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const start = pickerDownPos.current;
+    pickerDownPos.current = null;
+    if (
+      start &&
+      Math.hypot(e.clientX - start.x, e.clientY - start.y) >
+        PICK_DRAG_THRESHOLD
+    ) {
+      // 드래그였음 — 카드 이동만 하고 파일 피커는 열지 않는다.
+      return;
+    }
     e.stopPropagation();
     inputRef.current?.click();
   };
 
   return (
-    <div
-      className="relative h-full"
-      style={{
-        minHeight: 120,
-        borderRadius: 6,
-        ...cardSurface("image"),
-      }}
-    >
+    <div ref={rootRef} className="relative h-full" style={{ minHeight: 120 }}>
       <input
         ref={inputRef}
         type="file"
@@ -115,77 +148,53 @@ export function ImageCardContent({
         onChange={onPick}
       />
       {/*
-       * 콘텐츠를 image PNG 종이/사진 박스 영역(10/6/7/7%)에 정렬.
-       * spec §6 P2-A 측정값 — 중앙 회색 사진 박스 raw bbox 기준.
+       * 종이 박스 — root 안에서 contain 레터박스된 실측 사각형. background도 여기에 둬
+       * 콘텐츠 좌표계(아래 %)와 종이가 항상 일치한다(넘침 방지).
        */}
-      <div
-        className="absolute flex flex-col overflow-hidden"
-        style={{ top: "10%", left: "6%", right: "7%", bottom: "7%" }}
-      >
+      {paperW > 0 && (
         <div
-          ref={dropzoneRef}
-          role="button"
-          tabIndex={0}
-          data-card-dropzone
-          aria-label={t("capture.image.placeholder")}
-          onKeyDown={onPickerKey}
-          onClick={onPickerClick}
-          onMouseDown={(e) => e.stopPropagation()}
-          className="flex-1 min-h-0 flex items-center justify-center outline-none focus-visible:ring-2 focus-visible:ring-border rounded-[3px] cursor-pointer"
+          className="absolute"
+          style={{
+            left: paperLeft,
+            top: paperTop,
+            width: paperW,
+            height: paperH,
+            borderRadius: 6,
+            ...cardSurface("image"),
+          }}
         >
-          {previewUrl ? (
-            // 카드 높이가 명시되면 img가 남은 공간을 채우며 비율 유지(contain).
-            // 명시되지 않은 경우(기본) 200px maxHeight로 thumbnail처럼 표시.
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={previewUrl}
-              alt={card.content || ""}
-              className="block w-full h-full object-contain"
-              style={{ maxHeight: card.height !== undefined ? undefined : 200 }}
-              draggable={false}
-            />
-          ) : (
-            <span
-              className="text-text-soft text-[11px]"
-              style={{ minHeight: 80 }}
-            >
-              {t("capture.image.placeholder")}
-            </span>
-          )}
-        </div>
-        <div className="px-3 py-2 shrink-0">
           {/*
-           * FEAT-card-entry-mode §6 — image의 자동 포커스 타겟은 dropzone이므로
-           * alt 입력은 mount 시 자동 focus를 발동하지 않는다. EditableLine 대신 inline input을 써
-           * 부모(dropzone) focus를 빼앗기지 않게 한다. 사용자 클릭/Tab으로 명시 진입.
+           * 사진(회색) 박스 영역 — PNG 측정값 bbox(top 18.87 / bottom 13.8 / left 5.31 / right 7.23%).
+           * 이미지는 이 박스 안에 contain 되어 회색 종이를 넘지 않는다.
            */}
-          {editing ? (
-            <input
-              type="text"
-              value={card.content}
-              onChange={(e) => onChange(e.target.value)}
-              onBlur={onCommitEdit}
-              onKeyDown={(e) => {
-                if (e.key === "Escape" || e.key === "Enter") {
-                  e.preventDefault();
-                  (e.target as HTMLInputElement).blur();
-                }
-              }}
-              onMouseDown={(e) => e.stopPropagation()}
-              placeholder={t("capture.image.altPlaceholder")}
-              className="text-[12px] text-text-muted w-full bg-transparent outline-none placeholder:text-text-soft"
-            />
-          ) : (
-            <div className="text-[12px] text-text-muted">
-              {card.content || (
-                <span className="text-text-soft">
-                  {t("capture.image.altPlaceholder")}
-                </span>
-              )}
-            </div>
-          )}
+          <div
+            ref={dropzoneRef}
+            role="button"
+            tabIndex={0}
+            data-card-dropzone
+            aria-label={t("capture.image.placeholder")}
+            onKeyDown={onPickerKey}
+            onClick={onPickerClick}
+            onMouseDown={onPickerMouseDown}
+            className="absolute overflow-hidden flex items-center justify-center outline-none focus-visible:ring-2 focus-visible:ring-border rounded-[3px] cursor-pointer"
+            style={{ top: "18.87%", bottom: "13.8%", left: "5.31%", right: "7.23%" }}
+          >
+            {previewUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={previewUrl}
+                alt={card.content || ""}
+                className="block w-full h-full object-contain"
+                style={{ backgroundColor: "#fff" }}
+                draggable={false}
+              />
+            ) : (
+              // 이미지 미첨부 시 빈 영역 — 클릭하면 파일 피커.
+              <span aria-hidden />
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

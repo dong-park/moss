@@ -137,6 +137,31 @@ export function serializeLink(data: LinkContent): string {
   return JSON.stringify(out);
 }
 
+/** 클립보드/입력값이 "URL만"인지 판별 — 앞뒤 공백 외 다른 텍스트가 없어야 한다. */
+const URL_ONLY_PATTERN = /^https?:\/\/[^\s]+$/i;
+
+export function isUrlOnly(text: string): boolean {
+  return URL_ONLY_PATTERN.test(text.trim());
+}
+
+/**
+ * /api/preview로 Open Graph 메타를 가져와 LinkContent로 반환.
+ * 실패(네트워크·비-2xx·파싱)는 null — 호출부에서 url만으로 카드를 유지한다.
+ * link 카드 편집부와 캔버스 붙여넣기 핸들러가 공유.
+ */
+export async function fetchLinkPreview(url: string): Promise<LinkContent | null> {
+  try {
+    const res = await fetch(`/api/preview?url=${encodeURIComponent(url)}`, {
+      method: "GET",
+    });
+    if (!res.ok) return null;
+    const meta = (await res.json()) as LinkContent;
+    return { ...meta, url: meta.url || url };
+  } catch {
+    return null;
+  }
+}
+
 /* ─────────────────── Handwriting ─────────────────── */
 
 export interface HandwritingPoint {
