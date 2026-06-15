@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useT } from "@/i18n/Provider";
 import {
+  fetchLinkPreview,
   parseLink,
   serializeLink,
   type LinkContent,
@@ -101,21 +102,13 @@ export function LinkCardContent({
       }),
     );
     setFetchState({ status: "loading" });
-    try {
-      const res = await fetch(
-        `/api/preview?url=${encodeURIComponent(url)}`,
-        { method: "GET" },
-      );
-      if (!res.ok) {
-        setFetchState({ status: "error" });
-        return;
-      }
-      const meta = (await res.json()) as LinkContent;
-      onChange(serializeLink({ ...meta, url: meta.url || url }));
-      setFetchState({ status: "idle" });
-    } catch {
+    const meta = await fetchLinkPreview(url);
+    if (!meta) {
       setFetchState({ status: "error" });
+      return;
     }
+    onChange(serializeLink(meta));
+    setFetchState({ status: "idle" });
   };
 
   // title/summary는 입력 즉시 카드 컨텐츠에 반영 (fetch 없음).

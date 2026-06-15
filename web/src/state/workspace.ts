@@ -475,6 +475,8 @@ interface WorkspaceState {
     id: string,
     viewportSize?: { width: number; height: number },
   ) => void;
+  /** 메모(text)들이 화면에 꽉 차도록 viewport scale·위치를 맞춘다(새로고침 직후 포커싱용). */
+  fitToCards: (viewportSize?: { width: number; height: number }) => void;
 }
 
 function isCaptureKind(kind: CardKind): boolean {
@@ -1867,6 +1869,51 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         y: h / 2 - cardCy * v.scale,
       },
       selectedIds: [id],
+    });
+  },
+
+  fitToCards: (viewportSize) => {
+    // 캔버스의 모든 카드(이미지·링크 포함)를 화면에 담아 포커싱한다.
+    // funnel(board)은 서브캔버스 진입점이라 bbox 왜곡 방지 차원에서 제외.
+    const targets = get().cards.filter((c) => c.kind !== "board");
+    if (targets.length === 0) return;
+
+    // panToCard와 동일한 화면 크기 폴백 규약.
+    const sidebarW = 148;
+    const fallbackW =
+      typeof window !== "undefined" ? window.innerWidth - sidebarW : 1100;
+    const fallbackH = typeof window !== "undefined" ? window.innerHeight : 700;
+    const w = viewportSize?.width ?? fallbackW;
+    const h = viewportSize?.height ?? fallbackH;
+    if (w <= 0 || h <= 0) return;
+
+    // 대상 카드들의 bounding box — height 미지정 카드는 보수적 기본값.
+    const DEFAULT_H = 160;
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const c of targets) {
+      minX = Math.min(minX, c.x);
+      minY = Math.min(minY, c.y);
+      maxX = Math.max(maxX, c.x + c.width);
+      maxY = Math.max(maxY, c.y + (c.height ?? DEFAULT_H));
+    }
+
+    // 둘레 여백을 포함해 꽉 차게 맞추되, 100% 이상 확대는 막아 단일 메모 과확대를 방지.
+    const PAD = 80;
+    const boxW = maxX - minX + PAD * 2;
+    const boxH = maxY - minY + PAD * 2;
+    const scale = clamp(Math.min(w / boxW, h / boxH), MIN_SCALE, 1);
+
+    const cx = (minX + maxX) / 2;
+    const cy = (minY + maxY) / 2;
+    set({
+      viewport: {
+        x: w / 2 - cx * scale,
+        y: h / 2 - cy * scale,
+        scale,
+      },
     });
   },
 }));
