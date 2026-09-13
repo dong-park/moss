@@ -18,30 +18,28 @@
  * 컨트롤을 숨기고 흐린 색으로 그린다. 박스 크기(높이)는 readonly 여부와 무관하게
  * 동일해야 한다(n5 앞면 펜 좌표 1:1 규칙, spec §11 /hate 반영).
  *
- * 알려진 갭(구현 메모 참고): 오디오/파일 blob URL은 세션 동안 캐시하고 명시적으로
- * revoke하지 않는다 — OpfsImageNodeView처럼 destroy 훅에서 회수하지 않음(위젯이
- * DecorationSet 재생성 때마다 재사용되는지 보장이 약해 회수 시점을 안전하게 잡기
- * 어려움). 세션 중 다량의 첨부를 열면 누적 leak 가능 — n10 마무리에서 재검토.
+ * 2단계 리뷰 P1-7: 오디오/파일 blob URL 캐시는 LRU(상한 BLOB_URL_CACHE_LIMIT)로
+ * 관리한다 — 밀려나는 항목과 plugin destroy 시 전부 revoke한다(아래 blobUrlCache).
  * ───────────────────────────────────────────────────────────── */
 
 import { Plugin } from "@milkdown/prose/state";
-import type { EditorState } from "@milkdown/prose/state";
 import { Decoration, DecorationSet } from "@milkdown/prose/view";
 import type { EditorView } from "@milkdown/prose/view";
 import type { Node as ProseNode } from "@milkdown/prose/model";
 import { $prose } from "@milkdown/utils";
 
 import { getBlobUrl } from "@/state/db/opfs";
-import { toStorageRef } from "@/state/db/opfsRef";
-import { normalizeLinkUrl, type Block } from "@/state/blocks";
+import { classifyLinkMark, type Block } from "@/state/blocks";
 import { t } from "@/i18n";
-
-const BLOCK_TITLES = new Set(["moss-link", "moss-audio", "moss-file"]);
 
 /** 이 모듈이 다루는 블록 — 이미지는 opfsImagePlugin(실제 스키마 노드)이 그린다. */
 export type ParagraphBlock = Exclude<Block, { type: "image" }>;
 
-/** 문단 노드 하나가 링크·녹음·파일 블록인지 구조적으로 판정한다(이미지 제외). */
+/**
+ * 문단 노드 하나가 링크·녹음·파일 블록인지 구조적으로 판정한다(이미지 제외).
+ * 2단계 리뷰 P1-5: 판정 로직은 state/blocks.ts의 classifyLinkMark 하나뿐이다 —
+ * parseBlock(마크다운 정규식)도 같은 함수를 쓴다.
+ */
 export function paragraphBlock(node: ProseNode): ParagraphBlock | null {
   if (node.type.name !== "paragraph" || node.childCount !== 1) return null;
   const child = node.child(0);
@@ -49,32 +47,90 @@ export function paragraphBlock(node: ProseNode): ParagraphBlock | null {
   const mark = child.marks.find((m) => m.type.name === "link");
   if (!mark) return null;
   const title = typeof mark.attrs.title === "string" ? mark.attrs.title : "";
-  if (!BLOCK_TITLES.has(title)) return null;
   const href = typeof mark.attrs.href === "string" ? mark.attrs.href : "";
   const label = child.text;
-
-  if (title === "moss-audio") {
-    if (!href.startsWith("opfs://")) return null;
-    return { type: "audio", ref: toStorageRef(href) };
-  }
-  if (title === "moss-file") {
-    if (!href.startsWith("opfs://")) return null;
-    return { type: "file", ref: toStorageRef(href), filename: label };
-  }
-  // moss-link — 정규형(허용 스킴 + 인코딩)일 때만 블록.
-  if (normalizeLinkUrl(href) !== href) return null;
-  return { type: "link", url: href, title: label !== href ? label : undefined };
+  return classifyLinkMark({ title, href, label }) as ParagraphBlock | null;
 }
 
-/* ── blob URL 캐시(세션 한정, revoke 없음 — 위 갭 참고) ─────────── */
+/* ── blob URL 캐시(LRU, 상한 있음 — 2단계 리뷰 P1-7) ────────────── */
+const BLOB_URL_CACHE_LIMIT = 32;
 const blobUrlCache = new Map<string, Promise<string | null>>();
+
+function evictOldestIfNeeded(): void {
+  while (blobUrlCache.size > BLOB_URL_CACHE_LIMIT) {
+    const oldestKey = blobUrlCache.keys().next().value;
+    if (oldestKey === undefined) break;
+    const pending = blobUrlCache.get(oldestKey);
+    blobUrlCache.delete(oldestKey);
+    void pending?.then((url) => {
+      if (url && url.startsWith("blob:")) URL.revokeObjectURL(url);
+    });
+  }
+}
+
 function resolveBlobUrl(ref: string): Promise<string | null> {
   let p = blobUrlCache.get(ref);
-  if (!p) {
-    p = getBlobUrl(ref);
+  if (p) {
+    // LRU: 다시 접근했으니 맨 뒤로(Map은 삽입 순서를 유지한다).
+    blobUrlCache.delete(ref);
     blobUrlCache.set(ref, p);
+    return p;
   }
+  p = getBlobUrl(ref);
+  blobUrlCache.set(ref, p);
+  evictOldestIfNeeded();
   return p;
+}
+
+/** plugin destroy 시 캐시 전체를 revoke한다(세션 종료·에디터 언마운트). */
+function revokeAllCachedBlobUrls(): void {
+  for (const [, pending] of blobUrlCache) {
+    void pending.then((url) => {
+      if (url && url.startsWith("blob:")) URL.revokeObjectURL(url);
+    });
+  }
+  blobUrlCache.clear();
+}
+
+/* ── 파일 블록 "열기" 판정(2단계 리뷰 사용자 결정) ───────────────
+ * PDF·이미지(svg 제외)·오디오·text/plain만 새 탭(window.open). 그 외(html·svg·
+ * 기타)는 <a download> 강제 다운로드 — svg·html은 스크립트를 담을 수 있어 새 탭
+ * 열람 대신 다운로드를 강제한다. 파일 본체 MIME을 저장하지 않으므로 파일명
+ * 확장자로 판정한다. */
+const OPEN_IN_TAB_EXTENSIONS = new Set([
+  "pdf",
+  "png",
+  "jpg",
+  "jpeg",
+  "gif",
+  "webp",
+  "mp3",
+  "wav",
+  "ogg",
+  "oga",
+  "m4a",
+  "webm",
+  "aac",
+  "txt",
+]);
+
+export function shouldOpenFileInNewTab(filename: string): boolean {
+  const ext = filename.split(".").pop()?.toLowerCase() ?? "";
+  return OPEN_IN_TAB_EXTENSIONS.has(ext);
+}
+
+function openOrDownload(url: string, filename: string): void {
+  if (shouldOpenFileInNewTab(filename)) {
+    window.open(url, "_blank", "noopener,noreferrer");
+    return;
+  }
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.style.display = "none";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
 }
 
 const ROW_STYLE =
@@ -199,7 +255,7 @@ export function buildBlockWidget(block: ParagraphBlock, opts: { readonly: boolea
           row.setAttribute("data-moss-file-missing", "");
           return;
         }
-        window.open(url, "_blank", "noopener,noreferrer");
+        openOrDownload(url, block.filename);
       })();
     });
     row.append(openBtn);
@@ -207,10 +263,27 @@ export function buildBlockWidget(block: ParagraphBlock, opts: { readonly: boolea
   return row;
 }
 
-/* ── 데코레이션 — 원문 숨김 + 위젯(spec §11) ───────────────────── */
-function buildBlockDecorations(state: EditorState, readonly: boolean): DecorationSet {
+/* ── 데코레이션 — 원문 숨김 + 위젯(spec §11) ───────────────────────
+ * 2단계 리뷰 P1-4: 위젯 key는 위치(pos)가 아니라 블록 내용(ref/url)으로 고정한다.
+ * pos 기반 key는 블록보다 앞선 텍스트를 편집할 때마다(위치가 밀리며) 바뀌어
+ * 위젯 DOM 인스턴스가 매번 재생성됐다(재생 중이던 audio가 끊기는 등).
+ *
+ * 재계산은 `state.doc` 객체 참조가 바뀔 때만 한다(ProseMirror doc은 불변이라
+ * 문서가 실제로 바뀐 트랜잭션에서만 새 참조가 생긴다 — 커서 이동 등 selection-only
+ * 트랜잭션은 참조가 같아 캐시를 그대로 재사용한다). plugin `state.init`은 아직
+ * EditorView가 없어 `view.editable`(readonly)을 알 수 없는 시점에 실행되므로,
+ * 공식 plugin state 필드 대신 `decorations()` prop 안에서 실제 값을 읽어 캐시를
+ * 검증하는 방식을 썼다 — init 시점에 readonly=false로 잘못 굳는 문제를 피한다. */
+
+function blockWidgetKey(block: ParagraphBlock): string {
+  if (block.type === "link") return `moss-blk-link-${block.url}`;
+  if (block.type === "audio") return `moss-blk-audio-${block.ref}`;
+  return `moss-blk-file-${block.ref}`;
+}
+
+function buildBlockDecorations(doc: ProseNode, readonly: boolean): DecorationSet {
   const decos: Decoration[] = [];
-  state.doc.descendants((node, pos) => {
+  doc.descendants((node, pos) => {
     const block = paragraphBlock(node);
     if (!block) return;
     const child = node.child(0);
@@ -220,20 +293,26 @@ function buildBlockDecorations(state: EditorState, readonly: boolean): Decoratio
     decos.push(
       Decoration.widget(start, () => buildBlockWidget(block, { readonly }), {
         side: -1,
-        key: `moss-blk-${pos}-${block.type}`,
+        key: blockWidgetKey(block),
       }),
     );
     return false; // 단일 텍스트 자식 — 더 내려갈 것 없음.
   });
-  return DecorationSet.create(state.doc, decos);
+  return DecorationSet.create(doc, decos);
 }
 
 export const memoBlockDecorations = $prose(() => {
   let currentView: EditorView | null = null;
+  let cache: { doc: ProseNode; readonly: boolean; set: DecorationSet } | null = null;
+
   return new Plugin({
     props: {
       decorations(state) {
-        return buildBlockDecorations(state, currentView ? !currentView.editable : false);
+        const readonly = currentView ? !currentView.editable : false;
+        if (!cache || cache.doc !== state.doc || cache.readonly !== readonly) {
+          cache = { doc: state.doc, readonly, set: buildBlockDecorations(state.doc, readonly) };
+        }
+        return cache.set;
       },
     },
     view(view) {
@@ -244,6 +323,8 @@ export const memoBlockDecorations = $prose(() => {
         },
         destroy() {
           currentView = null;
+          cache = null;
+          revokeAllCachedBlobUrls();
         },
       };
     },

@@ -6,38 +6,34 @@
  * MemoExpandDialog가 Dialog.Content 전체를 MilkdownProvider로 감싸므로(헤더 +
  * 본문이 같은 인스턴스 공유) 이 컴포넌트도 useInstance()로 같은 에디터를 잡는다.
  *
- * 삽입 전략: 커서 위치에 직접 노드를 꽂는 대신, 현재 문서를 마크다운으로
- * 직렬화(serializerCtx) → 새 블록 줄을 덧붙이고(state/blocks.ts의 serializeBlock) →
- * 전체를 다시 파싱(parserCtx)해 문서를 교체한다(entire-doc replace, @milkdown/utils
- * replaceAll과 동일 원리를 한 액션에 합침). 커서가 문서 끝이 아니어도 항상 "본문
- * 끝에 새 문단으로 추가"된다 — 정확한 커서 위치 삽입은 갭으로 남긴다(구현 메모).
+ * 2단계 리뷰 결정 — 삽입 위치는 "커서 위치"다(문서 전체 직렬화→재파싱→교체 금지).
+ * 트리거를 누르는 순간(onPointerDown, 메뉴가 열려 포커스를 훔치기 전)의 선택
+ * 위치를 `cursorPosRef`에 저장해두고, 실제 삽입 시점엔 `parser(markdown)`으로
+ * 새 블록 한 줄만 파싱해 그 문서 조각(Fragment)을 저장된 위치에 `tr.insert`한다
+ * (imagePaste.ts의 insertImages가 쓰는 TextSelection+replaceSelectionWith와 같은
+ * "한 트랜잭션에 노드만 삽입" 원리). 커서가 없으면(트리거 클릭 시 에디터가
+ * 포커스를 갖고 있지 않았으면) 문서 끝에 붙인다. 기존 문서 내용은 건드리지
+ * 않으므로 undo 한 번으로 삽입만 사라진다.
  *
- * 각 블록 타입은 state/blocks.ts의 serializeBlock으로 문자열을 만든다 — 그래야
- * memoBlockDecorations(blockView.ts)가 같은 정규형을 인식해 위젯으로 그린다.
+ * 2단계 리뷰 P1-6 — 한도(이미지 10MB·파일/녹음 50MB)·지원 이미지 형식은
+ * state/attachmentLimits.ts가 유일한 출처이고, 이미지·파일 저장은
+ * canvasCapture.ts의 storeImageBlock/storeFileBlock을 그대로 쓴다(OPFS 저장 +
+ * serializeBlock + 실패 토스트까지 한 곳에서 처리 — 중복 제거).
  * ───────────────────────────────────────────────────────────── */
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import * as Dialog from "@radix-ui/react-dialog";
 import { useInstance } from "@milkdown/react";
 import type { Ctx } from "@milkdown/ctx";
-import { editorViewCtx, parserCtx, serializerCtx } from "@milkdown/core";
-import { Slice } from "@milkdown/prose/model";
+import { editorViewCtx, parserCtx } from "@milkdown/core";
 
 import { useT } from "@/i18n/Provider";
 import { useToasts } from "@/state/notifications";
+import { storeFileBlock, storeImageBlock } from "@/components/workspace/canvasCapture";
 import { makeAttachmentFilename, putBlob } from "@/state/db/opfs";
 import { serializeBlock } from "@/state/blocks";
-
-const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // FEAT-memo-image-paste와 동일 한도.
-const MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024; // spec §11: 녹음·파일 50MB.
-const SUPPORTED_IMAGE_TYPES = new Set([
-  "image/png",
-  "image/jpeg",
-  "image/gif",
-  "image/webp",
-  "image/svg+xml",
-]);
+import { MAX_ATTACHMENT_BYTES } from "@/state/attachmentLimits";
 
 function pickAudioMimeType(): string | undefined {
   if (typeof MediaRecorder === "undefined") return undefined;
@@ -64,47 +60,79 @@ export function BlockMenu() {
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
 
-  /** 현재 문서 끝에 markdown 한 줄을 새 문단으로 덧붙이고 전체를 교체한다. */
-  const appendMarkdown = (markdown: string) => {
+  /* ── 커서 위치 캡처(리뷰 P1-3) ──────────────────────────────────
+   * 메뉴가 열리기 직전(포인터다운) 시점의 선택 위치를 저장한다 — 그 뒤
+   * 드롭다운·다이얼로그가 포커스를 가져가면 selection을 더는 신뢰할 수 없다. */
+  const cursorPosRef = useRef<number | null>(null);
+
+  const captureCursorPos = () => {
+    if (loading) {
+      cursorPosRef.current = null;
+      return;
+    }
+    getEditor().action((ctx: Ctx) => {
+      const view = ctx.get(editorViewCtx);
+      if (!view.hasFocus()) {
+        cursorPosRef.current = null;
+        return;
+      }
+      try {
+        cursorPosRef.current = view.state.selection.$from.after(1);
+      } catch {
+        cursorPosRef.current = null;
+      }
+    });
+  };
+
+  /** 저장된 커서 위치(없으면 문서 끝)에 블록 한 줄을 새 문단으로 삽입한다. */
+  const insertBlockMarkdown = (markdown: string) => {
     if (loading) return;
     getEditor().action((ctx: Ctx) => {
       const view = ctx.get(editorViewCtx);
-      const serializer = ctx.get(serializerCtx);
       const parser = ctx.get(parserCtx);
-      const current = serializer(view.state.doc);
-      // commonmark는 "\n" 한 줄만으로는 같은 문단 안 줄바꿈(soft break)일 뿐이다 —
-      // 새 문단(블록)으로 분리하려면 빈 줄("\n\n")이 필요하다(실경로 확인 중 발견).
-      const next = current === "" ? markdown : `${current.replace(/\n+$/, "")}\n\n${markdown}`;
-      const doc = parser(next);
-      if (!doc) return;
-      const tr = view.state.tr.replace(
-        0,
-        view.state.doc.content.size,
-        new Slice(doc.content, 0, 0),
-      );
+      const parsedDoc = parser(markdown);
+      if (!parsedDoc) return;
+      const { state } = view;
+      const docSize = state.doc.content.size;
+      const pos = cursorPosRef.current;
+      const insertPos = pos != null && pos >= 0 && pos <= docSize ? pos : docSize;
+      const tr = state.tr.insert(insertPos, parsedDoc.content);
       view.dispatch(tr.scrollIntoView());
+      cursorPosRef.current = null;
     });
   };
+
+  /* ── 마운트 해제 정리(리뷰 P1-1: 마이크 누수) ───────────────────
+   * 녹음 중 창이 닫히거나 컴포넌트가 사라지면 MediaRecorder와 트랙을 반드시
+   * 정지한다. onstop 핸들러를 먼저 떼어 언마운트 후 삽입 액션(getEditor 호출)이
+   * 실행되지 않게 한다. */
+  const mountedRef = useRef(true);
+  const micTokenRef = useRef(0);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      micTokenRef.current += 1; // 진행 중인 getUserMedia 요청을 무효화한다.
+      const rec = recorderRef.current;
+      if (rec) {
+        rec.ondataavailable = null;
+        rec.onstop = null;
+        if (rec.state !== "inactive") rec.stop();
+        recorderRef.current = null;
+      }
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    };
+  }, []);
 
   /* ── 이미지 ─────────────────────────────────────────────────── */
   const onPickImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-    if (!SUPPORTED_IMAGE_TYPES.has(file.type)) {
-      push({ tone: "warn", title: t("workspace.memoEditor.blockMenu.imageUnsupported") });
-      return;
-    }
-    if (file.size > MAX_IMAGE_BYTES) {
-      push({ tone: "warn", title: t("workspace.memoEditor.blockMenu.imageTooBig") });
-      return;
-    }
-    try {
-      const ref = await putBlob(makeAttachmentFilename(file.type), file);
-      appendMarkdown(serializeBlock({ type: "image", ref }));
-    } catch {
-      push({ tone: "warn", title: t("workspace.memoEditor.blockMenu.saveFailed") });
-    }
+    const md = await storeImageBlock(file);
+    if (md) insertBlockMarkdown(md);
   };
 
   /* ── 파일 ───────────────────────────────────────────────────── */
@@ -112,16 +140,8 @@ export function BlockMenu() {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-    if (file.size > MAX_ATTACHMENT_BYTES) {
-      push({ tone: "warn", title: t("workspace.memoEditor.blockMenu.fileTooBig") });
-      return;
-    }
-    try {
-      const ref = await putBlob(makeAttachmentFilename(file.type), file);
-      appendMarkdown(serializeBlock({ type: "file", ref, filename: file.name }));
-    } catch {
-      push({ tone: "warn", title: t("workspace.memoEditor.blockMenu.saveFailed") });
-    }
+    const md = await storeFileBlock(file);
+    if (md) insertBlockMarkdown(md);
   };
 
   /* ── 링크 ───────────────────────────────────────────────────── */
@@ -139,7 +159,7 @@ export function BlockMenu() {
       push({ tone: "warn", title: t("workspace.memoEditor.blockMenu.linkInvalid") });
       return;
     }
-    appendMarkdown(md);
+    insertBlockMarkdown(md);
     setLinkOpen(false);
   };
 
@@ -151,52 +171,68 @@ export function BlockMenu() {
   };
 
   const startRecording = async () => {
+    const token = ++micTokenRef.current;
     if (typeof navigator === "undefined" || !navigator.mediaDevices || typeof MediaRecorder === "undefined") {
       push({ tone: "warn", title: t("workspace.memoEditor.blockMenu.audioDenied") });
       setAudioOpen(false);
       return;
     }
+    let stream: MediaStream;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
-      const mimeType = pickAudioMimeType();
-      const rec = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
-      recorderRef.current = rec;
-      chunksRef.current = [];
-      rec.ondataavailable = (e) => {
-        if (e.data && e.data.size > 0) chunksRef.current.push(e.data);
-      };
-      rec.onstop = async () => {
-        streamRef.current?.getTracks().forEach((tr) => tr.stop());
-        streamRef.current = null;
-        recorderRef.current = null;
-        const blob = new Blob(chunksRef.current, { type: mimeType ?? "audio/webm" });
-        chunksRef.current = [];
-        setAudioOpen(false);
-        setRecording(false);
-        if (blob.size === 0) return;
-        if (blob.size > MAX_ATTACHMENT_BYTES) {
-          push({ tone: "warn", title: t("workspace.memoEditor.blockMenu.fileTooBig") });
-          return;
-        }
-        try {
-          const ref = await putBlob(makeAttachmentFilename(blob.type), blob);
-          appendMarkdown(serializeBlock({ type: "audio", ref }));
-        } catch {
-          push({ tone: "warn", title: t("workspace.memoEditor.blockMenu.saveFailed") });
-        }
-      };
-      setRecording(true);
-      rec.start();
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch {
       push({ tone: "warn", title: t("workspace.memoEditor.blockMenu.audioDenied") });
       setAudioOpen(false);
+      return;
     }
+    // 대기 중 취소됨(다이얼로그 닫힘·컴포넌트 언마운트) — 풀린 스트림을 즉시 버리고
+    // 녹음을 시작하지 않는다(리뷰 P1-1).
+    if (!mountedRef.current || token !== micTokenRef.current) {
+      stream.getTracks().forEach((tr) => tr.stop());
+      return;
+    }
+    streamRef.current = stream;
+    const mimeType = pickAudioMimeType();
+    const rec = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+    recorderRef.current = rec;
+    chunksRef.current = [];
+    rec.ondataavailable = (e) => {
+      if (e.data && e.data.size > 0) chunksRef.current.push(e.data);
+    };
+    rec.onstop = async () => {
+      streamRef.current?.getTracks().forEach((tr) => tr.stop());
+      streamRef.current = null;
+      recorderRef.current = null;
+      const blob = new Blob(chunksRef.current, { type: mimeType ?? "audio/webm" });
+      chunksRef.current = [];
+      setAudioOpen(false);
+      setRecording(false);
+      if (blob.size === 0) return;
+      if (blob.size > MAX_ATTACHMENT_BYTES) {
+        push({ tone: "warn", title: t("workspace.memoEditor.blockMenu.fileTooBig") });
+        return;
+      }
+      try {
+        const ref = await putBlob(makeAttachmentFilename(blob.type), blob);
+        insertBlockMarkdown(serializeBlock({ type: "audio", ref }));
+      } catch {
+        push({ tone: "warn", title: t("workspace.memoEditor.blockMenu.saveFailed") });
+      }
+    };
+    setRecording(true);
+    rec.start();
   };
 
   const stopRecording = () => {
+    micTokenRef.current += 1; // 대기 중인 getUserMedia 요청도 함께 무효화.
     const rec = recorderRef.current;
-    if (rec && rec.state !== "inactive") rec.stop();
+    if (rec && rec.state !== "inactive") {
+      rec.stop();
+      return;
+    }
+    // 레코더가 아직 없다(권한 대기 중) — 도착할 스트림은 토큰 불일치로 폐기된다.
+    streamRef.current?.getTracks().forEach((tr) => tr.stop());
+    streamRef.current = null;
   };
 
   const itemClass =
@@ -218,6 +254,7 @@ export function BlockMenu() {
           <button
             type="button"
             aria-label={t("workspace.memoEditor.blockMenu.label")}
+            onPointerDown={captureCursorPos}
             className="flex h-7 items-center justify-center rounded px-2 text-xs text-text-soft transition-colors hover:bg-panel hover:text-text data-[state=open]:bg-panel"
           >
             + {t("workspace.memoEditor.blockMenu.label")}
