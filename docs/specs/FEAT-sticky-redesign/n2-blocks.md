@@ -3,7 +3,7 @@
 > 자기완결 브리프. runner는 [상위 spec](../FEAT-sticky-redesign.md) + [plan 공통 완료 기준](../FEAT-sticky-redesign.plan.md#공통-완료-기준) + 이 파일만 본다. 진행·상태는 이 파일에만 쓴다.
 
 **deps**: 없음
-**상태**: pending
+**상태**: done
 
 ## 문제
 
@@ -40,3 +40,10 @@ UI 의존 없는 순수 모듈 하나가 네 블록을 만들고, 문단에서 �
 
 ## 구현 메모
 
+- `web/src/state/blocks.ts` 신규: `Block`/`BlockType`/`BlockCounts` 타입, `serializeBlock`, `parseBlock`, `countBlocks`, `firstBlockIsImage`.
+- `imagePaste.ts`의 `toStorageRef`/`toMarkdownUrl`에 `export` 추가(그대로 재사용, 복제 없음).
+- 문단 경계는 `\n` 한 줄 단위로 잡았다(빈 줄 기준 아님) — 블록은 항상 한 줄을 통째로 차지하므로 이 정의로 "문장 안에 섞인 링크는 블록 아님"이 정확히 걸러진다.
+- 라벨(파일명·링크 제목) 이스케이프는 `\`,`]`,`"` 세 문자를 역슬래시 1개로 감싸는 단일 정규식 왕복(`[\\\]"]` ↔ `\\(.)`)으로 처리.
+- 테스트 `web/src/state/__tests__/blocks.test.ts` 17개: 네 블록 왕복, 특수문자 이스케이프 왕복, 문단 단독 조건, `countBlocks`, `firstBlockIsImage`, imagePaste.ts 스킴 변환 재사용 확인. 전부 통과.
+- 커밋: `83702a8 feat(moss): n2 블록 마크다운 문법 모듈`.
+- 갭 없음 — stub 없이 imagePaste.ts의 실제 변환 함수를 import해서 씀.
