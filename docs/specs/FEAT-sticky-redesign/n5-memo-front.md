@@ -39,5 +39,11 @@
 | `web/src/components/workspace/cards/__tests__/` | 카드 테스트 패턴 |
 | `web/src/state/blocks.ts` | countBlocks·firstBlockIsImage(n2) |
 
+## 2단계 리뷰에서 넘어온 주의
+
+- `blockView.ts`의 DecorationSet 캐시는 `state.doc` 참조가 바뀌면 문서 전체를 다시 훑는다. 앞면 카드 수백 장이 각자 에디터를 띄우면 비용이 커진다 — 앞면을 읽기 전용 에디터로 할지, 에디터 없이 같은 위젯 DOM만 그릴지 먼저 정하고 구현 메모에 근거를 적는다.
+- blob URL 캐시는 모듈 전역 + 마운트 수 카운트로 해제한다. 앞면이 에디터를 쓰지 않는 경로라면 카운트에 참여하는 방법을 따로 둔다.
+- `countBlocks`/`firstBlockIsImage`는 블록 줄이 앞뒤 빈 줄로 분리될 때만 센다(에디터 문단 규칙과 일치). 배지·첫 이미지 판단에 그대로 쓴다.
+
 ## 구현 메모
 
