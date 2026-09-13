@@ -163,16 +163,7 @@
   },
   "capture": {
     "tool": {
-      "text": "메모",
-      "checklist": "체크리스트",
-      "image": "이미지",
-      "link": "링크",
-      "code": "코드",
-      "highlight": "강조",
-      "audio": "녹음",
-      "handwriting": "손글씨",
-      "mindmap": "마인드맵",
-      "file": "파일"
+      "text": "메모"
     },
     "text": {
       "placeholder": "여기에 적어보세요…"
@@ -197,32 +188,8 @@
       "placeholder": "코드 붙여넣기 또는 작성",
       "langPlaceholder": "lang"
     },
-    "mindmap": {
-      "rootPlaceholder": "중심 생각",
-      "addChild": "가지 추가"
-    },
-    "image": {
-      "placeholder": "이미지를 선택하세요",
-      "altPlaceholder": "설명…"
-    },
-    "file": {
-      "placeholder": "파일 이름",
-      "notSelected": "파일 선택 안 됨"
-    },
     "audio": {
-      "placeholder": "녹음을 시작하려면 다시 카드를 만들어주세요",
-      "recording": "녹음 중",
-      "stop": "정지",
-      "denied": "마이크 권한이 필요해요",
-      "unsupported": "녹음 미지원 브라우저",
-      "savedFallback": "녹음됨"
-    },
-    "link": {
-      "urlPlaceholder": "URL을 붙여넣어 주세요",
-      "titlePlaceholder": "제목",
-      "summaryPlaceholder": "설명",
-      "loading": "미리보기 가져오는 중…",
-      "fetchFailed": "미리보기를 가져오지 못했어요"
+      "recording": "녹음 중"
     },
     "canvas": {
       "imageUnsupported": "지원하지 않는 이미지 형식이에요: {type}",
