@@ -46,13 +46,17 @@ const SUPPORTED_IMAGE_TYPES = new Set([
 
 /* ── 참조 스킴 변환 ─────────────────────────────────────────── */
 
-/** `opfs://abc.png` → `opfs:abc.png` (어댑터 참조). */
-function toStorageRef(markdownUrl: string): string {
+/**
+ * `opfs://abc.png` → `opfs:abc.png` (어댑터 참조).
+ * FEAT-sticky-redesign n2: state/blocks.ts가 링크·녹음·파일 블록의 OPFS 참조
+ * 변환에도 재사용한다(복제 금지).
+ */
+export function toStorageRef(markdownUrl: string): string {
   return OPFS_STORAGE_PREFIX + markdownUrl.slice(OPFS_URL_PREFIX.length);
 }
 
-/** `opfs:abc.png` → `opfs://abc.png` (마크다운 URL). */
-function toMarkdownUrl(storageRef: string): string {
+/** `opfs:abc.png` → `opfs://abc.png` (마크다운 URL). state/blocks.ts 재사용. */
+export function toMarkdownUrl(storageRef: string): string {
   return OPFS_URL_PREFIX + storageRef.slice(OPFS_STORAGE_PREFIX.length);
 }
 
