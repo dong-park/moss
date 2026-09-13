@@ -342,7 +342,7 @@ interface WorkspaceState {
   resolveMembership: (cardIds: string[]) => void;
   /**
    * 판과 그 판에 속한 메모 전부를 같은 델타로 옮긴다. 로컬 state는 즉시 갱신하고,
-   * DB 반영은 한 Dexie 트랜잭션으로 디바운스 예약한다(동시성 §: 일부만 저장 금지).
+   * DB 반영은 판+멤버를 한 Dexie 트랜잭션으로 쓰는 그룹 쓰기를 각 카드 키로 디바운스 예약한다(동시성 §: 일부만 저장 금지).
    */
   moveFrame: (frameId: string, dx: number, dy: number) => void;
   /** 판 리사이즈. [[FRAME_MIN_WIDTH]]~[[CARD_MAX_WIDTH]], [[FRAME_MIN_HEIGHT]]~[[CARD_MAX_HEIGHT]]로 클램프. */
@@ -933,7 +933,10 @@ function persistCardDebounced(card: Card, boardId: string | null) {
 
 /**
  * FEAT-sticky-redesign 2단계 리뷰 P1: frameId를 바꾸는 다중 행 경로
- * (resolveMembership·deleteFrame의 멤버 해제)가 이 함수 하나로 DB에 쓴다.
+ * (resolveMembership·deleteFrame의 멤버 해제)가 이 함수로 DB에 쓴다. 단일 카드를
+ * 다른 캔버스로 보내는 moveCardToSubcanvas·moveCardToBoard는 보드 이동과 한 번에
+ * 저장해야 해서 saveNote에 `frameId: undefined`를 직접 싣는다(아직 flush 안 된 새
+ * 카드는 update가 no-op이라 이 함수로는 유실된다).
  * 행별 순차 `await db.notes.update`(리뷰에서 지적된 성능 이슈) 대신 Promise.all로
  * 병렬 실행한다. 이미 진행 중인 "rw" db.notes 트랜잭션 안에서 불리면(예: deleteFrame이
  * 프레임 행 삭제와 같은 트랜잭션으로 묶을 때) Dexie가 그 트랜잭션을 그대로 재사용한다
@@ -1467,14 +1470,24 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     // 옛 좌표 전체 put이 이동을 덮어쓰는 경쟁이 있었다(리뷰에서 발견). 같은 키를 쓰면
     // schedulePersist의 최신 예약 우선 규칙이 그대로 이 경쟁을 없앤다. 콜백은 예약
     // 시점이 아니라 실행(fire) 시점의 최신 카드 상태를 읽어 저장한다.
+    //
+    // 재심사 P1: 카드별 독립 쓰기면 탭 종료 시 판·멤버 좌표가 일부만 저장될 수 있다.
+    // 모든 키가 같은 그룹 쓰기를 예약한다 — 먼저 fire한 쪽이 판+멤버 최신 상태를 한
+    // 트랜잭션으로 쓰고, 나중 fire는 같은 값을 다시 쓸 뿐(멱등)이다.
     const boardId = storageBoardId(get().currentBoardId);
-    for (const id of [frameId, ...memberIds]) {
-      schedulePersist(id, () => {
-        const card = get().cards.find((c) => c.id === id);
-        if (!card) return Promise.resolve();
-        return persistCard(card, boardId);
-      });
-    }
+    const groupIds = [frameId, ...memberIds];
+    const persistGroup = async () => {
+      const storage = useStorage.getState();
+      if (!storage.initialized) return;
+      const cards = get().cards.filter((c) => groupIds.includes(c.id));
+      const db = getDB();
+      await db
+        .transaction("rw", db.notes, () =>
+          Promise.all(cards.map((card) => persistCard(card, boardId))),
+        )
+        .catch((err) => console.warn("[moss] 메모판 이동 저장 실패", err));
+    };
+    for (const id of groupIds) schedulePersist(id, persistGroup);
   },
 
   resizeFrame: (id, next) => {

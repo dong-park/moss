@@ -120,16 +120,17 @@ function mergeConnection(
 
 /**
  * FEAT-sticky-redesign n3: v5 upgrade가 남긴 "첨부 비우기 대기" 플래그를 DB open
- * 성공 후 한 번 소비한다. 실패(OPFS 미지원·에러)하면 플래그를 남겨 다음 init에서
- * 다시 시도한다.
+ * 성공 후 한 번만 소비한다. 실패해도 재시도하지 않는다(새 첨부 보호).
  */
 async function purgeAttachmentsIfPending(): Promise<void> {
   if (!isOpfsPurgePending()) return;
+  // 플래그를 먼저 지운다 — 실패 시 재시도하면 그사이 새로 만든 첨부까지 디렉터리째
+  // 지워진다(2단계 재심사 P1). 실패하면 옛 첨부가 고아로 남는 쪽을 택한다.
+  clearOpfsPurgePending();
   try {
     await clearAttachmentsDir();
-    clearOpfsPurgePending();
-  } catch {
-    /* 플래그 유지 — 다음 init에서 재시도 */
+  } catch (err) {
+    console.warn("[moss] v5 첨부 비우기 실패 — 옛 첨부가 남을 수 있음", err);
   }
 }
 

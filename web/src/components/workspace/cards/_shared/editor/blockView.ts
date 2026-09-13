@@ -30,7 +30,7 @@ import type { EditorView } from "@milkdown/prose/view";
 import type { Node as ProseNode } from "@milkdown/prose/model";
 import { $prose } from "@milkdown/utils";
 
-import { getBlobUrl } from "@/state/db/opfs";
+import { getBlob, getBlobUrl } from "@/state/db/opfs";
 import { classifyLinkMark, type Block } from "@/state/blocks";
 import { t } from "@/i18n";
 
@@ -102,31 +102,41 @@ function revokeAllCachedBlobUrls(): void {
  * 기타)는 <a download> 강제 다운로드 — svg·html은 스크립트를 담을 수 있어 새 탭
  * 열람 대신 다운로드를 강제한다. 파일 본체 MIME을 저장하지 않으므로 파일명
  * 확장자로 판정한다. */
-const OPEN_IN_TAB_EXTENSIONS = new Set([
-  "pdf",
-  "png",
-  "jpg",
-  "jpeg",
-  "gif",
-  "webp",
-  "mp3",
-  "wav",
-  "ogg",
-  "oga",
-  "m4a",
-  "webm",
-  "aac",
-  "txt",
-]);
+/** 새 탭 허용 확장자 → 강제할 MIME. 새 탭 경로는 저장된 blob의 type을 믿지 않고
+ * 이 값으로 다시 감싼다 — type이 비면 브라우저가 내용을 스니핑해 HTML로 렌더할 수
+ * 있어서다(2단계 재심사 P1: 확장자 위조 파일의 같은 출처 실행). */
+const OPEN_IN_TAB_MIME: Record<string, string> = {
+  pdf: "application/pdf",
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+  mp3: "audio/mpeg",
+  wav: "audio/wav",
+  ogg: "audio/ogg",
+  oga: "audio/ogg",
+  m4a: "audio/mp4",
+  webm: "audio/webm",
+  aac: "audio/aac",
+  txt: "text/plain;charset=utf-8",
+};
+const OPEN_IN_TAB_EXTENSIONS = new Set(Object.keys(OPEN_IN_TAB_MIME));
 
 export function shouldOpenFileInNewTab(filename: string): boolean {
   const ext = filename.split(".").pop()?.toLowerCase() ?? "";
   return OPEN_IN_TAB_EXTENSIONS.has(ext);
 }
 
-function openOrDownload(url: string, filename: string): void {
+async function openOrDownload(ref: string, url: string, filename: string): Promise<void> {
   if (shouldOpenFileInNewTab(filename)) {
-    window.open(url, "_blank", "noopener,noreferrer");
+    const ext = filename.split(".").pop()?.toLowerCase() ?? "";
+    const blob = await getBlob(ref);
+    if (!blob) return;
+    const typed = URL.createObjectURL(new Blob([blob], { type: OPEN_IN_TAB_MIME[ext] }));
+    window.open(typed, "_blank", "noopener,noreferrer");
+    // 새 탭이 로드할 시간을 준 뒤 해제한다(캐시와 별개인 일회용 URL).
+    setTimeout(() => URL.revokeObjectURL(typed), 60_000);
     return;
   }
   const a = document.createElement("a");
@@ -260,7 +270,7 @@ export function buildBlockWidget(block: ParagraphBlock, opts: { readonly: boolea
           row.setAttribute("data-moss-file-missing", "");
           return;
         }
-        openOrDownload(url, block.filename);
+        await openOrDownload(block.ref, url, block.filename);
       })();
     });
     row.append(openBtn);

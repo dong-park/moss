@@ -72,6 +72,18 @@ describe("useStorage init", () => {
     expect(isOpfsPurgePending()).toBe(false);
   });
 
+  it("FEAT-sticky-redesign 재심사: 첨부 비우기가 실패해도 플래그를 지워 다음 실행에서 새 첨부를 지우지 않는다", async () => {
+    markOpfsPurgePending();
+    const getDir = navigator.storage.getDirectory as ReturnType<typeof vi.fn>;
+    getDir.mockRejectedValueOnce(new Error("transient OPFS error"));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    await useStorage.getState().init();
+
+    expect(isOpfsPurgePending()).toBe(false);
+    warn.mockRestore();
+  });
+
   it("FEAT-sticky-redesign n3: 대기 플래그가 없으면 첨부 디렉터리를 건드리지 않는다", async () => {
     expect(isOpfsPurgePending()).toBe(false);
     await useStorage.getState().init();

@@ -11,7 +11,7 @@ import { makeAttachmentFilename, putBlob } from "@/state/db/opfs";
 import { serializeBlock } from "@/state/blocks";
 import { useToasts } from "@/state/notifications";
 // FEAT-sticky-redesign 2단계 리뷰 P1-6 — 한도·지원 형식은 attachmentLimits.ts가 유일한
-// 출처(imagePaste.ts·BlockMenu.tsx와 공유). MAX_FILE_BYTES는 기존 이름을 유지한 채
+// 출처(imagePaste.ts·BlockMenu.tsx와 공유). MAX_ATTACHMENT_BYTES는 기존 이름을 유지한 채
 // MAX_ATTACHMENT_BYTES를 재노출한다(호출부 하위 호환).
 import {
   MAX_ATTACHMENT_BYTES,
@@ -22,8 +22,6 @@ import {
 import { t } from "@/i18n";
 
 export { MAX_IMAGE_BYTES, MAX_DROP_FILES };
-/** 파일·녹음 블록 한도(spec §4 경계 조건). 이전 이름(MAX_FILE_BYTES) 유지. */
-export const MAX_FILE_BYTES = MAX_ATTACHMENT_BYTES;
 /** 여러 파일을 놓았을 때 메모끼리 겹치지 않게 비켜 쌓는 간격(px, spec §4). */
 export const DROP_STACK_OFFSET_PX = 24;
 
@@ -88,8 +86,8 @@ export async function storeImageBlock(file: File): Promise<string | null> {
  * 용량 초과면 토스트를 띄우고 null.
  */
 export async function storeFileBlock(file: File): Promise<string | null> {
-  if (file.size > MAX_FILE_BYTES) {
-    const mb = Math.round(MAX_FILE_BYTES / (1024 * 1024));
+  if (file.size > MAX_ATTACHMENT_BYTES) {
+    const mb = Math.round(MAX_ATTACHMENT_BYTES / (1024 * 1024));
     warn(t("capture.canvas.fileTooBig", { mb }));
     return null;
   }
