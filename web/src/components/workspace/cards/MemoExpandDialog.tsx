@@ -2,10 +2,12 @@
 
 import { useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
+import { MilkdownProvider } from "@milkdown/react";
 import { useT } from "@/i18n/Provider";
 import { useWorkspace } from "@/state/workspace";
 import { ExpandedMarkdownEditor } from "./_shared/MarkdownEditor";
 import { DrawingLayer, type DrawingTool } from "./_shared/DrawingLayer";
+import { BlockMenu } from "./_shared/editor/BlockMenu";
 
 /* ─────────────────────────────────────────────────────────────
  * FEAT-memo-expand — 메모(text) 카드 펼치기 모달.
@@ -80,56 +82,62 @@ export function MemoExpandDialog() {
           className="fixed left-1/2 top-1/2 z-[var(--z-modal)] flex h-[80vh] w-[90vw] max-w-3xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-lg border border-border bg-bg shadow-card-lift focus:outline-none"
           aria-describedby={undefined}
         >
-          <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
-            <Dialog.Title className="text-sm font-semibold text-text">
-              {t("workspace.memoEditor.title")}
-            </Dialog.Title>
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                aria-label={t("workspace.memoEditor.pen")}
-                aria-pressed={drawing && tool === "pen"}
-                className={toolBtn(drawing && tool === "pen")}
-                onClick={() => selectTool("pen")}
-              >
-                ✏️
-              </button>
-              <button
-                type="button"
-                aria-label={t("workspace.memoEditor.eraser")}
-                aria-pressed={drawing && tool === "eraser"}
-                className={toolBtn(drawing && tool === "eraser")}
-                onClick={() => selectTool("eraser")}
-              >
-                ⌫
-              </button>
-              <Dialog.Close
-                className="ml-1 flex h-7 w-7 cursor-pointer items-center justify-center rounded text-text-soft transition-colors hover:bg-panel hover:text-text"
-                aria-label={t("workspace.memoEditor.close")}
-              >
-                ✕
-              </Dialog.Close>
+          {/* 헤더의 BlockMenu와 본문 에디터가 같은 Milkdown 인스턴스를 공유해야
+           * 하므로(useInstance) Provider를 이 레벨에서 한 번만 제공한다. */}
+          <MilkdownProvider>
+            <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
+              <Dialog.Title className="text-sm font-semibold text-text">
+                {t("workspace.memoEditor.title")}
+              </Dialog.Title>
+              <div className="flex items-center gap-1">
+                <BlockMenu />
+                <span aria-hidden className="mx-1 h-4 w-px bg-border" />
+                <button
+                  type="button"
+                  aria-label={t("workspace.memoEditor.pen")}
+                  aria-pressed={drawing && tool === "pen"}
+                  className={toolBtn(drawing && tool === "pen")}
+                  onClick={() => selectTool("pen")}
+                >
+                  ✏️
+                </button>
+                <button
+                  type="button"
+                  aria-label={t("workspace.memoEditor.eraser")}
+                  aria-pressed={drawing && tool === "eraser"}
+                  className={toolBtn(drawing && tool === "eraser")}
+                  onClick={() => selectTool("eraser")}
+                >
+                  ⌫
+                </button>
+                <Dialog.Close
+                  className="ml-1 flex h-7 w-7 cursor-pointer items-center justify-center rounded text-text-soft transition-colors hover:bg-panel hover:text-text"
+                  aria-label={t("workspace.memoEditor.close")}
+                >
+                  ✕
+                </Dialog.Close>
+              </div>
             </div>
-          </div>
 
-          {card && (
-            <ExpandedMarkdownEditor
-              key={card.id}
-              value={card.content}
-              onChange={(md) => setContent(card.id, md)}
-              // 펜 overlay는 본문 컬럼(고정 폭) 안에 1:1로 얹힌다 — 카드와 동일
-              // 좌표공간. drawing=false면 pointer-events:none → 클릭이 편집으로 통과.
-              overlay={
-                <DrawingLayer
-                  value={card.overlay ?? ""}
-                  active={drawing}
-                  penWidth={penWidth}
-                  tool={tool}
-                  onChange={(json) => setOverlay(card.id, json)}
-                />
-              }
-            />
-          )}
+            {card && (
+              <ExpandedMarkdownEditor
+                key={card.id}
+                value={card.content}
+                onChange={(md) => setContent(card.id, md)}
+                // 펜 overlay는 본문 컬럼(고정 폭) 안에 1:1로 얹힌다 — 카드와 동일
+                // 좌표공간. drawing=false면 pointer-events:none → 클릭이 편집으로 통과.
+                overlay={
+                  <DrawingLayer
+                    value={card.overlay ?? ""}
+                    active={drawing}
+                    penWidth={penWidth}
+                    tool={tool}
+                    onChange={(json) => setOverlay(card.id, json)}
+                  />
+                }
+              />
+            )}
+          </MilkdownProvider>
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>

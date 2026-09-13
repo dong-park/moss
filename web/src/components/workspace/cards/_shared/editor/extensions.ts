@@ -25,6 +25,7 @@ import { wikilink } from "./wikilink";
 import { autolink } from "./autolink";
 import { sanitizePasteHandler } from "./sanitizePaste";
 import { imagePasteHandler, opfsImagePlugin } from "./imagePaste";
+import { memoBlockDecorations } from "./blockView"; // (FEAT-sticky-redesign n4) 링크·녹음·파일 블록
 import { memoBubbleItems } from "./BubbleToolbar"; // (W3) 인카드 버블 서식 항목
 
 /* ── ② paste 슬롯 ──────────────────────────────────────────────
@@ -136,6 +137,7 @@ export const editorPlugins: MilkdownPlugin[] = [
   pasteSlot,
   bubbleSlot,
   opfsImagePlugin, // (W2) opfs:// 이미지 → blob URL NodeView (resolver)
+  memoBlockDecorations, // (n4) 링크·녹음·파일 블록 — 원문 숨김 + 위젯 데코레이션
   ...wikilink, // (W5) [[위키링크]] — 데코레이션 + 자동완성
   ...autolink, // (W10) URL 자동 링크화
 ].flat();

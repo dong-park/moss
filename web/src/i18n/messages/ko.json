@@ -43,6 +43,33 @@
         "link": "링크",
         "image": "이미지",
         "linkPrompt": "링크 URL을 입력하세요"
+      },
+      "blockMenu": {
+        "label": "블록 추가",
+        "image": "이미지",
+        "link": "링크",
+        "audio": "녹음",
+        "file": "파일",
+        "linkDialogTitle": "링크 추가",
+        "linkUrlPlaceholder": "URL",
+        "linkTitlePlaceholder": "제목(선택)",
+        "linkSubmit": "추가",
+        "linkCancel": "취소",
+        "linkInvalid": "지원하지 않는 링크예요.",
+        "audioDialogTitle": "녹음",
+        "audioStop": "정지",
+        "audioDenied": "마이크 권한이 필요해요",
+        "imageTooBig": "이미지가 너무 커요 (최대 10MB).",
+        "imageUnsupported": "지원하지 않는 이미지 형식이에요.",
+        "fileTooBig": "파일이 너무 커요 (최대 50MB).",
+        "saveFailed": "저장하지 못했어요."
+      },
+      "block": {
+        "open": "열기",
+        "play": "재생",
+        "pause": "일시정지",
+        "notFound": "파일을 찾을 수 없음",
+        "audioLabel": "녹음"
       }
     },
     "boardPicker": {
