@@ -1,4 +1,4 @@
-import Dexie, { type Table, type Transaction } from "dexie";
+import Dexie, { type Table } from "dexie";
 import { migratedContent } from "../markdownMigration";
 import { blocksToMarkdown } from "../cardContent";
 
@@ -207,26 +207,10 @@ export class MossDB extends Dexie {
       ...stores,
       boards: "id, isSystem, lastOpenedAt, parentBoardId",
     });
-    // v5 (FEAT-sticky-redesign): NoteKind에 "frame" 추가, Note에 frameId/legacy
-    // 비인덱스 필드 추가 — stores() 인덱스 문자열은 v4와 동일. 실제 이관(옛 카드
-    // → 블록 든 메모)은 n3 몫이라 migrateStickyV5는 지금은 no-op.
-    this.version(5)
-      .stores({
-        ...stores,
-        boards: "id, isSystem, lastOpenedAt, parentBoardId",
-      })
-      .upgrade(async (tx) => {
-        await migrateStickyV5(tx);
-      });
+    // FEAT-sticky-redesign: NoteKind "frame"·Note frameId/legacy는 비인덱스라 버전을
+    // 올리지 않는다. v5는 n3가 실제 이관 upgrade와 함께 선언한다 — no-op v5를 먼저
+    // 두면 이미 v5로 열린 DB에서 나중에 넣은 upgrade가 영영 돌지 않는다(리뷰 P1).
   }
-}
-
-/**
- * FEAT-sticky-redesign: v5 upgrade 훅. n3가 옛 카드 이관 로직을 채울 자리.
- * 지금은 no-op — 기존 notes 행은 그대로 통과한다.
- */
-export async function migrateStickyV5(tx: Transaction): Promise<void> {
-  void tx; // no-op (n3 몫) — 이관 로직은 n3가 채운다.
 }
 
 let _db: MossDB | null = null;

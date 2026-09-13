@@ -61,8 +61,8 @@ function openV4Only(name: string): Dexie {
   return db;
 }
 
-describe("MossDB schema v5 (FEAT-sticky-redesign n1)", () => {
-  it("upgrades a v4 DB to v5 without losing existing notes rows", async () => {
+describe("MossDB frame·frameId·legacy (FEAT-sticky-redesign n1)", () => {
+  it("opens an existing v4 DB without a version bump and keeps rows (v5 is n3's)", async () => {
     const name = nextName();
     const v4db = openV4Only(name);
     await v4db.open();
@@ -76,7 +76,8 @@ describe("MossDB schema v5 (FEAT-sticky-redesign n1)", () => {
     const v5db = createDB(name);
     dbs.push(v5db);
     await v5db.open();
-    expect(v5db.verno).toBe(5);
+    // no-op v5를 선언하지 않는다 — n3가 이관 upgrade와 함께 v5를 선언한다(리뷰 P1).
+    expect(v5db.verno).toBe(4);
 
     const rows = await v5db.notes.toArray();
     expect(rows).toHaveLength(2);

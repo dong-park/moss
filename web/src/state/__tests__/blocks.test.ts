@@ -23,7 +23,7 @@ describe("blocks — 왕복(serialize ∘ parse)", () => {
       title: "예시",
     });
     expect(s).toBe('[예시](https://example.com "moss-link")');
-    const parsed = parseBlock(s);
+    const parsed = parseBlock(s!);
     expect(parsed).toEqual({
       type: "link",
       url: "https://example.com",
@@ -35,7 +35,7 @@ describe("blocks — 왕복(serialize ∘ parse)", () => {
   it("링크 블록: 제목 비면 URL을 제목으로(spec §4)", () => {
     const s = serializeBlock({ type: "link", url: "https://example.com" });
     expect(s).toBe('[https://example.com](https://example.com "moss-link")');
-    const parsed = parseBlock(s) as Extract<Block, { type: "link" }>;
+    const parsed = parseBlock(s!) as Extract<Block, { type: "link" }>;
     expect(parsed.type).toBe("link");
     expect(parsed.title).toBe("https://example.com");
     // 문자열 왕복은 유지된다(블록 값 자체의 왕복은 보장 대상이 아님).
@@ -79,7 +79,7 @@ describe("blocks — 특수문자 이스케이프", () => {
   it("링크 제목의 특수문자도 왕복한다", () => {
     const title = '제목 [대괄호] "따옴표"';
     const s = serializeBlock({ type: "link", url: "https://a.b/c", title });
-    const parsed = parseBlock(s);
+    const parsed = parseBlock(s!);
     expect(parsed).toEqual({ type: "link", url: "https://a.b/c", title });
     expect(serializeBlock(parsed as Block)).toBe(s);
   });
@@ -153,7 +153,7 @@ describe("firstBlockIsImage", () => {
   });
 });
 
-describe("실경로: imagePaste.ts 스킴 변환 재사용", () => {
+describe("실경로: opfsRef.ts 스킴 변환 재사용", () => {
   it("opfs: vs opfs:// 스킴 차이가 serializeBlock/parseBlock 왕복에서 보존된다", () => {
     // 저장 참조(opfs:)로 만든 블록이 마크다운 URL(opfs://)로 직렬화되고,
     // 다시 파싱하면 저장 참조로 되돌아온다(imagePaste.ts의 toStorageRef/toMarkdownUrl).
@@ -163,5 +163,39 @@ describe("실경로: imagePaste.ts 스킴 변환 재사용", () => {
     expect(s).not.toContain("opfs:some-id.bin ");
     const parsed = parseBlock(s);
     expect(parsed).toEqual({ type: "audio", ref });
+  });
+});
+
+describe("blocks — 리뷰 P1 보강", () => {
+  it("javascript: 등 허용 안 된 스킴은 직렬화 거부·파싱 null", () => {
+    expect(serializeBlock({ type: "link", url: "javascript:alert(1)" })).toBeNull();
+    expect(parseBlock('[x](javascript:alert(1) "moss-link")')).toBeNull();
+    expect(parseBlock('[x](data:text/html,hi "moss-link")')).toBeNull();
+  });
+
+  it("mailto는 허용한다", () => {
+    const s = serializeBlock({ type: "link", url: "mailto:a@b.c", title: "메일" });
+    expect(s).toBe('[메일](mailto:a@b.c "moss-link")');
+    expect(parseBlock(s!)).toEqual({ type: "link", url: "mailto:a@b.c", title: "메일" });
+  });
+
+  it("URL의 공백·따옴표·괄호는 퍼센트 인코딩돼 왕복한다", () => {
+    const s = serializeBlock({ type: "link", url: 'https://a.b/x y"(z)', title: "t" })!;
+    expect(s).toBe('[t](https://a.b/x%20y%22%28z%29 "moss-link")');
+    const parsed = parseBlock(s) as Block;
+    expect(serializeBlock(parsed)).toBe(s);
+  });
+
+  it("라벨의 개행·제어문자는 공백으로 — 블록은 항상 한 줄", () => {
+    const s = serializeBlock({ type: "file", ref: "opfs:f.bin", filename: "a\nb\r\tc.txt" });
+    expect(s.includes("\n")).toBe(false);
+    expect(parseBlock(s)).toEqual({ type: "file", ref: "opfs:f.bin", filename: "a b c.txt" });
+    const link = serializeBlock({ type: "link", url: "https://a.b", title: "줄1\n줄2" })!;
+    expect(link.split("\n")).toHaveLength(1);
+  });
+
+  it("녹음·파일 블록은 opfs:// 참조만 인정한다", () => {
+    expect(parseBlock('[녹음](https://example.com "moss-audio")')).toBeNull();
+    expect(parseBlock('[a.pdf](https://example.com/a.pdf "moss-file")')).toBeNull();
   });
 });

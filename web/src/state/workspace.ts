@@ -803,7 +803,10 @@ function persistCard(card: Card, boardId: string | null): Promise<void> {
   // moveCard처럼 본문 변경 없이 호출되는 경로에서도 큐 안에서 콘텐츠 해시
   // 비교로 cache hit이면 skip하므로 안전(AC-4).
   // FEAT-subcanvas: 함 카드 content는 boardRef JSON일 뿐이라 임베딩 대상 아님 — skip.
-  if (card.kind !== "board") enqueueEmbedRaw(card.id, content, !!card.aiOptOut);
+  // FEAT-sticky-redesign: 메모판(frame) content는 {name} JSON이라 역시 skip.
+  if (card.kind !== "board" && card.kind !== "frame") {
+    enqueueEmbedRaw(card.id, content, !!card.aiOptOut);
+  }
   return storage.saveNote({
     id: card.id,
     boardId,

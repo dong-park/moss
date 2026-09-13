@@ -23,14 +23,15 @@ import { Plugin, TextSelection } from "@milkdown/prose/state";
 import type { EditorView, NodeView } from "@milkdown/prose/view";
 
 import { getBlobUrl, makeAttachmentFilename, putBlob } from "@/state/db/opfs";
+import {
+  OPFS_URL_PREFIX,
+  toMarkdownUrl,
+  toStorageRef,
+} from "@/state/db/opfsRef";
 import { useToasts } from "@/state/notifications";
 
 import type { PasteHandler } from "./extensions";
 
-/** 마크다운 본문에 들어가는 URL 스킴(콜론+슬래시 2개). */
-const OPFS_URL_PREFIX = "opfs://";
-/** OPFS 어댑터(state/db/opfs)의 참조 스킴(콜론 1개). */
-const OPFS_STORAGE_PREFIX = "opfs:";
 
 /** 초과 시 토스트 경고 후 무시(AC-5). */
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10MB
@@ -46,19 +47,9 @@ const SUPPORTED_IMAGE_TYPES = new Set([
 
 /* ── 참조 스킴 변환 ─────────────────────────────────────────── */
 
-/**
- * `opfs://abc.png` → `opfs:abc.png` (어댑터 참조).
- * FEAT-sticky-redesign n2: state/blocks.ts가 링크·녹음·파일 블록의 OPFS 참조
- * 변환에도 재사용한다(복제 금지).
- */
-export function toStorageRef(markdownUrl: string): string {
-  return OPFS_STORAGE_PREFIX + markdownUrl.slice(OPFS_URL_PREFIX.length);
-}
-
-/** `opfs:abc.png` → `opfs://abc.png` (마크다운 URL). state/blocks.ts 재사용. */
-export function toMarkdownUrl(storageRef: string): string {
-  return OPFS_URL_PREFIX + storageRef.slice(OPFS_STORAGE_PREFIX.length);
-}
+// toStorageRef/toMarkdownUrl은 state/db/opfsRef.ts로 옮겼다(순수 모듈 blocks.ts가
+// Milkdown을 끌고 오지 않게). 기존 import 경로 호환을 위해 재export한다.
+export { toMarkdownUrl, toStorageRef };
 
 /**
  * 마크다운 본문의 `opfs://<id>` 참조를 화면에 그릴 수 있는 blob URL로 해석한다.

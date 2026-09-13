@@ -17,13 +17,13 @@
  *
  * OPFS 참조는 두 스킴을 오간다 — 어댑터(state/db/opfs)는 `opfs:<file>`(콜론
  * 1개), 마크다운 본문은 `opfs://<file>`(콜론+슬래시 2개). 변환은 복제하지
- * 않고 imagePaste.ts의 toStorageRef/toMarkdownUrl을 그대로 재사용한다.
+ * 않고 state/db/opfsRef.ts의 toStorageRef/toMarkdownUrl을 쓴다(에디터 의존 없음).
+ *
+ * 링크 URL은 http·https·mailto만 블록으로 인정한다. 다른 스킴(javascript: 등)은
+ * 직렬화를 거부하고 파싱에서 null — 저장형 XSS 차단(리뷰 P1).
  */
 
-import {
-  toMarkdownUrl,
-  toStorageRef,
-} from "@/components/workspace/cards/_shared/editor/imagePaste";
+import { toMarkdownUrl, toStorageRef } from "@/state/db/opfsRef";
 
 /** 녹음 블록의 label은 항상 고정 문자열이다(spec §11 표). */
 const AUDIO_LABEL = "녹음";
@@ -47,16 +47,43 @@ export interface BlockCounts {
  * `]`·`"`·`\`는 마크다운 링크 문법을 깨거나(대괄호 종료) title 표식과
  * 충돌한다(따옴표). 역슬래시 1개로 이스케이프하고, 파싱 때 되돌린다. */
 function escapeLabel(label: string): string {
-  return label.replace(/[\\\]"]/g, (m) => "\\" + m);
+  // 개행·제어문자는 블록을 두 줄로 쪼개 복구 불가로 만든다 → 공백으로(리뷰 P1).
+  const oneLine = label.replace(/[\u0000-\u001f\u007f]+/g, " ");
+  return oneLine.replace(/[\\\]"]/g, (m) => "\\" + m);
 }
 
 function unescapeLabel(label: string): string {
   return label.replace(/\\(.)/g, "$1");
 }
 
+/* ── 링크 URL ───────────────────────────────────────────────── */
+
+const ALLOWED_LINK_PROTOCOLS = new Set(["http:", "https:", "mailto:"]);
+
+/** 허용 스킴이면 공백·따옴표·괄호를 퍼센트 인코딩한 URL, 아니면 null. */
+export function normalizeLinkUrl(raw: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(raw.trim());
+  } catch {
+    return null;
+  }
+  if (!ALLOWED_LINK_PROTOCOLS.has(url.protocol)) return null;
+  // href 대신 원문을 쓴다 — 정규화(끝 슬래시 추가 등)가 사용자가 쓴 URL을 바꾸지 않게.
+  return raw
+    .trim()
+    .replace(/[\s"()]/g, (m) => "%" + m.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0"));
+}
+
 /* ── 직렬화 ──────────────────────────────────────────────────── */
 
-export function serializeBlock(block: Block): string {
+/**
+ * 블록을 한 줄 마크다운으로. 링크 URL이 허용 스킴이 아니면 null —
+ * 호출자는 블록 대신 일반 텍스트로 남긴다.
+ */
+export function serializeBlock(block: Exclude<Block, { type: "link" }>): string;
+export function serializeBlock(block: Block): string | null;
+export function serializeBlock(block: Block): string | null {
   switch (block.type) {
     case "image":
       return `![](${toMarkdownUrl(block.ref)})`;
@@ -67,8 +94,10 @@ export function serializeBlock(block: Block): string {
       return `[${label}](${toMarkdownUrl(block.ref)} "moss-file")`;
     }
     case "link": {
-      const rawTitle = block.title && block.title.trim() ? block.title : block.url;
-      return `[${escapeLabel(rawTitle)}](${block.url} "moss-link")`;
+      const url = normalizeLinkUrl(block.url);
+      if (!url) return null;
+      const rawTitle = block.title && block.title.trim() ? block.title : url;
+      return `[${escapeLabel(rawTitle)}](${url} "moss-link")`;
     }
   }
 }
@@ -76,8 +105,8 @@ export function serializeBlock(block: Block): string {
 /* ── 파싱 ────────────────────────────────────────────────────── */
 
 const IMAGE_RE = /^!\[\]\((opfs:\/\/\S+)\)$/;
-const AUDIO_RE = /^\[녹음\]\((\S+) "moss-audio"\)$/;
-const FILE_RE = /^\[(.*)\]\((\S+) "moss-file"\)$/;
+const AUDIO_RE = new RegExp(`^\\[${AUDIO_LABEL}\\]\\((opfs:\\/\\/\\S+) "moss-audio"\\)$`);
+const FILE_RE = /^\[(.*)\]\((opfs:\/\/\S+) "moss-file"\)$/;
 const LINK_RE = /^\[(.*)\]\((\S+) "moss-link"\)$/;
 
 /**
@@ -106,6 +135,8 @@ export function parseBlock(paragraphText: string): Block | null {
 
   m = LINK_RE.exec(s);
   if (m) {
+    // 스킴만 검사하고 원문 URL을 유지한다(손으로 쓴 `https://a.com`도 왕복 보존).
+    if (!normalizeLinkUrl(m[2])) return null;
     const title = unescapeLabel(m[1]);
     return { type: "link", url: m[2], title: title || undefined };
   }
