@@ -136,7 +136,12 @@ export function Dock({
 
   /* ─ 화면 폭 추적 — 360px 미만이면 확대를 끈다 ─ */
   useEffect(() => {
-    const onResize = () => setCanvasWidth(window.innerWidth);
+    const onResize = () => {
+      // 재심사 P1: 터치 탭은 mousemove만 합성하고 mouseleave가 안 온다 → 확대 표시가
+      // 남으면 폭 실측이 영구 스킵된다. 레이아웃이 바뀌는 시점에 확대 상태를 푼다.
+      magnifyingRef.current = false;
+      setCanvasWidth(window.innerWidth);
+    };
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
@@ -236,6 +241,11 @@ export function Dock({
     },
     [hoverTrackingEnabled, sizingEnabled],
   );
+
+  // 시그널스 패널 토글로 독 위치가 바뀔 때도 확대 상태를 푼다(위 onResize와 같은 이유).
+  useEffect(() => {
+    magnifyingRef.current = false;
+  }, [signalsOpen]);
 
   const handleDockMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     const next = computeMagnify(e.clientX);
@@ -347,6 +357,10 @@ export function Dock({
       onMouseEnter={() => setDockHover(true)}
       onMouseLeave={handleDockMouseLeave}
       onMouseMove={handleDockMouseMove}
+      onTouchStart={() => {
+        // 터치에는 hover가 없다 — 합성 mousemove가 남긴 확대 상태를 쓰지 않는다.
+        magnifyingRef.current = false;
+      }}
       className="fixed z-[var(--z-panel)] flex items-center gap-1 rounded-full px-3"
       style={{
         left: dockLeft,

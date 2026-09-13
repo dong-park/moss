@@ -65,10 +65,11 @@ export function TextCardContent({
   // 브라우저 기본 동작(링크 이동)이 클릭과 동시에 발생할 수 있다 — preventDefault로
   // 그 기본 이동을 막는다. autolink.ts·state/blocks.ts가 허용 스킴(http/https/
   // mailto)만 링크로 만들도록 별도로 막고 있지만, 방어를 한 겹 더 둔다.
+  // 재심사 P1: 가운데 클릭(auxclick)과 키보드로 활성화된 <a>도 같은 경로로 막는다.
   const onFrontClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (editing) return;
     const target = e.target as HTMLElement;
-    if (target.closest("img, [data-moss-block]")) {
+    if (target.closest("img, [data-moss-block], a")) {
       e.preventDefault();
       e.stopPropagation();
       setExpandedCard(card.id);
@@ -86,6 +87,7 @@ export function TextCardContent({
         background: `url("/cards/v2/text.png") 0 0 / 100% 100% no-repeat`,
       }}
       onClick={onFrontClick}
+      onAuxClick={onFrontClick}
       onKeyDown={(e) => {
         // Milkdown(prose-mirror)에 ESC가 도달하면 onCommitEdit.
         if (e.key === "Escape") {
