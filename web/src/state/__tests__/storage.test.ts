@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useStorage } from "@/state/storage";
 import { resetDB, getDB } from "@/state/db/schema";
+import { clearOpfsPurgePending, isOpfsPurgePending, markOpfsPurgePending } from "@/state/db/opfs";
 
 let originalStorage: PropertyDescriptor | undefined;
 
@@ -12,7 +13,7 @@ beforeEach(() => {
       persist: vi.fn(async () => true),
       persisted: vi.fn(async () => false),
       estimate: vi.fn(async () => ({ usage: 100, quota: 1000 })),
-      getDirectory: vi.fn(),
+      getDirectory: vi.fn(async () => ({ removeEntry: vi.fn(async () => {}) })),
     },
     configurable: true,
     writable: true,
@@ -25,6 +26,7 @@ afterEach(async () => {
   if (originalStorage) {
     Object.defineProperty(navigator, "storage", originalStorage);
   }
+  clearOpfsPurgePending();
 });
 
 describe("useStorage init", () => {
@@ -58,6 +60,22 @@ describe("useStorage init", () => {
     await useStorage.getState().init();
     expect(navigator.storage.persist).not.toHaveBeenCalled();
     expect(useStorage.getState().settings?.persistGranted).toBe(false);
+  });
+
+  it("FEAT-sticky-redesign n3: 대기 플래그가 있으면 init()이 첨부 디렉터리를 비우고 플래그를 지운다", async () => {
+    markOpfsPurgePending();
+    expect(isOpfsPurgePending()).toBe(true);
+
+    await useStorage.getState().init();
+
+    expect(navigator.storage.getDirectory).toHaveBeenCalled();
+    expect(isOpfsPurgePending()).toBe(false);
+  });
+
+  it("FEAT-sticky-redesign n3: 대기 플래그가 없으면 첨부 디렉터리를 건드리지 않는다", async () => {
+    expect(isOpfsPurgePending()).toBe(false);
+    await useStorage.getState().init();
+    expect(navigator.storage.getDirectory).not.toHaveBeenCalled();
   });
 });
 

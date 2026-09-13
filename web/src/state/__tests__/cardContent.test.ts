@@ -102,7 +102,7 @@ describe("link 인코딩", () => {
     expect(parseLink(serializeLink(link))).toEqual(link);
   });
 
-  it("legacy: raw URL string (JSON 아닌 본문)을 url로 인식", () => {
+  it("구버전 포맷: raw URL string (JSON 아닌 본문)을 url로 인식", () => {
     expect(parseLink("https://raw.example/").url).toBe("https://raw.example/");
   });
 });

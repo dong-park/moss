@@ -15,6 +15,63 @@ export interface QuotaInfo {
 
 const DIR_NAME = "moss-attachments";
 
+/**
+ * FEAT-sticky-redesign n3: v5 upgrade가 DB를 비운 뒤 OPFS 첨부도 한 번 비워야 한다.
+ * upgrade 콜백 안에서는 비동기 OPFS 호출을 하지 않고(Dexie 트랜잭션 밖 작업 금지),
+ * 대신 이 플래그를 localStorage에 남긴다. `storage.ts`의 `init()`이 DB open 성공 뒤
+ * 플래그를 보고 실제 삭제를 실행하고, 성공했을 때만 플래그를 지운다 — 실패하면
+ * 다음 실행에서 다시 시도한다.
+ */
+const OPFS_PURGE_PENDING_KEY = "moss:opfsPurgePending";
+
+function safeLocalStorage(): Storage | null {
+  if (typeof localStorage === "undefined") return null;
+  return localStorage;
+}
+
+export function markOpfsPurgePending(): void {
+  const ls = safeLocalStorage();
+  if (!ls) return;
+  try {
+    ls.setItem(OPFS_PURGE_PENDING_KEY, "1");
+  } catch {
+    /* noop — 다음 세션에서도 플래그 못 남기면 첨부는 지연될 뿐 데이터 손상 아님 */
+  }
+}
+
+export function isOpfsPurgePending(): boolean {
+  const ls = safeLocalStorage();
+  if (!ls) return false;
+  try {
+    return ls.getItem(OPFS_PURGE_PENDING_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function clearOpfsPurgePending(): void {
+  const ls = safeLocalStorage();
+  if (!ls) return;
+  try {
+    ls.removeItem(OPFS_PURGE_PENDING_KEY);
+  } catch {
+    /* noop */
+  }
+}
+
+/** moss-attachments 디렉터리 전체 삭제(재귀). 없으면 no-op. */
+export async function clearAttachmentsDir(): Promise<void> {
+  const storage = getStorage();
+  if (typeof storage.getDirectory !== "function") return;
+  const root = await storage.getDirectory();
+  try {
+    await root.removeEntry(DIR_NAME, { recursive: true });
+  } catch (err) {
+    if ((err as DOMException)?.name === "NotFoundError") return;
+    throw err;
+  }
+}
+
 function getStorage(): StorageManager {
   if (typeof navigator === "undefined" || !navigator.storage) {
     throw new Error("OPFS unavailable: navigator.storage missing");

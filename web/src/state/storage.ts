@@ -11,7 +11,14 @@ import {
   type MossDB,
   getDB,
 } from "@/state/db/schema";
-import { deleteBlob, quotaUsage, type QuotaInfo } from "@/state/db/opfs";
+import {
+  clearAttachmentsDir,
+  clearOpfsPurgePending,
+  deleteBlob,
+  isOpfsPurgePending,
+  quotaUsage,
+  type QuotaInfo,
+} from "@/state/db/opfs";
 
 interface StorageState {
   initialized: boolean;
@@ -111,6 +118,21 @@ function mergeConnection(
   };
 }
 
+/**
+ * FEAT-sticky-redesign n3: v5 upgrade가 남긴 "첨부 비우기 대기" 플래그를 DB open
+ * 성공 후 한 번 소비한다. 실패(OPFS 미지원·에러)하면 플래그를 남겨 다음 init에서
+ * 다시 시도한다.
+ */
+async function purgeAttachmentsIfPending(): Promise<void> {
+  if (!isOpfsPurgePending()) return;
+  try {
+    await clearAttachmentsDir();
+    clearOpfsPurgePending();
+  } catch {
+    /* 플래그 유지 — 다음 init에서 재시도 */
+  }
+}
+
 async function safeQuota(): Promise<QuotaInfo | null> {
   try {
     return await quotaUsage();
@@ -145,6 +167,7 @@ export const useStorage = create<StorageState>((set, get) => ({
     if (get().initialized) return;
     const db = getDB();
     await db.open();
+    await purgeAttachmentsIfPending();
     let settings = await ensureSettings(db);
     settings = await requestPersistIfNeeded(db, settings);
     const quota = await safeQuota();

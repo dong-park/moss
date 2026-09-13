@@ -1,7 +1,7 @@
 import Dexie, { type Table } from "dexie";
 import { migratedContent } from "../markdownMigration";
 import { blocksToMarkdown } from "../cardContent";
-import { migrateStickyV5 } from "./migrateStickyV5";
+import { markOpfsPurgePending } from "./opfs";
 
 /**
  * 카드 종류. spec FEAT-storage §5 정의.
@@ -53,20 +53,6 @@ export interface Note {
    * frame 행 자신은 항상 undefined.
    */
   frameId?: string;
-  /**
-   * FEAT-sticky-redesign: 이관 백업. v5 upgrade가 채우고 rollbackStickyMigration이 비운다.
-   */
-  legacy?: {
-    kind: NoteKind;
-    content: string;
-    attachmentRef?: string;
-    mediaType?: string;
-    width: number;
-    height?: number;
-    migratedAt: number;
-    /** 이관 직후 content. 현재 content와 다르면 사용자가 편집한 것으로 보고 되돌리기 건너뜀. */
-    migratedContent: string;
-  };
   aiOptOut: boolean;
   createdAt: number;
   updatedAt: number;
@@ -209,14 +195,24 @@ export class MossDB extends Dexie {
       boards: "id, isSystem, lastOpenedAt, parentBoardId",
     };
     this.version(4).stores(storesV4);
-    // v5 (FEAT-sticky-redesign n3): image/link/audio/file/mindmap → 블록 든 text로
-    // 한 번 이관. stores 인덱스는 v4와 동일 — frame/frameId/legacy는 비인덱스.
-    // storesV4를 그대로 써야 한다 — 여기서 boards를 원래 stores로 되돌리면 Dexie가
-    // parentBoardId 인덱스를 다시 지워 SchemaError를 낸다(재심사에서 잡힌 회귀).
+    // v5 (FEAT-sticky-redesign n3): 이관 대신 새 DB로 시작 — 2단계 리뷰에서 이관
+    // 경로의 XSS·깊은 마인드맵 무한실패·되돌리기 미연결이 드러나 사용자가 뒤집음
+    // (2026-09-13). notes/boards/connections/embeddings를 전부 비운다. settings는
+    // 사용자 설정(언어·AI 옵트아웃 등)이라 남긴다. stores 인덱스는 v4와 동일 —
+    // storesV4를 그대로 써야 한다(되돌리면 parentBoardId 인덱스 소실로 SchemaError).
+    // OPFS 첨부 비우기는 여기서 하지 않는다 — upgrade 트랜잭션 안에서 비동기 OPFS
+    // 호출을 하면 안 되므로, 대기 플래그만 남기고 실제 삭제는 DB open 성공 후
+    // storage.ts의 init()이 한 번 실행한다.
     this.version(5)
       .stores(storesV4)
       .upgrade(async (tx) => {
-        await migrateStickyV5(tx);
+        await Promise.all([
+          tx.table("notes").clear(),
+          tx.table("boards").clear(),
+          tx.table("connections").clear(),
+          tx.table("embeddings").clear(),
+        ]);
+        markOpfsPurgePending();
       });
   }
 }

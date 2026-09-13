@@ -61,8 +61,8 @@ function openV4Only(name: string): Dexie {
   return db;
 }
 
-describe("MossDB frame·frameId·legacy (FEAT-sticky-redesign n1)", () => {
-  it("opens an existing v4 DB and runs the n3 migration to v5 (text row untouched)", async () => {
+describe("MossDB frame·frameId (FEAT-sticky-redesign n1)", () => {
+  it("opens an existing v4 DB and runs the n3 fresh-start upgrade to v5 (notes cleared)", async () => {
     const name = nextName();
     const v4db = openV4Only(name);
     await v4db.open();
@@ -73,18 +73,15 @@ describe("MossDB frame·frameId·legacy (FEAT-sticky-redesign n1)", () => {
     const v5db = createDB(name);
     dbs.push(v5db);
     await v5db.open();
-    // v5는 n1이 아니라 n3가 이관 upgrade와 함께 선언한다(리뷰 P1) — 실제로 5까지 올라간다.
+    // v5는 n1이 아니라 n3가 "새 DB로 시작" upgrade와 함께 선언한다(리뷰 P1) — 실제로 5까지 올라간다.
     expect(v5db.verno).toBe(5);
 
+    // n3: v5 upgrade는 이관하지 않고 notes를 비운다.
     const rows = await v5db.notes.toArray();
-    expect(rows).toHaveLength(1);
-    const a = rows.find((r) => r.id === "a");
-    expect(a?.content).toBe("one");
-    expect(a?.kind).toBe("text");
-    expect(a?.legacy).toBeUndefined();
+    expect(rows).toHaveLength(0);
   });
 
-  it("puts and gets a frame row round trip, preserving frameId and legacy", async () => {
+  it("puts and gets a frame row round trip, preserving frameId", async () => {
     const name = nextName();
     const db = createDB(name);
     dbs.push(db);
@@ -103,19 +100,10 @@ describe("MossDB frame·frameId·legacy (FEAT-sticky-redesign n1)", () => {
       id: "child-1",
       boardId: "board-1",
       frameId: frame.id,
-      legacy: {
-        kind: "link",
-        content: "https://example.com",
-        width: 260,
-        migratedAt: Date.now(),
-        migratedContent: "https://example.com",
-      },
     });
     await db.notes.put(child);
     const gotChild = await db.notes.get(child.id);
     expect(gotChild?.frameId).toBe(frame.id);
-    expect(gotChild?.legacy?.kind).toBe("link");
-    expect(gotChild?.legacy?.content).toBe("https://example.com");
   });
 
   it("makeFrameNote falls back to default name and enforces minimum size", () => {

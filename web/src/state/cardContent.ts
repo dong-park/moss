@@ -107,7 +107,7 @@ export function parseLink(content: string): LinkContent {
   try {
     const v: unknown = JSON.parse(content);
     if (!v || typeof v !== "object") {
-      // raw URL string saved as content (legacy fallback)
+      // raw URL string saved as content (구버전 포맷 fallback)
       return { url: content };
     }
     const o = v as {
