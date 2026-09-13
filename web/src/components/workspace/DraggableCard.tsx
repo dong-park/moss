@@ -458,7 +458,12 @@ export function DraggableCard({ card }: { card: Card }) {
         // 각 CardContent 루트 div는 h-full을 가져 부모 높이를 상속받는다.
         display: card.height !== undefined ? "flex" : undefined,
         flexDirection: card.height !== undefined ? "column" : undefined,
-        overflow: card.height !== undefined ? "hidden" : undefined,
+        // n10 브라우저 결함3: 이전엔 card.height가 있을 때만 overflow:hidden이었다
+        // — height가 없는(auto-grow) 카드는 크롭이 아예 꺼져, 고정폭 720px 블록
+        // 막대(MEMO_CONTENT_WIDTH)가 카드의 실제 폭(width는 항상 지정돼 있다)
+        // 오른쪽 끝을 넘어 그대로 보였다. width는 card.height 유무와 무관하게
+        // 항상 크롭돼야 하므로 overflow는 조건 없이 hidden으로 둔다.
+        overflow: "hidden",
       }}
     >
       <CardContent

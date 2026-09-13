@@ -2,11 +2,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { Schema } from "@milkdown/prose/model";
 import { EditorState } from "@milkdown/prose/state";
+import { EditorView } from "@milkdown/prose/view";
 import { editorViewCtx, parserCtx } from "@milkdown/core";
 import { I18nProvider } from "@/i18n/Provider";
 import { useToasts } from "@/state/notifications";
 import { BlockMenu } from "../_shared/editor/BlockMenu";
-import { paragraphBlock, buildBlockWidget, shouldOpenFileInNewTab } from "../_shared/editor/blockView";
+import {
+  paragraphBlock,
+  buildBlockWidget,
+  shouldOpenFileInNewTab,
+  createBlockDecorationsPlugin,
+} from "../_shared/editor/blockView";
 
 /**
  * FEAT-sticky-redesign n4 — 메모 창 블록(링크·녹음·파일). 2단계 리뷰 P1 수정 반영.
@@ -408,6 +414,44 @@ describe("FEAT-sticky-redesign n4 · buildBlockWidget(readonly)", () => {
     );
     expect(el.textContent).toContain("예시");
     expect(el.textContent).toContain("example.com");
+  });
+});
+
+describe("n10 브라우저 결함2: readonly 뷰의 초기 렌더가 실제로 버튼을 숨긴다(실제 EditorView)", () => {
+  it("editable:false로 마운트된 뷰는 (트랜잭션 없이도) 파일 블록에 열기 버튼을 그리지 않는다", async () => {
+    const doc = schema.node("doc", null, [
+      linkParagraph("보고서.pdf", "opfs://doc1.pdf", "moss-file"),
+    ]);
+    const state = EditorState.create({ schema, doc, plugins: [createBlockDecorationsPlugin()] });
+    const dom = document.createElement("div");
+    document.body.appendChild(dom);
+    const view = new EditorView(dom, { state, editable: () => false });
+    try {
+      // ProseMirror는 view(view) 훅보다 먼저 초기 decorations를 계산한다 — 그 뒤
+      // view가 붙으면서 강제 재계산이 일어나는지는 마이크로태스크 큐를 흘려봐야 한다.
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(dom.querySelector("[data-moss-file-open]")).toBeNull();
+    } finally {
+      view.destroy();
+    }
+  });
+
+  it("editable:true로 마운트된 뷰는 파일 블록에 열기 버튼을 그린다(대조군)", async () => {
+    const doc = schema.node("doc", null, [
+      linkParagraph("보고서.pdf", "opfs://doc1.pdf", "moss-file"),
+    ]);
+    const state = EditorState.create({ schema, doc, plugins: [createBlockDecorationsPlugin()] });
+    const dom = document.createElement("div");
+    document.body.appendChild(dom);
+    const view = new EditorView(dom, { state, editable: () => true });
+    try {
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(dom.querySelector("[data-moss-file-open]")).toBeTruthy();
+    } finally {
+      view.destroy();
+    }
   });
 });
 

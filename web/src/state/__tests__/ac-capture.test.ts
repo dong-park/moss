@@ -65,6 +65,10 @@ describe("AC-1: 단축키 진입 — addCardAtViewportCenter", () => {
   it("addCardAtViewportCenter 위치 — viewport 중앙 부근에 떨어짐", async () => {
     await useStorage.getState().init();
     await useWorkspace.getState().loadFromStorage();
+    // n10 결함4 수정 이후: 그 자리에 이미 카드가 있으면 비켜 놓는다(아래 별도
+    // describe에서 검증) — 이 테스트는 "겹치는 게 없을 때"의 순수 중앙 좌표
+    // 계산만 보므로 seed 카드를 지우고 시작한다.
+    useWorkspace.setState({ cards: [] });
     const id = useWorkspace.getState().addCardAtViewportCenter("text", {
       width: 1000,
       height: 600,
@@ -75,6 +79,34 @@ describe("AC-1: 단축키 진입 — addCardAtViewportCenter", () => {
     expect(card!.x).toBe(380);
     // y는 300 - 20 = 280
     expect(card!.y).toBe(280);
+  });
+});
+
+describe("n10 브라우저 결함4: 독 Enter/가운데 생성이 같은 자리에 겹치지 않는다", () => {
+  it("메모판 → 메모 → 파일함을 연달아 화면 가운데에 만들면 서로 겹치지 않는다", async () => {
+    await useStorage.getState().init();
+    await useWorkspace.getState().loadFromStorage();
+    useWorkspace.setState({ cards: [] });
+    const viewportSize = { width: 1000, height: 600 };
+    const frameId = useWorkspace.getState().addFrameAtViewportCenter(viewportSize);
+    const textId = useWorkspace.getState().addCardAtViewportCenter("text", viewportSize);
+    const boardId = useWorkspace.getState().createSubcanvasAtViewportCenter(viewportSize);
+    await new Promise((r) => setTimeout(r, 5));
+
+    const cards = useWorkspace.getState().cards;
+    const frame = cards.find((c) => c.id === frameId)!;
+    const text = cards.find((c) => c.id === textId)!;
+    const board = cards.find((c) => c.id === boardId)!;
+
+    // frame은 배경 레이어라 겹쳐도 무방 — 메모와 파일함(둘 다 비-frame)만 서로
+    // 겹치지 않으면 된다(하나를 살짝 끌면 바로 밑 카드에 흡수되던 결함4).
+    const overlap =
+      text.x < board.x + board.width &&
+      text.x + text.width > board.x &&
+      text.y < board.y + (board.height ?? board.width) &&
+      text.y + (text.height ?? text.width) > board.y;
+    expect(overlap).toBe(false);
+    expect(frame).toBeDefined();
   });
 });
 

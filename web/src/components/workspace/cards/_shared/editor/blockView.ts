@@ -290,10 +290,20 @@ export function buildBlockWidget(block: ParagraphBlock, opts: { readonly: boolea
  * 공식 plugin state 필드 대신 `decorations()` prop 안에서 실제 값을 읽어 캐시를
  * 검증하는 방식을 썼다 — init 시점에 readonly=false로 잘못 굳는 문제를 피한다. */
 
-function blockWidgetKey(block: ParagraphBlock): string {
-  if (block.type === "link") return `moss-blk-link-${block.url}`;
-  if (block.type === "audio") return `moss-blk-audio-${block.ref}`;
-  return `moss-blk-file-${block.ref}`;
+/**
+ * n10 브라우저 결함2 (2단계): ProseMirror WidgetType.eq()는 key가 같으면 toDOM이
+ * 달라도 "같은 위젯"으로 보고 옛 DOM을 재사용한다(구 위젯 키는 내용에만 의존해
+ * 재생 중이던 오디오가 안 끊기게 한 설계였다). readonly를 key에서 뺀 채로 두면
+ * "readonly가 false→true로 바뀌는" 이 파일의 강제 재계산(queueMicrotask)이 아무리
+ * 새 DecorationSet을 만들어도 옛(버튼 있는) DOM이 그대로 남는다. readonly를 key에
+ * 포함해도 한 뷰의 수명 동안 readonly는 사실상 고정값(카드 앞면은 항상 readonly,
+ * 창은 항상 editable)이라 doc 편집 중 재생이 끊기는 원래 우려는 재현되지 않는다.
+ */
+function blockWidgetKey(block: ParagraphBlock, readonly: boolean): string {
+  const suffix = readonly ? "ro" : "rw";
+  if (block.type === "link") return `moss-blk-link-${block.url}-${suffix}`;
+  if (block.type === "audio") return `moss-blk-audio-${block.ref}-${suffix}`;
+  return `moss-blk-file-${block.ref}-${suffix}`;
 }
 
 function buildBlockDecorations(doc: ProseNode, readonly: boolean): DecorationSet {
@@ -308,7 +318,7 @@ function buildBlockDecorations(doc: ProseNode, readonly: boolean): DecorationSet
     decos.push(
       Decoration.widget(start, () => buildBlockWidget(block, { readonly }), {
         side: -1,
-        key: blockWidgetKey(block),
+        key: blockWidgetKey(block, readonly),
       }),
     );
     return false; // 단일 텍스트 자식 — 더 내려갈 것 없음.
@@ -316,7 +326,18 @@ function buildBlockDecorations(doc: ProseNode, readonly: boolean): DecorationSet
   return DecorationSet.create(doc, decos);
 }
 
-export const memoBlockDecorations = $prose(() => {
+/**
+ * n10 브라우저 결함2: ProseMirror는 EditorView 생성 순서상 초기 DOM을 그릴 때
+ * (1) props.decorations()로 첫 데코레이션을 계산한 뒤 (2) 그 DOM을 붙이고 나서야
+ * 비로소 plugin.view(view) 훅을 호출해 view 인스턴스를 넘겨준다. 그래서 첫 렌더
+ * 시점엔 `currentView`가 아직 null이라 readonly가 항상 false로 계산되고, 그 뒤로
+ * (앞면처럼 한 번도 트랜잭션이 없는 읽기 전용 메모는) decorations()가 다시 불릴
+ * 일이 없어 "readonly인데 열기/재생 버튼이 보이는" 상태로 영구히 굳는다.
+ * view(view) 훅에서 view가 실제로 붙은 직후 같은 state로 강제 재렌더
+ * (updateState — 트랜잭션이 아니므로 리스너·onChange를 건드리지 않는다)해
+ * readonly를 다시 계산시킨다.
+ */
+export function createBlockDecorationsPlugin(): Plugin {
   let currentView: EditorView | null = null;
   let cache: { doc: ProseNode; readonly: boolean; set: DecorationSet } | null = null;
 
@@ -333,6 +354,10 @@ export const memoBlockDecorations = $prose(() => {
     view(view) {
       currentView = view;
       mountedViews += 1;
+      queueMicrotask(() => {
+        // 그 사이 다른 view로 교체되거나 destroy됐으면 건너뛴다.
+        if (currentView === view) view.updateState(view.state);
+      });
       return {
         update(v) {
           currentView = v;
@@ -346,4 +371,6 @@ export const memoBlockDecorations = $prose(() => {
       };
     },
   });
-});
+}
+
+export const memoBlockDecorations = $prose(() => createBlockDecorationsPlugin());

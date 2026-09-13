@@ -64,15 +64,23 @@ const NO_MAGNIFY: Magnify = { sizes: {}, hoveredId: null };
  * 2단계 리뷰 P1-2: 카드 하나가 독 화면 영역(dockRect)과 겹치는지 순수 함수로
  * 판정한다(AC-5). 판(frame) 카드는 배경 레이어라 대상에서 제외(n8 구현 메모).
  * Dock 컴포넌트 밖에서도 단위 테스트할 수 있도록 export한다.
+ *
+ * n10 브라우저 결함1: 이 계산은 world-layer가 화면(0,0)에서 시작한다고
+ * 가정한다 — 실제로는 캔버스 루트 자신의 화면 오프셋(canvasOffset)만큼 더
+ * 밀려 있을 수 있다(레이아웃에 따라 캔버스가 왼쪽 끝에서 시작하지 않는
+ * 경우, 또는 카드가 실측 DOM과 다른 폭/높이로 렌더된 경우). Dock 컴포넌트는
+ * 이 순수 함수를 "실제 DOM에 카드가 없을 때"의 폴백으로만 쓰고, 렌더된
+ * 카드가 있으면 실제 getBoundingClientRect를 우선한다(아래 recompute).
  */
 export function cardOccludesDock(
   card: Card,
   viewport: { x: number; y: number; scale: number },
   dockRect: { left: number; right: number; top: number; bottom: number },
+  canvasOffset: { left: number; top: number } = { left: 0, top: 0 },
 ): boolean {
   if (card.kind === "frame") return false;
-  const left = viewport.x + card.x * viewport.scale;
-  const top = viewport.y + card.y * viewport.scale;
+  const left = canvasOffset.left + viewport.x + card.x * viewport.scale;
+  const top = canvasOffset.top + viewport.y + card.y * viewport.scale;
   const height = card.height ?? widthForKind(card.kind);
   const right = left + card.width * viewport.scale;
   const bottom = top + height * viewport.scale;
@@ -82,6 +90,14 @@ export function cardOccludesDock(
     bottom >= dockRect.top &&
     top <= dockRect.bottom
   );
+}
+
+/** 화면(getBoundingClientRect) 사각형 두 개가 겹치는지 — 실측 DOM 기반 판정용. */
+function domRectsOverlap(
+  a: { left: number; right: number; top: number; bottom: number },
+  b: { left: number; right: number; top: number; bottom: number },
+): boolean {
+  return a.right >= b.left && a.left <= b.right && a.bottom >= b.top && a.top <= b.bottom;
 }
 
 /**
@@ -192,7 +208,20 @@ export function Dock({
       if (!dockEl) return;
       const dockBox = dockEl.getBoundingClientRect();
       const state = useWorkspace.getState();
-      const hit = state.cards.some((c) => cardOccludesDock(c, state.viewport, dockBox));
+      // n10 결함1: 캔버스 루트가 화면 (0,0)에서 시작하지 않을 수 있다 — 실측
+      // 오프셋을 폴백 계산에 더한다(카드가 아직 DOM에 없을 때만 쓰인다).
+      const canvasEl = document.querySelector<HTMLElement>("[data-canvas-root='true']");
+      const canvasOffset = canvasEl
+        ? { left: canvasEl.getBoundingClientRect().left, top: canvasEl.getBoundingClientRect().top }
+        : { left: 0, top: 0 };
+      const hit = state.cards.some((c) => {
+        if (c.kind === "frame") return false;
+        // 실제 렌더된 카드 DOM이 있으면 그 실측 rect를 우선한다 — 캔버스 오프셋·
+        // 실제 높이(auto-grow)·round 등 어떤 근사도 필요 없이 정확하다.
+        const cardEl = document.querySelector<HTMLElement>(`[data-card-id="${c.id}"]`);
+        if (cardEl) return domRectsOverlap(cardEl.getBoundingClientRect(), dockBox);
+        return cardOccludesDock(c, state.viewport, dockBox, canvasOffset);
+      });
       setOccluded((prev) => (prev === hit ? prev : hit));
     };
     const schedule = () => {

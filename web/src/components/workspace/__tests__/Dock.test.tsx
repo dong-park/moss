@@ -469,6 +469,70 @@ describe("AC-5: 가려진 메모가 있으면 독이 옅어진다", () => {
     );
     expect(screen.getByRole("toolbar").style.opacity).toBe("0.6");
   });
+
+  it("n10 브라우저 결함1: store 좌표(viewport 수식)로는 안 겹쳐 보여도 실제 렌더된 카드 DOM이 독과 겹치면 옅어진다", () => {
+    // 카드의 저장 좌표(x:5000)는 독(화면 0..72)과 전혀 겹치지 않는 걸로 계산된다 —
+    // 그런데도 실제로 화면에 렌더된 카드 엘리먼트(캔버스 오프셋·실측 높이 등 어떤
+    // 이유로든)가 독과 겹친다면 옅어져야 한다(실측 DOM 우선, 순수 수식은 폴백).
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+      function (this: HTMLElement) {
+        if (this.getAttribute("data-card-id") === "c1") {
+          return {
+            left: 10,
+            right: 60,
+            top: 10,
+            bottom: 66,
+            width: 50,
+            height: 56,
+            x: 10,
+            y: 10,
+            toJSON() {
+              return {};
+            },
+          } as DOMRect;
+        }
+        if (this.getAttribute("role") === "toolbar") {
+          return {
+            left: 0,
+            right: 72,
+            top: 0,
+            bottom: 56,
+            width: 72,
+            height: 56,
+            x: 0,
+            y: 0,
+            toJSON() {
+              return {};
+            },
+          } as DOMRect;
+        }
+        return {
+          left: 0,
+          right: 72,
+          top: 0,
+          bottom: 56,
+          width: 72,
+          height: 56,
+          x: 0,
+          y: 0,
+          toJSON() {
+            return {};
+          },
+        } as DOMRect;
+      },
+    );
+    // 캔버스에 실제로 렌더될 카드 DOM을 흉내낸다(Canvas가 만드는 [data-card-id]).
+    const cardEl = document.createElement("div");
+    cardEl.setAttribute("data-card-id", "c1");
+    document.body.appendChild(cardEl);
+
+    useWorkspace.setState({
+      cards: [{ id: "c1", kind: "text", x: 5000, y: 5000, width: 100, height: 100, content: "" }],
+      viewport: { x: 0, y: 0, scale: 1 },
+    });
+    renderDock();
+    expect(screen.getByRole("toolbar").style.opacity).toBe("0.6");
+  });
 });
 
 describe("접근성: Enter로 화면 가운데에 생성", () => {

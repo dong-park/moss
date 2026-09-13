@@ -137,6 +137,8 @@ export const z = {
   connection: 20,
   selection: 30,
   panel: 40,
+  // n10 브라우저 결함5: 모달 오버레이 — panel(독)보다 위, 모달 본문보다는 아래.
+  overlay: 45,
   modal: 50,
   toast: 60,
 } as const;

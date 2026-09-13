@@ -65,6 +65,12 @@
   --z-connection: 20;
   --z-selection: 30;
   --z-panel: 40;
+  /* n10 브라우저 결함5: BoardDeleteDialog·MemoExpandDialog·BlockMenu의
+   * Dialog.Overlay가 처음부터 var(--z-overlay)를 참조했는데 이 변수가 어디에도
+   * 정의돼 있지 않았다 — z-index 값이 invalid해 초기값(auto)으로 떨어져,
+   * 독(z-panel=40, position:fixed)이 모달 오버레이 위에 그려졌다. panel(40)보다
+   * 높고 modal 본문(50)보다는 낮게 둔다. */
+  --z-overlay: 45;
   --z-modal: 50;
   --z-toast: 60;
 

@@ -633,6 +633,53 @@ function viewportCenterScreenPoint(viewportSize?: { width: number; height: numbe
   return { sx: w / 2, sy: h / 2 };
 }
 
+/** n10 브라우저 결함4: 화면 중앙 생성이 겹칠 때 비켜 쌓는 간격(px) — spec §4 드롭 규칙과 동일값. */
+const CENTER_STACK_OFFSET_PX = 24;
+
+function rectsOverlapWorld(
+  ax: number,
+  ay: number,
+  aw: number,
+  ah: number,
+  bx: number,
+  by: number,
+  bw: number,
+  bh: number,
+): boolean {
+  return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
+}
+
+/**
+ * n10 브라우저 결함4: 독 Enter(또는 화면 가운데 생성)는 매번 같은 화면 중앙
+ * 월드 좌표를 계산한다 — 메모판·메모·파일함을 연달아 만들면 정확히 같은 자리에
+ * 겹쳐 쌓였다(하나를 살짝 끌면 바로 밑 카드에 흡수됐다). addCardAtViewportCenter·
+ * addFrameAtViewportCenter·createSubcanvasAtViewportCenter가 공유하는 보정 —
+ * 그 자리에 이미(비-frame) 카드가 있으면 spec §4 드롭 규칙과 같은 24px 간격으로
+ * 대각선으로 비켜 놓는다. frame은 배경 레이어라 충돌 판정에서 뺀다.
+ */
+function avoidCenterOverlap(
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  cards: Card[],
+): { x: number; y: number } {
+  let ox = x;
+  let oy = y;
+  const MAX_TRIES = 40;
+  for (let i = 0; i < MAX_TRIES; i++) {
+    const collides = cards.some((c) => {
+      if (c.kind === "frame") return false;
+      const ch = c.height ?? c.width;
+      return rectsOverlapWorld(ox, oy, width, height, c.x, c.y, c.width, ch);
+    });
+    if (!collides) break;
+    ox += CENTER_STACK_OFFSET_PX;
+    oy += CENTER_STACK_OFFSET_PX;
+  }
+  return { x: ox, y: oy };
+}
+
 const SEED_CARDS: Card[] = [
   {
     id: "seed-todo",
@@ -1353,9 +1400,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const { sx, sy } = viewportCenterScreenPoint(viewportSize);
     const kind = kindForTool(toolId);
     const cardW = widthForKind(kind);
+    const cardH = clamp(cardW / aspectForKind(kind), CARD_MIN_HEIGHT, CARD_MAX_HEIGHT);
     const wx = (sx - v.x) / v.scale - cardW / 2;
     const wy = (sy - v.y) / v.scale - 20;
-    return get().addCardAt(toolId, wx, wy);
+    const { x, y } = avoidCenterOverlap(wx, wy, cardW, cardH, get().cards);
+    return get().addCardAt(toolId, x, y);
   },
 
   moveCard: (id, x, y) => {
@@ -1448,7 +1497,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const v = get().viewport;
     const wx = (sx - v.x) / v.scale - FRAME_DEFAULT_WIDTH / 2;
     const wy = (sy - v.y) / v.scale - 20;
-    return get().addFrameAt(wx, wy);
+    const { x, y } = avoidCenterOverlap(wx, wy, FRAME_DEFAULT_WIDTH, FRAME_DEFAULT_HEIGHT, get().cards);
+    return get().addFrameAt(x, y);
   },
 
   resolveMembership: (cardIds) => {
@@ -2027,9 +2077,12 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   createSubcanvasAtViewportCenter: (viewportSize) => {
     const { sx, sy } = viewportCenterScreenPoint(viewportSize);
     const v = get().viewport;
-    const wx = (sx - v.x) / v.scale - widthForKind("board") / 2;
+    const boardW = widthForKind("board");
+    const boardH = clamp(boardW / aspectForKind("board"), CARD_MIN_HEIGHT, CARD_MAX_HEIGHT);
+    const wx = (sx - v.x) / v.scale - boardW / 2;
     const wy = (sy - v.y) / v.scale - 20;
-    return get().createSubcanvas(wx, wy);
+    const { x, y } = avoidCenterOverlap(wx, wy, boardW, boardH, get().cards);
+    return get().createSubcanvas(x, y);
   },
 
   enterSubcanvas: async (cardId) => {
