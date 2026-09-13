@@ -55,9 +55,7 @@
   --font-hand: "Caveat", "Nanum Pen Script", cursive;
   /* --font-mono은 next/font에서 layout.tsx가 주입 */
 
-  /* layout 토큰 (Milanote 시안 기준) */
-  --layout-sidebar-expanded: 100px;
-  --layout-sidebar-collapsed: 100px; /* Milanote는 접힘 없음 */
+  /* layout 토큰 (Milanote 시안 기준) — 사이드바는 n8에서 독으로 대체돼 제거됨 */
   --layout-header: 0px;
   --layout-toolbar: 0px;
 

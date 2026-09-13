@@ -3,24 +3,23 @@
 import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  FRAME_DEFAULT_WIDTH,
+  kindForTool,
   SYSTEM_BOARD_ID,
   useWorkspace,
   widthForKind,
+  type Card,
   type ToolId,
 } from "@/state/workspace";
 import { useToasts } from "@/state/notifications";
 import { useT } from "@/i18n/Provider";
 import { layout } from "@/design/tokens";
+import { PANEL_WIDTH as SIGNALS_PANEL_WIDTH } from "@/components/signals/SignalsPanel";
 
 /** 드래그로 인정하기 위한 최소 이동 거리 — 단순 클릭과 구분. */
 const DRAG_THRESHOLD = 4;
 
 /** FEAT-sticky-redesign §4: 캔버스 폭이 이보다 좁으면 독 확대를 끈다. */
 const MIN_MAGNIFY_CANVAS_WIDTH = 360;
-
-/** 시그널스 패널 폭(§4·SignalsPanel.tsx PANEL_WIDTH와 동일). */
-const SIGNALS_PANEL_WIDTH = 420;
 
 /**
  * 줌 바·펜 툴바가 화면 오른쪽 아래에 차지하는 대략의 폭 — 독이 이 영역과
@@ -62,6 +61,30 @@ interface Magnify {
 const NO_MAGNIFY: Magnify = { sizes: {}, hoveredId: null };
 
 /**
+ * 2단계 리뷰 P1-2: 카드 하나가 독 화면 영역(dockRect)과 겹치는지 순수 함수로
+ * 판정한다(AC-5). 판(frame) 카드는 배경 레이어라 대상에서 제외(n8 구현 메모).
+ * Dock 컴포넌트 밖에서도 단위 테스트할 수 있도록 export한다.
+ */
+export function cardOccludesDock(
+  card: Card,
+  viewport: { x: number; y: number; scale: number },
+  dockRect: { left: number; right: number; top: number; bottom: number },
+): boolean {
+  if (card.kind === "frame") return false;
+  const left = viewport.x + card.x * viewport.scale;
+  const top = viewport.y + card.y * viewport.scale;
+  const height = card.height ?? widthForKind(card.kind);
+  const right = left + card.width * viewport.scale;
+  const bottom = top + height * viewport.scale;
+  return (
+    right >= dockRect.left &&
+    left <= dockRect.right &&
+    bottom >= dockRect.top &&
+    top <= dockRect.bottom
+  );
+}
+
+/**
  * FEAT-sticky-redesign n8: 화면 아래 가운데 독.
  * 왼쪽 사이드바(Sidebar.tsx)를 대체 — tryDrop 좌표 변환·시스템 보드 토스트를
  * 이식했다. 순서: 메모판·메모·파일함 | 구분선 | 펜·시그널스 (spec §2).
@@ -79,16 +102,16 @@ export function Dock({
   signalsOpen?: boolean;
 }) {
   const t = useT();
-  const setSidebarDrag = useWorkspace((s) => s.setSidebarDrag);
+  const setDockDrag = useWorkspace((s) => s.setDockDrag);
   const addCardAt = useWorkspace((s) => s.addCardAt);
   const addCardAtViewportCenter = useWorkspace((s) => s.addCardAtViewportCenter);
   const addFrameAt = useWorkspace((s) => s.addFrameAt);
+  const addFrameAtViewportCenter = useWorkspace((s) => s.addFrameAtViewportCenter);
   const createSubcanvas = useWorkspace((s) => s.createSubcanvas);
+  const createSubcanvasAtViewportCenter = useWorkspace((s) => s.createSubcanvasAtViewportCenter);
   const promoteCardToNewBoard = useWorkspace((s) => s.promoteCardToNewBoard);
   const penMode = useWorkspace((s) => s.penMode);
   const togglePenMode = useWorkspace((s) => s.togglePenMode);
-  const cards = useWorkspace((s) => s.cards);
-  const viewport = useWorkspace((s) => s.viewport);
   const pushToast = useToasts((s) => s.push);
 
   const dockRef = useRef<HTMLDivElement>(null);
@@ -103,6 +126,9 @@ export function Dock({
   const [dockHover, setDockHover] = useState(false);
   const [magnify, setMagnify] = useState<Magnify>(NO_MAGNIFY);
   const [occluded, setOccluded] = useState(false);
+  // 2단계 리뷰 P1-1: 독 실제 렌더 폭(레이아웃 토큰은 근사치일 뿐 — 버튼 슬롯이
+  // hover로 커지면 실제 폭도 달라진다). 가운데 정렬·툴바 회피는 이 실측값을 쓴다.
+  const [dockWidth, setDockWidth] = useState<number>(layout.dock.width);
 
   /* ─ 화면 폭 추적 — 360px 미만이면 확대를 끈다 ─ */
   useEffect(() => {
@@ -119,37 +145,59 @@ export function Dock({
     return () => mq.removeEventListener("change", onChange);
   }, []);
 
+  /* ─ 독 실제 폭 실측(2단계 리뷰 P1-1) ─ */
+  useEffect(() => {
+    const el = dockRef.current;
+    if (!el) return;
+    if (typeof ResizeObserver === "undefined") {
+      const w = el.getBoundingClientRect().width;
+      if (w) setDockWidth(w);
+      return;
+    }
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width;
+      if (w) setDockWidth(w);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   const effectiveCanvasWidth = signalsOpen ? canvasWidth - SIGNALS_PANEL_WIDTH : canvasWidth;
   // §4: 캔버스가 좁으면(<360px) hover 추적 자체를 끈다(이름표도 없음).
   // 동작 줄이기(prefers-reduced-motion)는 hover는 추적하되 크기 확대만 끈다(이름표는 유지).
   const hoverTrackingEnabled = effectiveCanvasWidth >= MIN_MAGNIFY_CANVAS_WIDTH;
   const sizingEnabled = hoverTrackingEnabled && !reducedMotion;
 
-  /* ─ 가려짐(AC-5): 독의 화면 영역과 겹치는 카드가 있으면 옅어진다 ─ */
+  /* ─ 가려짐(AC-5): 독의 화면 영역과 겹치는 카드가 있으면 옅어진다(2단계 리뷰 P1-2)
+   * — 순수 함수(cardOccludesDock) + useWorkspace.subscribe로 직접 구독하고
+   * rAF로 스로틀한다(cards·viewport를 훅으로 구독하면 effect deps에서 독 자체
+   * 위치가 바뀌는 계기인 signalsOpen·effectiveCanvasWidth를 빠뜨리기 쉽다).
+   * 값이 실제로 바뀔 때만 setOccluded를 불러 불필요한 리렌더를 막는다. */
   useEffect(() => {
-    const dockEl = dockRef.current;
-    if (!dockEl) return;
-    const dockBox = dockEl.getBoundingClientRect();
-    let hit = false;
-    for (const card of cards) {
-      if (card.kind === "frame") continue; // 판 자체는 옅어짐 판정 대상이 아니다(카드만).
-      const left = viewport.x + card.x * viewport.scale;
-      const top = viewport.y + card.y * viewport.scale;
-      const height = card.height ?? widthForKind(card.kind);
-      const right = left + card.width * viewport.scale;
-      const bottom = top + height * viewport.scale;
-      if (
-        right >= dockBox.left &&
-        left <= dockBox.right &&
-        bottom >= dockBox.top &&
-        top <= dockBox.bottom
-      ) {
-        hit = true;
-        break;
-      }
-    }
-    setOccluded(hit);
-  }, [cards, viewport, canvasWidth]);
+    let rafId = 0;
+    let scheduled = false;
+    const recompute = () => {
+      scheduled = false;
+      const dockEl = dockRef.current;
+      if (!dockEl) return;
+      const dockBox = dockEl.getBoundingClientRect();
+      const state = useWorkspace.getState();
+      const hit = state.cards.some((c) => cardOccludesDock(c, state.viewport, dockBox));
+      setOccluded((prev) => (prev === hit ? prev : hit));
+    };
+    const schedule = () => {
+      if (scheduled) return;
+      scheduled = true;
+      rafId = requestAnimationFrame(recompute);
+    };
+    recompute(); // 초기 1회는 즉시(마운트 직후 테스트도 동기적으로 통과해야 한다).
+    const unsubscribe = useWorkspace.subscribe(schedule);
+    return () => {
+      unsubscribe();
+      if (rafId) cancelAnimationFrame(rafId);
+    };
+    // 독 위치(따라서 dockRect)가 바뀌는 계기 — 시그널스 열림/닫힘, 캔버스 폭 변화.
+  }, [signalsOpen, effectiveCanvasWidth, dockWidth]);
 
   /** 맥 독 확대 — 이웃 아이콘과의 거리에 따라 40~72px 사이로 보간한다. 이벤트 핸들러에서만 DOM을 측정한다. */
   /**
@@ -205,7 +253,11 @@ export function Dock({
       const viewportNow = useWorkspace.getState().viewport;
       const sx = clientX - rect.left;
       const sy = clientY - rect.top;
-      const wx = (sx - viewportNow.x) / viewportNow.scale - 120;
+      // 2단계 리뷰 P1-4: kind별 실제 폭의 절반만큼 빼야 드롭 위치가 드래그 프리뷰
+      // 중심과 일치한다(예전엔 세 kind 모두 -120 하나로 고정 — frame(320폭)·board
+      // (200폭)에서는 중심이 어긋났다).
+      const halfWidth = widthForKind(kindForTool(toolId)) / 2;
+      const wx = (sx - viewportNow.x) / viewportNow.scale - halfWidth;
       const wy = (sy - viewportNow.y) / viewportNow.scale - 20;
 
       if (toolId === "frame") {
@@ -236,31 +288,27 @@ export function Dock({
     [addCardAt, addFrameAt, createSubcanvas, promoteCardToNewBoard, pushToast, t],
   );
 
-  /** 클릭(또는 Enter) — 화면 가운데에 생성. 접근성 §8: 키보드만으로 생성 가능해야 한다. */
+  /**
+   * 클릭(또는 Enter) — 화면 가운데에 생성. 접근성 §8: 키보드만으로 생성 가능해야 한다.
+   * 2단계 리뷰 P1-4: 중심 좌표 계산을 스토어(addFrameAtViewportCenter·
+   * createSubcanvasAtViewportCenter)로 옮겨 addCardAtViewportCenter와 같은 자리에
+   * 모았다 — Dock은 호출만 한다(좌표 계산 중복 제거).
+   */
   const createAtCenter = useCallback(
     (toolId: DockToolId) => {
       if (toolId === "text") {
         addCardAtViewportCenter("text");
         return;
       }
-      const v = useWorkspace.getState().viewport;
-      const w = typeof window !== "undefined" ? window.innerWidth : 1280;
-      const h = typeof window !== "undefined" ? window.innerHeight : 800;
-      const sx = w / 2;
-      const sy = h / 2;
       if (toolId === "frame") {
-        const wx = (sx - v.x) / v.scale - FRAME_DEFAULT_WIDTH / 2;
-        const wy = (sy - v.y) / v.scale - 20;
-        addFrameAt(wx, wy);
+        addFrameAtViewportCenter();
         return;
       }
       if (toolId === "board") {
-        const wx = (sx - v.x) / v.scale - widthForKind("board") / 2;
-        const wy = (sy - v.y) / v.scale - 20;
-        createSubcanvas(wx, wy);
+        createSubcanvasAtViewportCenter();
       }
     },
-    [addCardAtViewportCenter, addFrameAt, createSubcanvas],
+    [addCardAtViewportCenter, addFrameAtViewportCenter, createSubcanvasAtViewportCenter],
   );
 
   const LABELS: Record<string, string> = {
@@ -271,14 +319,17 @@ export function Dock({
     "signals.sidebar.label": t("signals.sidebar.label"),
   };
 
-  /* ─ 레이아웃: 남은 캔버스 폭 가운데 + 줌 바/펜 툴바 회피 ─ */
+  /* ─ 레이아웃: 남은 캔버스 폭 가운데 + 줌 바/펜 툴바 회피 ─
+   * 2단계 리뷰 P1-1: layout.dock.width(고정 토큰) 대신 dockWidth(실측)로 계산 —
+   * 버튼 슬롯이 평상시 iconBase(40px)이고 hover로만 커지므로 실제 폭은 토큰의
+   * 근사치일 뿐이다. */
   let centerX = effectiveCanvasWidth / 2;
   const rightEdge = effectiveCanvasWidth - RIGHT_TOOLBAR_RESERVED;
-  if (centerX + layout.dock.width / 2 > rightEdge) {
-    centerX = rightEdge - layout.dock.width / 2;
+  if (centerX + dockWidth / 2 > rightEdge) {
+    centerX = rightEdge - dockWidth / 2;
   }
-  centerX = Math.max(layout.dock.width / 2 + EDGE_MARGIN, centerX);
-  const dockLeft = centerX - layout.dock.width / 2;
+  centerX = Math.max(dockWidth / 2 + EDGE_MARGIN, centerX);
+  const dockLeft = centerX - dockWidth / 2;
 
   return (
     <div
@@ -308,12 +359,12 @@ export function Dock({
           showLabel={magnify.hoveredId === item.toolId}
           reducedMotion={reducedMotion}
           onDragStart={(screenX, screenY) =>
-            setSidebarDrag({ toolId: item.toolId as ToolId, screenX, screenY })
+            setDockDrag({ toolId: item.toolId as ToolId, screenX, screenY })
           }
           onDragMove={(screenX, screenY) =>
-            setSidebarDrag({ toolId: item.toolId as ToolId, screenX, screenY })
+            setDockDrag({ toolId: item.toolId as ToolId, screenX, screenY })
           }
-          onDragEnd={() => setSidebarDrag(null)}
+          onDragEnd={() => setDockDrag(null)}
           onDrop={(toolId, x, y) => tryDrop(toolId as ToolId, x, y)}
           onClick={() => createAtCenter(item.toolId)}
         />
@@ -394,6 +445,7 @@ function DockButton({
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
       document.removeEventListener("keydown", onKey);
+      window.removeEventListener("blur", onBlur);
     };
 
     const onUp = (ev: MouseEvent) => {
@@ -411,9 +463,18 @@ function DockButton({
       draggedRef.current = true;
     };
 
+    // 2단계 리뷰 P2: 창 밖에서 마우스를 놓으면(blur — 다른 창/탭으로 포커스 이동)
+    // mouseup이 이 문서로 오지 않아 드래그 상태가 영구히 남는다 — 생성 없이 정리.
+    const onBlur = () => {
+      cleanup();
+      if (!started) return;
+      onDragEnd?.();
+    };
+
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
     document.addEventListener("keydown", onKey);
+    window.addEventListener("blur", onBlur);
   };
 
   const handleClick = () => {
@@ -433,7 +494,14 @@ function DockButton({
       aria-label={label}
       aria-pressed={pressed}
       className="group relative flex flex-col items-center justify-center outline-none"
-      style={{ width: layout.dock.iconHover, height: layout.dock.iconHover }}
+      style={{
+        // 2단계 리뷰 P1-1: 슬롯을 hover 크기(72px)로 고정하지 않는다 — 평상시
+        // iconBase(40px)이고 hover 확대만큼만 늘어나야(맥 독처럼) 독 실제 폭이
+        // layout.dock.width 근사치에 맞고 가운데 정렬이 어긋나지 않는다.
+        width: displaySize,
+        height: displaySize,
+        transition: reducedMotion ? "none" : "width 150ms ease, height 150ms ease",
+      }}
     >
       <span
         className="relative flex items-center justify-center"

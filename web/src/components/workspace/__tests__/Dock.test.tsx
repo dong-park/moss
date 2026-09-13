@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { I18nProvider } from "@/i18n/Provider";
-import { Dock } from "@/components/workspace/Dock";
+import { Dock, cardOccludesDock } from "@/components/workspace/Dock";
 import { useWorkspace } from "@/state/workspace";
 import { useStorage } from "@/state/storage";
 import { resetDB } from "@/state/db/schema";
@@ -113,7 +113,7 @@ afterEach(async () => {
     selectedIds: [],
     editingId: null,
     penMode: false,
-    sidebarDrag: null,
+    dockDrag: null,
     viewport: { x: 0, y: 0, scale: 1 },
   });
   document.body.innerHTML = "";
@@ -137,6 +137,33 @@ describe("AC-1: 독 버튼 5개 + 구분선 1개", () => {
   it("사이드바 DOM이 없다", () => {
     const { container } = renderDock();
     expect(container.querySelector("aside")).toBeNull();
+  });
+
+  it("2단계 리뷰 P1-1: 평상시 독 폭이 실측되어 토큰 폭 근사(±20px)이고 화면 가운데에 온다", () => {
+    // 독 컨테이너(role=toolbar) 실제 렌더 폭을 260px로 가정(토큰 269px과 ±20px 이내).
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+      function (this: HTMLElement) {
+        const isToolbar = this.getAttribute("role") === "toolbar";
+        const width = isToolbar ? 260 : 40;
+        return {
+          left: 0,
+          right: width,
+          top: 0,
+          bottom: 56,
+          width,
+          height: 56,
+          x: 0,
+          y: 0,
+          toJSON() {
+            return {};
+          },
+        } as DOMRect;
+      },
+    );
+    renderDock();
+    const dock = screen.getByRole("toolbar");
+    const expectedLeft = window.innerWidth / 2 - 260 / 2;
+    expect(Math.abs(parseFloat(String(dock.style.left)) - expectedLeft)).toBeLessThan(1);
   });
 });
 
@@ -303,10 +330,10 @@ describe("AC-3: 독에서 끌어 만들기", () => {
     await new Promise((r) => setTimeout(r, 10));
 
     expect(useWorkspace.getState().cards.length).toBe(before);
-    expect(useWorkspace.getState().sidebarDrag).toBeNull();
+    expect(useWorkspace.getState().dockDrag).toBeNull();
   });
 
-  it("드래그 중 독은 확대 상태를 유지한다(sidebarDrag가 채워진다)", async () => {
+  it("드래그 중 독은 확대 상태를 유지한다(dockDrag가 채워진다)", async () => {
     await useStorage.getState().init();
     await useWorkspace.getState().loadFromStorage();
     mountCanvasStub();
@@ -316,7 +343,7 @@ describe("AC-3: 독에서 끌어 만들기", () => {
     fireEvent.mouseDown(memoBtn, { clientX: 100, clientY: 700, button: 0 });
     fireEvent.mouseMove(document, { clientX: 130, clientY: 650 });
 
-    expect(useWorkspace.getState().sidebarDrag).toEqual({
+    expect(useWorkspace.getState().dockDrag).toEqual({
       toolId: "text",
       screenX: 130,
       screenY: 650,
@@ -342,6 +369,33 @@ describe("AC-4: 독의 펜과 시그널스", () => {
     renderDock({ onSignalsClick });
     fireEvent.click(screen.getByLabelText("시그널스"));
     expect(onSignalsClick).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("2단계 리뷰 P1-2: cardOccludesDock 순수 함수", () => {
+  const dockRect = { left: 100, right: 200, top: 500, bottom: 556 };
+  const viewport = { x: 0, y: 0, scale: 1 };
+
+  it("카드가 독 사각형과 겹치면 true", () => {
+    const card = { id: "c1", kind: "text" as const, x: 50, y: 480, width: 200, height: 100, content: "" };
+    expect(cardOccludesDock(card, viewport, dockRect)).toBe(true);
+  });
+
+  it("카드가 독과 안 겹치면 false", () => {
+    const card = { id: "c1", kind: "text" as const, x: 800, y: 800, width: 100, height: 100, content: "" };
+    expect(cardOccludesDock(card, viewport, dockRect)).toBe(false);
+  });
+
+  it("판(frame) 카드는 겹쳐도 판정 대상이 아니다(배경 레이어)", () => {
+    const card = { id: "f1", kind: "frame" as const, x: 50, y: 480, width: 400, height: 300, content: "" };
+    expect(cardOccludesDock(card, viewport, dockRect)).toBe(false);
+  });
+
+  it("viewport 스케일/오프셋이 반영된다", () => {
+    const card = { id: "c1", kind: "text" as const, x: 1000, y: 1000, width: 50, height: 50, content: "" };
+    // left = -900+1000=100..150(dockRect.left..right 안), top = -450+1000=550..600(dockRect.top..bottom 안).
+    const shifted = { x: -900, y: -450, scale: 1 };
+    expect(cardOccludesDock(card, shifted, dockRect)).toBe(true);
   });
 });
 
@@ -374,6 +428,46 @@ describe("AC-5: 가려진 메모가 있으면 독이 옅어진다", () => {
     renderDock();
     const dock = screen.getByRole("toolbar");
     expect(dock.style.opacity).toBe("1");
+  });
+
+  it("2단계 리뷰 P1-2: 시그널스가 열려 독 위치가 바뀌면 가림 판정을 다시 한다", () => {
+    // 독(role=toolbar) 실제 위치를 toolbarLeft로 흉내낸다 — signalsOpen이 바뀔 때
+    // 독이 옮겨간 것으로 간주하고 그 시점 rect로 재판정하는지 확인한다.
+    let toolbarLeft = 1000; // 카드(x:0~100)와 안 겹치는 위치에서 시작.
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+      function (this: HTMLElement) {
+        const isToolbar = this.getAttribute("role") === "toolbar";
+        const left = isToolbar ? toolbarLeft : 0;
+        const width = isToolbar ? 260 : 72;
+        return {
+          left,
+          right: left + width,
+          top: 0,
+          bottom: 56,
+          width,
+          height: 56,
+          x: left,
+          y: 0,
+          toJSON() {
+            return {};
+          },
+        } as DOMRect;
+      },
+    );
+    useWorkspace.setState({
+      cards: [{ id: "c1", kind: "text", x: 0, y: 0, width: 100, height: 100, content: "" }],
+      viewport: { x: 0, y: 0, scale: 1 },
+    });
+    const { rerender } = renderDock({ signalsOpen: false });
+    expect(screen.getByRole("toolbar").style.opacity).toBe("1");
+
+    toolbarLeft = 0; // 시그널스가 열리며 독이 카드와 겹치는 위치로 이동했다고 가정.
+    rerender(
+      <I18nProvider locale="ko">
+        <Dock signalsOpen />
+      </I18nProvider>,
+    );
+    expect(screen.getByRole("toolbar").style.opacity).toBe("0.6");
   });
 });
 

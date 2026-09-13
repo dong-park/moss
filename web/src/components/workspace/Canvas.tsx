@@ -77,7 +77,7 @@ export function Canvas() {
   const viewport = useWorkspace((s) => s.viewport);
   const selectedIds = useWorkspace((s) => s.selectedIds);
   const editingId = useWorkspace((s) => s.editingId);
-  const sidebarDrag = useWorkspace((s) => s.sidebarDrag);
+  const dockDrag = useWorkspace((s) => s.dockDrag);
   const selectMany = useWorkspace((s) => s.selectMany);
   const clearSelection = useWorkspace((s) => s.clearSelection);
   const removeSelected = useWorkspace((s) => s.removeSelected);
@@ -106,9 +106,9 @@ export function Canvas() {
    * 좌표는 캔버스 로컬(rect.left/top 기준). 캔버스 밖이거나 드래그 종료면 null.
    */
   const dropHint = (() => {
-    if (!sidebarDrag) return null;
-    const x = sidebarDrag.screenX - canvasRect.left;
-    const y = sidebarDrag.screenY - canvasRect.top;
+    if (!dockDrag) return null;
+    const x = dockDrag.screenX - canvasRect.left;
+    const y = dockDrag.screenY - canvasRect.top;
     if (x < 0 || y < 0 || x > canvasRect.width || y > canvasRect.height) return null;
     return { x, y };
   })();

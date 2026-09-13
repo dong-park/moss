@@ -162,7 +162,7 @@ export interface Viewport {
  * 사이드바 도구를 마우스로 끌고 있는 동안의 상태.
  * 마우스 클라이언트 좌표는 DockDragPreview가 따라가는 데 쓰인다.
  */
-export interface SidebarDrag {
+export interface DockDrag {
   toolId: ToolId;
   screenX: number;
   screenY: number;
@@ -332,6 +332,12 @@ interface WorkspaceState {
   /** 지정 좌표에 메모판(기본 320×220, 최소 240×160)을 만든다. n8 독이 부른다. */
   addFrameAt: (x: number, y: number) => string;
   /**
+   * 화면 중앙의 world 좌표에 메모판을 만든다(독 Enter/클릭 생성 — 2단계 리뷰 P1-4:
+   * 중심 좌표 계산을 addCardAtViewportCenter와 같은 자리(store)에 모은다).
+   * viewport 크기는 인자로 주입, 생략 시 window 폴백.
+   */
+  addFrameAtViewportCenter: (viewportSize?: { width: number; height: number }) => string;
+  /**
    * cardIds 각각의 중심점으로 소속 판을 다시 정한다(spec §4 "소속 판정" 전 규칙).
    * 겹친 판은 나중에 만든 판(= cards 배열에서 더 뒤, loadCards가 createdAt 오름차순
    * 정렬을 보장) 우선. frame 카드 자신은 대상에서 제외.
@@ -441,8 +447,8 @@ interface WorkspaceState {
   resetViewport: () => void;
 
   /** 사이드바 도구 커스텀 드래그 상태. null = 드래그 중 아님. */
-  sidebarDrag: SidebarDrag | null;
-  setSidebarDrag: (s: SidebarDrag | null) => void;
+  dockDrag: DockDrag | null;
+  setDockDrag: (s: DockDrag | null) => void;
 
   /**
    * 현재 들어올린(드래그 중) 카드 id — lift 시각효과(scale/shadow/z)용. transient.
@@ -471,6 +477,11 @@ interface WorkspaceState {
    * @returns 생성된 함 카드 id.
    */
   createSubcanvas: (x: number, y: number) => string;
+  /**
+   * 화면 중앙의 world 좌표에 함 카드 + 빈 서브 보드를 만든다(독 Enter/클릭 생성 —
+   * addCardAtViewportCenter·addFrameAtViewportCenter와 같은 규약).
+   */
+  createSubcanvasAtViewportCenter: (viewportSize?: { width: number; height: number }) => string;
   /** 함 카드의 boardRef 서브 보드로 진입(setCurrentBoard). */
   enterSubcanvas: (cardId: string) => Promise<void>;
   /** 현재 보드의 부모 보드로 이동. 부모 없으면(루트/시스템) no-op. */
@@ -604,6 +615,22 @@ export function widthForKind(kind: CardKind): number {
     default:
       return 240;
   }
+}
+
+/**
+ * 화면 중앙의 client 좌표(sx,sy) — addCardAtViewportCenter·addFrameAtViewportCenter·
+ * createSubcanvasAtViewportCenter가 공유하는 계산(2단계 리뷰 P1-4: 좌표 계산 단일화).
+ * 사이드바가 걷혀 캔버스가 화면 왼쪽 끝부터 시작하므로 fallback도 window 전체 폭.
+ */
+function viewportCenterScreenPoint(viewportSize?: { width: number; height: number }): {
+  sx: number;
+  sy: number;
+} {
+  const fallbackW = typeof window !== "undefined" ? window.innerWidth : 1100;
+  const fallbackH = typeof window !== "undefined" ? window.innerHeight : 700;
+  const w = viewportSize?.width ?? fallbackW;
+  const h = viewportSize?.height ?? fallbackH;
+  return { sx: w / 2, sy: h / 2 };
 }
 
 const SEED_CARDS: Card[] = [
@@ -1054,7 +1081,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   pendingBoardUndo: null,
   deleteDialogBoardId: null,
   pendingRenameBoardId: null,
-  sidebarDrag: null,
+  dockDrag: null,
   subcanvasCounts: {},
   dropTargetFunnelId: null,
   dropTargetCrumbId: null,
@@ -1065,7 +1092,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   memoSearchQuery: "",
   memoSearchMatchIds: [],
 
-  setSidebarDrag: (s) => set({ sidebarDrag: s }),
+  setDockDrag: (s) => set({ dockDrag: s }),
   setDragging: (id, multi = false) =>
     set({ draggingId: id, draggingMulti: id ? multi : false }),
 
@@ -1322,15 +1349,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   addCardAtViewportCenter: (toolId, viewportSize) => {
     const v = get().viewport;
-    // FEAT-sticky-redesign n8: 사이드바가 걷혀 캔버스가 화면 왼쪽 끝부터 시작 —
-    // fallback 폭도 window 전체 폭을 그대로 쓴다.
-    const fallbackW = typeof window !== "undefined" ? window.innerWidth : 1100;
-    const fallbackH =
-      typeof window !== "undefined" ? window.innerHeight : 700;
-    const w = viewportSize?.width ?? fallbackW;
-    const h = viewportSize?.height ?? fallbackH;
-    const sx = w / 2;
-    const sy = h / 2;
+    const { sx, sy } = viewportCenterScreenPoint(viewportSize);
     const kind = kindForTool(toolId);
     const cardW = widthForKind(kind);
     const wx = (sx - v.x) / v.scale - cardW / 2;
@@ -1421,6 +1440,14 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       await storage.saveNote(note);
     })();
     return card.id;
+  },
+
+  addFrameAtViewportCenter: (viewportSize) => {
+    const { sx, sy } = viewportCenterScreenPoint(viewportSize);
+    const v = get().viewport;
+    const wx = (sx - v.x) / v.scale - FRAME_DEFAULT_WIDTH / 2;
+    const wy = (sy - v.y) / v.scale - 20;
+    return get().addFrameAt(wx, wy);
   },
 
   resolveMembership: (cardIds) => {
@@ -1994,6 +2021,14 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     })();
 
     return id;
+  },
+
+  createSubcanvasAtViewportCenter: (viewportSize) => {
+    const { sx, sy } = viewportCenterScreenPoint(viewportSize);
+    const v = get().viewport;
+    const wx = (sx - v.x) / v.scale - widthForKind("board") / 2;
+    const wy = (sy - v.y) / v.scale - 20;
+    return get().createSubcanvas(wx, wy);
   },
 
   enterSubcanvas: async (cardId) => {

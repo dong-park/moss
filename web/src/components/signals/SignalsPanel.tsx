@@ -6,7 +6,8 @@ import { useSignals } from "@/state/signals/useSignals";
 import { KeywordsSection } from "./KeywordsSection";
 import { RhythmSection } from "./RhythmSection";
 
-const PANEL_WIDTH = 420;
+/** 2단계 리뷰 P2: Dock.tsx가 이 값을 import해 SIGNALS_PANEL_WIDTH 중복 정의를 없앤다. */
+export const PANEL_WIDTH = 420;
 
 export function SignalsPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
   const t = useT();

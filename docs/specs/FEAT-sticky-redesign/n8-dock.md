@@ -57,3 +57,13 @@
 - 아이콘 88px 1벌만 생성(144px 2x 미생성 — 88>72 hover라 육안 확인 없이도 흐림 리스크 낮다고 판단, 실제 레티나 디스플레이 확인은 못 함).
 - 실경로 검증: 이 환경에 브라우저 자동화 도구가 없어 dev 서버(3109) SSR HTML을 curl로 확인 — 독 5버튼(data-dock-id: frame/text/board/pen/signals) 렌더, `<aside>` 없음(SignalsPanel 것 1개는 별개), grid 1열 확인. hover 확대·드래그 생성·60fps 프레임 기록·시안 A1/A2 스크린샷 대조는 수행 못 함 — 사람이 브라우저로 확인 필요(**갭**).
 - `tsc`/`vitest run`(전체)/`eslint`/`check-i18n` 모두 통과. vitest 전체는 기준선 그대로 7개 실패(Canvas.virtualization 1, CardContent.autoFocus 1, CardContent.image 5) — 새로 깨진 테스트 0.
+
+**3단계 리뷰 수정(2026-09-13)**:
+- 독 폭 실측: DockButton 슬롯을 hover 크기(72px) 고정에서 `displaySize`(평상시 40px, hover로만 확대)로 바꾸고, 가운데·툴바 회피 계산은 `layout.dock.width` 토큰 대신 `dockRef` ResizeObserver 실측값(`dockWidth` state, jsdom 폴백은 `getBoundingClientRect()` 1회)을 쓴다 — 이전엔 슬롯이 항상 72px라 5버튼 실제 폭이 토큰(269)보다 약 413px로 커서 독이 오른쪽으로 치우쳤다.
+- 가림 판정을 `cards`/`viewport` 훅 구독 + effect deps(`cards, viewport, canvasWidth`)에서 `cardOccludesDock` 순수 함수(export) + `useWorkspace.subscribe` + rAF 스로틀로 바꿨다. deps를 `[signalsOpen, effectiveCanvasWidth, dockWidth]`(독 위치가 실제로 바뀌는 계기)로 좁히고, 마운트 시 1회는 동기 계산(테스트가 즉시 확인 가능), 이후 스토어 변경마다 rAF 1프레임으로 묶어 재계산한다.
+- 좌표 계산 단일화: 스토어에 `addFrameAtViewportCenter`·`createSubcanvasAtViewportCenter`(+ 공유 헬퍼 `viewportCenterScreenPoint`)를 추가해 Dock의 `createAtCenter`는 호출만 하도록 정리했다. `tryDrop`은 kind마다 다른 `-120` 하드코딩 대신 `widthForKind(kindForTool(toolId))/2`로 통일(frame 160·board 100·text 120).
+- `sidebarDrag`/`setSidebarDrag`/`SidebarDrag` → `dockDrag`/`setDockDrag`/`DockDrag`로 개명(workspace.ts·Dock·DockDragPreview·Canvas·테스트).
+- `DockDragPreview`가 frame·board에 `/cards/v2/{frame,board}.png`(존재하지 않음)를 참조하던 것을 `/icons/dock/{memoboard,filebox}.png`로 대체.
+- `SignalsPanel.tsx`의 `PANEL_WIDTH`를 export해 Dock의 중복 `SIGNALS_PANEL_WIDTH` 상수를 제거.
+- 드래그 중 창 밖으로 나가 blur가 발생하면(다른 탭/창으로 포커스 이동) mouseup 없이 드래그 상태가 남던 것을 `window.addEventListener("blur", ...)`로 정리하도록 추가.
+- 미사용 CSS 변수 `--layout-sidebar-expanded`/`--layout-sidebar-collapsed` 제거.
