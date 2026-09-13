@@ -2,10 +2,10 @@
 
 > 캔버스에서는 포스트잇처럼 훑어보고, 누르면 디지털 문서로 들어간다. 카드 종류를 메모 하나로 줄이고, 메모판·파일함·하단 독으로 정리한다.
 
-**Status**: spec 작성
+**Status**: 구현 완료(브라우저 검증 대기)
 **Owner**: dong-park
 **Estimated**: L
-**Blueprint**: 아직 등록 안 함. 추후 features 목록에 FEAT-sticky-redesign 추가.
+**Blueprint**: `features[id="FEAT-sticky-redesign"]` 등록 완료(n10).
 **Started**: 2026-09-13
 
 ---

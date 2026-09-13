@@ -3,7 +3,7 @@
 > 자기완결 브리프. runner는 [상위 spec](../FEAT-sticky-redesign.md) + [plan 공통 완료 기준](../FEAT-sticky-redesign.plan.md#공통-완료-기준) + 이 파일만 본다. 진행·상태는 이 파일에만 쓴다.
 
 **deps**: n3-fresh-db, n5-memo-front, n6-canvas-capture, n8-dock, n9-naming
-**상태**: pending
+**상태**: 코드 정리 완료, 브라우저 검증 대기 (작업 1·2·6만 runner가 수행 — 작업 3·4·5의 수동 시나리오·시안 대조는 호출자가 실브라우저에서 진행)
 
 ## 문제
 
@@ -44,3 +44,82 @@
 
 ## 구현 메모
 
+**범위**: 이 실행은 작업 1·2·6(코드 정리 + spec/blueprint 갱신)만 담당했다. 작업 3·4·5(실브라우저
+수동 시나리오 A·B, 시안 대조)는 runner 권한 밖이라 하지 않았다 — 호출자가 `npm run build &&
+npm run start` 프로덕션 빌드로 직접 확인해야 한다. 완료 기준의 "시나리오 A·B 스크린샷", "시안
+대조 차이 목록", "실경로 검증" 3개 항목은 아직 미충족 상태로 남겨둔다.
+
+**작업 1 — 생성 경로 grep 결과와 판단**:
+- `addCardAt`(workspace.ts) 자체는 `kindForTool(toolId)`로 kind를 정하는 범용 함수라 유지. 실제
+  호출자(Canvas.tsx 붙여넣기/드롭, useShortcuts.ts, Dock.tsx)는 이미 n6·n8·n9에서 `"text"`만
+  넘기도록 정리돼 있었다(재확인만 함, 코드 변경 없음).
+- 실제로 살아있던 생성 분기 2곳을 찾아 고쳤다:
+  - `state/workspace.ts` `SEED_CARDS`의 `seed-preview` 항목이 `kind: "image"`였다(첫 실행마다
+    실제 image 행 생성) → `kind: "text"`로.
+  - `templates/index.ts`의 "mindmap" 템플릿이 `kind: "mindmap"` 카드를 시드했다 → `kind: "text"`로
+    (내용은 그대로 "중심 생각" 평문이라 블록 인코딩 불필요).
+- `state/bridge/mossBridge.ts`(moss-mcp 외부 에이전트 자동화 브리지, `NEXT_PUBLIC_MOSS_BRIDGE=1`일
+  때만 활성 — 없으면 Next가 상수 폴딩으로 프로덕션 빌드에서 제거)에 `notes.createImage/Audio/File/
+  Mindmap` op와 `notes.create({kind:"link"|"mindmap"})`가 남아 있다. **의도적으로 손대지 않았다** —
+  이 브리지는 별도 `moss/mcp` 패키지(`server.ts`, `scripts/smoke.ts`)가 소비하는 개발용 자동화
+  계약이라, 여기서 kind를 text로 제한하면 moss/mcp 쪽 빌드·테스트가 함께 깨진다. moss/mcp는 n10
+  브리프 범위(파일 포인터에 없음)와 FEAT-sticky-redesign spec 어디에도 언급되지 않는다 — 고치려면
+  별도 사이클(브리지 계약 변경 + moss/mcp 쪽 조정)이 필요하다고 판단해 보류했다.
+- 완료 기준의 grep 재실행 결과, **생성 분기로 남은 유일한 참조는 `mossBridge.ts`의 위 6곳**이다.
+  나머지 hit(blocks.ts의 Block 유니온, workspace.ts/schema.ts의 NoteKind·ToolId 타입과
+  kindForTool/kindToDefaultToolId/widthForKind의 타입 완전성용 switch case, canvasCapture.ts·
+  Canvas.tsx·BlockMenu.tsx·blockView.ts·MemoFrontBadges.tsx의 블록(image/link/audio/file) 생성·
+  렌더, MarkdownToolbar.tsx의 툴바 버튼 id, TemplatePreview.tsx·templates/index.ts의 TemplateId
+  "mindmap"[스타일 이름, 카드 종류 아님])는 전부 타입 정의 또는 새 블록 모델 자체라 그대로 둔다.
+
+**작업 2 — 삭제 내역**:
+- `cards/{image,link,audio,file,mindmap,handwriting}/Content.tsx` 6개 전부 삭제(브리프 원문은
+  handwriting을 언급하지 않지만, 호출자 지시로 포함 — handwriting은 이미 생성 경로가 0건이었고
+  useHandwriting 훅도 handwriting 카드 하나만 쓰고 있어 안전하게 삭제 가능함을 확인).
+  audio/Content.tsx의 MediaRecorder 로직은 `_shared/editor/BlockMenu.tsx`(n4)가 완전히 독립
+  재구현해 두었다(mimeType 선택·getUserMedia·녹음 종료 시 putBlob) — 이식할 코드 없음, 확인만 함.
+- `CardContent.tsx`는 text/comment/board/frame만 라우팅하고 default(text)로 떨어진다. 레거시
+  행(가져오기 등으로 옛 kind가 유입되는 경우)은: code/handwriting은 decodeNoteToCard가 이미
+  text 블록으로 환원, checklist/highlight는 migratedContent가 처리 가능하면 text로 환원, 그 외
+  image/link/audio/file/mindmap은 kind가 그대로 남을 수 있어 CardContent의 default(text) 분기로
+  raw content를 평문 렌더한다 — 크래시는 안 나지만 첨부(attachmentRef)는 보이지 않는다(열화 렌더,
+  spec §6 "기존 종류 값은 타입에 남긴다"와 일치). **FEAT-export(가져오기)는 아직 미구현
+  (Status: spec, `web/src`에 export/import 코드 없음)이라 이 시점에 실제로 옛 kind가 유입될 경로가
+  없다** — export 기능을 만들 때 옛 kind import를 거부하도록 그쪽 스펙에서 챙겨야 한다.
+- 함께 죽는 헬퍼도 삭제: `useClipboardWatch.ts`(유일한 두 호출자였던 image/link Content 삭제로
+  무호출), `cards/_shared/surface.ts`(`cardSurface` 호출자 0), `cards/_shared/dialogOpened.ts`
+  (`dialogOpenedFor` 호출자 0), `cards/_shared/blocks/useHandwriting.ts`(handwriting 카드
+  하나만 쓰던 훅).
+- 관련 테스트 삭제: `CardContent.{image,link,audio,file,mindmap,handwriting}.test.tsx`,
+  `CardContent.autoFocus.test.tsx`(6개 케이스 전부 삭제 대상 kind라 파일 전체가 무의미해짐),
+  `useClipboardWatch.test.tsx`.
+- `templates/index.ts`·`workspace.ts`(SEED_CARDS) 변경에 맞춰 `templates.test.ts`(무변경 —
+  kind 특정 assert 없음), `workspace.test.ts`·`TemplatePicker.test.tsx`의 mindmap kind 기대값을
+  "mindmap"→"text"로 갱신.
+
+**작업 3 (dead code, 브리프 범위 밖 추가 정리 — 호출자 지시)**:
+- `cards/MemoCard.tsx`(호출자 0, import 0) 삭제.
+- i18n: `capture.tool.*`(text 제외 9개), `capture.audio.{denied,placeholder,savedFallback,stop,
+  unsupported}`(recording만 BlockMenu.tsx가 씀 — 유지), `capture.file.*`·`capture.image.*`·
+  `capture.link.*`·`capture.mindmap.*` — 전부 이번에 지운 Content.tsx가 유일한 소비자였다.
+  `capture.block.*`·`capture.checklist/code/highlight.*`·`capture.text.placeholder`·
+  `cards.title.placeholder`·`workspace.memoEditor.*`·`workspace.memoFront.badge.*`·
+  `workspace.tool.*`는 check-i18n에 여전히 unused로 뜨지만 **이번 개편 이전부터 죽어있던 것**이라
+  손대지 않았다(FEAT-markdown-memo-pen 등 다른 feat의 잔재로 추정, n10 범위 아님).
+  `templates.*.name/description`은 `t(tpl.nameKey)`처럼 동적 키로 쓰여 check-i18n이 오탐하는
+  것이지 실제로는 쓰인다 — 지우면 화면 문구가 깨지므로 건드리지 않음.
+- `public/cards/v2/{audio,checklist,code,file,handwriting,highlight,image,image-wide,link,
+  link-wide,mindmap}.png` 11개 삭제(참조 0 확인, `cardSurface`/`DockDragPreview`의
+  `${kind}.png` 동적 경로가 실제로 도달 가능한 kind는 text/comment뿐임을 호출자 목록으로 확인).
+  `text.png`·`comment.png`는 유지. `public/cards/v2/orig/`(원본 아카이브, 코드 미참조)는
+  brief 문구가 top-level PNG만 지목한다고 보고 손대지 않았다.
+
+**작업 4 — Canvas.virtualization.test.tsx 기준선 실패**: 옛 카드 종류와 무관하다. 200개 카드
+중 viewport 안 100개("in-*")가 DOM에 하나도 안 잡히는 결함(mount 후에도 `[data-card-id]` 자체가
+0건) — jsdom `getBoundingClientRect` 오버라이드와 Canvas.tsx의 `didFitRef`/`fitToCards` 초기
+측정 타이밍이 안 맞물리는 것으로 보이나, 원인을 더 파고들진 않았다(무관 확인만, 수정은 범위 밖).
+전체 스위트는 이 1건만 남기고 통과(기준선 7개 → 1개로 감소 — 나머지 6개는 이번 삭제 대상 자체가
+사라지며 함께 없어짐).
+
+**커밋**: 641254b(생성 경로 2곳 수정), 48c5501(Content.tsx·테스트 삭제), 35fee57+62e51e1
+(죽은 코드·i18n·PNG — ko.json 스테이징 누락으로 커밋이 갈라짐, 62e51e1이 실반영).
