@@ -82,11 +82,9 @@ export function TextCardContent({
       style={{
         minHeight: 80,
         borderRadius: 6,
-        // n10 브라우저 결함7: 흰 종이(/cards/v2/text.png) 대신 spec §7 "노란
-        // 포스트잇 모양"을 CSS 그라디언트로 낸다 — 카드가 auto-grow해도(높이가
-        // %가 아니라 그라디언트라) 늘어난 영역까지 자연스럽게 같은 톤이다.
-        background: "var(--gradient-postit)",
-        boxShadow: "var(--shadow-postit-fold)",
+        // background-size 100% 100%로 카드 박스에 맞춰 늘어나게 — content가
+        // 커져 카드가 auto-grow하면 포스트잇 비주얼도 같이 늘어난다.
+        background: `url("/cards/v2/text.png") 0 0 / 100% 100% no-repeat`,
       }}
       onClick={onFrontClick}
       onAuxClick={onFrontClick}
