@@ -60,9 +60,9 @@ describe("FEAT-boards · BoardPicker", () => {
     await useWorkspace.getState().loadFromStorage();
     mount();
 
-    expect(screen.getByLabelText("보드 선택")).toBeTruthy();
+    expect(screen.getByLabelText("프로젝트 선택")).toBeTruthy();
     expect(screen.getByText("머무는 생각")).toBeTruthy();
-    expect(screen.getByText("(시스템 보드)")).toBeTruthy();
+    expect(screen.getByText("(시스템 프로젝트)")).toBeTruthy();
   });
 
   it("사용자 보드 있을 때: 트리거에 보드 이름 표시, 빈 이름이면 placeholder", async () => {
@@ -72,7 +72,7 @@ describe("FEAT-boards · BoardPicker", () => {
     mount();
 
     // 빈 이름 → placeholder
-    expect(screen.getByText("(이름 없는 보드)")).toBeTruthy();
+    expect(screen.getByText("(이름 없는 프로젝트)")).toBeTruthy();
 
     // 이름 추가 후 다시 mount → 그 이름 표시
     await useWorkspace.getState().renameBoard(id, "Brand");
@@ -87,7 +87,7 @@ describe("FEAT-boards · BoardPicker", () => {
     mount();
 
     // 사용자 보드 alpha가 현재 보드이므로 트리거에 "alpha" 표시
-    const trigger = screen.getByLabelText("보드 선택");
+    const trigger = screen.getByLabelText("프로젝트 선택");
     fireEvent.pointerDown(trigger, { button: 0, pointerType: "mouse" });
     fireEvent.click(trigger);
 
@@ -95,7 +95,7 @@ describe("FEAT-boards · BoardPicker", () => {
     // "머무는 생각"이 메뉴 안 + 트리거 외에 한 번 더 등장
     const stays = screen.getAllByText("머무는 생각");
     expect(stays.length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText("새 보드 만들기")).toBeTruthy();
+    expect(screen.getByText("새 프로젝트 만들기")).toBeTruthy();
     expect(screen.getByText("시스템")).toBeTruthy();
   });
 
@@ -104,12 +104,12 @@ describe("FEAT-boards · BoardPicker", () => {
     await useWorkspace.getState().loadFromStorage();
     mount();
 
-    const trigger = screen.getByLabelText("보드 선택");
+    const trigger = screen.getByLabelText("프로젝트 선택");
     fireEvent.pointerDown(trigger, { button: 0, pointerType: "mouse" });
     fireEvent.click(trigger);
 
     const before = useWorkspace.getState().boards.length;
-    const item = screen.getByText("새 보드 만들기");
+    const item = screen.getByText("새 프로젝트 만들기");
     fireEvent.click(item);
 
     // picker 다이얼로그 등장
@@ -131,8 +131,8 @@ describe("FEAT-boards · BoardPicker", () => {
     await useWorkspace.getState().loadFromStorage();
     mount();
     // 시스템 보드 상태에서 더블클릭 — input이 나타나면 안 됨
-    fireEvent.doubleClick(screen.getByLabelText("보드 선택"));
-    expect(screen.queryByLabelText("보드 이름 변경")).toBeNull();
+    fireEvent.doubleClick(screen.getByLabelText("프로젝트 선택"));
+    expect(screen.queryByLabelText("프로젝트 이름 변경")).toBeNull();
   });
 
   it("사용자 보드에서 더블클릭 → input 노출, Enter로 저장", async () => {
@@ -141,8 +141,8 @@ describe("FEAT-boards · BoardPicker", () => {
     await new Promise((r) => setTimeout(r, 250));
     mount();
 
-    fireEvent.doubleClick(screen.getByLabelText("보드 선택"));
-    const input = screen.getByLabelText("보드 이름 변경") as HTMLInputElement;
+    fireEvent.doubleClick(screen.getByLabelText("프로젝트 선택"));
+    const input = screen.getByLabelText("프로젝트 이름 변경") as HTMLInputElement;
     expect(input).toBeTruthy();
     expect(input.value).toBe("draft");
 
@@ -161,8 +161,8 @@ describe("FEAT-boards · BoardPicker", () => {
     await new Promise((r) => setTimeout(r, 250));
     mount();
 
-    fireEvent.doubleClick(screen.getByLabelText("보드 선택"));
-    const input = screen.getByLabelText("보드 이름 변경") as HTMLInputElement;
+    fireEvent.doubleClick(screen.getByLabelText("프로젝트 선택"));
+    const input = screen.getByLabelText("프로젝트 이름 변경") as HTMLInputElement;
     fireEvent.change(input, { target: { value: "should-not-save" } });
     fireEvent.keyDown(input, { key: "Escape" });
 
@@ -182,7 +182,7 @@ describe("FEAT-boards · BoardPicker", () => {
     await useWorkspace.getState().requestRenameBoard(id);
     await new Promise((r) => setTimeout(r, 250));
 
-    expect(screen.getByLabelText("보드 이름 변경")).toBeTruthy();
+    expect(screen.getByLabelText("프로젝트 이름 변경")).toBeTruthy();
     expect(useWorkspace.getState().pendingRenameBoardId).toBeNull();
   });
 
@@ -200,7 +200,7 @@ describe("FEAT-boards · BoardPicker", () => {
     // 1) 다이얼로그 오픈
     useWorkspace.getState().openDeleteDialog(id);
     await new Promise((r) => setTimeout(r, 30));
-    expect(screen.getByText("이 보드를 삭제할까요?")).toBeTruthy();
+    expect(screen.getByText("이 프로젝트를 삭제할까요?")).toBeTruthy();
 
     // 2) "삭제" 클릭
     const confirm = document.querySelector<HTMLButtonElement>(
