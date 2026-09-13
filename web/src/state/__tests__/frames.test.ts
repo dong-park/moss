@@ -376,3 +376,86 @@ describe("성능: 메모 50개 판 이동", () => {
     expect(elapsed).toBeLessThan(16);
   });
 });
+
+describe("2단계 리뷰 P1: moveFrame 저장 키 충돌 회귀", () => {
+  it("renameFrame 직후 moveFrame → 저장된 행 좌표가 이동 후 값(옛 좌표 스냅샷에 덮이지 않는다)", async () => {
+    await init();
+    const frameId = useWorkspace.getState().addFrameAt(0, 0);
+    // 실제 앱처럼 이미 DB에 저장돼 있어야 한다(pushMemo/addFrameAt는 in-memory만 즉시 반영).
+    await new Promise((r) => setTimeout(r, 10));
+
+    useWorkspace.getState().renameFrame(frameId, "이름 바꿈");
+    // renameFrame의 persistCardDebounced(card.id 키)가 예약된 직후, 이동을 시작한다.
+    useWorkspace.getState().moveFrame(frameId, 30, 40);
+
+    await flushAll();
+
+    const db = getDB();
+    const note = await db.notes.get(frameId);
+    expect(note?.x).toBe(30);
+    expect(note?.y).toBe(40);
+    expect(JSON.parse(note?.content ?? "{}").name).toBe("이름 바꿈");
+  });
+});
+
+describe("2단계 리뷰 P1: moveSelectedBy — 선택된 판의 비선택 멤버도 같이 이동", () => {
+  it("판과 그 판의 메모를 함께 선택해 옮기면 메모는 한 번만 옮겨진다(중복 이동 없음)", async () => {
+    await init();
+    const frameId = useWorkspace.getState().addFrameAt(0, 0);
+    const member = pushMemo({ id: "m-both-selected", x: 100, y: 100 });
+    useWorkspace.getState().resolveMembership([member.id]);
+    expect(
+      useWorkspace.getState().cards.find((c) => c.id === member.id)?.frameId,
+    ).toBe(frameId);
+
+    useWorkspace.setState({ selectedIds: [frameId, member.id] });
+    useWorkspace.getState().moveSelectedBy(50, 60);
+
+    const memberAfter = useWorkspace.getState().cards.find((c) => c.id === member.id)!;
+    // 프레임 자신도 선택돼 dx,dy를 받고, 멤버도 프레임 추종 로직으로 다시 dx,dy를
+    // 받으면 100+50이 아니라 100+50+50이 된다 — 한 번만 적용됐는지 확인.
+    expect(memberAfter.x).toBe(150);
+    expect(memberAfter.y).toBe(160);
+  });
+
+  it("판만 선택해 옮기면 비선택 멤버도 같은 거리로 따라온다", async () => {
+    await init();
+    const frameId = useWorkspace.getState().addFrameAt(0, 0);
+    const member = pushMemo({ id: "m-unselected-member", x: 100, y: 100 });
+    const outside = pushMemo({ id: "m-outside", x: 1000, y: 1000 });
+    useWorkspace.getState().resolveMembership([member.id, outside.id]);
+    expect(
+      useWorkspace.getState().cards.find((c) => c.id === member.id)?.frameId,
+    ).toBe(frameId);
+
+    useWorkspace.setState({ selectedIds: [frameId] }); // 멤버는 선택 안 함
+    useWorkspace.getState().moveSelectedBy(20, 30);
+
+    const memberAfter = useWorkspace.getState().cards.find((c) => c.id === member.id)!;
+    const outsideAfter = useWorkspace.getState().cards.find((c) => c.id === outside.id)!;
+    const frameAfter = useWorkspace.getState().cards.find((c) => c.id === frameId)!;
+    expect(frameAfter.x).toBe(20);
+    expect(memberAfter.x).toBe(120); // 100+20 — 비선택인데도 따라옴
+    expect(outsideAfter.x).toBe(1000); // 소속 없는 카드는 불변
+  });
+});
+
+describe("2단계 리뷰 P2: 판 이름 encode/decode 단일 소스", () => {
+  it("addFrameAt·renameFrame이 만든 content를 frameContent.decodeFrameContent가 같은 규약으로 읽는다", async () => {
+    const { decodeFrameContent } = await import("@/state/frameContent");
+    await init();
+    const frameId = useWorkspace.getState().addFrameAt(0, 0);
+    expect(
+      decodeFrameContent(
+        useWorkspace.getState().cards.find((c) => c.id === frameId)!.content,
+      ),
+    ).toBe("새 메모판");
+
+    useWorkspace.getState().renameFrame(frameId, "  회의록  ");
+    expect(
+      decodeFrameContent(
+        useWorkspace.getState().cards.find((c) => c.id === frameId)!.content,
+      ),
+    ).toBe("회의록");
+  });
+});

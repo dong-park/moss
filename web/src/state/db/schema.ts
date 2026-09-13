@@ -2,6 +2,7 @@ import Dexie, { type Table } from "dexie";
 import { migratedContent } from "../markdownMigration";
 import { blocksToMarkdown } from "../cardContent";
 import { markOpfsPurgePending } from "./opfs";
+import { encodeFrameContent } from "../frameContent";
 
 /**
  * 카드 종류. spec FEAT-storage §5 정의.
@@ -81,7 +82,7 @@ export function makeFrameNote(
     width: Math.max(240, width),
     height: Math.max(160, height),
     rotation: 0,
-    content: JSON.stringify({ name: name?.trim() || "새 메모판" }),
+    content: encodeFrameContent(name),
     aiOptOut: false,
     createdAt: now,
     updatedAt: now,

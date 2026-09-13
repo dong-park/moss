@@ -59,7 +59,11 @@
   디바운스한 뒤 한 Dexie 트랜잭션(`db.transaction("rw", db.notes, …)`)으로 프레임+멤버를 함께 쓴다.
 - `DraggableCard.tsx`: frame 카드는 `onMove`에서 `moveCard` 대신 `moveFrame`을 타고(펀넬/크럼 감지 생략),
   `onUp`에서 드롭 종료 시점에만 `resolveMembership` 호출(단일 카드=자기 자신, frame=보드 전체 재판정,
-  다중 선택=선택 집합). z-index는 `card.kind==="frame" ? 1 : 10`으로 메모보다 아래.
+  다중 선택=선택 집합 — **2단계 리뷰 P1로 뒤집음**: 선택에 frame이 섞이면 보드 전체(비-frame)로 재판정
+  하도록 바꿨다. 원래는 선택 집합만 재판정해 frame이 옮겨지며 새로 들어오거나 빠진 "비선택" 카드가
+  갱신 안 되는 버그가 있었다). z-index는 원래 `card.kind==="frame" ? 1 : 10`이었는데 **2단계 리뷰 P1로
+  뒤집음**: `selected`이면 20이 되어 frame이 선택되면 메모 위로 올라가는 버그가 있었다 — frame은
+  `selected ? 2 : 1`로 항상 메모(10/20/40)보다 아래에 고정하고, 선택 표시는 outline만으로 한다.
 - `ResizeHandles.tsx`: frame은 `aspectForKind` 비율 고정 없이 방향별 축을 독립적으로 리사이즈하고,
   `onUp`에서만 `resolveMembership`(보드 전체 비-frame 카드) 호출.
 - `deleteFrame`은 멤버의 `frameId`만 풀고(카드 자체는 유지) frame row만 삭제 — `remove`/`removeSelected`가
@@ -73,3 +77,34 @@
   라벨 단일클릭으로는 카드가 선택되지 않는 트레이드오프, 스펙에 없는 항목이라 가정으로 넘어감).
 - 성능 테스트는 실제 100+ 카드 캔버스 프레임 타이밍이 아니라 `moveFrame` 단일 호출의
   `performance.now()` 델타로 16ms 기준을 근사 측정한다(jsdom 환경 한계 — 실측 프레임 타이밍 불가).
+
+### 2단계 리뷰 P1 수정 (2026-09-13)
+
+- **저장 키 충돌 뒤집음**: `moveFrame`이 원래 자체 키 `frame-move:${frameId}`로 판+멤버를 한
+  트랜잭션에 모아 저장했는데, 이 키가 `persistCardDebounced`(다른 편집 경로 전부가 쓰는 `card.id` 키)와
+  달라 renameFrame 직후 드래그하면 rename이 예약해둔 "이동 전 좌표 스냅샷" 전체 put이 나중에 발사돼
+  이동을 덮어쓸 수 있었다(재현: `frames.test.ts` "renameFrame 직후 moveFrame"). 지금은 이동한 각 행을
+  자기 `card.id` 키로 개별 예약하고(schedulePersist의 "같은 키 재예약 시 최신이 이긴다" 규칙을 그대로
+  이용), 콜백은 실행 시점에 `get().cards`에서 그 카드의 최신 상태를 다시 읽는다 — moveSelectedBy가
+  이미 쓰던 것과 같은 패턴(별도 트랜잭션 없음)이라 프로젝트 관례에도 맞는다.
+- **멀티 드래그 소속 재판정 확장**: 선택에 frame이 섞인 다중 드래그의 `onUp`에서 이제 보드 전체
+  (비-frame)를 재판정한다(§3 item 3). `moveSelectedBy`도 선택에 frame이 있으면 그 frame의 비선택
+  멤버를 이동 집합에 자동으로 넣는다(§4 "판을 옮기면 속한 메모가 같이 옮겨진다") — 이미 선택돼
+  이동 집합에 들어있는 멤버는 중복 추가하지 않아 §4 "메모는 한 번만" 규칙을 만족한다.
+- **저장 소속 쓰기 단일화**: `setFrameMembership(updates)` 헬퍼(workspace.ts)를 새로 두고
+  `resolveMembership`과 `deleteFrame`의 멤버 frameId 해제가 이걸 거치게 모았다. Dexie는 이미 진행
+  중인 "rw" db.notes 트랜잭션 안에서 같은 테이블 부분집합으로 다시 `db.transaction`을 열면 그 트랜잭션을
+  재사용하므로, `deleteFrame`이 `setFrameMembership` 호출 + `db.notes.delete(id)`를 감싸도 원자성이
+  유지된다. **가정으로 넘어감(호출자가 정할 것)**: `moveCardToSubcanvas`/`moveCardToBoard`는 이 헬퍼로
+  옮기지 않았다 — 둘 다 boardId까지 함께 바꿔야 하고 `storage.saveNote`(read-merge-put, 없는 행이면
+  새로 만듦)를 쓰는데, `setFrameMembership`은 `db.notes.update`(행이 없으면 조용히 no-op)라 아직
+  DB에 flush 안 된 새 카드를 즉시 파일함으로 옮기면 조용히 유실될 위험이 있다. 두 경로 다 frameId를
+  항상 `undefined` 고정값으로 쓰는 단순한 케이스라 버그는 없었으므로, 리스크 대비 이득이 낮다고 보고
+  그대로 뒀다.
+- **성능(Promise.all)**: `setFrameMembership`은 행별 순차 `await db.notes.update` 대신
+  `Promise.all(...)`로 병렬 실행한다. `moveFrame`은 위 키 재설계로 "여러 행을 한 트랜잭션에 순차
+  update" 패턴 자체가 없어져 별도 조치가 필요 없었다.
+- **판 이름 encode/decode 단일화(P2)**: `web/src/state/frameContent.ts`를 새로 만들어
+  `encodeFrameContent`/`decodeFrameContent`(+ `FRAME_DEFAULT_NAME`)로 trim·40자 자르기·기본값
+  "새 메모판" 규약을 한곳에 모았다. `schema.ts`(makeFrameNote)·`workspace.ts`(renameFrame)·
+  `cards/frame/Content.tsx`(구 `parseFrameName`)가 전부 이걸 쓴다.

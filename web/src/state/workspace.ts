@@ -27,6 +27,7 @@ import {
   serializeBlocks,
   type CardBlock,
 } from "./cardContent";
+import { encodeFrameContent } from "./frameContent";
 // FEAT-memo-fulltext-search (W4): 본문 평문 검색 — 셀렉터/액션이 위임.
 import { searchMemos as searchMemosImpl } from "./memoSearch";
 import { getTemplate } from "@/templates";
@@ -930,6 +931,28 @@ function persistCardDebounced(card: Card, boardId: string | null) {
   schedulePersist(card.id, () => persistCard(card, boardId));
 }
 
+/**
+ * FEAT-sticky-redesign 2단계 리뷰 P1: frameId를 바꾸는 다중 행 경로
+ * (resolveMembership·deleteFrame의 멤버 해제)가 이 함수 하나로 DB에 쓴다.
+ * 행별 순차 `await db.notes.update`(리뷰에서 지적된 성능 이슈) 대신 Promise.all로
+ * 병렬 실행한다. 이미 진행 중인 "rw" db.notes 트랜잭션 안에서 불리면(예: deleteFrame이
+ * 프레임 행 삭제와 같은 트랜잭션으로 묶을 때) Dexie가 그 트랜잭션을 그대로 재사용한다
+ * (같은 테이블의 부분집합 트랜잭션 전파) — 아니면 새로 연다.
+ */
+async function setFrameMembership(
+  updates: { id: string; frameId: string | undefined }[],
+): Promise<void> {
+  if (updates.length === 0) return;
+  const storage = useStorage.getState();
+  if (!storage.initialized) return;
+  const db = getDB();
+  await db.transaction("rw", db.notes, async () => {
+    await Promise.all(
+      updates.map((u) => db.notes.update(u.id, { frameId: u.frameId })),
+    );
+  });
+}
+
 /** 보드 전환 페이드 시간 — spec §3 AC-4. */
 export const BOARD_FADE_MS = 200;
 
@@ -1327,6 +1350,19 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     if (dx === 0 && dy === 0) return;
     const ids = new Set(get().selectedIds);
     if (ids.size === 0) return;
+    // 2단계 리뷰 P1: 선택에 판이 있으면 그 판의 비선택 멤버도 같이 옮긴다
+    // (§4 "판을 옮기면 속한 메모가 같이 옮겨진다"). 이미 선택돼 `ids`에 있는
+    // 멤버는 다시 추가하지 않아 한 번만 옮겨진다(§4 "메모는 한 번만").
+    const state = get();
+    const selectedFrameIds = state.cards
+      .filter((c) => ids.has(c.id) && c.kind === "frame")
+      .map((c) => c.id);
+    if (selectedFrameIds.length > 0) {
+      const frameIdSet = new Set(selectedFrameIds);
+      for (const c of state.cards) {
+        if (c.frameId !== undefined && frameIdSet.has(c.frameId)) ids.add(c.id);
+      }
+    }
     const moved: Card[] = [];
     set((s) => ({
       cards: s.cards.map((c) => {
@@ -1404,14 +1440,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         byId.has(c.id) ? { ...c, frameId: byId.get(c.id) } : c,
       ),
     }));
-    const storage = useStorage.getState();
-    if (!storage.initialized) return;
-    const db = getDB();
-    void db.transaction("rw", db.notes, async () => {
-      for (const u of updates) {
-        await db.notes.update(u.id, { frameId: u.frameId });
-      }
-    });
+    void setFrameMembership(updates);
   },
 
   moveFrame: (frameId, dx, dy) => {
@@ -1432,21 +1461,20 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         return c;
       }),
     }));
-    // 동시성: 판+속한 메모 전부를 한 트랜잭션으로 저장 — 일부만 저장되는 일이 없게.
-    // 연속 드래그 중 재예약되므로 실제 DB 반영은 마지막 호출분만 실행된다.
-    schedulePersist(`frame-move:${frameId}`, async () => {
-      const storage = useStorage.getState();
-      if (!storage.initialized) return;
-      const db = getDB();
-      const targets = get().cards.filter(
-        (c) => c.id === frameId || memberIds.has(c.id),
-      );
-      await db.transaction("rw", db.notes, async () => {
-        for (const c of targets) {
-          await db.notes.update(c.id, { x: c.x, y: c.y });
-        }
+    // 2단계 리뷰 P1: 이동한 각 행(판+멤버)을 자기 card.id 키로 예약한다. 이전엔
+    // `frame-move:${frameId}`라는 별도 키를 써서, persistCardDebounced(card.id 키)가
+    // 예약한 renameFrame/setContent 등의 "이동 전 좌표 스냅샷" 쓰기와 순서가 섞여
+    // 옛 좌표 전체 put이 이동을 덮어쓰는 경쟁이 있었다(리뷰에서 발견). 같은 키를 쓰면
+    // schedulePersist의 최신 예약 우선 규칙이 그대로 이 경쟁을 없앤다. 콜백은 예약
+    // 시점이 아니라 실행(fire) 시점의 최신 카드 상태를 읽어 저장한다.
+    const boardId = storageBoardId(get().currentBoardId);
+    for (const id of [frameId, ...memberIds]) {
+      schedulePersist(id, () => {
+        const card = get().cards.find((c) => c.id === id);
+        if (!card) return Promise.resolve();
+        return persistCard(card, boardId);
       });
-    });
+    }
   },
 
   resizeFrame: (id, next) => {
@@ -1473,13 +1501,12 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   renameFrame: (id, name) => {
-    const trimmed = name.trim().slice(0, 40);
-    const finalName = trimmed === "" ? "새 메모판" : trimmed;
+    // "새 메모판" 기본값·trim·40자 규약은 frameContent.ts(encodeFrameContent) 단일 소스.
     let updated: Card | undefined;
     set((s) => ({
       cards: s.cards.map((c) => {
         if (c.id !== id || c.kind !== "frame") return c;
-        updated = { ...c, content: JSON.stringify({ name: finalName }) };
+        updated = { ...c, content: encodeFrameContent(name) };
         return updated;
       }),
     }));
@@ -1504,10 +1531,13 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const storage = useStorage.getState();
     if (!storage.initialized) return;
     const db = getDB();
+    // deleteFrame과 멤버 frameId 해제를 한 트랜잭션으로 — setFrameMembership이 여는
+    // "rw" db.notes 트랜잭션은 이미 진행 중인 이 트랜잭션(같은 테이블 부분집합)을
+    // Dexie가 재사용해 그대로 원자적이다.
     void db.transaction("rw", db.notes, async () => {
-      for (const mid of memberIds) {
-        await db.notes.update(mid, { frameId: undefined });
-      }
+      await setFrameMembership(
+        memberIds.map((mid) => ({ id: mid, frameId: undefined })),
+      );
       await db.notes.delete(id);
     });
   },

@@ -355,7 +355,22 @@ export function DraggableCard({ card }: { card: Card }) {
 
       // FEAT-sticky-redesign §4: 드롭 종료 시점에만 소속을 다시 정한다.
       if (d.multi) {
-        resolveMembership(useWorkspace.getState().selectedIds);
+        const selectedIds = useWorkspace.getState().selectedIds;
+        // 2단계 리뷰 P1: 선택에 판이 섞여 있으면 그 판이 옮겨진 것 — 선택 안 된
+        // 카드도 새로 들어오거나 빠질 수 있으므로 보드 전체(비-frame)를 재판정한다.
+        // 판이 없는 순수 다중 선택이면 기존대로 선택분만 재판정.
+        const hasFrame = useWorkspace
+          .getState()
+          .cards.some((c) => selectedIds.includes(c.id) && c.kind === "frame");
+        if (hasFrame) {
+          const ids = useWorkspace
+            .getState()
+            .cards.filter((c) => c.kind !== "frame")
+            .map((c) => c.id);
+          resolveMembership(ids);
+        } else {
+          resolveMembership(selectedIds);
+        }
       } else if (card.kind === "frame") {
         // 판이 옮겨지면 새로 안에 들어온 메모도 속하게 된다 — 전체를 재판정.
         const ids = useWorkspace
@@ -415,9 +430,19 @@ export function DraggableCard({ card }: { card: Card }) {
         top: card.y,
         width: card.width,
         height: card.height,
-        // FEAT-sticky-redesign: 메모판은 메모보다 아래층 — 겹친 영역의 포인터
-        // 이벤트도 자연히 메모(더 높은 z)가 먼저 받는다.
-        zIndex: lifted ? 40 : selected ? 20 : card.kind === "frame" ? 1 : 10,
+        // FEAT-sticky-redesign 2단계 리뷰 P1: 메모판은 선택돼도 항상 메모보다
+        // 아래층이어야 한다(이전엔 selected일 때 20이 돼 위층 메모를 가렸다).
+        // 선택 표시는 outline(아래)으로만 하고, z는 미선택(1)/선택(2) 두 단계로만
+        // 살짝 올려 겹친 판끼리의 선택 강조만 챙긴다 — 메모(10/40)는 항상 그 위.
+        zIndex: lifted
+          ? 40
+          : card.kind === "frame"
+            ? selected
+              ? 2
+              : 1
+            : selected
+              ? 20
+              : 10,
         outline: selected ? "2px solid rgba(79, 124, 243, 0.45)" : "none",
         outlineOffset: 2,
         borderRadius: 8,

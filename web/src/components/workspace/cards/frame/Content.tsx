@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useWorkspace } from "@/state/workspace";
 import type { Card } from "@/state/workspace";
+import { decodeFrameContent } from "@/state/frameContent";
 
 /* ─────────────────────────────────────────────────────────────
  * FEAT-sticky-redesign n7 — 메모판(frame) 렌더.
@@ -11,24 +12,9 @@ import type { Card } from "@/state/workspace";
  * kind==="frame" 분기로 처리) — 이 컴포넌트는 이름표 렌더 + 인라인 이름 편집만 맡는다.
  * ───────────────────────────────────────────────────────────── */
 
-interface FrameContentJson {
-  name?: string;
-}
-
-/** content JSON {name} → 표시용 이름. 파싱 실패·빈 이름은 기본값으로 폴백. */
-function parseFrameName(content: string): string {
-  try {
-    const parsed = JSON.parse(content) as FrameContentJson;
-    const name = parsed.name?.trim();
-    return name ? name : "새 메모판";
-  } catch {
-    return "새 메모판";
-  }
-}
-
 export function FrameCardContent({ card }: { card: Card }) {
   const renameFrame = useWorkspace((s) => s.renameFrame);
-  const name = parseFrameName(card.content);
+  const name = decodeFrameContent(card.content);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(name);
   const inputRef = useRef<HTMLInputElement>(null);
