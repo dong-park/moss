@@ -103,14 +103,18 @@ describe("blocks — 문단 단독 조건", () => {
 });
 
 describe("countBlocks", () => {
-  it("네 블록이 섞인 본문에서 종류별 개수를 센다", () => {
+  it("네 블록이 섞인 본문에서 종류별 개수를 센다(블록은 빈 줄로 고립돼야 한다)", () => {
     const markdown = [
       "제목 문단",
+      "",
       "![](opfs://img1.png)",
       "",
       '[녹음](opfs://rec1.webm "moss-audio")',
+      "",
       '[녹음](opfs://rec2.webm "moss-audio")',
+      "",
       '[예시](https://example.com "moss-link")',
+      "",
       "본문 중간에 섞인 링크 " +
         '[예시](https://example.com "moss-link") 는 세지 않는다',
     ].join("\n");
@@ -126,23 +130,44 @@ describe("countBlocks", () => {
   it("빈 문자열은 전부 0", () => {
     expect(countBlocks("")).toEqual({ image: 0, link: 0, audio: 0, file: 0 });
   });
+
+  it("2단계 리뷰 P1-5: 코드 펜스 안의 블록 모양 줄은 세지 않는다", () => {
+    const markdown = [
+      "```",
+      '[녹음](opfs://rec1.webm "moss-audio")',
+      "```",
+      "",
+      "![](opfs://img1.png)",
+    ].join("\n");
+    expect(countBlocks(markdown)).toEqual({ image: 1, link: 0, audio: 0, file: 0 });
+  });
+
+  it("2단계 리뷰 P1-5: 빈 줄 없이 이어진(소프트 브레이크) 블록 모양 줄은 세지 않는다", () => {
+    // "제목 문단"과 이미지 줄 사이에 빈 줄이 없으면 같은 문단(소프트 브레이크)이라
+    // blockView.paragraphBlock의 "문단 단독" 조건과 어긋나므로 블록으로 세지 않는다.
+    const markdown = ["제목 문단", "![](opfs://img1.png)"].join("\n");
+    expect(countBlocks(markdown)).toEqual({ image: 0, link: 0, audio: 0, file: 0 });
+  });
 });
 
 describe("firstBlockIsImage", () => {
   it("첫 비어있지 않은 문단이 이미지 블록이면 true", () => {
-    const markdown = ["", "![](opfs://img1.png)", '[녹음](opfs://r.webm "moss-audio")'].join(
-      "\n",
-    );
+    const markdown = [
+      "",
+      "![](opfs://img1.png)",
+      "",
+      '[녹음](opfs://r.webm "moss-audio")',
+    ].join("\n");
     expect(firstBlockIsImage(markdown)).toBe(true);
   });
 
   it("첫 문단이 일반 텍스트면 false", () => {
-    const markdown = ["첫 줄 텍스트", "![](opfs://img1.png)"].join("\n");
+    const markdown = ["첫 줄 텍스트", "", "![](opfs://img1.png)"].join("\n");
     expect(firstBlockIsImage(markdown)).toBe(false);
   });
 
   it("첫 문단이 이미지 아닌 다른 블록이면 false", () => {
-    const markdown = ['[녹음](opfs://r.webm "moss-audio")', "![](opfs://img1.png)"].join(
+    const markdown = ['[녹음](opfs://r.webm "moss-audio")', "", "![](opfs://img1.png)"].join(
       "\n",
     );
     expect(firstBlockIsImage(markdown)).toBe(false);
@@ -150,6 +175,11 @@ describe("firstBlockIsImage", () => {
 
   it("빈 본문은 false", () => {
     expect(firstBlockIsImage("")).toBe(false);
+  });
+
+  it("2단계 리뷰 P1-5: 첫 문단이 빈 줄 없이 다음 줄과 이어지면(소프트 브레이크) false", () => {
+    const markdown = ["![](opfs://img1.png)", "다음 줄과 소프트 브레이크로 묶임"].join("\n");
+    expect(firstBlockIsImage(markdown)).toBe(false);
   });
 });
 

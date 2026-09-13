@@ -67,3 +67,17 @@
   다른 수단이 없음) 수행하지 못했다. 사람이 실브라우저에서 스크린샷 붙여넣기 1회, PDF 드롭 1회,
   새로고침 후 메모 유지를 확인해 주길 권한다.
 
+**2단계 리뷰 반영**:
+- 파일 블록 "열기"(사용자 결정, `blockView.ts`의 `shouldOpenFileInNewTab`): PDF·이미지(svg 제외)·
+  오디오·text/plain만 새 탭(`window.open`), 그 외(html·svg·기타)는 `<a download>`로 강제 다운로드
+  (파일명은 블록 라벨 그대로) — svg·html은 스크립트를 담을 수 있어 새 탭 열람 대신 다운로드를
+  강제한다. 파일 본체 MIME을 저장하지 않으므로 파일명 확장자로 판정한다(한계 — 확장자를 속인
+  업로드는 오탐 가능, n10에서 필요하면 실제 저장 시 MIME도 같이 기록하도록 확장).
+- 한도·지원 형식은 `state/attachmentLimits.ts`로 단일화했다(`imagePaste.ts`·`BlockMenu.tsx`·
+  `canvasCapture.ts` 공유). `canvasCapture.ts`의 한국어 하드코딩 토스트를 `capture.canvas.*` i18n
+  키로 옮겼다.
+- 시스템 보드 다중 파일 드롭 시 "새 보드로 승격" 토스트를 파일마다가 아니라 드롭 배치당 1번으로
+  묶었다(`Canvas.tsx` `onCanvasDrop`) — 액션은 그 배치에서 만든 카드 전체를 한 번에 승격한다.
+- OG 메타 비동기 갱신이 사용자의 그 사이 편집을 덮어쓰지 않도록, 도착 시점 카드 content가 삽입
+  직후 값과 같을 때만 `setContent`를 호출하도록 가드를 추가했다(`Canvas.tsx` onPaste).
+

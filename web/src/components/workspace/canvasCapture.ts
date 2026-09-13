@@ -10,26 +10,25 @@
 import { makeAttachmentFilename, putBlob } from "@/state/db/opfs";
 import { serializeBlock } from "@/state/blocks";
 import { useToasts } from "@/state/notifications";
+// FEAT-sticky-redesign 2단계 리뷰 P1-6 — 한도·지원 형식은 attachmentLimits.ts가 유일한
+// 출처(imagePaste.ts·BlockMenu.tsx와 공유). MAX_FILE_BYTES는 기존 이름을 유지한 채
+// MAX_ATTACHMENT_BYTES를 재노출한다(호출부 하위 호환).
+import {
+  MAX_ATTACHMENT_BYTES,
+  MAX_DROP_FILES,
+  MAX_IMAGE_BYTES,
+  SUPPORTED_IMAGE_TYPES,
+} from "@/state/attachmentLimits";
+import { t } from "@/i18n";
 
-/** [[FEAT-memo-image-paste]]와 동일 한도(spec §4). */
-export const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
-/** 파일·녹음 블록 한도(spec §4 경계 조건). */
-export const MAX_FILE_BYTES = 50 * 1024 * 1024;
-/** 한 번에 떨어뜨릴 수 있는 파일 개수(spec §4 경계 조건). */
-export const MAX_DROP_FILES = 20;
+export { MAX_IMAGE_BYTES, MAX_DROP_FILES };
+/** 파일·녹음 블록 한도(spec §4 경계 조건). 이전 이름(MAX_FILE_BYTES) 유지. */
+export const MAX_FILE_BYTES = MAX_ATTACHMENT_BYTES;
 /** 여러 파일을 놓았을 때 메모끼리 겹치지 않게 비켜 쌓는 간격(px, spec §4). */
 export const DROP_STACK_OFFSET_PX = 24;
 
-const SUPPORTED_IMAGE_TYPES = new Set([
-  "image/png",
-  "image/jpeg",
-  "image/gif",
-  "image/webp",
-  "image/svg+xml",
-]);
-
-function warn(title: string): void {
-  useToasts.getState().push({ tone: "warn", title });
+function warn(title: string, body?: string): void {
+  useToasts.getState().push({ tone: "warn", title, body });
 }
 
 /** 클립보드 이벤트에서 image MIME 파일을 모은다. files 우선, 없으면 items. */
@@ -66,12 +65,12 @@ export function extractFilesFromDrop(event: DragEvent): File[] {
  */
 export async function storeImageBlock(file: File): Promise<string | null> {
   if (!SUPPORTED_IMAGE_TYPES.has(file.type)) {
-    warn(`지원하지 않는 이미지 형식이에요: ${file.type || "알 수 없음"}`);
+    warn(t("capture.canvas.imageUnsupported", { type: file.type || t("capture.canvas.unknownType") }));
     return null;
   }
   if (file.size > MAX_IMAGE_BYTES) {
     const mb = Math.round(MAX_IMAGE_BYTES / (1024 * 1024));
-    warn(`이미지가 너무 커요 (최대 ${mb}MB).`);
+    warn(t("capture.canvas.imageTooBig", { mb }));
     return null;
   }
   try {
@@ -79,7 +78,7 @@ export async function storeImageBlock(file: File): Promise<string | null> {
     return serializeBlock({ type: "image", ref: storageRef });
   } catch (err) {
     console.warn("canvasCapture: 이미지 저장 실패", err);
-    warn("이미지를 저장하지 못했어요.");
+    warn(t("capture.canvas.saveImageFailed"));
     return null;
   }
 }
@@ -91,7 +90,7 @@ export async function storeImageBlock(file: File): Promise<string | null> {
 export async function storeFileBlock(file: File): Promise<string | null> {
   if (file.size > MAX_FILE_BYTES) {
     const mb = Math.round(MAX_FILE_BYTES / (1024 * 1024));
-    warn(`파일이 너무 커요 (최대 ${mb}MB).`);
+    warn(t("capture.canvas.fileTooBig", { mb }));
     return null;
   }
   try {
@@ -102,20 +101,19 @@ export async function storeFileBlock(file: File): Promise<string | null> {
     return serializeBlock({
       type: "file",
       ref: storageRef,
-      filename: file.name || "파일",
+      filename: file.name || t("capture.canvas.unnamedFile"),
     });
   } catch (err) {
     console.warn("canvasCapture: 파일 저장 실패", err);
-    warn("파일을 저장하지 못했어요.");
+    warn(t("capture.canvas.saveFileFailed"));
     return null;
   }
 }
 
 /** 20개 초과 드롭 시 토스트. */
 export function warnDropLimitExceeded(droppedCount: number): void {
-  useToasts.getState().push({
-    tone: "warn",
-    title: `한 번에 놓을 수 있는 파일은 ${MAX_DROP_FILES}개까지예요.`,
-    body: `${droppedCount - MAX_DROP_FILES}개는 건너뛰었어요.`,
-  });
+  warn(
+    t("capture.canvas.dropLimitTitle", { max: MAX_DROP_FILES }),
+    t("capture.canvas.dropLimitBody", { count: droppedCount - MAX_DROP_FILES }),
+  );
 }

@@ -212,6 +212,17 @@
       "summaryPlaceholder": "설명",
       "loading": "미리보기 가져오는 중…",
       "fetchFailed": "미리보기를 가져오지 못했어요"
+    },
+    "canvas": {
+      "imageUnsupported": "지원하지 않는 이미지 형식이에요: {type}",
+      "unknownType": "알 수 없음",
+      "imageTooBig": "이미지가 너무 커요 (최대 {mb}MB).",
+      "fileTooBig": "파일이 너무 커요 (최대 {mb}MB).",
+      "saveImageFailed": "이미지를 저장하지 못했어요.",
+      "saveFileFailed": "파일을 저장하지 못했어요.",
+      "unnamedFile": "파일",
+      "dropLimitTitle": "한 번에 놓을 수 있는 파일은 {max}개까지예요.",
+      "dropLimitBody": "{count}개는 건너뛰었어요."
     }
   },
   "cards": {

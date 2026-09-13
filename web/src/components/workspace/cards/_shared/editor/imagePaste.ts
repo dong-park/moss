@@ -29,21 +29,11 @@ import {
   toStorageRef,
 } from "@/state/db/opfsRef";
 import { useToasts } from "@/state/notifications";
+// FEAT-sticky-redesign 2단계 리뷰 P1-6 — 한도·지원 형식은 state/attachmentLimits.ts가
+// 유일한 출처(BlockMenu.tsx·canvasCapture.ts와 공유). 로직은 그대로, import만 바뀐다.
+import { MAX_IMAGE_BYTES, SUPPORTED_IMAGE_TYPES } from "@/state/attachmentLimits";
 
 import type { PasteHandler } from "./extensions";
-
-
-/** 초과 시 토스트 경고 후 무시(AC-5). */
-const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10MB
-
-/** 인라인 삽입을 허용하는 이미지 타입. 그 외는 경고 후 무시(AC-5). */
-const SUPPORTED_IMAGE_TYPES = new Set([
-  "image/png",
-  "image/jpeg",
-  "image/gif",
-  "image/webp",
-  "image/svg+xml",
-]);
 
 /* ── 참조 스킴 변환 ─────────────────────────────────────────── */
 

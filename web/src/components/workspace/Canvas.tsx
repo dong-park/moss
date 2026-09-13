@@ -211,10 +211,15 @@ export function Canvas() {
       setEditing(null);
       setContent(id, block);
       // OG 메타는 비동기로 채운다. 실패해도 url만으로 블록 유지.
+      // 2단계 리뷰 P2: 도착 시점에 사용자가 이미 내용을 편집했다면(방금 심은
+      // 블록과 다르면) 덮어쓰지 않는다 — 레이스로 사용자 편집을 지우는 사고 방지.
       void fetchLinkPreview(url).then((meta) => {
         if (!meta) return;
         const withTitle = serializeBlock({ type: "link", url, title: meta.title });
-        if (withTitle) setContent(id, withTitle);
+        if (!withTitle) return;
+        const current = useWorkspace.getState().cards.find((c) => c.id === id)?.content;
+        if (current !== block) return;
+        setContent(id, withTitle);
       });
     };
     window.addEventListener("paste", onPaste);
@@ -251,6 +256,9 @@ export function Canvas() {
 
     void (async () => {
       let i = 0;
+      // 2단계 리뷰 P2: 시스템 보드에 여러 파일을 떨어뜨려도 "새 보드로 승격" 토스트는
+      // 파일마다가 아니라 이 드롭 배치당 1번만 — 만든 카드 id를 모아뒀다가 한 번에.
+      const createdOnSystemBoard: string[] = [];
       for (const file of accepted) {
         const block = file.type.startsWith("image/")
           ? await storeImageBlock(file)
@@ -265,20 +273,23 @@ export function Canvas() {
         setEditing(null);
         setContent(id, block);
         if (useWorkspace.getState().currentBoardId === SYSTEM_BOARD_ID) {
-          pushToast({
-            tone: "calm",
-            title: t("workspace.system.drop.toastTitle"),
-            body: t("workspace.system.drop.toastBody"),
-            duration: 6000,
-            action: {
-              label: t("workspace.system.drop.newBoard"),
-              onClick: async () => {
-                await promoteCardToNewBoard(id);
-              },
-            },
-          });
+          createdOnSystemBoard.push(id);
         }
         i += 1;
+      }
+      if (createdOnSystemBoard.length > 0) {
+        pushToast({
+          tone: "calm",
+          title: t("workspace.system.drop.toastTitle"),
+          body: t("workspace.system.drop.toastBody"),
+          duration: 6000,
+          action: {
+            label: t("workspace.system.drop.newBoard"),
+            onClick: async () => {
+              await Promise.all(createdOnSystemBoard.map((cid) => promoteCardToNewBoard(cid)));
+            },
+          },
+        });
       }
     })();
   };
