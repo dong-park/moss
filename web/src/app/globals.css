@@ -289,15 +289,20 @@ body {
 }
 
 /* ─────────────────────────────────────────────────────────────
- * 읽기 전용(미리보기) 메모 — 링크/이미지 비활성화.
+ * 읽기 전용(미리보기) 메모 — 링크 비활성화.
  * 편집 중이 아닌 카드(EditorRegion aria-readonly="true")에서는 본문 안의
- * 링크·이미지를 클릭해도 이동/열기가 일어나지 않게 한다. pointer-events:none이라
- * 클릭이 카드 프레임으로 통과 → 카드 자체 확대/이동/크기조절·더블클릭 편집 진입만
+ * 링크를 클릭해도 이동이 일어나지 않게 한다. pointer-events:none이라 클릭이
+ * 카드 프레임으로 통과 → 카드 자체 확대/이동/크기조절·더블클릭 편집 진입만
  * 동작. 편집 모드(aria-readonly="false")와 펼치기 모달은 영향 없음.
  * (정적 전역 규칙 — EditorRegion의 hoistable <style> dedup 영향을 받지 않음.)
+ *
+ * FEAT-sticky-redesign n5: img는 이 규칙에서 뺐다 — 앞면(readonly)에서 이미지를
+ * 누르면 메모 창이 열려야 한다(AC-8). text/Content.tsx의 onFrontClick이
+ * `closest("img, [data-moss-block]")`로 클릭을 잡으려면 img 자체가 히트돼야
+ * 하므로 pointer-events를 막으면 안 된다(img는 href가 없어 눌러도 이동은
+ * 어차피 없다 — 링크만 막을 이유가 있었다).
  * ───────────────────────────────────────────────────────────── */
-[data-memo-editor][aria-readonly="true"] .ProseMirror a,
-[data-memo-editor][aria-readonly="true"] .ProseMirror img {
+[data-memo-editor][aria-readonly="true"] .ProseMirror a {
   pointer-events: none;
 }
 

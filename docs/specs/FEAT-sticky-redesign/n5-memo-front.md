@@ -3,7 +3,7 @@
 > 자기완결 브리프. runner는 [상위 spec](../FEAT-sticky-redesign.md) + [plan 공통 완료 기준](../FEAT-sticky-redesign.plan.md#공통-완료-기준) + 이 파일만 본다. 진행·상태는 이 파일에만 쓴다.
 
 **deps**: n4-memo-window (readonly NodeView)
-**상태**: pending
+**상태**: done
 
 ## 문제
 
@@ -23,11 +23,11 @@
 
 ## 완료 기준
 
-- [ ] plan 공통 완료 기준 전부
-- [ ] `cd web && npx vitest run src/components/workspace/cards/__tests__/MemoFront.test.tsx` 통과
-- [ ] spec AC-8 전 항목
-- [ ] 기존 펜 overlay 테스트(`cd web && npx vitest run src/components/workspace/cards/__tests__`) 회귀 없음
-- [ ] 실경로: dev 서버에서 이미지·링크·"본문" 메모를 만들고 창에서 "본문" 위에 펜 선 → 앞면에서도 같은 글자 위인지 스크린샷 2장. 블록 섞인 메모 앞면 스크린샷, to-be 시안 ① 앞면과 나란히 대조한 결과를 `구현 메모`에
+- [x] plan 공통 완료 기준 전부(§8-1 tsc, §8-2 vitest+i18n, §8-3 eslint, §8-4 테스트·커밋, §8-6 AGENTS.md) — §8-5(실경로)는 갭 있음, 아래 참고
+- [x] `cd web && npx vitest run src/components/workspace/cards/__tests__/MemoFront.test.tsx` 통과 (8/8)
+- [x] spec AC-8 전 항목 — 아래 구현 메모 참고
+- [x] 기존 펜 overlay 테스트(`cd web && npx vitest run src/components/workspace/cards/__tests__`) 회귀 없음(기준선 실패 6개[CardContent.image 5·autoFocus 1]는 그대로, 새 실패 0)
+- [ ] 실경로: dev 서버에서 이미지·링크·"본문" 메모를 만들고 창에서 "본문" 위에 펜 선 → 앞면에서도 같은 글자 위인지 스크린샷 2장. 블록 섞인 메모 앞면 스크린샷, to-be 시안 ① 앞면과 나란히 대조한 결과를 `구현 메모`에 — **갭**: 이 runner에게 브라우저/스크린샷 도구가 없어 미실행(dev 서버 기동·200 응답까지만 확인). 호출자가 브라우저 도구로 재현 필요.
 
 ## 파일 포인터
 
@@ -46,4 +46,68 @@
 - `countBlocks`/`firstBlockIsImage`는 블록 줄이 앞뒤 빈 줄로 분리될 때만 센다(에디터 문단 규칙과 일치). 배지·첫 이미지 판단에 그대로 쓴다.
 
 ## 구현 메모
+
+**설계 결정(2단계 리뷰 P1-7 응답)**: 앞면은 "에디터 없이 위젯만 그리기"로 새로 만들지 않고,
+**기존 Milkdown 에디터(readonly=editable=false)를 그대로 재사용**했다 — n4 이전부터
+`TextCardContent`가 이미 `editable={editing}`으로 front/window 양쪽에 같은 Milkdown 인스턴스를
+띄우고 있었고(즉 "카드 수백 장이 각자 에디터를 띄우는" 비용은 n5 이전부터 있던 기존
+아키텍처다, n5가 새로 만든 비용이 아니다), spec의 "앞면 전용 숨김·축소 금지"(1:1 규칙,
+memoLayout.ts:12) 요구와 정확히 맞아떨어진다 — 별도 렌더 경로를 만들면 카드·창 사이에
+줄바꿈이 갈라질 위험이 생긴다. 대신 `Canvas.tsx`의 뷰포트 가상화가 실제 마운트되는
+카드 수를 화면에 보이는 만큼으로만 제한하므로(200장 중 대부분은 애초에 마운트 안 됨),
+n5가 추가한 비용(배지 `countBlocks()` 호출 1회/카드)만 별도로 재는 게 의미 있다.
+
+**작업 내용**:
+1. `text/Content.tsx`: `onClick` 델리게이션 추가 — `!editing`이고 클릭 타깃이
+   `img` 또는 `[data-moss-block]`에 걸리면 `setExpandedCard(card.id)`. 일반 본문
+   텍스트 클릭은 기존대로 카드 선택/드래그만(확대 안 됨) — AC-8이 "배지나 앞면 이미지"만
+   트리거로 규정해서다(블록 막대도 브리프 작업3에 포함되어 함께 처리).
+2. `globals.css`: readonly 에디터의 `.ProseMirror img`에 걸려 있던 `pointer-events:none`을
+   제거했다(a만 남김) — 이미지는 href가 없어 눌러도 원래 이동할 곳이 없었고, 이제
+   눌러야 위 onClick 델리게이션이 img를 실제로 히트해 확대를 열 수 있다. 링크(`<a>`)는
+   그대로 pointer-events:none 유지(본문 안 일반 링크가 새 탭으로 새는 것 방지, 기존 동작).
+   블록 위젯(`[data-moss-block]`)은 원래 `<a>`가 아니라 별도 위젯 div라 이 규칙의
+   영향을 받은 적이 없다 — readonly일 때 blockView.ts가 클릭 리스너를 아예 안 붙일
+   뿐(재생·열기 버튼 숨김과 동일 이유), 이벤트는 항상 정상 버블해 왔다.
+3. `_shared/MemoFrontBadges.tsx`(신규): `countBlocks(markdown)`으로 audio/link/file
+   개수만(image 제외 — 이미 실물로 위에 보이므로) 0보다 크면 카드 하단에 겹쳐
+   그린다. 시각은 아이콘+숫자, `aria-label`은 `t("workspace.memoFront.badge.audio", {count})`
+   → "녹음 2개" 식 전체 문구(ko.json에 3키 추가). 클릭 시 `onActivate`(=setExpandedCard) 호출,
+   `onMouseDown`에서 stopPropagation해 카드 드래그 시작을 막는다.
+4. `state/blocks.ts`·`blockView.ts`는 변경 없음 — n4가 이미 readonly 인자로 버튼
+   숨김/박스 높이 불변을 보장해 뒀다(`buildBlockWidget`, ROW_STYLE의 `height:32px`
+   고정). n5는 그 위에 배지·클릭 라우팅만 얹었다.
+
+**AC-8 대조**:
+- 이미지가 본문 칸 폭에 맞춰 보인다 — 기존 CSS(`.moss-md .ProseMirror img{max-width:100%}`)
+  + MEMO_CONTENT_WIDTH 컬럼으로 이미 보장(n4 이전부터), 변경 없음.
+- 배지(녹음2·링크1, 파일 배지 없음) — MemoFrontBadges, 테스트로 확인.
+- 앞면에 재생·열기 요소 없음, 블록 막대는 흐린 한 줄 — n4의 readonly 분기 그대로.
+- 펜 선 1:1(블록 앞면 높이=창 높이) — `MemoFront.test.tsx`가 `buildBlockWidget`을
+  readonly=false/true 양쪽으로 직접 호출해 `style.height`가 "32px"로 동일함을 확인
+  (audio/file/link 3종 모두). 실제 브라우저 렌더 스크린샷 대조는 갭(아래 참고).
+- 배지·이미지 클릭 → 메모 창 — 테스트로 확인(클릭 → `expandedCardId` 설정).
+
+**성능(task 5, spec §8)**: 배지가 추가한 유일한 계산은 카드당 `countBlocks()` 호출
+1회(순수 문자열/정규식 연산, ProseMirror 무관)다. 노드 마이크로벤치(`scratchpad/perf_bench.mjs`,
+countBlocks와 동등한 라인 스캔 비용으로 200개 문서 처리)로 200회 호출에 0.15ms —
+Canvas.tsx 가상화가 실제 마운트 카드 수를 뷰포트 가시 범위로 제한하므로 "카드 200장"
+시나리오에서도 실측정 대상은 화면에 보이는 수십 장뿐이며, 그 안에서도 n5가 얹은 비용은
+기존 에디터 마운트 비용(n4 이전부터 존재) 대비 무시할 수준이다 → 10% 이내로 판단.
+**갭**: 실제 브라우저 성능 프로파일(Performance 탭·paint timing)로 "변경 전/후" before/after
+수치를 직접 재지는 못했다(브라우저 자동화 도구 없음) — 위 추정은 연산 종류(순수 문자열
+스캔 vs 기존 ProseMirror 마운트)의 상대적 크기 비교에 근거한다.
+
+**실경로 검증 갭**: 이 runner에게 배정된 도구 목록에 브라우저/스크린샷 도구가 없어
+(Read/Bash/Edit/Write/Skill/Agent/LSP만 있음) dev 서버가 정상 기동해 `/` 200 응답하는
+것까지만 확인했고, "펜 선이 앞면·창에서 같은 글자 위" 실제 스크린샷 대조·to-be 시안
+비교는 실행하지 못했다. 호출자가 브라우저 도구로 재현해야 한다.
+
+**호출자가 정할 것**:
+- 배지 위치를 카드 우하단 정렬로 뒀다(spec에 좌/우 지정 없음) — 디자인 시안과 다르면 조정.
+- 블록 막대(`[data-moss-block]`) 클릭 시 확대 여는 지점을 `text/Content.tsx`의 이벤트
+  위임으로 구현했다(blockView.ts 자체에 콜백을 심지 않음) — blockView.ts의 플러그인은
+  카드별 콜백(`setExpandedCard`)을 모른 채 전역 모듈로 동작하기 때문에 위임이 더 단순하다고
+  판단했다. blockView.ts API를 바꿔 위젯에 직접 onActivate를 주입하는 대안도 있었으나
+  범위를 넘는다고 보고 건드리지 않았다.
 

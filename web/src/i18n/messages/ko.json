@@ -72,6 +72,13 @@
         "audioLabel": "녹음"
       }
     },
+    "memoFront": {
+      "badge": {
+        "audio": "녹음 {count}개",
+        "link": "링크 {count}개",
+        "file": "파일 {count}개"
+      }
+    },
     "boardPicker": {
       "label": "프로젝트 선택",
       "system": "머무는 생각",

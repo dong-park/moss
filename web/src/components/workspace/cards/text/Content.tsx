@@ -9,6 +9,7 @@ import { DrawingLayer } from "../_shared/DrawingLayer";
 import { MultitabConflictBanner } from "../_shared/MultitabConflictBanner"; // W8
 import { MEMO_CONTENT_WIDTH } from "../_shared/memoLayout";
 import { BacklinkPanel } from "../_shared/editor/BacklinkPanel"; // W5 위키링크 백링크 패널
+import { MemoFrontBadges } from "../_shared/MemoFrontBadges"; // FEAT-sticky-redesign n5
 import type { CardContentProps } from "../_shared/types";
 
 /* ─────────────────────────────────────────────────────────────
@@ -30,6 +31,14 @@ import type { CardContentProps } from "../_shared/types";
  * 마이그레이션 호환: 아직 v3 upgrade를 거치지 않은 카드(content가 CardBlock[]
  * JSON)는 blocksToMarkdown으로 표시 시점에 markdown으로 변환해 보여주고,
  * 사용자가 편집하면 onChange로 markdown이 저장돼 영구 마이그레이션된다.
+ *
+ * FEAT-sticky-redesign n5 — 앞면(editing=false)은 창과 같은 배치를 그대로
+ * 쓴다(1:1, 앞면 전용 숨김·축소 없음 — memoLayout.ts 규칙). 카드 박스가
+ * overflow:hidden으로 위부터 크롭할 뿐이다. blockView.ts가 readonly를 읽어
+ * 재생·열기 버튼만 숨기고 박스 높이는 창과 동일하게 유지한다(펜 좌표 1:1).
+ * 하단에는 링크·녹음·파일 개수 배지(MemoFrontBadges)를 겹쳐 올린다(이미지는
+ * 배지 대상 아님 — 실물로 위에 이미 보인다). 배지·이미지·블록 막대를 누르면
+ * 메모 창을 연다 — 일반 본문 텍스트 클릭은 카드 선택/드래그로 남긴다.
  * ───────────────────────────────────────────────────────────── */
 
 export function TextCardContent({
@@ -45,7 +54,20 @@ export function TextCardContent({
   const penTool = useWorkspace((s) => s.penTool);
   const penWidth = useWorkspace((s) => s.penWidth);
   const setOverlay = useWorkspace((s) => s.setOverlay);
+  const setExpandedCard = useWorkspace((s) => s.setExpandedCard);
   const showOverlay = penMode || !!card.overlay;
+
+  // FEAT-sticky-redesign n5: 앞면에서 이미지·블록 막대를 누르면 메모 창을 연다.
+  // globals.css가 readonly 에디터의 <a>는 여전히 pointer-events:none으로 막지만
+  // <img>는 n5에서 풀었다(클릭이 실제로 img를 히트해야 이 핸들러가 동작한다).
+  const onFrontClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (editing) return;
+    const target = e.target as HTMLElement;
+    if (target.closest("img, [data-moss-block]")) {
+      e.stopPropagation();
+      setExpandedCard(card.id);
+    }
+  };
 
   return (
     <div
@@ -57,6 +79,7 @@ export function TextCardContent({
         // 커져 카드가 auto-grow하면 포스트잇 비주얼도 같이 늘어난다.
         background: `url("/cards/v2/text.png") 0 0 / 100% 100% no-repeat`,
       }}
+      onClick={onFrontClick}
       onKeyDown={(e) => {
         // Milkdown(prose-mirror)에 ESC가 도달하면 onCommitEdit.
         if (e.key === "Escape") {
@@ -90,6 +113,9 @@ export function TextCardContent({
         )}
         <BacklinkPanel card={card} />
       </div>
+      {/* FEAT-sticky-redesign n5: 앞면 전용 배지 — 카드 박스 기준 하단에 겹쳐 올린다
+        * (컬럼이 아니라 이 바깥 relative 박스 기준이라야 카드 폭 안에 항상 붙는다). */}
+      {!editing && <MemoFrontBadges markdown={markdown} onActivate={() => setExpandedCard(card.id)} />}
       <MemoSaveGuard cardId={card.id} content={markdown} editing={editing} />
     </div>
   );
