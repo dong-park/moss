@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { I18nProvider } from "@/i18n/Provider";
-import { Dock, cardOccludesDock } from "@/components/workspace/Dock";
+import { Dock, cardOccludesDock, magnifiedSize } from "@/components/workspace/Dock";
 import { useWorkspace } from "@/state/workspace";
 import { useStorage } from "@/state/storage";
 import { resetDB } from "@/state/db/schema";
@@ -168,7 +168,20 @@ describe("AC-1: 독 버튼 5개 + 구분선 1개", () => {
 });
 
 describe("AC-2: 독 확대", () => {
-  it("hover한 아이콘은 72px로, 이웃은 40~72px 사이로 커진다", () => {
+  /** motion 스프링은 rAF로 DOM style을 쓴다 — 크기가 목표에 수렴할 때까지 기다린다. */
+  const widthOf = (btn: HTMLElement) =>
+    parseFloat((btn.querySelector("span") as HTMLElement).style.width);
+
+  it("magnifiedSize: 거리 0이면 72px, 멀수록 작아지고 90px 이상이면 40px", () => {
+    expect(magnifiedSize(0)).toBe(72);
+    expect(magnifiedSize(45)).toBeGreaterThan(40);
+    expect(magnifiedSize(45)).toBeLessThan(72);
+    expect(magnifiedSize(-45)).toBe(magnifiedSize(45));
+    expect(magnifiedSize(90)).toBe(40);
+    expect(magnifiedSize(Infinity)).toBe(40);
+  });
+
+  it("hover한 아이콘은 72px로, 이웃은 40~72px 사이로 커진다", async () => {
     mockRects();
     renderDock();
     const dock = screen.getByRole("toolbar");
@@ -179,15 +192,16 @@ describe("AC-2: 독 확대", () => {
     // 메모 버튼 중심(80+36=116)에 마우스.
     fireEvent.mouseMove(dock, { clientX: 116 });
 
-    const memoSpan = memoBtn.querySelector("span") as HTMLElement;
-    const neighborSpan = neighborBtn.querySelector("span") as HTMLElement;
-    expect(memoSpan.style.width).toBe("72px");
-    const neighborWidth = parseFloat(neighborSpan.style.width);
+    await waitFor(() => expect(Math.abs(widthOf(memoBtn) - 72)).toBeLessThan(1));
+    await waitFor(() => expect(Math.abs(widthOf(neighborBtn) - magnifiedSize(80))).toBeLessThan(1));
+    const neighborWidth = widthOf(neighborBtn);
     expect(neighborWidth).toBeGreaterThan(40);
     expect(neighborWidth).toBeLessThan(72);
+    // 가운데가 가장 크다.
+    expect(widthOf(memoBtn)).toBeGreaterThan(neighborWidth);
   });
 
-  it("마우스가 독을 벗어나면 40px로 돌아온다(200ms 이내 트랜지션)", () => {
+  it("마우스가 독을 벗어나면 40px로 돌아온다(200ms 이내)", async () => {
     mockRects();
     renderDock();
     const dock = screen.getByRole("toolbar");
@@ -195,17 +209,19 @@ describe("AC-2: 독 확대", () => {
 
     fireEvent.mouseEnter(dock);
     fireEvent.mouseMove(dock, { clientX: 116 });
-    fireEvent.mouseLeave(dock);
+    await waitFor(() => expect(Math.abs(widthOf(memoBtn) - 72)).toBeLessThan(1));
 
-    const memoSpan = memoBtn.querySelector("span") as HTMLElement;
-    expect(memoSpan.style.width).toBe("40px");
-    // transition duration은 200ms 미만이어야 "200ms 안 복귀"를 만족한다.
-    const match = /([\d.]+)ms/.exec(memoSpan.style.transition);
-    expect(match).toBeTruthy();
-    expect(Number(match![1])).toBeLessThan(200);
+    const left = performance.now();
+    fireEvent.mouseLeave(dock);
+    await waitFor(() => expect(Math.abs(widthOf(memoBtn) - 40)).toBeLessThan(1), {
+      timeout: 1000,
+      interval: 5,
+    });
+    // jsdom rAF 해상도(~16ms)를 감안해도 200ms 안.
+    expect(performance.now() - left).toBeLessThan(200);
   });
 
-  it("동작 줄이기(prefers-reduced-motion)면 확대 애니메이션을 끄고 이름표만 보여준다", () => {
+  it("동작 줄이기(prefers-reduced-motion)면 확대하지 않고 이름표만 보여준다", async () => {
     Object.defineProperty(window, "matchMedia", {
       writable: true,
       value: vi.fn().mockImplementation((query: string) => ({
@@ -221,9 +237,8 @@ describe("AC-2: 독 확대", () => {
     const memoBtn = screen.getByLabelText("메모");
     fireEvent.mouseEnter(dock);
     fireEvent.mouseMove(dock, { clientX: 116 });
-    const memoSpan = memoBtn.querySelector("span") as HTMLElement;
-    expect(memoSpan.style.width).toBe("40px");
-    expect(memoSpan.style.transition).toBe("none");
+    await new Promise((r) => setTimeout(r, 50));
+    expect(widthOf(memoBtn)).toBe(40);
     // 이름표는 그대로 보여야 한다.
     expect(memoBtn.textContent).toContain("메모");
   });

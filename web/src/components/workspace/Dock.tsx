@@ -3,6 +3,13 @@
 import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  motion,
+  useMotionValue,
+  useSpring,
+  useTransform,
+  type MotionValue,
+} from "motion/react";
+import {
   kindForTool,
   SYSTEM_BOARD_ID,
   useWorkspace,
@@ -52,13 +59,23 @@ const DOCK_ITEMS: DockItem[] = [
   { toolId: "signals", icon: "/icons/sidebar/signals-v2.png", labelKey: "signals.sidebar.label", draggable: false },
 ];
 
-/** id별 확대 크기 — hover 중이 아니면 빈 객체(모두 기본 40px). */
-interface Magnify {
-  sizes: Partial<Record<DockToolId, number>>;
-  hoveredId: DockToolId | null;
+/**
+ * 호버 성능: 확대는 motion(구 framer-motion)의 MotionValue로 DOM style에 직접 쓴다 —
+ * mousemove마다 React 렌더가 돌지 않는다(Build UI "Magnified Dock" 레시피 패턴).
+ * 스프링은 거의 임계 감쇠(ζ≈1.03, ω≈63rad/s) — 이탈 후 약 100ms 안에 40px로 복귀(AC-2 200ms).
+ */
+const MAGNIFY_SPRING = { mass: 0.1, stiffness: 400, damping: 13 } as const;
+
+/** 버튼 중심과 커서 거리(px) → 아이콘 크기(px). 거리 0이면 72, MAGNIFY_SPREAD 이상이면 40. */
+export function magnifiedSize(distance: number): number {
+  const base = layout.dock.iconBase;
+  const hover = layout.dock.iconHover;
+  if (!Number.isFinite(distance)) return base;
+  const tt = Math.max(0, 1 - Math.abs(distance) / MAGNIFY_SPREAD);
+  return base + (hover - base) * tt;
 }
 
-const NO_MAGNIFY: Magnify = { sizes: {}, hoveredId: null };
+type Centers = Partial<Record<DockToolId, number>>;
 
 /**
  * 2단계 리뷰 P1-2: 카드 하나가 독 화면 영역(dockRect)과 겹치는지 순수 함수로
@@ -140,22 +157,36 @@ export function Dock({
       : false,
   );
   const [dockHover, setDockHover] = useState(false);
-  const [magnify, setMagnify] = useState<Magnify>(NO_MAGNIFY);
+  // 이름표를 보여줄 아이콘 — 바뀔 때만 setState(렌더). 크기는 아래 MotionValue가 맡는다.
+  const [hoveredId, setHoveredId] = useState<DockToolId | null>(null);
+  const hoveredRef = useRef<DockToolId | null>(null);
+  /** 커서 x(화면 좌표). 독 밖·확대 꺼짐이면 Infinity → 모든 아이콘 기본 크기. */
+  const mouseX = useMotionValue(Infinity);
+  /** 버튼별 "평상시(확대 전) 레이아웃" 중심 x — enter·첫 move 때만 측정해 캐시한다. */
+  const centers = useMotionValue<Centers>({});
+  const centersValidRef = useRef(false);
+  /** 버튼별 현재 크기 MotionValue — 측정 시 확대분을 빼 평상시 좌표로 되돌리는 데 쓴다. */
+  const sizeValuesRef = useRef<Partial<Record<DockToolId, MotionValue<number>>>>({});
   const [occluded, setOccluded] = useState(false);
   // 2단계 리뷰 P1-1: 독 실제 렌더 폭(레이아웃 토큰은 근사치일 뿐 — 버튼 슬롯이
   // hover로 커지면 실제 폭도 달라진다). 가운데 정렬·툴바 회피는 이 실측값을 쓴다.
   const [dockWidth, setDockWidth] = useState<number>(layout.dock.width);
-  // 확대 중에는 폭 실측을 반영하지 않는다 — 커진 폭으로 가운데를 다시 잡으면 독이
-  // 커서 아래에서 옆으로 밀려 hover 대상이 바뀌고 확대가 출렁인다. 확대가 끝나 줄어들면
-  // ResizeObserver가 다시 불려 기본 폭으로 맞춰진다.
-  const magnifyingRef = useRef(false);
+  // 확대 중에도 가운데 정렬 기준은 "평상시 폭"이다 — 커진 폭으로 가운데를 다시 잡으면
+  // 독이 커서 아래에서 옆으로 밀려 hover 대상이 바뀌고 확대가 출렁인다. 실측 폭에서
+  // 버튼들의 확대분(현재 크기 - 40)을 빼 평상시 폭을 구한다(확대·복귀 스프링 도중에도 left 고정).
+  const restExtra = () => {
+    let extra = 0;
+    for (const mv of Object.values(sizeValuesRef.current)) {
+      if (mv) extra += mv.get() - layout.dock.iconBase;
+    }
+    return extra;
+  };
 
   /* ─ 화면 폭 추적 — 360px 미만이면 확대를 끈다 ─ */
   useEffect(() => {
     const onResize = () => {
-      // 재심사 P1: 터치 탭은 mousemove만 합성하고 mouseleave가 안 온다 → 확대 표시가
-      // 남으면 폭 실측이 영구 스킵된다. 레이아웃이 바뀌는 시점에 확대 상태를 푼다.
-      magnifyingRef.current = false;
+      // 레이아웃이 바뀌면 캐시한 버튼 중심은 무효 — 다음 move에서 다시 잰다.
+      centersValidRef.current = false;
       setCanvasWidth(window.innerWidth);
     };
     window.addEventListener("resize", onResize);
@@ -180,9 +211,10 @@ export function Dock({
       return;
     }
     const ro = new ResizeObserver((entries) => {
-      if (magnifyingRef.current) return;
       const w = entries[0]?.contentRect.width;
-      if (w) setDockWidth(w);
+      if (!w) return;
+      // 0.5px 단위로 반올림 — 스프링 도중 소수점 흔들림으로 setState가 반복되지 않게.
+      setDockWidth(Math.round((w - restExtra()) * 2) / 2);
     });
     ro.observe(el);
     return () => ro.disconnect();
@@ -238,53 +270,71 @@ export function Dock({
     // 독 위치(따라서 dockRect)가 바뀌는 계기 — 시그널스 열림/닫힘, 캔버스 폭 변화.
   }, [signalsOpen, effectiveCanvasWidth, dockWidth]);
 
-  /** 맥 독 확대 — 이웃 아이콘과의 거리에 따라 40~72px 사이로 보간한다. 이벤트 핸들러에서만 DOM을 측정한다. */
   /**
+   * 맥 독 확대 — 버튼 중심(평상시 레이아웃 기준)을 한 번 재서 캐시한다.
    * dockRef 아래 [data-dock-id] 버튼들을 이벤트 핸들러 안에서만 조회한다(렌더 중 ref
-   * 접근 금지 — react-hooks/refs). 개별 버튼에 ref를 따로 걸지 않고 data 속성으로 식별.
+   * 접근 금지 — react-hooks/refs). 확대 도중 다시 재더라도 앞 버튼들의 확대분을 빼
+   * 평상시 좌표로 되돌리므로 커서↔확대 피드백 출렁임이 없다.
    */
-  const computeMagnify = useCallback(
-    (clientX: number): Magnify => {
-      if (!hoverTrackingEnabled || !dockRef.current) return NO_MAGNIFY;
-      const base = layout.dock.iconBase;
-      const hover = layout.dock.iconHover;
-      const sizes: Partial<Record<DockToolId, number>> = {};
-      let hoveredId: DockToolId | null = null;
-      let bestDistance = Infinity;
-      const buttons = dockRef.current.querySelectorAll<HTMLButtonElement>("button[data-dock-id]");
-      buttons.forEach((btn) => {
-        const id = btn.dataset.dockId as DockToolId;
-        const rect = btn.getBoundingClientRect();
-        const center = rect.left + rect.width / 2;
-        const distance = Math.abs(clientX - center);
-        if (sizingEnabled) {
-          const tt = Math.max(0, 1 - distance / MAGNIFY_SPREAD);
-          sizes[id] = base + (hover - base) * tt;
-        }
-        if (distance < bestDistance) {
-          bestDistance = distance;
-          hoveredId = id;
-        }
-      });
-      return { sizes, hoveredId: bestDistance <= LABEL_THRESHOLD ? hoveredId : null };
-    },
-    [hoverTrackingEnabled, sizingEnabled],
-  );
+  const measureCenters = () => {
+    const dockEl = dockRef.current;
+    if (!dockEl) return;
+    const base = layout.dock.iconBase;
+    const next: Centers = {};
+    let shift = 0;
+    dockEl.querySelectorAll<HTMLButtonElement>("button[data-dock-id]").forEach((btn) => {
+      const id = btn.dataset.dockId as DockToolId;
+      const rect = btn.getBoundingClientRect();
+      const extra = (sizeValuesRef.current[id]?.get() ?? base) - base;
+      next[id] = rect.left + rect.width / 2 - shift - extra / 2;
+      shift += extra;
+    });
+    centers.set(next);
+    centersValidRef.current = true;
+  };
 
-  // 시그널스 패널 토글로 독 위치가 바뀔 때도 확대 상태를 푼다(위 onResize와 같은 이유).
+  const registerSize = useCallback((id: DockToolId, mv: MotionValue<number> | null) => {
+    if (mv) sizeValuesRef.current[id] = mv;
+    else delete sizeValuesRef.current[id];
+  }, []);
+
+  // 시그널스 패널 토글·독 위치 변화 때도 캐시한 중심을 버린다(위 onResize와 같은 이유).
   useEffect(() => {
-    magnifyingRef.current = false;
-  }, [signalsOpen]);
+    centersValidRef.current = false;
+  }, [signalsOpen, effectiveCanvasWidth, dockWidth]);
+
+  // 확대가 꺼지면(reduced-motion 전환·좁은 캔버스) 커서 값을 치워 기본 크기로.
+  useEffect(() => {
+    if (!sizingEnabled) mouseX.set(Infinity);
+  }, [sizingEnabled, mouseX]);
 
   const handleDockMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    const next = computeMagnify(e.clientX);
-    magnifyingRef.current = Object.keys(next.sizes).length > 0;
-    setMagnify(next);
+    if (!hoverTrackingEnabled) return;
+    if (!centersValidRef.current) measureCenters();
+    // 크기: MotionValue만 갱신 — React 렌더 없음.
+    if (sizingEnabled) mouseX.set(e.clientX);
+    // 이름표: 가장 가까운 아이콘이 LABEL_THRESHOLD 안이면 그 아이콘. 바뀔 때만 렌더.
+    let best: DockToolId | null = null;
+    let bestDistance = Infinity;
+    for (const [id, c] of Object.entries(centers.get()) as [DockToolId, number][]) {
+      const d = Math.abs(e.clientX - c);
+      if (d < bestDistance) {
+        bestDistance = d;
+        best = id;
+      }
+    }
+    const nextHovered = bestDistance <= LABEL_THRESHOLD ? best : null;
+    // 같은 값이면 setState 자체를 부르지 않는다(React의 같은 값 bail-out도 한 번은 렌더를 돌 수 있다).
+    if (hoveredRef.current !== nextHovered) {
+      hoveredRef.current = nextHovered;
+      setHoveredId(nextHovered);
+    }
   };
   const handleDockMouseLeave = () => {
-    magnifyingRef.current = false;
+    mouseX.set(Infinity);
     setDockHover(false);
-    setMagnify(NO_MAGNIFY);
+    hoveredRef.current = null;
+    setHoveredId(null);
   };
 
   /**
@@ -383,12 +433,16 @@ export function Dock({
       ref={dockRef}
       role="toolbar"
       aria-label={t("workspace.dock.label")}
-      onMouseEnter={() => setDockHover(true)}
+      onMouseEnter={() => {
+        centersValidRef.current = false;
+        setDockHover(true);
+      }}
       onMouseLeave={handleDockMouseLeave}
       onMouseMove={handleDockMouseMove}
       onTouchStart={() => {
-        // 터치에는 hover가 없다 — 합성 mousemove가 남긴 확대 상태를 쓰지 않는다.
-        magnifyingRef.current = false;
+        // 터치에는 hover가 없다 — 이전 합성 mousemove가 남긴 확대를 푼다.
+        mouseX.set(Infinity);
+        centersValidRef.current = false;
       }}
       className="fixed z-[var(--z-panel)] flex items-center gap-1 rounded-full px-3"
       style={{
@@ -406,8 +460,10 @@ export function Dock({
           key={item.toolId}
           item={item}
           label={LABELS[item.labelKey]}
-          size={magnify.sizes[item.toolId]}
-          showLabel={magnify.hoveredId === item.toolId}
+          mouseX={mouseX}
+          centers={centers}
+          registerSize={registerSize}
+          showLabel={hoveredId === item.toolId}
           reducedMotion={reducedMotion}
           onDragStart={(screenX, screenY) =>
             setDockDrag({ toolId: item.toolId as ToolId, screenX, screenY })
@@ -426,8 +482,10 @@ export function Dock({
       <DockButton
         item={DOCK_ITEMS[3]}
         label={LABELS[DOCK_ITEMS[3].labelKey]}
-        size={magnify.sizes.pen}
-        showLabel={magnify.hoveredId === "pen"}
+        mouseX={mouseX}
+        centers={centers}
+        registerSize={registerSize}
+        showLabel={hoveredId === "pen"}
         reducedMotion={reducedMotion}
         pressed={penMode}
         onClick={() => togglePenMode()}
@@ -436,8 +494,10 @@ export function Dock({
       <DockButton
         item={DOCK_ITEMS[4]}
         label={LABELS[DOCK_ITEMS[4].labelKey]}
-        size={magnify.sizes.signals}
-        showLabel={magnify.hoveredId === "signals"}
+        mouseX={mouseX}
+        centers={centers}
+        registerSize={registerSize}
+        showLabel={hoveredId === "signals"}
         reducedMotion={reducedMotion}
         onClick={() => onSignalsClick?.()}
       />
@@ -448,7 +508,9 @@ export function Dock({
 function DockButton({
   item,
   label,
-  size,
+  mouseX,
+  centers,
+  registerSize,
   showLabel,
   reducedMotion,
   pressed,
@@ -460,8 +522,11 @@ function DockButton({
 }: {
   item: DockItem;
   label: string;
-  /** 확대된 크기(px). undefined면 hover 중이 아님 — 기본 40px. */
-  size?: number;
+  /** 커서 x — Dock이 mousemove마다 set한다(렌더 없음). */
+  mouseX: MotionValue<number>;
+  /** 버튼별 평상시 중심 x 캐시. */
+  centers: MotionValue<Centers>;
+  registerSize: (id: DockToolId, mv: MotionValue<number> | null) => void;
   showLabel: boolean;
   reducedMotion: boolean;
   pressed?: boolean;
@@ -472,7 +537,19 @@ function DockButton({
   onClick: () => void;
 }) {
   const draggedRef = useRef(false);
-  const displaySize = size ?? layout.dock.iconBase;
+  const id = item.toolId;
+  // 목표 크기: 커서·중심 MotionValue에서 파생. 실제 크기: 스프링. 둘 다 React 렌더 밖에서 돈다.
+  const target = useTransform(() => {
+    const c = centers.get()[id];
+    return c === undefined ? layout.dock.iconBase : magnifiedSize(mouseX.get() - c);
+  });
+  const spring = useSpring(target, MAGNIFY_SPRING);
+  // 동작 줄이기면 스프링을 건너뛴다(확대 자체도 Dock이 꺼 두므로 늘 40px).
+  const size = reducedMotion ? target : spring;
+  useEffect(() => {
+    registerSize(id, size);
+    return () => registerSize(id, null);
+  }, [id, size, registerSize]);
 
   const handleMouseDown = (e: React.MouseEvent<HTMLButtonElement>) => {
     if (!onDragStart || e.button !== 0) return;
@@ -537,7 +614,7 @@ function DockButton({
   };
 
   return (
-    <button
+    <motion.button
       type="button"
       data-dock-id={item.toolId}
       onMouseDown={handleMouseDown}
@@ -549,17 +626,17 @@ function DockButton({
         // 2단계 리뷰 P1-1: 슬롯을 hover 크기(72px)로 고정하지 않는다 — 평상시
         // iconBase(40px)이고 hover 확대만큼만 늘어나야(맥 독처럼) 독 실제 폭이
         // layout.dock.width 근사치에 맞고 가운데 정렬이 어긋나지 않는다.
-        width: displaySize,
-        height: displaySize,
-        transition: reducedMotion ? "none" : "width 150ms ease, height 150ms ease",
+        // 호버 성능: width/height는 MotionValue — mousemove마다 React 렌더·CSS transition 없이
+        // motion이 rAF 한 번에 DOM style을 쓴다.
+        width: size,
+        height: size,
       }}
     >
-      <span
+      <motion.span
         className="relative flex items-center justify-center"
         style={{
-          width: displaySize,
-          height: displaySize,
-          transition: reducedMotion ? "none" : "width 150ms ease, height 150ms ease",
+          width: size,
+          height: size,
           filter: pressed
             ? "drop-shadow(0 4px 8px rgba(0,0,0,0.18))"
             : "drop-shadow(0 1px 2px rgba(0,0,0,0.08))",
@@ -575,12 +652,12 @@ function DockButton({
           draggable={false}
           className="select-none object-contain h-full w-full"
         />
-      </span>
+      </motion.span>
       {showLabel && (
         <span className="absolute -bottom-1 whitespace-nowrap text-[11px] leading-none text-text-muted">
           {label}
         </span>
       )}
-    </button>
+    </motion.button>
   );
 }

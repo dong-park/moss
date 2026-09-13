@@ -51,6 +51,7 @@
 - 완료. `Dock.tsx` 신규(독 버튼 5개: 메모판·메모·파일함 | 구분선 | 펜·시그널스), `Sidebar.tsx`·`SidebarDragPreview.tsx` 삭제, `DockDragPreview.tsx`로 대체(이름에 "Sidebar"가 남으면 완료 기준의 grep이 걸려 개명— 기능은 동일).
 - 독 드래그는 Sidebar.tsx와 동일하게 raw mouse event(mousedown/mousemove/mouseup)로 구현 — HTML5 dataTransfer API를 안 써서 Canvas.tsx의 OS 파일 드롭(n6, dataTransfer.types에 "Files")과 이벤트 자체가 겹치지 않는다. 충돌 방지를 위한 별도 분기 코드는 필요 없었다(둘이 서로 다른 이벤트 계열).
 - `CAPTURE_TOOLS`를 `["text"]`로 축소, `ToolId`에 `frame` 추가. Cmd+2~ 단축키는 대상이 없어 자동으로 no-op(useShortcuts.ts 무변경, idx>=length 가드가 이미 있었음). 관련 테스트(ac-capture.test.ts, useShortcuts.test.tsx) 업데이트.
+- 호버 성능: 라이브러리 `motion`(구 framer-motion, MIT, ^13.2.0) 도입 — mousemove마다 setState+버튼 5개 getBoundingClientRect+CSS width transition으로 매번 Dock 전체가 리렌더되던 것을 useMotionValue(커서 x)→useTransform(거리→40~72px)→useSpring으로 React 렌더 밖에서 DOM style에 직접 쓰게 바꿈(Build UI Magnified Dock 레시피 패턴). 버튼 중심은 enter·resize·signals 토글 후 첫 move에만 재서 캐시(확대분을 빼 평상시 좌표로), 이름표 대상이 바뀔 때만 렌더. jsdom mousemove 100회당 Dock 커밋 100→5(`Dock.perf.test.tsx`). react-spring도 MIT·React 19 호환이지만 레시피·공식 문서가 motion 쪽이 풍부해 선택.
 - hover 확대는 부모(Dock)가 `data-dock-id` 속성으로 각 버튼을 이벤트 핸들러 안에서만 조회해 40~72px로 보간(react-hooks/refs 린트 — 렌더 중 ref 접근 금지 대응). 이웃 아이콘 거리 falloff 90px, 라벨은 최근접 아이콘만.
 - 가림 판정(AC-5)은 카드 스크린 좌표(viewport 변환)와 독 DOM rect의 사각형 교차로 계산. frame(판) 카드 자체는 판정 대상에서 제외(판 위에 독이 겹쳐도 옅어지지 않음 — spec이 "메모"로 한정하진 않았으나 판은 배경 레이어라 배제, **호출자가 정할 것**).
 - 레이아웃 회피(줌 바·펜 툴바)는 실측 대신 RIGHT_TOOLBAR_RESERVED=210px 근사 상수로 구현 — 두 툴바 DOM을 직접 측정하지 않음. 픽셀 단위로 안 맞을 수 있음(**호출자가 정할 것**, 필요하면 실측 refs로 교체).
