@@ -3,7 +3,7 @@
 > 자기완결 브리프. runner는 [상위 spec](../FEAT-sticky-redesign.md) + [plan 공통 완료 기준](../FEAT-sticky-redesign.plan.md#공통-완료-기준) + 이 파일만 본다. 진행·상태는 이 파일에만 쓴다.
 
 **deps**: n2-blocks (serializeBlock)
-**상태**: pending
+**상태**: done
 
 ## 문제
 
@@ -25,10 +25,10 @@
 
 ## 완료 기준
 
-- [ ] plan 공통 완료 기준 전부
-- [ ] `cd web && npx vitest run src/components/workspace/__tests__/canvasCapture.test.tsx` 통과
-- [ ] spec AC-6·AC-7 전 항목 (spec §10 통합 테스트 "이미지 붙여넣기 뒤 notes에 text 행 1개와 이미지 블록")
-- [ ] 실경로: dev 서버에서 스크린샷 붙여넣기·PDF 드롭 후 새로고침해 메모 유지 확인, 결과를 `구현 메모`에
+- [x] plan 공통 완료 기준 전부
+- [x] `cd web && npx vitest run src/components/workspace/__tests__/canvasCapture.test.tsx` 통과
+- [x] spec AC-6·AC-7 전 항목 (spec §10 통합 테스트 "이미지 붙여넣기 뒤 notes에 text 행 1개와 이미지 블록")
+- [~] 실경로: dev 서버 기동·캔버스 로드는 확인. paste/drop 실조작은 갭(구현 메모 참고).
 
 ## 파일 포인터
 
@@ -42,4 +42,28 @@
 | `web/src/state/blocks.ts` | n2 산출물 |
 
 ## 구현 메모
+
+**상태**: done.
+
+- `web/src/components/workspace/canvasCapture.ts` 신규 — OPFS 저장(이미지 10MB·파일 50MB 한도) +
+  `state/blocks.ts`의 `serializeBlock`으로 블록 마크다운을 만드는 순수 헬퍼. `imagePaste.ts`(n4/n5 소유,
+  다른 노드가 동시 작업)는 건드리지 않고 같은 제한값만 독립적으로 반영했다.
+- `web/src/components/workspace/Canvas.tsx`:
+  - onPaste: 이미지 blob → `addCardAtViewportCenter("text", …)` + 이미지 블록 본문. URL 한 줄 →
+    `serializeBlock({type:"link", url})`가 null이면(허용 스킴 밖) 아무 것도 하지 않고 리턴 —
+    기존 일반 텍스트 붙여넣기 동작으로 떨어진다. null이 아니면 text 메모 + 링크 블록, OG 메타는
+    비동기로 title만 갱신.
+  - onCanvasDrop/onCanvasDragOver 신규 — 파일 드롭마다 이미지/파일 블록 든 text 메모 1개,
+    24px씩 비켜 쌓기, 20개 초과분은 토스트, 입력칸 포커스 시 무시. 시스템 보드 드롭은
+    `Sidebar.tryDrop`과 동일한 "새 보드로 승격" 토스트를 재사용.
+  - `addCardAt`/`workspace.ts`의 기존 시그니처는 바꾸지 않았다 — "text" 툴로 호출만 추가.
+- 테스트 `canvasCapture.test.tsx` 8개: PNG 붙여넣기(image 행 +0), URL 붙여넣기(link 행 +0),
+  포커스 중 무시(paste·drop 둘 다), PDF/이미지 드롭, 21개 드롭 제한, 시스템 보드 드롭 토스트.
+  jsdom에서 실제 clipboardData/dataTransfer를 defineProperty로 주입해 Canvas 전체를 렌더해
+  검증 — stub 직접 주입이 아니라 컴포넌트 결선까지 통과하는 실경로 테스트.
+- **갭**: dev 서버(`npx next dev -p 3106`)를 띄워 캔버스 로드는 확인했으나(`[data-canvas-root]`
+  대기 성공), 실제 스크린샷 붙여넣기·파일 드롭 조작은 이 워크트리 안에서 pharos in-pane 브라우저의
+  `browser eval`이 "worktree 격리" 안전장치로 차단되어(클립보드/DataTransfer 합성 이벤트를 보낼
+  다른 수단이 없음) 수행하지 못했다. 사람이 실브라우저에서 스크린샷 붙여넣기 1회, PDF 드롭 1회,
+  새로고침 후 메모 유지를 확인해 주길 권한다.
 

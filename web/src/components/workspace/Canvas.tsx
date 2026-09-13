@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useWorkspace, SYSTEM_BOARD_ID } from "@/state/workspace";
+import { useWorkspace, SYSTEM_BOARD_ID, widthForKind } from "@/state/workspace";
 import { useToasts } from "@/state/notifications";
 import { useT } from "@/i18n/Provider";
 import { DraggableCard } from "./DraggableCard";
@@ -12,11 +12,17 @@ import { PenModeHud } from "./PenModeHud";
 import { PenToolbar } from "./PenToolbar";
 import { MemoSearchLayer } from "./MemoSearchLayer";
 import { useVirtualizedCards } from "./useVirtualizedCards";
+import { fetchLinkPreview, isUrlOnly } from "@/state/cardContent";
+import { serializeBlock } from "@/state/blocks";
 import {
-  fetchLinkPreview,
-  isUrlOnly,
-  serializeLink,
-} from "@/state/cardContent";
+  DROP_STACK_OFFSET_PX,
+  MAX_DROP_FILES,
+  extractFilesFromDrop,
+  extractImageFilesFromClipboard,
+  storeFileBlock,
+  storeImageBlock,
+  warnDropLimitExceeded,
+} from "./canvasCapture";
 
 /** FEAT-home AC-2: 시스템 보드에서 빈 안내로 전환되는 메모 임계치. */
 const SYSTEM_EMPTY_THRESHOLD = 10;
@@ -80,6 +86,9 @@ export function Canvas() {
   const fitToCards = useWorkspace((s) => s.fitToCards);
   // 캔버스 붙여넣기 — clipboard가 URL만일 때 link 위젯을 바로 생성.
   const addCardAtViewportCenter = useWorkspace((s) => s.addCardAtViewportCenter);
+  // FEAT-sticky-redesign n6: 파일 드롭 — 놓은 좌표에 블록 든 메모를 만든다.
+  const addCardAt = useWorkspace((s) => s.addCardAt);
+  const promoteCardToNewBoard = useWorkspace((s) => s.promoteCardToNewBoard);
   const setContent = useWorkspace((s) => s.setContent);
   const setEditing = useWorkspace((s) => s.setEditing);
   // FEAT-markdown-memo-pen: 펜 모드 — 전역 커서 변경 + E/[/]/Esc 키.
@@ -157,34 +166,122 @@ export function Canvas() {
     });
   }, [cards.length, pushToast, t]);
 
-  /* ─ 캔버스 붙여넣기: clipboard가 "URL만"이면 link 위젯 카드를 바로 생성·채움 ─ */
+  /* ─ 캔버스 붙여넣기(FEAT-sticky-redesign n6, spec AC-6·AC-7):
+   *   - 클립보드에 이미지 blob이 있으면 이미지 블록 든 text 메모.
+   *   - clipboard가 "URL만"이면 링크 블록 든 text 메모.
+   *   image·link 종류 행은 늘리지 않는다 — 메모 한 종류 원칙(spec). */
   useEffect(() => {
+    const centerSize = () =>
+      canvasRect.width > 0 && canvasRect.height > 0
+        ? { width: canvasRect.width, height: canvasRect.height }
+        : undefined;
+
     const onPaste = (e: ClipboardEvent) => {
       // 입력 중(카드 편집 input·textarea·contenteditable)이면 기본 붙여넣기에 양보.
       const active = document.activeElement as HTMLElement | null;
       if (active?.matches("input, textarea, [contenteditable='true']")) return;
 
+      const imageFiles = extractImageFilesFromClipboard(e);
+      if (imageFiles.length > 0) {
+        e.preventDefault();
+        void (async () => {
+          for (const file of imageFiles) {
+            const block = await storeImageBlock(file);
+            if (!block) continue;
+            const id = addCardAtViewportCenter("text", centerSize());
+            setEditing(null);
+            setContent(id, block);
+          }
+        })();
+        return;
+      }
+
       const text = e.clipboardData?.getData("text/plain") ?? "";
       const url = text.trim();
       if (!isUrlOnly(url)) return;
 
+      const block = serializeBlock({ type: "link", url });
+      // 허용 스킴(http/https/mailto) 밖이면 null — 기존 일반 텍스트 붙여넣기로 떨어뜨린다
+      // (1단계 리뷰: javascript: 등 링크 저장형 XSS 차단, blocks.ts 참고).
+      if (!block) return;
+
       e.preventDefault();
-      const size =
-        canvasRect.width > 0 && canvasRect.height > 0
-          ? { width: canvasRect.width, height: canvasRect.height }
-          : undefined;
-      const id = addCardAtViewportCenter("link", size);
-      // 위젯(표시 형태)으로 바로 보이게 — 편집 모드 진입 없이 url만 채운다.
+      const id = addCardAtViewportCenter("text", centerSize());
+      // 위젯(표시 형태)으로 바로 보이게 — 편집 모드 진입 없이 링크 블록만 채운다.
       setEditing(null);
-      setContent(id, serializeLink({ url }));
-      // OG 메타는 비동기로 채운다. 실패해도 url만으로 카드 유지.
+      setContent(id, block);
+      // OG 메타는 비동기로 채운다. 실패해도 url만으로 블록 유지.
       void fetchLinkPreview(url).then((meta) => {
-        if (meta) setContent(id, serializeLink(meta));
+        if (!meta) return;
+        const withTitle = serializeBlock({ type: "link", url, title: meta.title });
+        if (withTitle) setContent(id, withTitle);
       });
     };
     window.addEventListener("paste", onPaste);
     return () => window.removeEventListener("paste", onPaste);
   }, [canvasRect, addCardAtViewportCenter, setContent, setEditing]);
+
+  /* ─ 캔버스 파일 드롭(FEAT-sticky-redesign n6, spec AC-6·AC-7·§4):
+   *   이미지 파일 → 이미지 블록, 그 외 → 파일 블록. 파일마다 메모 1개, 놓은
+   *   자리에서 24px씩 비켜 쌓는다. 최대 20개, 초과분 토스트.
+   *   시스템 보드에 놓으면 기존 사이드바 드롭 토스트("새 보드로 승격")와 같다. */
+  const onCanvasDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    if (!e.dataTransfer?.types.includes("Files")) return;
+    e.preventDefault();
+  };
+
+  const onCanvasDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    const active = document.activeElement as HTMLElement | null;
+    if (active?.matches("input, textarea, [contenteditable='true']")) return;
+
+    const files = extractFilesFromDrop(e.nativeEvent);
+    if (files.length === 0) return;
+    e.preventDefault();
+
+    const accepted = files.slice(0, MAX_DROP_FILES);
+    if (files.length > MAX_DROP_FILES) warnDropLimitExceeded(files.length);
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const sx = e.clientX - rect.left;
+    const sy = e.clientY - rect.top;
+    const v = useWorkspace.getState().viewport;
+    const cardW = widthForKind("text");
+    const baseWx = (sx - v.x) / v.scale - cardW / 2;
+    const baseWy = (sy - v.y) / v.scale - 20;
+
+    void (async () => {
+      let i = 0;
+      for (const file of accepted) {
+        const block = file.type.startsWith("image/")
+          ? await storeImageBlock(file)
+          : await storeFileBlock(file);
+        if (!block) {
+          i += 1;
+          continue;
+        }
+        const wx = baseWx + i * DROP_STACK_OFFSET_PX;
+        const wy = baseWy + i * DROP_STACK_OFFSET_PX;
+        const id = addCardAt("text", wx, wy);
+        setEditing(null);
+        setContent(id, block);
+        if (useWorkspace.getState().currentBoardId === SYSTEM_BOARD_ID) {
+          pushToast({
+            tone: "calm",
+            title: t("workspace.system.drop.toastTitle"),
+            body: t("workspace.system.drop.toastBody"),
+            duration: 6000,
+            action: {
+              label: t("workspace.system.drop.newBoard"),
+              onClick: async () => {
+                await promoteCardToNewBoard(id);
+              },
+            },
+          });
+        }
+        i += 1;
+      }
+    })();
+  };
 
   /* ─ Space + Delete/Backspace 키 처리 ─ */
   useEffect(() => {
@@ -417,6 +514,8 @@ export function Canvas() {
       ref={canvasRef}
       data-canvas-root="true"
       onMouseDown={onMouseDown}
+      onDragOver={onCanvasDragOver}
+      onDrop={onCanvasDrop}
       className={`relative h-full overflow-hidden bg-bg ${cursorClass}`}
       // FEAT-markdown-memo-pen: 펜 모드면 전역 커서를 펜으로(inline이 class를 덮음).
       style={penMode ? { cursor: PEN_CURSOR } : undefined}
