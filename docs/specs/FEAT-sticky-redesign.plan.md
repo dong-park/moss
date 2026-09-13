@@ -30,7 +30,7 @@
 5. **실경로 검증(green≠done)**: stub·직접 주입으로만 green이면 브리프 `구현 메모`에 갭을 적는다
 6. `web/AGENTS.md` 경고(Next 16 비표준)를 읽고 시작한다
 
-**기준선 (2026-09-13, b644c0d)**: `tsc` 통과. `vitest run` 717개 중 **7개가 이미 실패** — `Canvas.virtualization.test.tsx`(1), `CardContent.autoFocus.test.tsx`(image 1), `CardContent.image.test.tsx`(5). 공통 기준 2의 "전체 통과"는 이 7개를 뺀 나머지 기준이다. 새로 깨진 테스트가 0이어야 한다. 의존성은 `web/node_modules`(npm install로 설치, 레포 lockfile은 bun.lock — package-lock.json 커밋 금지).
+**기준선 (2026-09-13, b644c0d)**: `tsc` 통과. `vitest run` 717개 중 **7개가 이미 실패** — `Canvas.virtualization.test.tsx`(1), `CardContent.autoFocus.test.tsx`(image 1), `CardContent.image.test.tsx`(5). 공통 기준 2의 "전체 통과"는 이 7개를 뺀 나머지 기준이다. 새로 깨진 테스트가 0이어야 한다. 의존성은 `web/node_modules`(npm install로 설치, 레포 lockfile은 bun.lock — package-lock.json 커밋 금지). 워크트리에서 dev 서버가 필요하면 node_modules를 심링크하지 말고 `cp -Rc`(APFS 클론)로 복사한다 — Turbopack이 루트 밖 심링크를 거부한다(n9에서 확인).
 
 ## DAG
 
@@ -80,15 +80,15 @@ n9-naming ───────────────────────�
 
 | ID | 브리프 | deps | 상태 |
 |---|---|---|---|
-| n1 | [n1-db-v5.md](FEAT-sticky-redesign/n1-db-v5.md) | — | pending |
-| n2 | [n2-blocks.md](FEAT-sticky-redesign/n2-blocks.md) | — | pending |
+| n1 | [n1-db-v5.md](FEAT-sticky-redesign/n1-db-v5.md) | — | done |
+| n2 | [n2-blocks.md](FEAT-sticky-redesign/n2-blocks.md) | — | done |
 | n3 | [n3-migration.md](FEAT-sticky-redesign/n3-migration.md) | n1, n2 | pending |
 | n4 | [n4-memo-window.md](FEAT-sticky-redesign/n4-memo-window.md) | n2 | pending |
 | n5 | [n5-memo-front.md](FEAT-sticky-redesign/n5-memo-front.md) | n4 | pending |
 | n6 | [n6-canvas-capture.md](FEAT-sticky-redesign/n6-canvas-capture.md) | n2 | pending |
 | n7 | [n7-frames.md](FEAT-sticky-redesign/n7-frames.md) | n1 | pending |
 | n8 | [n8-dock.md](FEAT-sticky-redesign/n8-dock.md) | n7 | pending |
-| n9 | [n9-naming.md](FEAT-sticky-redesign/n9-naming.md) | — | pending |
+| n9 | [n9-naming.md](FEAT-sticky-redesign/n9-naming.md) | — | done |
 | n10 | [n10-finish.md](FEAT-sticky-redesign/n10-finish.md) | n3, n5, n6, n8, n9 | pending |
 
 ## 파킹 / 보류 로그

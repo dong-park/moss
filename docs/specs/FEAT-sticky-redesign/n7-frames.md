@@ -22,6 +22,7 @@
    - `resizeFrame`, `renameFrame`(1~40자, 빈 이름 → "새 메모판"), `deleteFrame`(속한 메모는 제자리, frameId만 해제).
    - 드롭 종료·판 드롭·판 리사이즈 시점에만 `resolveMembership` 호출(`DraggableCard.tsx` 드롭 종료 경로).
    - 파일함으로 메모 이동 시 frameId 해제.
+   - AI 임베딩 제외: `workspace.ts` `persistCard`의 `if (card.kind !== "board") enqueueEmbedRaw(...)`(n1 기준 804행 부근)에 `frame`도 제외. n1이 확인한 갭 — 484행 `isCaptureKind`는 임베딩 게이트가 아니었다. 테스트 1개.
 2. 새 `web/src/components/workspace/cards/frame/` — 렌더: 메모보다 낮은 z, 상단 이름표(더블클릭 편집), 빈 곳 드래그=이동, 모서리=리사이즈. 토큰은 `web/src/design/tokens.ts`.
 3. 테스트 `web/src/state/__tests__/frames.test.ts`: 중심점 안/밖/경계, 겹친 두 판, 판 이동 시 속한 메모만 같은 거리(spec §10), 중첩 불가(AC-12), 삭제 시 메모 유지, 리사이즈로 빠진 메모 해제. 성능: 메모 50개 판 이동 1프레임 < 16ms.
 
