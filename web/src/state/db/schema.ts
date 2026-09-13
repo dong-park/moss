@@ -1,6 +1,7 @@
 import Dexie, { type Table } from "dexie";
 import { migratedContent } from "../markdownMigration";
 import { blocksToMarkdown } from "../cardContent";
+import { migrateStickyV5 } from "./migrateStickyV5";
 
 /**
  * 카드 종류. spec FEAT-storage §5 정의.
@@ -203,13 +204,20 @@ export class MossDB extends Dexie {
       });
     // v4 (FEAT-subcanvas): boards에 parentBoardId 인덱스 추가 — 서브 캔버스 트리 조회용.
     // 기존 보드는 parentBoardId가 undefined(=루트)로 남는다. 데이터 modify 불필요.
-    this.version(4).stores({
+    const storesV4 = {
       ...stores,
       boards: "id, isSystem, lastOpenedAt, parentBoardId",
-    });
-    // FEAT-sticky-redesign: NoteKind "frame"·Note frameId/legacy는 비인덱스라 버전을
-    // 올리지 않는다. v5는 n3가 실제 이관 upgrade와 함께 선언한다 — no-op v5를 먼저
-    // 두면 이미 v5로 열린 DB에서 나중에 넣은 upgrade가 영영 돌지 않는다(리뷰 P1).
+    };
+    this.version(4).stores(storesV4);
+    // v5 (FEAT-sticky-redesign n3): image/link/audio/file/mindmap → 블록 든 text로
+    // 한 번 이관. stores 인덱스는 v4와 동일 — frame/frameId/legacy는 비인덱스.
+    // storesV4를 그대로 써야 한다 — 여기서 boards를 원래 stores로 되돌리면 Dexie가
+    // parentBoardId 인덱스를 다시 지워 SchemaError를 낸다(재심사에서 잡힌 회귀).
+    this.version(5)
+      .stores(storesV4)
+      .upgrade(async (tx) => {
+        await migrateStickyV5(tx);
+      });
   }
 }
 
