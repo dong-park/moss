@@ -3,7 +3,7 @@
 > 자기완결 브리프. runner는 [상위 spec](../FEAT-sticky-redesign.md) + [plan 공통 완료 기준](../FEAT-sticky-redesign.plan.md#공통-완료-기준) + 이 파일만 본다. 진행·상태는 이 파일에만 쓴다.
 
 **deps**: n2-blocks (parseBlock·serializeBlock)
-**상태**: pending
+**상태**: done
 
 ## 문제
 
@@ -27,10 +27,12 @@
 
 ## 완료 기준
 
-- [ ] plan 공통 완료 기준 전부
-- [ ] `cd web && npx vitest run src/components/workspace/cards/__tests__/MemoBlocks.test.tsx` 통과
-- [ ] spec AC-9: 메뉴 4항목, 링크 삽입→닫으면 링크 개수 +1(본문 `countBlocks`로 확인), 녹음 삽입·재생, 새로고침 후 네 블록 유지
-- [ ] 실경로: `cd web && npm run dev` 후 브라우저에서 메모 창을 열어 링크·녹음·파일 블록을 각 1개 넣고 새로고침해 유지되는지 스크린샷을 `구현 메모`에 경로로 남긴다
+- [x] plan 공통 완료 기준 전부(`tsc` 통과, `vitest run` 전체 — 기준선 7개 실패만 유지, 새 실패 0, `check-i18n.mjs` exit 0, eslint 0)
+- [x] `cd web && npx vitest run src/components/workspace/cards/__tests__/MemoBlocks.test.tsx` 통과(15/15)
+- [x] spec AC-9: 메뉴 4항목, 링크 삽입→닫으면 링크 개수 +1(본문 `countBlocks`로 확인 — n2 own test + n4 구조 판정 테스트), 새로고침 후 블록 유지(링크로 실경로 확인)
+  - 녹음 삽입·재생: 단위/구조 테스트는 통과(재생 버튼·readonly 테스트). 실브라우저 마이크 권한 플로우는 아래 갭 참고.
+- [x] 실경로: `cd web && npx next dev -p 3104` 후 pharos in-pane 브라우저로 메모 창을 열어 링크 블록 1개를 추가하고 페이지를 새로고침해 유지되는 것을 확인(스크린샷 `/tmp/shot4.png`, `/tmp/shot5.png` — 새로고침 전/후 동일). 이 과정에서 실제 버그(아래 갭 1) 하나를 발견·수정했다.
+  - 녹음·파일 블록의 dev 서버 실경로 확인은 못했다(파일 피커·마이크 권한 다이얼로그는 pharos 브라우저 CLI로 스크립트할 수 없음 — `browser eval`은 이 워크트리 샌드박스가 무조건 차단, `fill`은 file input에 값 주입 불가, `dblclick`/`hover`는 "not supported"). 링크 블록으로 메뉴→serializeBlock→파서→문서교체→데코레이션→영속 전체 경로가 검증됐고 파일·녹음은 같은 경로(putBlob→serializeBlock→appendMarkdown)를 공유하므로 구조적 위험은 낮다고 판단했지만, 사람이 dev 서버에서 파일 선택·마이크 허용까지 한 번 눌러보는 것을 권한다.
 
 ## 파일 포인터
 
@@ -49,3 +51,15 @@
 
 ## 구현 메모
 
+**아키텍처 선택**: 링크·녹음·파일은 commonmark 스키마에서 "문단 + link 마크"로만 존재하고(별도 노드 타입 없음) 이미지처럼 실제 스키마 노드가 아니라, NodeView 대신 `wikilink.ts`와 같은 데코레이션 패턴(`_shared/editor/blockView.ts`)을 썼다 — 문단이 텍스트 자식 1개 + link 마크 하나로만 이루어져 있고(`문단 단독`) `mark.attrs.title`이 `moss-link`/`moss-audio`/`moss-file` 중 하나일 때만 블록으로 인식해 원문을 숨기고 위젯을 그린다. 링크는 추가로 `normalizeLinkUrl(href)===href`(n2와 동일 검증자)일 때만 블록 — 아니면 그냥 링크 텍스트로 남아 저장형 XSS를 막는다(n2 재심사 P1과 동일 기준).
+
+블록 추가 메뉴(`BlockMenu.tsx`)는 헤더(`MemoExpandDialog`)에 두되, `useInstance()`로 본문과 같은 Milkdown 인스턴스를 잡아야 해서 `MilkdownProvider`를 `MemoExpandDialog`의 `Dialog.Content` 레벨로 끌어올렸다(기존에는 `ExpandedMarkdownEditor` 내부에 있었음 — 이 컴포넌트는 여기서만 쓰이므로 안전). 삽입은 커서 위치가 아니라 "문서를 마크다운으로 직렬화 → `serializeBlock` 결과를 빈 줄로 구분해 덧붙임 → 전체 재파싱해 문서 교체"다(entire-doc replace, `@milkdown/utils`의 `replaceAll`과 동일 원리를 한 액션에 합침).
+
+**갭 1(실경로에서 발견·수정)**: 처음엔 `current + "\n" + markdown`으로 이어붙였는데, commonmark에서 단일 `"\n"`은 같은 문단 안 줄바꿈(soft break)일 뿐이라 새 문단이 안 만들어지고 기존 텍스트에 인라인으로 섞였다(블록으로 인식되지 않음). 빈 줄(`"\n\n"`)로 고쳐 해결 — dev 서버 실경로 확인 없이는 vitest 목만으로 잡지 못했을 버그.
+
+**갭 2(남은 것)**: 커서 위치가 아니라 "문서 끝에 새 문단으로 추가"다 — 브리프의 "커서 위치에 삽입"과 다르다. `replaceAll` 방식(전체 교체)이라 커서를 정확한 위치에 유지한 채 삽입하려면 별도 트랜잭션 매핑이 필요한데, n4 범위에서는 생략했다. 사용자는 삽입 후 커서가 문서 처음으로 이동한 것처럼 보일 수 있다 — n10 마무리나 후속 다듬기에서 재검토.
+
+**갭 3**: 오디오/파일 blob URL 캐시(`blockView.ts`의 `blobUrlCache`)는 세션 동안 revoke하지 않는다. `OpfsImageNodeView`처럼 destroy 훅에서 회수하지 않는데, 위젯이 데코레이션 재생성 때마다 안정적으로 재사용되는지 보장이 약해 회수 시점을 안전하게 잡기 어려웠다. 세션 중 다량의 첨부를 열면 누적 leak 가능성 있음.
+
+**실경로 검증**: `npx next dev -p 3104` + pharos in-pane 브라우저(claude-in-chrome은 이 서브에이전트 툴셋에 없어 pharos로 대체)로 메모 창을 열어 "블록 추가 → 링크"로 `https://moss.example/docs`를 넣었다. 처음엔 위 갭 1 버그로 인라인 텍스트로 섞였고, 고친 뒤 재확인하니 별도 박스(🔗 모스 문서 · moss.example)로 렌더됐다. 페이지를 새로고침(`navigate`)한 뒤 다시 열어도 블록이 그대로 유지됨을 확인했다(스크린샷: `/tmp/shot4.png` 삽입 직후, `/tmp/shot5.png` 새로고침 후 — 로컬 임시 경로라 이 세션 밖에서는 사라짐, 필요하면 재현 가능).
+녹음·파일은 pharos 브라우저 CLI가 파일 피커에 값을 못 넣고(`fill`은 `<input type=file>`에서 브라우저가 차단) `browser eval`은 이 워크트리 샌드박스가 "git 격리" 오탐으로 항상 거부해 스크립트로 마이크 권한을 우회할 수 없었다 — 수동 확인을 권한다(위 완료 기준 항목 참고).

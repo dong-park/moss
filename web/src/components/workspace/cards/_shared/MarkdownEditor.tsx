@@ -166,8 +166,11 @@ export function ExpandedMarkdownEditor({
       </div>
     );
   }
+  // FEAT-sticky-redesign n4: MilkdownProvider는 호출자(MemoExpandDialog)가
+  // Dialog.Content 전체(헤더 블록메뉴 + 이 본문)를 감싸며 한 번만 제공한다 —
+  // 헤더의 BlockMenu가 useInstance()로 같은 에디터 인스턴스를 잡아야 하기 때문.
   return (
-    <MilkdownProvider>
+    <>
       <MarkdownToolbar />
       <div className="min-h-0 flex-1 overflow-auto">
         {/* 카드 컬럼과 동일: 고정 폭 + padding 6/9 + text-[13px]. 펜 정렬의 핵심. */}
@@ -179,6 +182,6 @@ export function ExpandedMarkdownEditor({
           {overlay}
         </div>
       </div>
-    </MilkdownProvider>
+    </>
   );
 }
