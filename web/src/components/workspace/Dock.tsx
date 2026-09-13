@@ -129,6 +129,10 @@ export function Dock({
   // 2단계 리뷰 P1-1: 독 실제 렌더 폭(레이아웃 토큰은 근사치일 뿐 — 버튼 슬롯이
   // hover로 커지면 실제 폭도 달라진다). 가운데 정렬·툴바 회피는 이 실측값을 쓴다.
   const [dockWidth, setDockWidth] = useState<number>(layout.dock.width);
+  // 확대 중에는 폭 실측을 반영하지 않는다 — 커진 폭으로 가운데를 다시 잡으면 독이
+  // 커서 아래에서 옆으로 밀려 hover 대상이 바뀌고 확대가 출렁인다. 확대가 끝나 줄어들면
+  // ResizeObserver가 다시 불려 기본 폭으로 맞춰진다.
+  const magnifyingRef = useRef(false);
 
   /* ─ 화면 폭 추적 — 360px 미만이면 확대를 끈다 ─ */
   useEffect(() => {
@@ -155,6 +159,7 @@ export function Dock({
       return;
     }
     const ro = new ResizeObserver((entries) => {
+      if (magnifyingRef.current) return;
       const w = entries[0]?.contentRect.width;
       if (w) setDockWidth(w);
     });
@@ -233,9 +238,12 @@ export function Dock({
   );
 
   const handleDockMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    setMagnify(computeMagnify(e.clientX));
+    const next = computeMagnify(e.clientX);
+    magnifyingRef.current = Object.keys(next.sizes).length > 0;
+    setMagnify(next);
   };
   const handleDockMouseLeave = () => {
+    magnifyingRef.current = false;
     setDockHover(false);
     setMagnify(NO_MAGNIFY);
   };
