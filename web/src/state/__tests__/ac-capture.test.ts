@@ -155,16 +155,9 @@ describe("AC-4: 입력 후 즉시 영속 (디바운스 후)", () => {
 });
 
 describe("AC-5는 useClipboardWatch.test.tsx에서 검증 (시나리오 8개)", () => {
-  it("CAPTURE_TOOLS 순서 = 사이드바 노출 순서 = 단축키 인덱스", () => {
-    // FEAT-markdown-memo-pen: checklist/code/highlight→마크다운 메모 통합,
-    // handwriting→펜 모드 대체. 캡처 6종.
-    expect(CAPTURE_TOOLS).toEqual([
-      "text",
-      "image",
-      "link",
-      "audio",
-      "mindmap",
-      "file",
-    ]);
+  it("CAPTURE_TOOLS 순서 = 독 노출 순서 = 단축키 인덱스", () => {
+    // FEAT-sticky-redesign: 메모는 한 종류(text)로 통합 — image·link·audio·mindmap·file은
+    // 메모 안 블록이 되어 독립 캡처 도구에서 제외(6→1종).
+    expect(CAPTURE_TOOLS).toEqual(["text"]);
   });
 });

@@ -10,8 +10,9 @@ import {
 } from "@/state/workspace";
 
 /**
- * 사이드바 도구를 끄는 동안 커서를 따라다니는 카드 프리뷰.
- * 사이드바의 onMouseDown이 setSidebarDrag로 좌표를 갱신하면 본 컴포넌트가 즉시 따라간다.
+ * FEAT-sticky-redesign n8: 독(Dock) 도구를 끄는 동안 커서를 따라다니는 카드 프리뷰.
+ * (구 SidebarDragPreview — 사이드바가 걷히고 독으로 이관되며 이름을 바꿨다.)
+ * Dock의 onMouseDown이 setSidebarDrag로 좌표를 갱신하면 본 컴포넌트가 즉시 따라간다.
  * 표면은 실제 카드 surface와 동일한 PNG(`/cards/v2/{kind}.png`)를 사용 — drop 후 생성되는
  * 카드와 같은 비주얼이라 "그걸로 만들어지는 컴포넌트가 마우스 끝에 달려있다"는 의도와 일치.
  */
@@ -19,7 +20,7 @@ const PREVIEW_SCALE = 0.55;
 const OFFSET_X = 14;
 const OFFSET_Y = 14;
 
-export function SidebarDragPreview() {
+export function DockDragPreview() {
   const drag = useWorkspace((s) => s.sidebarDrag);
   if (!drag) return null;
 
