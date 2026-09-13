@@ -1,12 +1,16 @@
 "use client";
 
+import Image from "next/image";
 import { useWorkspace } from "@/state/workspace";
 import { useT } from "@/i18n/Provider";
 import type { Card } from "@/state/workspace";
 
 /* ─────────────────────────────────────────────────────────────
- * FEAT-subcanvas — "함" 카드. 더블클릭하면 boardRef 서브 캔버스로 진입한다.
- * 전용 PNG가 없어 폴더/함 톤의 종이 카드로 렌더(📦 + 이름 + "카드 N개").
+ * FEAT-subcanvas / FEAT-sticky-redesign — "파일함" 카드. 더블클릭하면 boardRef
+ * 서브 캔버스로 진입한다. n10 브라우저 결함6: 옛 디자인(📦 이모지 + "이름 없는
+ * 캔버스")이 시안(파스텔 블루 파일박스 아이콘 + "파일함" 문구)과 달랐다 —
+ * 독과 같은 filebox 아이콘(`/icons/dock/filebox.png`)으로 바꾸고 이름 폴백을
+ * "이름 없는 파일함"으로 바꾼다. 카드 개수 표시(cards.board.count)는 그대로.
  * 더블클릭 진입은 DraggableCard.onDoubleClick이 담당한다.
  * ───────────────────────────────────────────────────────────── */
 
@@ -33,9 +37,16 @@ export function BoardCardContent({ card }: { card: Card }) {
           : "var(--shadow-card)",
       }}
     >
-      <span className="text-[34px] leading-none" aria-hidden>
-        📦
-      </span>
+      <Image
+        src="/icons/dock/filebox.png"
+        alt=""
+        aria-hidden="true"
+        width={88}
+        height={88}
+        unoptimized
+        draggable={false}
+        className="mx-auto h-9 w-9 select-none object-contain"
+      />
       <span className="mt-2 truncate text-[13px] font-semibold text-text">
         {name}
       </span>

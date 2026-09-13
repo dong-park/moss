@@ -27,6 +27,10 @@
   /* color — card (살짝 warm 톤으로 종이 느낌) */
   --color-card-base: #fdfcfa;
   --color-card-edge: #f5f3ef; /* 카드 하단 그라데이션 끝 */
+  /* n10 브라우저 결함7: 메모 앞면이 흰 종이(/cards/v2/text.png)였다 —
+   * spec §7 "메모 앞면은 노란 포스트잇 모양을 유지한다"와 달랐다. */
+  --color-postit: #fbe9a0;
+  --color-postit-edge: #f3d878; /* 포스트잇 하단 그라데이션 끝 */
   --color-card-comment: #eef1f6;
   --color-card-comment-edge: #e7eaf0;
   --color-card-yellow: #fbf5d8;
@@ -139,6 +143,15 @@
     var(--color-card-comment) 60%,
     var(--color-card-comment-edge) 100%
   );
+
+  /* n10 브라우저 결함7: 메모 앞면 — 따뜻한 노랑 포스트잇 + 오른쪽 아래 접힘 그림자. */
+  --gradient-postit: linear-gradient(
+    165deg,
+    var(--color-postit) 0%,
+    var(--color-postit) 80%,
+    var(--color-postit-edge) 100%
+  );
+  --shadow-postit-fold: inset -16px -16px 14px -12px rgba(120, 96, 30, 0.35);
 }
 
 /* ─────────────────────────────────────────────────────────────

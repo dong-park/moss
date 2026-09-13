@@ -29,13 +29,14 @@ vi.mock("@/components/workspace/cards/_shared/MarkdownEditor", () => ({
  * 이전 블록 스택을 Milkdown으로 교체. content는 markdown 문자열로 의미 변경 —
  * onChange 페이로드를 그대로 검증한다(parseBlocks 불필요). */
 describe("TextCardContent · UX", () => {
-  it("render — 카드 표면 background에 cards/v2/text.png 포함", () => {
+  it("render — 카드 표면이 노란 포스트잇 그라디언트다(n10 결함7 — 흰 종이 PNG 아님)", () => {
     const { container } = renderCard("text", {
       content: "안녕",
       editing: false,
     });
     const root = container.firstChild as HTMLElement;
-    expect(root.style.background).toContain("cards/v2/text.png");
+    expect(root.style.background).toContain("gradient-postit");
+    expect(root.style.background).not.toContain("text.png");
   });
 
   it("edit-mode — editing=true에서 에디터가 마운트된다", () => {

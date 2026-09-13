@@ -432,17 +432,16 @@ export function DraggableCard({ card }: { card: Card }) {
         height: card.height,
         // FEAT-sticky-redesign 2단계 리뷰 P1: 메모판은 선택돼도 항상 메모보다
         // 아래층이어야 한다(이전엔 selected일 때 20이 돼 위층 메모를 가렸다).
-        // 선택 표시는 outline(아래)으로만 하고, z는 미선택(1)/선택(2) 두 단계로만
-        // 살짝 올려 겹친 판끼리의 선택 강조만 챙긴다 — 메모(10/40)는 항상 그 위.
-        zIndex: lifted
-          ? 40
-          : card.kind === "frame"
-            ? selected
-              ? 2
-              : 1
-            : selected
-              ? 20
-              : 10,
+        // 선택 표시는 outline으로만 한다.
+        //
+        // n10 브라우저 결함8: frame에 명시적 z-index(1~2)를 주면 그 자체로 새
+        // 스택 컨텍스트가 생겨, 안에 있는 이름표(FrameCardContent)가 아무리 높은
+        // z-index를 받아도 그 컨텍스트를 못 벗어난다 — 판 위쪽에 메모가 붙으면
+        // 이름표가 항상 가려졌다. z-index를 아예 안 주면(auto) frame은 스택
+        // 컨텍스트를 새로 만들지 않고, 이름표의 z-index가 world-layer 레벨에서
+        // 메모(10/20/40)와 직접 비교된다 — 그리고 z-index:auto인 frame 자신은
+        // 항상 양수 z-index를 가진 메모보다 아래로 그려진다(§7 요구 그대로 유지).
+        zIndex: lifted ? 40 : card.kind === "frame" ? undefined : selected ? 20 : 10,
         outline: selected ? "2px solid rgba(79, 124, 243, 0.45)" : "none",
         outlineOffset: 2,
         borderRadius: 8,

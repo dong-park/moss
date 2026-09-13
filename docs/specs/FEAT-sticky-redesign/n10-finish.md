@@ -3,7 +3,7 @@
 > 자기완결 브리프. runner는 [상위 spec](../FEAT-sticky-redesign.md) + [plan 공통 완료 기준](../FEAT-sticky-redesign.plan.md#공통-완료-기준) + 이 파일만 본다. 진행·상태는 이 파일에만 쓴다.
 
 **deps**: n3-fresh-db, n5-memo-front, n6-canvas-capture, n8-dock, n9-naming
-**상태**: 코드 정리 완료, 브라우저 검증 대기 (작업 1·2·6만 runner가 수행 — 작업 3·4·5의 수동 시나리오·시안 대조는 호출자가 실브라우저에서 진행)
+**상태**: 코드 정리 완료 + 브라우저 검증 결함 1~8 수정 완료(runner). 결함9(좁은 창 토스트가 독을 가림)·10(콘솔 Script error/NotFoundError)은 이번 실행 범위 밖(호출자 지시 없음) — 미해결로 남음.
 
 ## 문제
 
@@ -146,3 +146,54 @@ npm run start` 프로덕션 빌드로 직접 확인해야 한다. 완료 기준�
 스크린샷: scratchpad `shot-B-fresh.png`, `shot-A1-created.png`, `shot-A2.png`, `shot-A4-link.png`, `shot-A5-reload.png`, `shot-A6-filedrop.png`, `shot-A7-pen.png`(세션 임시 경로).
 
 **후속으로 남긴 결정**: `state/bridge/mossBridge.ts`가 옛 kind를 만드는 6곳은 `moss/mcp` 계약과 함께 바꿔야 해 후속 작업으로 둔다(사용자 결정 2026-09-13).
+
+### 결함 1~8 수정 (2026-09-13, runner)
+
+결함마다 수정 전 실패하던 jsdom 테스트를 먼저 추가해 재현을 확인한 뒤 고쳤다(전체
+스위트는 기준선 `Canvas.virtualization` 1건만 남기고 통과, 새 실패 0).
+
+1. **AC-5 독 가림 안 옅어짐** — `Dock.tsx`의 recompute가 store 좌표(viewport
+   수식, `cardOccludesDock`)로만 판정해 캔버스 루트 오프셋·실제 렌더 높이(auto-grow)
+   차이를 못 잡았다. 실제 렌더된 카드 DOM(`[data-card-id]`)의 `getBoundingClientRect()`를
+   우선 쓰고, DOM에 없을 때만 수식으로 폴백(canvasOffset 인자 추가)하도록 고쳤다.
+2. **앞면 읽기 전용 블록에 열기 버튼** — 두 겹 버그. (a) ProseMirror는
+   `plugin.view(view)` 훅보다 먼저 초기 `decorations()`를 계산해, `currentView`가
+   아직 null이라 readonly가 항상 false로 굳었다 → `view()` 훅에서 view가 붙은 뒤
+   `queueMicrotask`로 `view.updateState(view.state)`를 강제해 재계산시켰다.
+   (b) 그래도 `WidgetType.eq()`가 위젯 `key`(내용 기반, readonly 무관)만 같으면
+   "같은 위젯"으로 보고 옛 DOM(버튼 있음)을 재사용했다 → key에 readonly를
+   포함시켜(`-ro`/`-rw` 접미사) 전환 시 위젯이 다시 만들어지게 했다.
+3. **블록 막대가 카드 밖으로 튀어나옴** — `DraggableCard.tsx` 루트의
+   `overflow:hidden`이 `card.height !== undefined`일 때만 켜졌다 — auto-grow
+   카드(height 미지정)는 크롭이 꺼져 고정폭 720px 블록 막대가 그대로 보였다.
+   overflow는 height 유무와 무관하게 항상 hidden으로 바꿨다.
+4. **독 Enter/가운데 생성이 겹침** — `addCardAtViewportCenter`·
+   `addFrameAtViewportCenter`·`createSubcanvasAtViewportCenter`가 항상 같은
+   화면 중앙 월드 좌표를 계산했다 — 연달아 누르면 정확히 같은 자리에 쌓였다.
+   `avoidCenterOverlap` 헬퍼로 그 자리에 이미 카드가 있으면 spec §4와 같은
+   24px 간격으로 대각선 비켜 놓게 했다.
+5. **독이 모달 오버레이 위에 그려짐** — `Dialog.Overlay`가 `z-[var(--z-overlay)]`를
+   썼는데 `--z-overlay` CSS 변수가 어디에도 정의돼 있지 않아 invalid value →
+   z-index auto로 떨어져 독(`--z-panel:40`, position:fixed)에 밀렸다.
+   globals.css·tokens.ts에 `--z-overlay: 45`(panel과 modal 사이)를 추가했다.
+6. **파일함 카드 옛 디자인** — `board/Content.tsx`의 📦 이모지 + "이름 없는
+   캔버스"를 filebox 아이콘(`/icons/dock/filebox.png`) + "이름 없는 파일함"으로
+   바꿨다(카드 개수 표시는 그대로).
+7. **메모 앞면이 흰 종이** — `text/Content.tsx`의 `/cards/v2/text.png` 배경을
+   `--gradient-postit`(따뜻한 노랑 그라디언트) + `--shadow-postit-fold`(오른쪽
+   아래 접힘 그림자) CSS로 바꿨다. 메모 창(모달) 배경은 손대지 않았다 — spec
+   §7은 "메모 앞면"(카드)만 포스트잇으로 못박고, 창은 문서 편집 화면이라
+   중립 배경이 가독성에 유리하다고 판단(spec에 창 배경 요구 없음).
+8. **판 이름표가 멤버 메모에 가려짐** — frame의 `DraggableCard` 루트가
+   `z-index:1~2`를 명시해 그 자체로 스택 컨텍스트를 만들었다 — 안의 이름표가
+   아무리 높은 z-index를 받아도 그 컨텍스트를 못 벗어나 메모(z:10~40)에 항상
+   가려졌다. frame 루트의 z-index를 아예 안 주도록(auto) 바꿔 스택 컨텍스트
+   생성을 막고, 이름표 자신에 `zIndex:15`(미선택 메모 10보다 높음)를 줘
+   world-layer 레벨에서 직접 비교되게 했다. frame은 z-index:auto라 여전히
+   양수 z-index 메모보다 항상 아래로 그려진다(§7 요구 유지). 겹친 두 frame
+   사이의 미세한 선택 우선순위(이전 1/2 구분)는 이 과정에서 빠졌다 — DOM
+   순서(생성 순)로 대체되며, 이를 검증하는 테스트는 없었다.
+
+**손대지 않은 것(결함9·10, 범위 밖)**: 좁은 창 토스트가 독을 가리는 문제,
+콘솔 `Script error.`/`NotFoundError` — 원인 미확인 상태로 보고서에 남아 있고
+이번 지시(결함 1~8)에 포함되지 않아 그대로 뒀다.

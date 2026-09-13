@@ -97,6 +97,25 @@ describe("DraggableCard · frame z-index", () => {
   });
 });
 
+describe("n10 브라우저 결함8: 판 이름표가 멤버 메모에 가려지지 않는다", () => {
+  it("판 루트는 z-index를 명시하지 않는다(스택 컨텍스트를 만들지 않아야 이름표가 그 밖으로 나갈 수 있다)", () => {
+    const f = frameCard();
+    seed([f]);
+    const { container } = wrap(<DraggableCard card={f} />);
+    const elF = root(container, "f1");
+    expect(elF.style.zIndex).toBe("");
+  });
+
+  it("이름표 자신의 z-index는 미선택 메모(10)보다 높다", () => {
+    const f = frameCard();
+    seed([f]);
+    const { container } = wrap(<DraggableCard card={f} />);
+    const label = container.querySelector('[role="button"]') as HTMLElement;
+    expect(label).toBeTruthy();
+    expect(Number(label.style.zIndex)).toBeGreaterThan(10);
+  });
+});
+
 describe("DraggableCard · 다중 선택 드래그에 frame이 섞이면 보드 전체 재판정", () => {
   it("frame+멤버를 함께 옮기면, 선택 안 된 카드도 새 위치 기준으로 소속이 갱신된다", () => {
     const f = frameCard({ id: "f1", x: 0, y: 0, width: 320, height: 220 });

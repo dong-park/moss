@@ -54,6 +54,13 @@ export function FrameCardContent({ card }: { card: Card }) {
           // 이름표 위에서는 드래그(카드 이동)를 시작하지 않는다 — 더블클릭 진입 보장.
           e.stopPropagation();
         }}
+        // n10 브라우저 결함8: 판 위쪽에 멤버 메모가 붙으면 이름표가 가려졌다 —
+        // 판의 DraggableCard 루트가 z-index:1~2(스택 컨텍스트)라 이름표에 아무리
+        // 높은 z-index를 줘도 그 컨텍스트 밖의 메모(z:10~40)를 못 넘어선다.
+        // DraggableCard가 frame에는 z-index를 아예 안 주도록 바꿔(auto — 새
+        // 컨텍스트를 안 만듦) 이름표의 z-index가 world-layer 레벨에서 메모와
+        // 직접 비교되게 한다(15 > 미선택 메모 10).
+        style={{ zIndex: 15 }}
         className="absolute -top-3 left-3 max-w-[80%] rounded-md bg-bg px-2 py-0.5 text-[12px] font-semibold text-text shadow-card"
       >
         {editing ? (
