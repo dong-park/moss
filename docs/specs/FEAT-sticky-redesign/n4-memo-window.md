@@ -19,7 +19,7 @@
    - 링크: 제목 + 도메인, 클릭 시 새 탭. 미리보기 실패하면 URL만(spec §4).
    - 녹음: `web/src/components/workspace/cards/audio/Content.tsx`의 MediaRecorder·mimeType 선택 로직을 이식해 녹음/정지/재생. 바이트는 OPFS. 마이크 권한 없으면 블록 넣지 않고 토스트.
    - 파일: 파일명·크기·열기(Blob URL). OPFS에 없으면 "파일을 찾을 수 없음" 자리표시, 본문 참조 유지.
-   - 각 NodeView에 `readonly` 모드(재생·열기 요소 숨김) prop.
+   - 각 NodeView에 `readonly` 모드(재생·열기 요소 숨김, 흐린 색) prop. 링크·녹음·파일 블록은 **고정 높이 한 줄 막대**이고, readonly 여부와 무관하게 박스 크기가 같아야 한다(n5 앞면이 이 모드를 쓰며 펜 좌표 1:1이 걸려 있음 — spec §11 /hate 반영). 이미지는 본문 칸 폭.
 2. `web/src/components/workspace/cards/MemoExpandDialog.tsx` 헤더에 블록 추가 메뉴(4항목). 커서 위치에 `serializeBlock` 결과 문단 삽입. 파일·녹음 50MB, 이미지는 FEAT-memo-image-paste 한도(10MB) — 넘으면 토스트.
 3. 카드와 창의 NodeView 높이가 같아야 펜 overlay 좌표가 맞는다 — `MEMO_CONTENT_WIDTH` 컬럼 1:1 규칙 유지(파일 상단 주석 참고).
 4. 새 글자는 `web/src/i18n/messages/ko.json` 키로.
