@@ -643,8 +643,9 @@ const SEED_CARDS: Card[] = [
     content: "- [ ] 첫구매 전환",
   },
   {
+    // FEAT-sticky-redesign n10: 메모는 한 종류(text) — 옛 image 시드를 유지하지 않는다.
     id: "seed-preview",
-    kind: "image",
+    kind: "text",
     x: 320,
     y: 500,
     width: 130,

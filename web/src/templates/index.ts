@@ -34,9 +34,10 @@ export const TEMPLATES: readonly Template[] = [
     id: "mindmap",
     nameKey: "templates.mindmap.name",
     descriptionKey: "templates.mindmap.description",
+    // FEAT-sticky-redesign n10: 메모는 한 종류(text) — mindmap 카드는 되살리지 않는다(spec 비목표).
     buildInitialCards: (t) => [
       {
-        kind: "mindmap",
+        kind: "text",
         x: 360,
         y: 260,
         width: 320,

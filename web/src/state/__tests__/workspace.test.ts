@@ -697,7 +697,7 @@ describe("FEAT-templates · createBoardFromTemplate", () => {
     expect(useWorkspace.getState().cards).toHaveLength(0);
   });
 
-  it("mindmap 템플릿 — 초기 카드 1개(mindmap kind) 자동 배치 (AC-1)", async () => {
+  it("mindmap 템플릿 — 초기 카드 1개(text kind) 자동 배치 (FEAT-sticky-redesign: 메모는 한 종류)", async () => {
     const id = await useWorkspace
       .getState()
       .createBoardFromTemplate("mindmap", "맵", t);
@@ -705,11 +705,11 @@ describe("FEAT-templates · createBoardFromTemplate", () => {
 
     const notes = await getDB().notes.where("boardId").equals(id).toArray();
     expect(notes).toHaveLength(1);
-    expect(notes[0].kind).toBe("mindmap");
+    expect(notes[0].kind).toBe("text");
 
     const cards = useWorkspace.getState().cards;
     expect(cards).toHaveLength(1);
-    expect(cards[0].kind).toBe("mindmap");
+    expect(cards[0].kind).toBe("text");
   });
 
   it("project 템플릿 — 초기 카드 4개(컬럼 헤더 2 + 가이드 2)", async () => {
