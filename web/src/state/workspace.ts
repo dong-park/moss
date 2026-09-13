@@ -221,6 +221,8 @@ const CARD_ASPECT_BY_KIND: Record<CardKind, number> = {
   link: 806 / 1151,
   // FEAT-subcanvas: 함 카드는 PNG 없이 폴더 스타일로 렌더 — 정사각 비율.
   board: 1,
+  // FEAT-sticky-redesign: 메모판 틀 — PNG 없음, 정사각 비율로 폴백.
+  frame: 1,
 };
 
 export function aspectForKind(kind: CardKind): number {
@@ -480,8 +482,8 @@ interface WorkspaceState {
 }
 
 function isCaptureKind(kind: CardKind): boolean {
-  // comment·board는 텍스트 입력 카드가 아니다 — drop/더블클릭 시 편집 모드로 들어가지 않는다.
-  return kind !== "comment" && kind !== "board";
+  // comment·board·frame은 텍스트 입력 카드가 아니다 — drop/더블클릭 시 편집 모드로 들어가지 않는다.
+  return kind !== "comment" && kind !== "board" && kind !== "frame";
 }
 
 function kindToDefaultToolId(kind: CardKind): ToolId {
