@@ -60,8 +60,10 @@ export function FrameCardContent({ card }: { card: Card }) {
         // DraggableCard가 frame에는 z-index를 아예 안 주도록 바꿔(auto — 새
         // 컨텍스트를 안 만듦) 이름표의 z-index가 world-layer 레벨에서 메모와
         // 직접 비교되게 한다(15 > 미선택 메모 10).
+        // 이름표는 판 안쪽 위에 둔다 — DraggableCard가 카드 밖 넘침을 잘라내므로(결함3)
+        // 테두리에 걸치게(-top) 두면 글자 윗부분이 잘린다.
         style={{ zIndex: 15 }}
-        className="absolute -top-3 left-3 max-w-[80%] rounded-md bg-bg px-2 py-0.5 text-[12px] font-semibold text-text shadow-card"
+        className="absolute top-2 left-3 max-w-[80%] rounded-md bg-bg px-2 py-0.5 text-[12px] font-semibold text-text shadow-card"
       >
         {editing ? (
           <input
