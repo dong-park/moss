@@ -83,10 +83,10 @@ n9-naming ───────────────────────�
 | n2 | [n2-blocks.md](FEAT-sticky-redesign/n2-blocks.md) | — | done |
 | n3 | [n3-fresh-db.md](FEAT-sticky-redesign/n3-fresh-db.md) | n1 | done |
 | n4 | [n4-memo-window.md](FEAT-sticky-redesign/n4-memo-window.md) | n2 | done |
-| n5 | [n5-memo-front.md](FEAT-sticky-redesign/n5-memo-front.md) | n4 | pending |
+| n5 | [n5-memo-front.md](FEAT-sticky-redesign/n5-memo-front.md) | n4 | done |
 | n6 | [n6-canvas-capture.md](FEAT-sticky-redesign/n6-canvas-capture.md) | n2 | done |
 | n7 | [n7-frames.md](FEAT-sticky-redesign/n7-frames.md) | n1 | done |
-| n8 | [n8-dock.md](FEAT-sticky-redesign/n8-dock.md) | n7 | pending |
+| n8 | [n8-dock.md](FEAT-sticky-redesign/n8-dock.md) | n7 | done |
 | n9 | [n9-naming.md](FEAT-sticky-redesign/n9-naming.md) | — | done |
 | n10 | [n10-finish.md](FEAT-sticky-redesign/n10-finish.md) | n3, n5, n6, n8, n9 | pending |
 
