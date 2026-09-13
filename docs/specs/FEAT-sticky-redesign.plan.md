@@ -30,6 +30,8 @@
 5. **실경로 검증(green≠done)**: stub·직접 주입으로만 green이면 브리프 `구현 메모`에 갭을 적는다
 6. `web/AGENTS.md` 경고(Next 16 비표준)를 읽고 시작한다
 
+**기준선 (2026-09-13, b644c0d)**: `tsc` 통과. `vitest run` 717개 중 **7개가 이미 실패** — `Canvas.virtualization.test.tsx`(1), `CardContent.autoFocus.test.tsx`(image 1), `CardContent.image.test.tsx`(5). 공통 기준 2의 "전체 통과"는 이 7개를 뺀 나머지 기준이다. 새로 깨진 테스트가 0이어야 한다. 의존성은 `web/node_modules`(npm install로 설치, 레포 lockfile은 bun.lock — package-lock.json 커밋 금지).
+
 ## DAG
 
 ```
