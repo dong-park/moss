@@ -19,7 +19,9 @@
  * 동일해야 한다(n5 앞면 펜 좌표 1:1 규칙, spec §11 /hate 반영).
  *
  * 2단계 리뷰 P1-7: 오디오/파일 blob URL 캐시는 LRU(상한 BLOB_URL_CACHE_LIMIT)로
- * 관리한다 — 밀려나는 항목과 plugin destroy 시 전부 revoke한다(아래 blobUrlCache).
+ * 관리한다 — 밀려나는 항목은 즉시, 전체는 마지막 에디터가 unmount될 때 revoke한다.
+ * 캐시가 모듈 전역이라 에디터 하나의 destroy에서 전부 revoke하면 동시에 열린 다른
+ * 에디터(n5 앞면 여러 장 + 메모 창)의 blob URL이 끊긴다 → 마운트 수를 센다.
  * ───────────────────────────────────────────────────────────── */
 
 import { Plugin } from "@milkdown/prose/state";
@@ -82,7 +84,10 @@ function resolveBlobUrl(ref: string): Promise<string | null> {
   return p;
 }
 
-/** plugin destroy 시 캐시 전체를 revoke한다(세션 종료·에디터 언마운트). */
+/** 이 플러그인을 쓰는 에디터 뷰 수. 0이 되면 캐시 전체를 revoke한다. */
+let mountedViews = 0;
+
+/** 마지막 에디터가 unmount될 때 캐시 전체를 revoke한다. */
 function revokeAllCachedBlobUrls(): void {
   for (const [, pending] of blobUrlCache) {
     void pending.then((url) => {
@@ -317,6 +322,7 @@ export const memoBlockDecorations = $prose(() => {
     },
     view(view) {
       currentView = view;
+      mountedViews += 1;
       return {
         update(v) {
           currentView = v;
@@ -324,7 +330,8 @@ export const memoBlockDecorations = $prose(() => {
         destroy() {
           currentView = null;
           cache = null;
-          revokeAllCachedBlobUrls();
+          mountedViews = Math.max(0, mountedViews - 1);
+          if (mountedViews === 0) revokeAllCachedBlobUrls();
         },
       };
     },
