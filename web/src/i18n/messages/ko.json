@@ -137,7 +137,11 @@
       "column": "컬럼",
       "comment": "코멘트",
       "pen": "펜",
-      "trash": "휴지통"
+      "trash": "휴지통",
+      "frame": "메모판"
+    },
+    "dock": {
+      "label": "독"
     },
     "subcanvas": {
       "breadcrumb": {

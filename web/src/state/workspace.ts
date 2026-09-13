@@ -87,23 +87,21 @@ export type ToolId =
   // FEAT-markdown-memo-pen: 펜 모드 토글 (드롭-캡처 아님).
   | "pen"
   | "more"
-  | "trash";
+  | "trash"
+  // FEAT-sticky-redesign n7/n8: 메모판 — 독에서 끌어 addFrameAt으로 생성.
+  | "frame";
 
 /**
- * 캡처 도구 8종 — Cmd+1~Cmd+8 단축키 매핑 순서이자 사이드바 노출 순서.
+ * 캡처 도구 — Cmd+1~ 단축키 매핑 순서이자 독 노출 순서.
  * spec FEAT-capture §3 AC-1 의존.
  *
- * FEAT-card-allinone: code·handwriting은 글(text) 카드 블록으로 흡수되어
- * 단독 캡처 도구에서 제외(10→8종). CardKind/NoteKind에는 호환·마이그레이션
- * 타겟으로 남는다.
+ * FEAT-sticky-redesign: 메모는 한 종류(text)로 통합 — image·link·audio·mindmap·file은
+ * 메모 안 블록이 되어 독립 캡처 도구에서 제외(6→1종). CardKind/NoteKind에는
+ * 호환·마이그레이션 타겟으로 남는다. 기존 Cmd+2~ 단축키는 대상이 사라져 no-op —
+ * 재매핑은 후속(brief §9).
  */
 export const CAPTURE_TOOLS = [
   "text",
-  "image",
-  "link",
-  "audio",
-  "mindmap",
-  "file",
 ] as const satisfies readonly ToolId[];
 
 export type CaptureToolId = (typeof CAPTURE_TOOLS)[number];
@@ -162,7 +160,7 @@ export interface Viewport {
 
 /**
  * 사이드바 도구를 마우스로 끌고 있는 동안의 상태.
- * 마우스 클라이언트 좌표는 SidebarDragPreview가 따라가는 데 쓰인다.
+ * 마우스 클라이언트 좌표는 DockDragPreview가 따라가는 데 쓰인다.
  */
 export interface SidebarDrag {
   toolId: ToolId;
@@ -568,6 +566,9 @@ export function kindForTool(toolId: ToolId): CardKind {
     // FEAT-subcanvas: board 도구 → 함 카드.
     case "board":
       return "board";
+    // FEAT-sticky-redesign n8: 독 드래그 프리뷰 크기 계산용 — 실제 생성은 addFrameAt.
+    case "frame":
+      return "frame";
     // 비-capture (column/line/more/trash): 사이드바 정리 도구이지 카드 생성 도구가 아니다.
     // 호출돼도 안전하게 text 카드로 떨어진다 (도구 자체 동작은 FEAT-canvas).
     default:
@@ -1321,9 +1322,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   addCardAtViewportCenter: (toolId, viewportSize) => {
     const v = get().viewport;
-    const sidebarW = 148; // tokens.layout.sidebar.expanded — 정확 매치는 page.tsx에서 보장
-    const fallbackW =
-      typeof window !== "undefined" ? window.innerWidth - sidebarW : 1100;
+    // FEAT-sticky-redesign n8: 사이드바가 걷혀 캔버스가 화면 왼쪽 끝부터 시작 —
+    // fallback 폭도 window 전체 폭을 그대로 쓴다.
+    const fallbackW = typeof window !== "undefined" ? window.innerWidth : 1100;
     const fallbackH =
       typeof window !== "undefined" ? window.innerHeight : 700;
     const w = viewportSize?.width ?? fallbackW;
@@ -2167,10 +2168,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const card = get().cards.find((c) => c.id === id);
     if (!card) return;
     const v = get().viewport;
-    // addCardAtViewportCenter와 동일한 화면 크기 폴백 규약.
-    const sidebarW = 148;
-    const fallbackW =
-      typeof window !== "undefined" ? window.innerWidth - sidebarW : 1100;
+    // addCardAtViewportCenter와 동일한 화면 크기 폴백 규약(FEAT-sticky-redesign n8:
+    // 사이드바가 걷혀 캔버스가 window 전체 폭이라 폭 차감 없음).
+    const fallbackW = typeof window !== "undefined" ? window.innerWidth : 1100;
     const fallbackH = typeof window !== "undefined" ? window.innerHeight : 700;
     const w = viewportSize?.width ?? fallbackW;
     const h = viewportSize?.height ?? fallbackH;
@@ -2194,9 +2194,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     if (targets.length === 0) return;
 
     // panToCard와 동일한 화면 크기 폴백 규약.
-    const sidebarW = 148;
-    const fallbackW =
-      typeof window !== "undefined" ? window.innerWidth - sidebarW : 1100;
+    const fallbackW = typeof window !== "undefined" ? window.innerWidth : 1100;
     const fallbackH = typeof window !== "undefined" ? window.innerHeight : 700;
     const w = viewportSize?.width ?? fallbackW;
     const h = viewportSize?.height ?? fallbackH;

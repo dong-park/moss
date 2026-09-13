@@ -45,7 +45,8 @@ describe("FEAT-capture AC-1: 글로벌 단축키", () => {
   it("Cmd+Shift+N → lastToolId로 카드 추가", async () => {
     await useStorage.getState().init();
     await useWorkspace.getState().loadFromStorage();
-    useWorkspace.setState({ lastToolId: "image" });
+    // FEAT-sticky-redesign: CaptureToolId가 "text" 하나로 줄어 lastToolId도 항상 "text".
+    useWorkspace.setState({ lastToolId: "text" });
 
     render(<Mount />);
 
@@ -60,7 +61,7 @@ describe("FEAT-capture AC-1: 글로벌 단축키", () => {
 
     const after = useWorkspace.getState().cards;
     expect(after.length).toBe(before + 1);
-    expect(after[after.length - 1].kind).toBe("image");
+    expect(after[after.length - 1].kind).toBe("text");
   });
 
   it("Cmd+1 → CAPTURE_TOOLS[0] (text) 카드 추가", async () => {
@@ -76,16 +77,15 @@ describe("FEAT-capture AC-1: 글로벌 단축키", () => {
     expect(after[after.length - 1].kind).toBe(CAPTURE_TOOLS[0]);
   });
 
-  it("Cmd+6 → CAPTURE_TOOLS[5] (file) 카드 추가 (마지막 캡처 도구)", async () => {
+  it("Cmd+2 → CAPTURE_TOOLS 범위 밖이라 no-op (FEAT-sticky-redesign: 캡처 1종)", async () => {
     await useStorage.getState().init();
     await useWorkspace.getState().loadFromStorage();
 
     render(<Mount />);
-    fireEvent.keyDown(window, { key: "6", code: "Digit6", metaKey: true });
+    const before = useWorkspace.getState().cards.length;
+    fireEvent.keyDown(window, { key: "2", code: "Digit2", metaKey: true });
     await new Promise((r) => setTimeout(r, 10));
-    const after = useWorkspace.getState().cards;
-    // FEAT-markdown-memo-pen: 캡처 6종 → 마지막은 file(idx 5).
-    expect(after[after.length - 1].kind).toBe(CAPTURE_TOOLS[CAPTURE_TOOLS.length - 1]);
+    expect(useWorkspace.getState().cards.length).toBe(before);
   });
 
   it("Cmd+1~Cmd+N → 각 카드 종류 매핑 (N=CAPTURE_TOOLS.length)", async () => {
@@ -105,14 +105,14 @@ describe("FEAT-capture AC-1: 글로벌 단축키", () => {
     }
   });
 
-  it("addCardAt 호출 시 lastToolId 자동 갱신 (Cmd+3 후 Cmd+Shift+N → 동일 도구)", async () => {
+  it("addCardAt 호출 시 lastToolId 자동 갱신 (Cmd+1 후 Cmd+Shift+N → 동일 도구)", async () => {
     await useStorage.getState().init();
     await useWorkspace.getState().loadFromStorage();
     render(<Mount />);
 
-    fireEvent.keyDown(window, { key: "3", code: "Digit3", metaKey: true });
+    fireEvent.keyDown(window, { key: "1", code: "Digit1", metaKey: true });
     await new Promise((r) => setTimeout(r, 5));
-    const tool = CAPTURE_TOOLS[2]; // index 3-1 = 2 → "link"
+    const tool = CAPTURE_TOOLS[0]; // index 1-1 = 0 → "text"
     expect(useWorkspace.getState().lastToolId).toBe(tool);
 
     fireEvent.keyDown(window, {

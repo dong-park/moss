@@ -102,9 +102,13 @@ export const radius = {
  * PRD §10 레이아웃 토큰. moss 전반에 걸친 고정 치수.
  */
 export const layout = {
-  sidebar: {
-    expanded: 148,
-    collapsed: 148, // Milanote는 접힘 없음
+  // FEAT-sticky-redesign n8: 사이드바를 걷고 화면 아래 가운데 독으로 교체.
+  dock: {
+    width: 269,
+    height: 56,
+    bottomMargin: 20, // 화면 하단에서 독 상자까지
+    iconBase: 40,
+    iconHover: 72,
   },
   header: 0,
   toolbar: 0,
