@@ -21,6 +21,9 @@ export function DraggableCard({ card }: { card: Card }) {
   const t = useT();
   const moveCard = useWorkspace((s) => s.moveCard);
   const moveSelectedBy = useWorkspace((s) => s.moveSelectedBy);
+  // FEAT-sticky-redesign: 메모판 이동(멤버 동반) + 드롭 종료 시 소속 재판정.
+  const moveFrame = useWorkspace((s) => s.moveFrame);
+  const resolveMembership = useWorkspace((s) => s.resolveMembership);
   const setContent = useWorkspace((s) => s.setContent);
   const selectOne = useWorkspace((s) => s.selectOne);
   const toggleSelect = useWorkspace((s) => s.toggleSelect);
@@ -194,6 +197,14 @@ export function DraggableCard({ card }: { card: Card }) {
         moveSelectedBy(targetX - d.lastWX, targetY - d.lastWY);
         d.lastWX = targetX;
         d.lastWY = targetY;
+      } else if (card.kind === "frame") {
+        // FEAT-sticky-redesign: 판 단독 드래그 — 속한 메모도 같은 델타로 따라온다.
+        // 펀넬/크럼 흡수-이젝트 대상이 아니므로 그 탐지는 건너뛴다.
+        const targetX = d.originX + dx / s;
+        const targetY = d.originY + dy / s;
+        moveFrame(card.id, targetX - d.lastWX, targetY - d.lastWY);
+        d.lastWX = targetX;
+        d.lastWY = targetY;
       } else {
         moveCard(card.id, d.originX + dx / s, d.originY + dy / s);
         // crumb(밖으로)와 funnel(안으로)을 동시에 추적하되, 둘 다 hover면 crumb 우선
@@ -341,6 +352,20 @@ export function DraggableCard({ card }: { card: Card }) {
       setDropTargetCrumb(null);
       hoveredFunnelId = null;
       hoveredCrumbId = null;
+
+      // FEAT-sticky-redesign §4: 드롭 종료 시점에만 소속을 다시 정한다.
+      if (d.multi) {
+        resolveMembership(useWorkspace.getState().selectedIds);
+      } else if (card.kind === "frame") {
+        // 판이 옮겨지면 새로 안에 들어온 메모도 속하게 된다 — 전체를 재판정.
+        const ids = useWorkspace
+          .getState()
+          .cards.filter((c) => c.kind !== "frame")
+          .map((c) => c.id);
+        resolveMembership(ids);
+      } else {
+        resolveMembership([card.id]);
+      }
     };
 
     window.addEventListener("mousemove", onMove);
@@ -362,6 +387,9 @@ export function DraggableCard({ card }: { card: Card }) {
       return;
     }
     if (card.kind === "comment") return;
+    // FEAT-sticky-redesign: 판은 이름표 자체 더블클릭(FrameCardContent)이 이름 편집을
+    // 담당한다 — 카드 본문 편집 모드(editingId)로 들어가지 않는다.
+    if (card.kind === "frame") return;
     setEditing(card.id);
   };
 
@@ -387,7 +415,9 @@ export function DraggableCard({ card }: { card: Card }) {
         top: card.y,
         width: card.width,
         height: card.height,
-        zIndex: lifted ? 40 : selected ? 20 : 10,
+        // FEAT-sticky-redesign: 메모판은 메모보다 아래층 — 겹친 영역의 포인터
+        // 이벤트도 자연히 메모(더 높은 z)가 먼저 받는다.
+        zIndex: lifted ? 40 : selected ? 20 : card.kind === "frame" ? 1 : 10,
         outline: selected ? "2px solid rgba(79, 124, 243, 0.45)" : "none",
         outlineOffset: 2,
         borderRadius: 8,

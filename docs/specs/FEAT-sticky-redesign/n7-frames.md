@@ -3,7 +3,7 @@
 > 자기완결 브리프. runner는 [상위 spec](../FEAT-sticky-redesign.md) + [plan 공통 완료 기준](../FEAT-sticky-redesign.plan.md#공통-완료-기준) + 이 파일만 본다. 진행·상태는 이 파일에만 쓴다.
 
 **deps**: n1-db-v5 (frame 종류·frameId 필드)
-**상태**: pending
+**상태**: done
 
 ## 문제
 
@@ -28,11 +28,14 @@
 
 ## 완료 기준
 
-- [ ] plan 공통 완료 기준 전부
-- [ ] `cd web && npx vitest run src/state/__tests__/frames.test.ts` 통과
-- [ ] spec AC-10·AC-11·AC-12 전 항목, §5 "메모의 소속" 상태표 전이 전부 테스트로 확인
-- [ ] 메모 50개 판 이동 처리 < 16ms (테스트 내 측정)
-- [ ] 실경로: dev 서버에서 `addFrameAt`을 임시 호출(콘솔/개발용 단축키 — 커밋 전 제거)해 판 생성→메모 넣기→판 이동→새로고침 확인, 결과를 `구현 메모`에 (독 드롭은 n8)
+- [x] plan 공통 완료 기준 전부 (tsc / vitest 전체(기준선 7개 제외 회귀 0) / check-i18n / eslint 0 / 노드당 커밋 ≥1)
+- [x] `cd web && npx vitest run src/state/__tests__/frames.test.ts` 통과 (16/16)
+- [x] spec AC-10·AC-11·AC-12 전 항목, §5 "메모의 소속" 상태표 전이 전부 테스트로 확인
+- [x] 메모 50개 판 이동 처리 < 16ms (테스트 내 측정 — `performance.now()` 델타)
+- [ ] 실경로: 브라우저 자동화 도구가 이 서브에이전트 툴셋에 없어 dev 서버(3107)에서 클릭으로
+      확인하지 못했다 — 갭으로 남긴다. 대신 dev 서버 기동(`npx next dev -p 3107`, `curl` 200 확인)과
+      전체 vitest 스위트(fake-indexeddb 기반 실제 Dexie 트랜잭션 경로)로 addFrameAt→resolveMembership→
+      moveFrame→DB 반영까지 검증했다. 브라우저 클릭 확인은 호출자가 별도로.
 
 ## 파일 포인터
 
@@ -47,3 +50,26 @@
 
 ## 구현 메모
 
+- `Card`/`Note`에 `frameId?: string`을 추가하고 `decodeNoteToCard`(board·일반 분기 모두)·`persistCard`가
+  왕복시킨다. `FRAME_MIN_WIDTH/HEIGHT`(240/160), `FRAME_DEFAULT_WIDTH/HEIGHT`(320/220)를 export.
+- `resolveMembership`은 겹친 판 우선순위를 별도 `createdAt` 필드 없이 `cards` 배열 순서로 판정한다
+  (`storage.loadCards`가 `createdAt` 오름차순 정렬을 보장하고 `addFrameAt`은 배열 끝에 append하므로
+  배열에서 더 뒤 = 나중 생성). Note 스키마를 건드리지 않아 v5 버전 선언과 무관.
+- `moveFrame`은 로컬 상태를 즉시 갱신하고, DB 반영은 `schedulePersist(`frame-move:${frameId}`, …)`로
+  디바운스한 뒤 한 Dexie 트랜잭션(`db.transaction("rw", db.notes, …)`)으로 프레임+멤버를 함께 쓴다.
+- `DraggableCard.tsx`: frame 카드는 `onMove`에서 `moveCard` 대신 `moveFrame`을 타고(펀넬/크럼 감지 생략),
+  `onUp`에서 드롭 종료 시점에만 `resolveMembership` 호출(단일 카드=자기 자신, frame=보드 전체 재판정,
+  다중 선택=선택 집합). z-index는 `card.kind==="frame" ? 1 : 10`으로 메모보다 아래.
+- `ResizeHandles.tsx`: frame은 `aspectForKind` 비율 고정 없이 방향별 축을 독립적으로 리사이즈하고,
+  `onUp`에서만 `resolveMembership`(보드 전체 비-frame 카드) 호출.
+- `deleteFrame`은 멤버의 `frameId`만 풀고(카드 자체는 유지) frame row만 삭제 — `remove`/`removeSelected`가
+  frame 대상을 이 경로로 먼저 분리 처리하도록 수정(기존 `removeNote` 직접 호출 경로로 새면 멤버십 정리가
+  안 됨).
+- `moveCardToSubcanvas`/`moveCardToBoard`(파일함 이동)에 `frameId: undefined` 저장을 추가해
+  "다른 캔버스로 나가면 판 소속 해제" 규칙을 만족시켰다(원래 없던 필드라 브리프에 명시 없었지만
+  §4 소속 판정 규칙이 요구해 추가 — 호출자가 정할 것 없음, 스펙 문구 직접 대응).
+- `cards/frame/Content.tsx`: 이름표(상단 라벨)가 자체 더블클릭으로 인라인 편집 진입, Enter/blur 커밋,
+  Esc 취소. 라벨 위 mousedown은 `stopPropagation`으로 카드 드래그 시작을 막는다(더블클릭 보장 우선 —
+  라벨 단일클릭으로는 카드가 선택되지 않는 트레이드오프, 스펙에 없는 항목이라 가정으로 넘어감).
+- 성능 테스트는 실제 100+ 카드 캔버스 프레임 타이밍이 아니라 `moveFrame` 단일 호출의
+  `performance.now()` 델타로 16ms 기준을 근사 측정한다(jsdom 환경 한계 — 실측 프레임 타이밍 불가).

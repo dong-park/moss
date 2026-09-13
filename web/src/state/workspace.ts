@@ -5,6 +5,7 @@ import type { AINoteRef } from "./aiGate";
 import { useStorage } from "./storage";
 import {
   getDB,
+  makeFrameNote,
   type Board,
   type Connection,
   type EmbeddingCacheEntry,
@@ -127,6 +128,11 @@ export interface Card {
    * content와 독립 — 마크다운 본문 위에 겹쳐 그린다. 없으면 그림 없음.
    */
   overlay?: string;
+  /**
+   * FEAT-sticky-redesign: 메모판 소속. 같은 보드의 kind="frame" 카드 id.
+   * frame 카드 자신은 항상 undefined. [[resolveMembership]]이 갱신한다.
+   */
+  frameId?: string;
   author?: string;
   time?: string;
   aiOptOut?: boolean;
@@ -199,6 +205,15 @@ export const CARD_MIN_WIDTH = 120;
 export const CARD_MIN_HEIGHT = 60;
 export const CARD_MAX_WIDTH = 1200;
 export const CARD_MAX_HEIGHT = 1200;
+
+/**
+ * FEAT-sticky-redesign §4: 메모판 최소/기본 크기. 최소는 schema.makeFrameNote의
+ * 클램프 값과 같은 소스여야 한다(240×160) — 여기서도 리사이즈 하한으로 재사용.
+ */
+export const FRAME_MIN_WIDTH = 240;
+export const FRAME_MIN_HEIGHT = 160;
+export const FRAME_DEFAULT_WIDTH = 320;
+export const FRAME_DEFAULT_HEIGHT = 220;
 
 /**
  * FEAT-pen-drawing-engine: 펜 굵기 한계·기본값. 단일 소스는 [[useDrawing]]
@@ -314,6 +329,31 @@ interface WorkspaceState {
     id: string,
     next: { width: number; height: number; x?: number; y?: number },
   ) => void;
+  /* ─────────── FEAT-sticky-redesign: 메모판(frame) ─────────── */
+  /** 지정 좌표에 메모판(기본 320×220, 최소 240×160)을 만든다. n8 독이 부른다. */
+  addFrameAt: (x: number, y: number) => string;
+  /**
+   * cardIds 각각의 중심점으로 소속 판을 다시 정한다(spec §4 "소속 판정" 전 규칙).
+   * 겹친 판은 나중에 만든 판(= cards 배열에서 더 뒤, loadCards가 createdAt 오름차순
+   * 정렬을 보장) 우선. frame 카드 자신은 대상에서 제외.
+   * 드롭 종료·판 드롭·판 리사이즈 시점에만 호출한다.
+   */
+  resolveMembership: (cardIds: string[]) => void;
+  /**
+   * 판과 그 판에 속한 메모 전부를 같은 델타로 옮긴다. 로컬 state는 즉시 갱신하고,
+   * DB 반영은 한 Dexie 트랜잭션으로 디바운스 예약한다(동시성 §: 일부만 저장 금지).
+   */
+  moveFrame: (frameId: string, dx: number, dy: number) => void;
+  /** 판 리사이즈. [[FRAME_MIN_WIDTH]]~[[CARD_MAX_WIDTH]], [[FRAME_MIN_HEIGHT]]~[[CARD_MAX_HEIGHT]]로 클램프. */
+  resizeFrame: (
+    id: string,
+    next: { width: number; height: number; x?: number; y?: number },
+  ) => void;
+  /** 판 이름 변경. 1~40자, trim 후 빈 문자열이면 "새 메모판"으로 되돌린다. */
+  renameFrame: (id: string, name: string) => void;
+  /** 판을 지운다. 속한 메모는 제자리에 남고 frameId만 해제한다(메모 자체는 안 지운다). */
+  deleteFrame: (id: string) => void;
+
   setContent: (id: string, content: string) => void;
   setAttachment: (
     id: string,
@@ -500,6 +540,10 @@ function kindToDefaultToolId(kind: CardKind): ToolId {
     case "code":
     case "comment":
       return kind;
+    // FEAT-sticky-redesign: frame은 캡처 카드가 아니라 next-card 흐름에 오지 않지만
+    // (isCaptureKind가 걸러낸다), 방어적으로 명시.
+    case "frame":
+      return "text";
     default:
       return "text";
   }
@@ -551,6 +595,9 @@ export function widthForKind(kind: CardKind): number {
     // FEAT-subcanvas: 함 카드 — 폴더 카드 느낌의 작은 정사각.
     case "board":
       return 200;
+    // FEAT-sticky-redesign: 메모판 기본 폭. addFrameAt은 실제로 이 값을 직접 쓴다.
+    case "frame":
+      return FRAME_DEFAULT_WIDTH;
     case "text":
     default:
       return 240;
@@ -671,6 +718,8 @@ function decodeNoteToCard(note: Note): Card {
       height: note.height,
       content: "",
       boardRef,
+      // FEAT-sticky-redesign §4: 파일함 카드도 메모판에 속할 수 있다.
+      frameId: note.frameId,
       lastVisitedAt: note.lastVisitedAt,
     };
   }
@@ -735,6 +784,8 @@ function decodeNoteToCard(note: Note): Card {
     attachmentRef: note.attachmentRef,
     mediaType: note.mediaType,
     overlay: note.overlay,
+    // FEAT-sticky-redesign: 메모판 소속 — frame 행 자신은 항상 undefined로 저장돼 있다.
+    frameId: note.frameId,
     author,
     time,
     aiOptOut: note.aiOptOut || undefined,
@@ -745,6 +796,49 @@ function decodeNoteToCard(note: Note): Card {
 /** 시스템 보드는 boardId=null로 저장. 사용자 보드는 그대로. */
 function storageBoardId(currentBoardId: CurrentBoardId): string | null {
   return currentBoardId === SYSTEM_BOARD_ID ? null : currentBoardId;
+}
+
+/**
+ * FEAT-sticky-redesign §4 "소속 판정": 카드 높이 미지정 시 사용할 보수적 기본값.
+ * fitToCards의 DEFAULT_H(160)와 같은 값 — 실측 높이를 모르는 상태에서의 중심점 근사.
+ */
+const FRAME_MEMBERSHIP_DEFAULT_HEIGHT = 160;
+
+/** 카드의 중심점(world 좌표). height 미지정이면 보수적 기본값으로 근사. */
+function cardCenter(card: Card): { x: number; y: number } {
+  const h = card.height ?? FRAME_MEMBERSHIP_DEFAULT_HEIGHT;
+  return { x: card.x + card.width / 2, y: card.y + h / 2 };
+}
+
+/** 점이 판 경계 안(경계선 포함)에 있는지. */
+function frameContainsPoint(
+  frame: Card,
+  pt: { x: number; y: number },
+): boolean {
+  // frame 행은 항상 height를 가진다(makeFrameNote가 필수로 채움) — 방어적 폴백만 둔다.
+  const h = frame.height ?? FRAME_MIN_HEIGHT;
+  return (
+    pt.x >= frame.x &&
+    pt.x <= frame.x + frame.width &&
+    pt.y >= frame.y &&
+    pt.y <= frame.y + h
+  );
+}
+
+/**
+ * 후보 판들 중 점을 포함하는 판을 찾는다. 여러 판이 겹치면 배열에서 더 뒤(=나중에
+ * 만든 판 — loadCards가 createdAt 오름차순 정렬을 보장하고, addFrameAt은 배열
+ * 끝에 append하므로 순서가 곧 생성 순서다) 판이 이긴다.
+ */
+function findOwningFrame(
+  frames: Card[],
+  pt: { x: number; y: number },
+): Card | undefined {
+  let winner: Card | undefined;
+  for (const f of frames) {
+    if (frameContainsPoint(f, pt)) winner = f;
+  }
+  return winner;
 }
 
 /**
@@ -819,6 +913,9 @@ function persistCard(card: Card, boardId: string | null): Promise<void> {
     attachmentRef: card.attachmentRef,
     mediaType: card.mediaType,
     overlay: card.overlay,
+    // FEAT-sticky-redesign: 메모판 소속. resolveMembership/moveFrame이 별도 트랜잭션으로
+    // 갱신하는 경로도 있지만, 일반 persist 경로(setContent 등)에서도 값이 실려야 유실이 없다.
+    frameId: card.frameId,
     aiOptOut: !!card.aiOptOut,
     rotation: 0,
   });
@@ -1267,6 +1364,154 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     if (updated) persistCardDebounced(updated, storageBoardId(get().currentBoardId));
   },
 
+  /* ─────────── FEAT-sticky-redesign: 메모판(frame) ─────────── */
+
+  addFrameAt: (x, y) => {
+    const boardId = storageBoardId(get().currentBoardId);
+    const note = makeFrameNote(boardId, x, y, FRAME_DEFAULT_WIDTH, FRAME_DEFAULT_HEIGHT);
+    const card = decodeNoteToCard(note);
+    set((s) => ({
+      cards: [...s.cards, card],
+      selectedIds: [card.id],
+      editingId: null,
+    }));
+    void (async () => {
+      const storage = useStorage.getState();
+      if (!storage.initialized) await storage.init();
+      await storage.saveNote(note);
+    })();
+    return card.id;
+  },
+
+  resolveMembership: (cardIds) => {
+    const state = get();
+    // cards 배열 순서 = createdAt 오름차순(loadCards 보장 + addFrameAt append) → 나중 판이 뒤.
+    const frames = state.cards.filter((c) => c.kind === "frame");
+    const idSet = new Set(cardIds);
+    const updates: { id: string; frameId: string | undefined }[] = [];
+    for (const card of state.cards) {
+      if (!idSet.has(card.id) || card.kind === "frame") continue;
+      const winner = findOwningFrame(frames, cardCenter(card));
+      const nextFrameId = winner?.id;
+      if (card.frameId !== nextFrameId) {
+        updates.push({ id: card.id, frameId: nextFrameId });
+      }
+    }
+    if (updates.length === 0) return;
+    const byId = new Map(updates.map((u) => [u.id, u.frameId]));
+    set((s) => ({
+      cards: s.cards.map((c) =>
+        byId.has(c.id) ? { ...c, frameId: byId.get(c.id) } : c,
+      ),
+    }));
+    const storage = useStorage.getState();
+    if (!storage.initialized) return;
+    const db = getDB();
+    void db.transaction("rw", db.notes, async () => {
+      for (const u of updates) {
+        await db.notes.update(u.id, { frameId: u.frameId });
+      }
+    });
+  },
+
+  moveFrame: (frameId, dx, dy) => {
+    if (dx === 0 && dy === 0) return;
+    const before = get();
+    const frame = before.cards.find(
+      (c) => c.id === frameId && c.kind === "frame",
+    );
+    if (!frame) return;
+    const memberIds = new Set(
+      before.cards.filter((c) => c.frameId === frameId).map((c) => c.id),
+    );
+    set((s) => ({
+      cards: s.cards.map((c) => {
+        if (c.id === frameId || memberIds.has(c.id)) {
+          return { ...c, x: c.x + dx, y: c.y + dy };
+        }
+        return c;
+      }),
+    }));
+    // 동시성: 판+속한 메모 전부를 한 트랜잭션으로 저장 — 일부만 저장되는 일이 없게.
+    // 연속 드래그 중 재예약되므로 실제 DB 반영은 마지막 호출분만 실행된다.
+    schedulePersist(`frame-move:${frameId}`, async () => {
+      const storage = useStorage.getState();
+      if (!storage.initialized) return;
+      const db = getDB();
+      const targets = get().cards.filter(
+        (c) => c.id === frameId || memberIds.has(c.id),
+      );
+      await db.transaction("rw", db.notes, async () => {
+        for (const c of targets) {
+          await db.notes.update(c.id, { x: c.x, y: c.y });
+        }
+      });
+    });
+  },
+
+  resizeFrame: (id, next) => {
+    if (!Number.isFinite(next.width) || !Number.isFinite(next.height)) return;
+    if (next.x !== undefined && !Number.isFinite(next.x)) return;
+    if (next.y !== undefined && !Number.isFinite(next.y)) return;
+    let updated: Card | undefined;
+    set((s) => ({
+      cards: s.cards.map((c) => {
+        if (c.id !== id || c.kind !== "frame") return c;
+        const w = clamp(next.width, FRAME_MIN_WIDTH, CARD_MAX_WIDTH);
+        const h = clamp(next.height, FRAME_MIN_HEIGHT, CARD_MAX_HEIGHT);
+        updated = {
+          ...c,
+          width: w,
+          height: h,
+          x: next.x !== undefined ? next.x : c.x,
+          y: next.y !== undefined ? next.y : c.y,
+        };
+        return updated;
+      }),
+    }));
+    if (updated) persistCardDebounced(updated, storageBoardId(get().currentBoardId));
+  },
+
+  renameFrame: (id, name) => {
+    const trimmed = name.trim().slice(0, 40);
+    const finalName = trimmed === "" ? "새 메모판" : trimmed;
+    let updated: Card | undefined;
+    set((s) => ({
+      cards: s.cards.map((c) => {
+        if (c.id !== id || c.kind !== "frame") return c;
+        updated = { ...c, content: JSON.stringify({ name: finalName }) };
+        return updated;
+      }),
+    }));
+    if (updated) persistCardDebounced(updated, storageBoardId(get().currentBoardId));
+  },
+
+  deleteFrame: (id) => {
+    const card = get().cards.find((c) => c.id === id);
+    if (!card || card.kind !== "frame") return;
+    const memberIds = get()
+      .cards.filter((c) => c.frameId === id)
+      .map((c) => c.id);
+    set((s) => ({
+      cards: s.cards
+        .filter((c) => c.id !== id)
+        .map((c) => (c.frameId === id ? { ...c, frameId: undefined } : c)),
+      selectedIds: s.selectedIds.filter((x) => x !== id),
+      editingId: s.editingId === id ? null : s.editingId,
+      expandedCardId: s.expandedCardId === id ? null : s.expandedCardId,
+    }));
+    cancelPersist(id);
+    const storage = useStorage.getState();
+    if (!storage.initialized) return;
+    const db = getDB();
+    void db.transaction("rw", db.notes, async () => {
+      for (const mid of memberIds) {
+        await db.notes.update(mid, { frameId: undefined });
+      }
+      await db.notes.delete(id);
+    });
+  },
+
   setContent: (id, content) => {
     let updated: Card | undefined;
     set((s) => ({
@@ -1417,8 +1662,14 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   remove: (id) => {
+    // FEAT-sticky-redesign: 판은 삭제 경로가 다르다(메모는 제자리, frameId만 해제).
+    const target = get().cards.find((c) => c.id === id);
+    if (target && target.kind === "frame") {
+      get().deleteFrame(id);
+      return;
+    }
     // FEAT-subcanvas: 함 카드면 연결된 서브 보드 트리까지 cascade 삭제(5초 undo).
-    const card = get().cards.find((c) => c.id === id);
+    const card = target;
     const funnel =
       card && card.kind === "board" && card.boardRef ? card : null;
     const boardAtDeletion = get().currentBoardId;
@@ -1441,7 +1692,15 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   removeSelected: () => {
     const ids = get().selectedIds;
     if (ids.length === 0) return;
-    const idSet = new Set(ids);
+    // FEAT-sticky-redesign: 선택 중 판은 별도 경로(메모는 제자리, frameId만 해제)로
+    // 먼저 처리하고, 나머지 선택에서 제외해 아래 일반 삭제 경로로 removeNote 되지 않게 한다.
+    const frameIds = get()
+      .cards.filter((c) => ids.includes(c.id) && c.kind === "frame")
+      .map((c) => c.id);
+    for (const fid of frameIds) get().deleteFrame(fid);
+    const remainingIds = ids.filter((id) => !frameIds.includes(id));
+    if (remainingIds.length === 0) return;
+    const idSet = new Set(remainingIds);
     // FEAT-subcanvas: 선택 중 함 카드 → cascade + 5초 undo. 일반 카드는 즉시 삭제.
     const funnelCards = get().cards.filter(
       (c) => idSet.has(c.id) && c.kind === "board" && c.boardRef,
@@ -1457,11 +1716,13 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
           ? null
           : s.expandedCardId,
     }));
-    for (const id of ids) cancelPersist(id);
+    for (const id of remainingIds) cancelPersist(id);
     const storage = useStorage.getState();
     if (!storage.initialized) return;
     // 함이 아닌 일반 카드는 기존대로 즉시 삭제(blob 해제 포함, undo 없음).
-    for (const id of ids) if (!funnelIdSet.has(id)) void storage.removeNote(id);
+    // frameIds는 위에서 deleteFrame이 이미 처리했으므로 여기서 다시 지우지 않는다.
+    for (const id of remainingIds)
+      if (!funnelIdSet.has(id)) void storage.removeNote(id);
     // 함 카드는 cascade + 5초 undo.
     if (funnelCards.length > 0) {
       void cascadeDeleteFunnels(funnelCards, boardAtDeletion, set, get);
@@ -1727,7 +1988,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
     const storage = useStorage.getState();
     if (!storage.initialized) await storage.init();
-    await storage.saveNote({ id: cardId, boardId: targetBoardId });
+    // FEAT-sticky-redesign §4: 파일함(다른 캔버스)으로 이동하면 판 소속은 풀린다.
+    await storage.saveNote({ id: cardId, boardId: targetBoardId, frameId: undefined });
 
     set((s) => ({
       cards: s.cards.filter((c) => c.id !== cardId),
@@ -1771,7 +2033,12 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const storage = useStorage.getState();
     if (!storage.initialized) await storage.init();
     // 시스템 보드 대상이면 boardId=null로 저장(시스템 카드 규약).
-    await storage.saveNote({ id: cardId, boardId: storageBoardId(targetBoardId) });
+    // FEAT-sticky-redesign §4: 다른 캔버스로 나가면 판 소속은 풀린다.
+    await storage.saveNote({
+      id: cardId,
+      boardId: storageBoardId(targetBoardId),
+      frameId: undefined,
+    });
 
     set((s) => {
       // count 정합성: 떠나는 현재 보드는 -1(0 미만 가드), 대상이 추적 대상(시스템
