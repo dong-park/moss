@@ -6,6 +6,8 @@ import {
   CARD_MAX_WIDTH,
   CARD_MIN_HEIGHT,
   CARD_MIN_WIDTH,
+  FRAME_MIN_HEIGHT,
+  FRAME_MIN_WIDTH,
   aspectForKind,
   useWorkspace,
   type Card,
@@ -55,6 +57,9 @@ export function ResizeHandles({
   measuredHeight: number;
 }) {
   const resizeCard = useWorkspace((s) => s.resizeCard);
+  const resizeFrame = useWorkspace((s) => s.resizeFrame);
+  const resolveMembership = useWorkspace((s) => s.resolveMembership);
+  const isFrame = card.kind === "frame";
 
   const dragRef = useRef<{
     dir: HandleDir;
@@ -94,6 +99,25 @@ export function ResizeHandles({
       const dx = (ev.clientX - d.startX) / scale;
       const dy = (ev.clientY - d.startY) / scale;
 
+      // FEAT-sticky-redesign: 메모판은 종이 카드가 아니라 자유 사각형 — 가로/세로
+      // 비율을 강제하지 않고 각 축을 독립적으로 늘리거나 줄인다.
+      if (isFrame) {
+        let w = d.originW;
+        let h = d.originH;
+        if (d.dir.includes("e")) w = d.originW + dx;
+        if (d.dir.includes("w")) w = d.originW - dx;
+        if (d.dir.includes("s")) h = d.originH + dy;
+        if (d.dir.includes("n")) h = d.originH - dy;
+        w = clamp(w, FRAME_MIN_WIDTH, CARD_MAX_WIDTH);
+        h = clamp(h, FRAME_MIN_HEIGHT, CARD_MAX_HEIGHT);
+        let x = d.originCardX;
+        let y = d.originCardY;
+        if (d.dir.includes("w")) x = d.originCardX + (d.originW - w);
+        if (d.dir.includes("n")) y = d.originCardY + (d.originH - h);
+        resizeFrame(card.id, { width: w, height: h, x, y });
+        return;
+      }
+
       // 핸들 방향에 따라 한 축 변화량을 width로 환산. 비율은 강제(왜곡/잘림 방지).
       // - e/w/corner: dx로 width 직접 결정
       // - n/s: dy로 height 결정 → width = height * ratio
@@ -124,6 +148,14 @@ export function ResizeHandles({
     const onUp = () => {
       dragRef.current = null;
       cleanup();
+      // FEAT-sticky-redesign §4: 판 크기 조정이 끝난 시점에만 전체 멤버십 재판정.
+      if (isFrame) {
+        const ids = useWorkspace
+          .getState()
+          .cards.filter((c) => c.kind !== "frame")
+          .map((c) => c.id);
+        resolveMembership(ids);
+      }
     };
 
     dragRef.current = {

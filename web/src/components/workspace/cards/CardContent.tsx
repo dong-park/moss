@@ -4,6 +4,7 @@ import { AudioCardContent } from "./audio/Content";
 import { BoardCardContent } from "./board/Content";
 import { CommentCardContent } from "./comment/Content";
 import { FileCardContent } from "./file/Content";
+import { FrameCardContent } from "./frame/Content";
 import { HandwritingCardContent } from "./handwriting/Content";
 import { ImageCardContent } from "./image/Content";
 import { LinkCardContent } from "./link/Content";
@@ -28,6 +29,9 @@ export function CardContent({
     // FEAT-subcanvas: 함 카드. 더블클릭 진입은 DraggableCard가 처리.
     case "board":
       return <BoardCardContent card={card} />;
+    // FEAT-sticky-redesign: 메모판. 이름 더블클릭 편집은 FrameCardContent 자체가 처리.
+    case "frame":
+      return <FrameCardContent card={card} />;
     // code/checklist/highlight는 FEAT-markdown-memo-pen에서 마크다운 메모(text)로
     // 통합·마이그레이션됐다. 레거시 행은 decodeNoteToCard가 text로 환원하므로
     // 여기 도달하지 않고 default(text)로 떨어진다.
