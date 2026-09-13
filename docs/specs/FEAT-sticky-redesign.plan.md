@@ -10,7 +10,7 @@
 
 1. **DB v5 자리 만들기** — 메모판 종류와 소속·백업 필드를 저장소에 추가한다. (토대)
 2. **블록 문법** — 링크·녹음·파일 블록을 마크다운에 적고 읽는 순수 모듈. (토대)
-3. **옛 카드 이관** — 이미지·링크·녹음·파일·마인드맵 카드를 블록 든 메모로 옮기고, 되돌리기를 만든다.
+3. **새 DB로 시작** — 옛 카드를 이관하지 않고 v5에서 DB와 첨부를 비운다(2단계 리뷰 후 사용자 결정, 처음엔 이관으로 구현했다가 뒤집음).
 4. **메모 창 블록** — 창 안에서 네 블록을 넣고 보고 재생한다.
 5. **메모 앞면** — 첫 이미지 크게, 나머지는 배지.
 6. **캔버스 붙여넣기·드롭** — 이미지·URL·파일이 블록 든 메모가 된다.
@@ -35,11 +35,11 @@
 ## DAG
 
 ```
-n1-db-v5 ────┬──────────────► n3-migration ─────────────┐
+n1-db-v5 ────┬──────────────► n3-fresh-db ─────────────┐
              │                   ▲                      │
              └──► n7-frames ──► n8-dock ────────────────┤
                                                         │
-n2-blocks ───┬──► n3-migration                          ├──► n10-finish
+n2-blocks ───┬─────────────────────────────────────────┬──► n10-finish
              ├──► n4-memo-window ──► n5-memo-front ─────┤
              └──► n6-canvas-capture ────────────────────┤
                                                         │
@@ -52,8 +52,7 @@ n9-naming ───────────────────────�
 
 | edge | 사유 |
 |---|---|
-| n1→n3 | n3가 n1의 `legacy` 필드와 Dexie v5 버전 선언 위에 upgrade 함수를 얹는다 |
-| n2→n3 | n3가 n2의 `serializeBlock`으로 이관 본문을 만든다 |
+| n1→n3 | n3가 n1의 v4 스키마 위에 v5 초기화 upgrade를 얹는다 |
 | n1→n7 | n7이 n1의 `kind:"frame"`·`frameId` 필드로 판과 소속을 저장한다 |
 | n7→n8 | n8의 메모판 드롭이 n7의 `addFrameAt` 액션을 부른다 |
 | n2→n4 | n4의 NodeView가 n2의 `parseBlock`으로 블록 문단을 알아본다 |
@@ -71,9 +70,9 @@ n9-naming ───────────────────────�
 | AC-9 창 블록 | n4 |
 | AC-10·11·12 메모판 | n7 (드롭 생성은 n8) |
 | AC-13 파일함·명칭 | n9 |
-| AC-14·15 이관·되돌리기 | n3 |
+| AC-14 새 DB로 시작 | n3 |
 | §6 데이터 모델 | n1 · 블록 문법 n2 |
-| §8 비기능(성능·접근성) | n7(판 이동 16ms) · n8(독 60fps·a11y) · n3(1,000장 2초) · n5(렌더 10%) |
+| §8 비기능(성능·접근성) | n7(판 이동 16ms) · n8(독 60fps·a11y) · n5(렌더 10%) |
 | §10 DOD 수동·시안 대조, 옛 경로 제거 | n10 |
 
 ## 노드 인덱스
@@ -82,7 +81,7 @@ n9-naming ───────────────────────�
 |---|---|---|---|
 | n1 | [n1-db-v5.md](FEAT-sticky-redesign/n1-db-v5.md) | — | done |
 | n2 | [n2-blocks.md](FEAT-sticky-redesign/n2-blocks.md) | — | done |
-| n3 | [n3-migration.md](FEAT-sticky-redesign/n3-migration.md) | n1, n2 | done (리뷰 중) |
+| n3 | [n3-fresh-db.md](FEAT-sticky-redesign/n3-fresh-db.md) | n1 | 재작업 (리뷰 후 결정) |
 | n4 | [n4-memo-window.md](FEAT-sticky-redesign/n4-memo-window.md) | n2 | done (리뷰 중) |
 | n5 | [n5-memo-front.md](FEAT-sticky-redesign/n5-memo-front.md) | n4 | pending |
 | n6 | [n6-canvas-capture.md](FEAT-sticky-redesign/n6-canvas-capture.md) | n2 | done (리뷰 중) |
