@@ -83,7 +83,8 @@ describe("FEAT-templates · TemplatePicker", () => {
     expect(state.boards[0].templateId).toBe("mindmap");
     expect(state.currentBoardId).toBe(state.boards[0].id);
     expect(state.cards.length).toBeGreaterThan(0);
-    expect(state.cards[0].kind).toBe("mindmap");
+    // FEAT-sticky-redesign n10: 메모는 한 종류(text) — mindmap 템플릿도 text 카드를 시드한다.
+    expect(state.cards[0].kind).toBe("text");
   });
 
   it("닫기 버튼 → 보드 생성 안 함 (AC-2)", async () => {

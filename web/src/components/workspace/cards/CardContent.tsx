@@ -1,14 +1,8 @@
 "use client";
 
-import { AudioCardContent } from "./audio/Content";
 import { BoardCardContent } from "./board/Content";
 import { CommentCardContent } from "./comment/Content";
-import { FileCardContent } from "./file/Content";
 import { FrameCardContent } from "./frame/Content";
-import { HandwritingCardContent } from "./handwriting/Content";
-import { ImageCardContent } from "./image/Content";
-import { LinkCardContent } from "./link/Content";
-import { MindmapCardContent } from "./mindmap/Content";
 import { TextCardContent } from "./text/Content";
 import type { CardContentProps } from "./_shared/types";
 
@@ -32,63 +26,12 @@ export function CardContent({
     // FEAT-sticky-redesign: 메모판. 이름 더블클릭 편집은 FrameCardContent 자체가 처리.
     case "frame":
       return <FrameCardContent card={card} />;
-    // code/checklist/highlight는 FEAT-markdown-memo-pen에서 마크다운 메모(text)로
-    // 통합·마이그레이션됐다. 레거시 행은 decodeNoteToCard가 text로 환원하므로
-    // 여기 도달하지 않고 default(text)로 떨어진다.
-    case "image":
-      return (
-        <ImageCardContent
-          card={card}
-          editing={editing}
-          onChange={onChange}
-          onCommitEdit={onCommitEdit}
-        />
-      );
-    case "file":
-      return (
-        <FileCardContent
-          card={card}
-          editing={editing}
-          onChange={onChange}
-          onCommitEdit={onCommitEdit}
-        />
-      );
-    case "audio":
-      return (
-        <AudioCardContent
-          card={card}
-          editing={editing}
-          onChange={onChange}
-          onCommitEdit={onCommitEdit}
-        />
-      );
-    case "handwriting":
-      return (
-        <HandwritingCardContent
-          card={card}
-          editing={editing}
-          onChange={onChange}
-          onCommitEdit={onCommitEdit}
-        />
-      );
-    case "mindmap":
-      return (
-        <MindmapCardContent
-          card={card}
-          editing={editing}
-          onChange={onChange}
-          onCommitEdit={onCommitEdit}
-        />
-      );
-    case "link":
-      return (
-        <LinkCardContent
-          card={card}
-          editing={editing}
-          onChange={onChange}
-          onCommitEdit={onCommitEdit}
-        />
-      );
+    // FEAT-sticky-redesign n10: 메모는 한 종류(text) — image/link/audio/file/mindmap/
+    // handwriting/code/checklist/highlight 전용 화면은 삭제했다. 레거시 행(가져오기 등으로
+    // 유입될 경우)은 decodeNoteToCard가 code/handwriting은 text 블록으로, 나머지는
+    // migratedContent가 처리 가능한 것만 text로 환원한다. 그 외(image/link/audio/file/
+    // mindmap)는 kind가 그대로 남을 수 있어 여기 default(text)로 떨어져 raw content를
+    // 텍스트로 보여준다 — 크래시 대신 열화 렌더(spec §6 "기존 종류 값은 타입에 남긴다").
     case "text":
     default:
       return (
