@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { useT } from "@/i18n/Provider";
 import { countBlocks, type BlockCounts } from "@/state/blocks";
 
@@ -29,7 +30,9 @@ export function MemoFrontBadges({
   onActivate: () => void;
 }) {
   const t = useT();
-  const counts = countBlocks(markdown);
+  // 2단계 리뷰 P1-3: 카드 수백 장이 렌더될 때마다 정규식 스캔을 반복하지 않도록
+  // markdown이 바뀔 때만 다시 센다.
+  const counts = useMemo(() => countBlocks(markdown), [markdown]);
   const badges = BADGE_ORDER.filter((b) => counts[b.type] > 0);
   if (badges.length === 0) return null;
 

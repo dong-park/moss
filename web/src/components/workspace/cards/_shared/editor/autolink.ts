@@ -31,6 +31,7 @@ import { Plugin, PluginKey } from "@milkdown/prose/state";
 import { InputRule } from "@milkdown/prose/inputrules";
 import { $inputRule, $prose } from "@milkdown/utils";
 import { linkAttr, linkSchema } from "@milkdown/preset-commonmark";
+import { normalizeLinkUrl } from "@/state/blocks";
 
 /* ── URL 패턴(보수적·ReDoS 안전) ───────────────────────────────
  * 본문은 단일 부정 문자클래스 + 단일 `+` 양화사뿐이라 선형 매칭. 중첩/겹치는
@@ -59,9 +60,17 @@ export function trimTrailingPunctuation(url: string): string {
   return u;
 }
 
-/** href 정규화: www.로 시작하면 https:// 보충, 그 외 원형 유지. */
-export function normalizeHref(url: string): string {
-  return /^www\./i.test(url) ? `https://${url}` : url;
+/**
+ * href 정규화: www.로 시작하면 https:// 보충, 그 외 원형 유지 — 그 다음
+ * state/blocks.ts의 normalizeLinkUrl로 허용 스킴(http/https/mailto)인지
+ * 검증한다(2단계 리뷰 P1-5, n2와 같은 기준 재사용). PROTOCOL 정규식이
+ * http(s)://·www.만 매칭하므로 현재 입력 경로에서 이 함수가 null을 반환할
+ * 일은 없지만("javascript:" 등은 애초에 매치되지 않는다), 향후 정규식이
+ * 느슨해지거나 이 함수가 다른 경로에서 재사용될 때를 대비한 방어선이다.
+ */
+export function normalizeHref(url: string): string | null {
+  const withScheme = /^www\./i.test(url) ? `https://${url}` : url;
+  return normalizeLinkUrl(withScheme);
 }
 
 /** 클립보드 텍스트가 (구두점 트림 후) 단독 URL인지. */
@@ -80,6 +89,8 @@ const autolinkInputRule = $inputRule(
       if (!raw) return null;
       const url = trimTrailingPunctuation(raw);
       if (!url) return null;
+      const href = normalizeHref(url);
+      if (!href) return null; // 허용 스킴이 아니면 링크화하지 않는다(P1-5).
       const linkType = linkSchema.type(ctx);
       // match[0]은 URL로 시작(lookbehind는 zero-width) → start가 곧 URL 시작.
       const urlStart = start;
@@ -87,7 +98,7 @@ const autolinkInputRule = $inputRule(
       const tr = state.tr.addMark(
         urlStart,
         urlEnd,
-        linkType.create({ href: normalizeHref(url) }),
+        linkType.create({ href }),
       );
       tr.removeStoredMark(linkType);
       return tr;
@@ -116,14 +127,12 @@ const autolinkPaste = $prose(
           if ($from.marks().some((m) => m.type.spec.code)) return false;
 
           const url = trimTrailingPunctuation(text);
+          const href = normalizeHref(url);
+          if (!href) return false; // 허용 스킴이 아니면 평문 붙여넣기에 양보(P1-5).
           const linkType = linkSchema.type(ctx);
           const tr = view.state.tr.insertText(text, from, to);
           // 트림된 후행 구두점은 링크 밖 평문으로 남긴다.
-          tr.addMark(
-            from,
-            from + url.length,
-            linkType.create({ href: normalizeHref(url) }),
-          );
+          tr.addMark(from, from + url.length, linkType.create({ href }));
           tr.removeStoredMark(linkType);
           view.dispatch(tr.scrollIntoView());
           return true;

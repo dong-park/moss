@@ -86,6 +86,13 @@ describe("FEAT-sticky-redesign n5 · 메모 앞면", () => {
     expect(useWorkspace.getState().expandedCardId).toBe("c1");
   });
 
+  it("2단계 리뷰 P1-5: 이미지 클릭은 preventDefault로 기본 동작(링크로 감싼 이미지의 이동)을 막는다", () => {
+    renderCard("text", { content: MEMO_MD, editing: false, card: { id: "c1" } });
+    // dispatchEvent는 cancelable 이벤트에서 preventDefault가 호출되면 false를 반환한다.
+    const notCancelled = fireEvent.click(document.querySelector("img")!);
+    expect(notCancelled).toBe(false);
+  });
+
   it("본문 일반 텍스트를 누르면 확대되지 않는다(카드 선택/드래그만)", () => {
     renderCard("text", { content: "그냥 본문", editing: false, card: { id: "c1" } });
     fireEvent.click(screen.getByText("그냥 본문"));

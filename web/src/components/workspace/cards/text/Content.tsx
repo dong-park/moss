@@ -60,10 +60,16 @@ export function TextCardContent({
   // FEAT-sticky-redesign n5: 앞면에서 이미지·블록 막대를 누르면 메모 창을 연다.
   // globals.css가 readonly 에디터의 <a>는 여전히 pointer-events:none으로 막지만
   // <img>는 n5에서 풀었다(클릭이 실제로 img를 히트해야 이 핸들러가 동작한다).
+  //
+  // 2단계 리뷰 P1-5: 이미지가 링크(<a href="javascript:...">)로 감싸여 있으면
+  // 브라우저 기본 동작(링크 이동)이 클릭과 동시에 발생할 수 있다 — preventDefault로
+  // 그 기본 이동을 막는다. autolink.ts·state/blocks.ts가 허용 스킴(http/https/
+  // mailto)만 링크로 만들도록 별도로 막고 있지만, 방어를 한 겹 더 둔다.
   const onFrontClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (editing) return;
     const target = e.target as HTMLElement;
     if (target.closest("img, [data-moss-block]")) {
+      e.preventDefault();
       e.stopPropagation();
       setExpandedCard(card.id);
     }

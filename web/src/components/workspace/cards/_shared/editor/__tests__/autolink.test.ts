@@ -68,6 +68,13 @@ describe("normalizeHref — href 정규화", () => {
     expect(normalizeHref("http://x.com")).toBe("http://x.com");
     expect(normalizeHref("https://x.com")).toBe("https://x.com");
   });
+
+  it("2단계 리뷰 P1-5: 허용 스킴(http/https/mailto)이 아니면 null", () => {
+    // PROTOCOL 정규식(http(s)://|www.)이 애초에 javascript: 등을 매칭하지
+    // 않아 라이브 입력 경로로는 도달하지 않지만, 함수 자체는 방어선으로
+    // state/blocks.ts의 normalizeLinkUrl 기준을 그대로 재사용해야 한다.
+    expect(normalizeHref("javascript:alert(1)")).toBeNull();
+  });
 });
 
 describe("ReDoS 안전성 — 병적 입력에서도 선형 시간", () => {

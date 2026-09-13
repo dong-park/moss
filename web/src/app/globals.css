@@ -264,10 +264,16 @@ body {
 }
 
 /* 본문 이미지는 고정 폭 컬럼(MEMO_CONTENT_WIDTH=720)에 맞춘다 — 원본이 더 커도
- * 컬럼을 넘지 않게(카드 밖으로 튀어나오던 문제). height:auto로 종횡비 유지. */
+ * 컬럼을 넘지 않게(카드 밖으로 튀어나오던 문제). height:auto로 종횡비 유지.
+ *
+ * 2단계 리뷰 P1-5: 이미지가 링크(<a>)로 감싸여 있을 때 브라우저 기본 드래그
+ * 제스처(이미지를 끌어 새 탭/다운로드)가 카드 드래그와 충돌하지 않도록
+ * user-drag를 끈다 — 앞면 클릭은 onFrontClick(preventDefault)이 별도로 막는다. */
 .moss-md .ProseMirror img {
   max-width: 100%;
   height: auto;
+  -webkit-user-drag: none;
+  user-select: none;
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -302,12 +308,4 @@ body {
  * ───────────────────────────────────────────────────────────── */
 [data-memo-editor][aria-readonly="true"] .ProseMirror a {
   pointer-events: none;
-}
-
-/* 메모 본문 인라인 이미지 — 컬럼 폭에 맞춰 축소(넘침 방지).
- * 원본이 컬럼보다 크면 가로 100%로 줄이고 비율 유지. 카드 박스의 overflow:hidden과
- * 함께 이미지가 회색 종이 영역 밖으로 삐져나가지 않게 한다. */
-.moss-md .ProseMirror img {
-  max-width: 100%;
-  height: auto;
 }

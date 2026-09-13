@@ -111,3 +111,18 @@ Canvas.tsx 가상화가 실제 마운트 카드 수를 뷰포트 가시 범위�
   판단했다. blockView.ts API를 바꿔 위젯에 직접 onActivate를 주입하는 대안도 있었으나
   범위를 넘는다고 보고 건드리지 않았다.
 
+**3단계 리뷰 수정(2026-09-13)**:
+- `MemoFrontBadges`의 `countBlocks(markdown)` 호출을 `useMemo(..., [markdown])`로 감싸 카드
+  렌더마다 정규식 스캔을 반복하지 않게 했다.
+- `text/Content.tsx`의 `onFrontClick`에 `e.preventDefault()`를 추가했다 — 이미지가
+  `<a href="javascript:...">` 같은 링크로 감싸여 있을 때 브라우저 기본 이동을 막는
+  방어선(실제로는 `autolink.ts`·`state/blocks.ts`가 허용 스킴 http/https/mailto만
+  링크로 만들어 이 경로가 도달하진 않지만, 한 겹 더 막는다). `globals.css`의
+  `.moss-md .ProseMirror img`에 `-webkit-user-drag:none`/`user-select:none`도 추가.
+- `cards/_shared/editor/autolink.ts`의 `normalizeHref`가 이제 `string | null`을 반환한다 —
+  `www.` 스킴 보충 뒤 `state/blocks.ts`의 `normalizeLinkUrl`(n2, http/https/mailto만
+  허용)로 검증한다. 현재 `PROTOCOL` 정규식이 `http(s)://`/`www.`만 매칭해 `javascript:`
+  등은 애초에 이 경로에 도달하지 않지만(리뷰 P1-5는 방어선 추가 요청), 함수 자체를
+  n2와 같은 기준으로 재사용하도록 통일했다. 호출부(`autolinkInputRule`·`autolinkPaste`)는
+  `href`가 `null`이면 링크화를 포기하고 평문/기본 처리에 양보한다.
+
