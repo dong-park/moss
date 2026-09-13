@@ -29,7 +29,7 @@ export function SystemBoard() {
   return (
     <div
       data-testid="system-board"
-      aria-label="시스템 보드 큐레이팅"
+      aria-label="시스템 프로젝트 큐레이팅"
       className="pointer-events-none absolute left-6 top-20 z-[var(--z-panel)] flex flex-wrap gap-3"
       style={{ maxWidth: "calc(100% - 96px)" }}
     >

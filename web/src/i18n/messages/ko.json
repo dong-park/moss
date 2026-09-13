@@ -46,20 +46,20 @@
       }
     },
     "boardPicker": {
-      "label": "보드 선택",
+      "label": "프로젝트 선택",
       "system": "머무는 생각",
       "systemBadge": "시스템",
-      "systemNote": "(시스템 보드)",
-      "newBoard": "새 보드 만들기",
-      "unnamed": "(이름 없는 보드)",
-      "renameInput": "보드 이름 변경",
+      "systemNote": "(시스템 프로젝트)",
+      "newBoard": "새 프로젝트 만들기",
+      "unnamed": "(이름 없는 프로젝트)",
+      "renameInput": "프로젝트 이름 변경",
       "rename": "이름 변경",
       "delete": "삭제",
-      "deleteConfirm": "이 보드를 삭제할까요?",
-      "deleteDescription": "보드 안의 메모는 사라지지 않고 어디에도 속하지 않은 상태로 보존됩니다.",
+      "deleteConfirm": "이 프로젝트를 삭제할까요?",
+      "deleteDescription": "프로젝트 안의 메모는 사라지지 않고 어디에도 속하지 않은 상태로 보존됩니다.",
       "deleteConfirmAction": "삭제",
       "deleteCancel": "취소",
-      "deletedToast": "보드를 삭제했습니다",
+      "deletedToast": "프로젝트를 삭제했습니다",
       "undo": "되돌리기"
     },
     "system": {
@@ -73,8 +73,8 @@
       },
       "drop": {
         "toastTitle": "이 메모는 무소속이에요",
-        "toastBody": "새 보드에 두시겠어요?",
-        "newBoard": "새 보드"
+        "toastBody": "새 프로젝트에 두시겠어요?",
+        "newBoard": "새 프로젝트"
       }
     },
     "zoom": {
@@ -106,7 +106,7 @@
     },
     "tool": {
       "line": "선",
-      "board": "보드",
+      "board": "파일함",
       "column": "컬럼",
       "comment": "코멘트",
       "pen": "펜",
@@ -116,7 +116,7 @@
       "breadcrumb": {
         "label": "캔버스 경로"
       },
-      "deletedToast": "함을 지웠습니다",
+      "deletedToast": "파일함을 지웠습니다",
       "eject": {
         "toParent": "상위로 내보내기",
         "toAncestor": "조상으로 내보내기"
@@ -230,11 +230,11 @@
       "title": "어디서 시작할까요",
       "description": "정답을 제공하지 않습니다. 당신만의 흐름을 만듭니다.",
       "cancel": "닫기",
-      "defaultBoardName": "이름 없는 보드"
+      "defaultBoardName": "이름 없는 프로젝트"
     },
     "free": {
       "name": "자유 캔버스",
-      "description": "빈 보드에서 시작합니다."
+      "description": "빈 프로젝트에서 시작합니다."
     },
     "mindmap": {
       "name": "마인드 확장",
@@ -244,7 +244,7 @@
       }
     },
     "project": {
-      "name": "프로젝트 보드",
+      "name": "프로젝트",
       "description": "아이디어와 실행을 나란히 둡니다.",
       "cards": {
         "ideas": "아이디어",
@@ -254,7 +254,7 @@
       }
     },
     "research": {
-      "name": "리서치 보드",
+      "name": "리서치 프로젝트",
       "description": "수집과 인사이트를 분리합니다.",
       "cards": {
         "collect": "수집",
@@ -262,7 +262,7 @@
       }
     },
     "diary": {
-      "name": "일기 보드",
+      "name": "일기 프로젝트",
       "description": "오늘 머무는 마음을 적습니다.",
       "cards": {
         "dateFormat": "{year}년 {month}월 {day}일",

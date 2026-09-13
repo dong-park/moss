@@ -59,9 +59,9 @@ describe("FEAT-templates · TemplatePicker", () => {
 
     expect(screen.getByText("자유 캔버스")).toBeTruthy();
     expect(screen.getByText("마인드 확장")).toBeTruthy();
-    expect(screen.getByText("프로젝트 보드")).toBeTruthy();
-    expect(screen.getByText("리서치 보드")).toBeTruthy();
-    expect(screen.getByText("일기 보드")).toBeTruthy();
+    expect(screen.getByText("프로젝트")).toBeTruthy();
+    expect(screen.getByText("리서치 프로젝트")).toBeTruthy();
+    expect(screen.getByText("일기 프로젝트")).toBeTruthy();
 
     // AC-3 카피 톤
     expect(
