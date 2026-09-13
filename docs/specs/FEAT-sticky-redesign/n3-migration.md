@@ -15,7 +15,7 @@ v5 업그레이드가 다섯 종류를 text 메모로 한 번만 옮기고, 원�
 
 ## 작업
 
-1. `web/src/state/db/migrateStickyV5.ts` 신규, n1이 만든 v5 `.upgrade()` 훅에 연결.
+1. `web/src/state/db/migrateStickyV5.ts` 신규. **Dexie `version(5)` 선언은 이 노드가 upgrade와 함께 처음 한다**(n1은 리뷰 지적으로 no-op v5를 뺐다 — 이미 v5로 열린 DB에서는 나중에 넣은 upgrade가 돌지 않기 때문). stores 인덱스는 v4와 동일.
    - image/audio/file → 해당 블록 하나 든 본문(`serializeBlock`). link → 링크 블록(OG thumbUrl·summary는 본문에 안 넣고 legacy.content에만).
    - mindmap → `web/src/state/cardContent.ts`의 `parseMindmap` → 루트부터 DFS, depth d 노드는 `"  ".repeat(d) + "- " + text`. 빈 text 노드도 빈 항목으로 남겨 자식 깊이 보존. 망가진 JSON → 빈 목록 + 백업.
    - 모두 `kind="text"`, width는 메모 기본 폭, height 비움. `legacy = {kind, content, attachmentRef, mediaType, width, height, migratedAt, migratedContent}`.
@@ -38,7 +38,7 @@ v5 업그레이드가 다섯 종류를 text 메모로 한 번만 옮기고, 원�
 
 | 경로 | 역할 |
 |---|---|
-| `web/src/state/db/schema.ts` | v5 선언·upgrade 훅(n1) |
+| `web/src/state/db/schema.ts` | v4까지 선언, frame·frameId·legacy 타입(n1). v5는 여기서 선언 |
 | `web/src/state/cardContent.ts` | `parseMindmap` 등 카드 content 파서 |
 | `web/src/state/__tests__/cardContent.test.ts` | mindmap 파싱 테스트 패턴 |
 | `web/src/components/workspace/cards/mindmap/Content.tsx` | `FlatNode {node, depth}` 평탄화 참고 |

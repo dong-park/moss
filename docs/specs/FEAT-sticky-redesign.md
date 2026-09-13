@@ -351,7 +351,8 @@ export interface Note {
 // frame 행: content = JSON {name}, width/height 필수, rotation 0.
 ```
 
-- Dexie v5: stores 인덱스 변경 없음. frameId·legacy는 비인덱스라 `.upgrade()` 안에서 modify만 한다.
+- Dexie v5: stores 인덱스 변경 없음. frameId·legacy는 비인덱스라 `.upgrade()` 안에서 modify만 한다. v5는 이관(n3)과 함께 처음 선언한다 — n1에서 no-op v5를 먼저 뒀다가 리뷰로 뺐다(이미 v5인 DB는 upgrade 재실행 안 됨).
+- 링크 블록 URL은 http·https·mailto만. 공백·`"`·괄호는 퍼센트 인코딩, 라벨 제어문자는 공백(1단계 리뷰 — javascript: 링크 저장형 XSS 차단).
 - frame은 임베딩 대상 제외. `workspace.ts:484`의 comment·board 제외 조건에 추가.
 
 ### 블록 마크다운 문법
