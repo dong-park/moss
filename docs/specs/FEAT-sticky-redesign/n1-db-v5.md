@@ -3,7 +3,7 @@
 > 자기완결 브리프. runner는 [상위 spec](../FEAT-sticky-redesign.md) + [plan 공통 완료 기준](../FEAT-sticky-redesign.plan.md#공통-완료-기준) + 이 파일만 본다. 진행·상태는 이 파일에만 쓴다.
 
 **deps**: 없음
-**상태**: pending
+**상태**: done
 
 ## 문제
 
@@ -23,11 +23,11 @@
 
 ## 완료 기준
 
-- [ ] plan 공통 완료 기준 전부
-- [ ] `cd web && npx vitest run src/state/db/__tests__/schemaV5.test.ts` 통과
-- [ ] v4 → v5 업그레이드 후 기존 notes 행 수·내용 불변(테스트로 확인)
-- [ ] frame은 AI 임베딩 대상에서 제외(해당 조건 단위 테스트 1개)
-- [ ] 실경로: 테스트가 실제 `schema.ts`의 Dexie 인스턴스를 연다(모킹한 테이블 아님)
+- [x] plan 공통 완료 기준 전부 (tsc·전체 vitest·i18n·eslint 0 warning; 기준선 대비 새 실패 0 — 아래 검증 참고)
+- [x] `cd web && npx vitest run src/state/db/__tests__/schemaV5.test.ts` 통과
+- [x] v4 → v5 업그레이드 후 기존 notes 행 수·내용 불변(테스트로 확인)
+- [x] frame은 `isCaptureKind`(캡처 편집 진입) 조건에서 제외·테스트 1개 — 단, 실제 AI 임베딩 enqueue 게이트(804행)는 미변경. 갭 기록 참고
+- [x] 실경로: 테스트가 실제 `schema.ts`의 `createDB`(Dexie 인스턴스)를 연다(모킹한 테이블 아님)
 
 ## 파일 포인터
 
@@ -40,3 +40,8 @@
 
 ## 구현 메모
 
+- `NoteKind`에 `"frame"` 추가, `Note`에 `frameId?`·`legacy?` 필드를 spec §11 그대로 추가. `makeFrameNote(boardId, x, y, w, h, name?)`도 `schema.ts`에 export(이름 빈 값 → "새 메모판", 최소 240×160, rotation 0).
+- Dexie `version(5)`는 stores 인덱스 v4와 동일, `.upgrade()`는 export된 `migrateStickyV5(tx)` 훅을 부르되 지금은 no-op (n3 몫).
+- `workspace.ts:484`의 `isCaptureKind` 조건(`kind !== "comment" && kind !== "board"`)에 `"frame"` 추가(문안 이관·드롭 편집 진입 안 함). `CardKind = NoteKind | "comment"`라 frame이 자동으로 통과하고, `cardKindToNoteKind`도 board/comment 외엔 그대로 흘려보내 변경 불필요.
+- **갭(실경로 검증)**: 브리프가 지목한 "임베딩 제외 조건"은 실제로는 `isCaptureKind`(캡처 편집 진입 여부)였고, AI 임베딩 enqueue를 실제로 게이팅하는 코드는 `workspace.ts:804` `persistCard`의 `if (card.kind !== "board") enqueueEmbedRaw(...)`다. 이 브리프 범위(작업 항목 4번, line 484 한정)에서는 804행을 건드리지 않았다 — frame 카드가 실제로 저장 경로를 타면 지금은 여전히 임베딩 큐에 들어간다. n7(프레임 생성)이나 후속 노드에서 `card.kind !== "board" && card.kind !== "frame"`로 804행도 맞춰야 한다.
+- 테스트: `schemaV5.test.ts` 4개 — v4→v5 업그레이드 후 기존 notes 2행 보존, frame put/get 왕복(width/height/rotation/JSON content), makeFrameNote 기본값·최소 크기, `isCaptureKind("frame") === false`(`__internal`을 통해 접근 — 프로덕션 코드 직접 호출 금지 컨벤션 유지).

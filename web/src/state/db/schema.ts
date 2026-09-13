@@ -1,4 +1,4 @@
-import Dexie, { type Table } from "dexie";
+import Dexie, { type Table, type Transaction } from "dexie";
 import { migratedContent } from "../markdownMigration";
 import { blocksToMarkdown } from "../cardContent";
 
@@ -22,7 +22,9 @@ export type NoteKind =
   | "file"
   | "code"
   // FEAT-subcanvas: "함" 카드 — content에 {boardRef}를 담아 서브 보드(캔버스)를 가리킨다.
-  | "board";
+  | "board"
+  // FEAT-sticky-redesign: 메모판 틀. content = JSON.stringify({name}). width/height 필수, rotation 0.
+  | "frame";
 
 export interface Note {
   id: string;
@@ -45,10 +47,59 @@ export interface Note {
    * 비인덱스 optional — 없으면 그림 없음. Dexie stores() 변경 불필요.
    */
   overlay?: string;
+  /**
+   * FEAT-sticky-redesign: 메모판 소속. 같은 boardId의 kind="frame" 행 id.
+   * frame 행 자신은 항상 undefined.
+   */
+  frameId?: string;
+  /**
+   * FEAT-sticky-redesign: 이관 백업. v5 upgrade가 채우고 rollbackStickyMigration이 비운다.
+   */
+  legacy?: {
+    kind: NoteKind;
+    content: string;
+    attachmentRef?: string;
+    mediaType?: string;
+    width: number;
+    height?: number;
+    migratedAt: number;
+    /** 이관 직후 content. 현재 content와 다르면 사용자가 편집한 것으로 보고 되돌리기 건너뜀. */
+    migratedContent: string;
+  };
   aiOptOut: boolean;
   createdAt: number;
   updatedAt: number;
   lastVisitedAt: number;
+}
+
+/**
+ * FEAT-sticky-redesign: 메모판(frame) 행 생성 헬퍼.
+ * content 규약: JSON.stringify({name}). rotation 항상 0. 최소 240×160.
+ */
+export function makeFrameNote(
+  boardId: string | null,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  name?: string,
+): Note {
+  const now = Date.now();
+  return {
+    id: `frame-${now.toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+    boardId,
+    kind: "frame",
+    x,
+    y,
+    width: Math.max(240, width),
+    height: Math.max(160, height),
+    rotation: 0,
+    content: JSON.stringify({ name: name?.trim() || "새 메모판" }),
+    aiOptOut: false,
+    createdAt: now,
+    updatedAt: now,
+    lastVisitedAt: now,
+  };
 }
 
 export interface Board {
@@ -156,7 +207,26 @@ export class MossDB extends Dexie {
       ...stores,
       boards: "id, isSystem, lastOpenedAt, parentBoardId",
     });
+    // v5 (FEAT-sticky-redesign): NoteKind에 "frame" 추가, Note에 frameId/legacy
+    // 비인덱스 필드 추가 — stores() 인덱스 문자열은 v4와 동일. 실제 이관(옛 카드
+    // → 블록 든 메모)은 n3 몫이라 migrateStickyV5는 지금은 no-op.
+    this.version(5)
+      .stores({
+        ...stores,
+        boards: "id, isSystem, lastOpenedAt, parentBoardId",
+      })
+      .upgrade(async (tx) => {
+        await migrateStickyV5(tx);
+      });
   }
+}
+
+/**
+ * FEAT-sticky-redesign: v5 upgrade 훅. n3가 옛 카드 이관 로직을 채울 자리.
+ * 지금은 no-op — 기존 notes 행은 그대로 통과한다.
+ */
+export async function migrateStickyV5(tx: Transaction): Promise<void> {
+  void tx; // no-op (n3 몫) — 이관 로직은 n3가 채운다.
 }
 
 let _db: MossDB | null = null;
