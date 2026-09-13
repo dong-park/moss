@@ -198,4 +198,17 @@ describe("blocks — 리뷰 P1 보강", () => {
     expect(parseBlock('[녹음](https://example.com "moss-audio")')).toBeNull();
     expect(parseBlock('[a.pdf](https://example.com/a.pdf "moss-file")')).toBeNull();
   });
+
+  it("인코딩 안 된 따옴표·괄호가 든 링크 URL은 블록이 아니다(렌더 경계 불일치 방지)", () => {
+    expect(parseBlock('[x](https://a.com/y"z)](https://evil.com "moss-link")')).toBeNull();
+    expect(parseBlock('[x](https://a.com/a)b "moss-link")')).toBeNull();
+    expect(parseBlock('[x](https://a.com "moss-link")')).toEqual({ type: "link", url: "https://a.com", title: "x" });
+  });
+
+  it("라벨의 괄호도 이스케이프해 왕복한다", () => {
+    const filename = "보고서(최종) (2).pdf";
+    const s = serializeBlock({ type: "file", ref: "opfs:r.pdf", filename });
+    expect(s).toBe('[보고서\\(최종\\) \\(2\\).pdf](opfs://r.pdf "moss-file")');
+    expect(parseBlock(s)).toEqual({ type: "file", ref: "opfs:r.pdf", filename });
+  });
 });

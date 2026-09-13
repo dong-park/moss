@@ -49,7 +49,7 @@ export interface BlockCounts {
 function escapeLabel(label: string): string {
   // 개행·제어문자는 블록을 두 줄로 쪼개 복구 불가로 만든다 → 공백으로(리뷰 P1).
   const oneLine = label.replace(/[\u0000-\u001f\u007f]+/g, " ");
-  return oneLine.replace(/[\\\]"]/g, (m) => "\\" + m);
+  return oneLine.replace(/[\\\]"()]/g, (m) => "\\" + m);
 }
 
 function unescapeLabel(label: string): string {
@@ -96,7 +96,7 @@ export function serializeBlock(block: Block): string | null {
     case "link": {
       const url = normalizeLinkUrl(block.url);
       if (!url) return null;
-      const rawTitle = block.title && block.title.trim() ? block.title : url;
+      const rawTitle = block.title && block.title.trim() ? block.title : block.url.trim();
       return `[${escapeLabel(rawTitle)}](${url} "moss-link")`;
     }
   }
@@ -106,8 +106,10 @@ export function serializeBlock(block: Block): string | null {
 
 const IMAGE_RE = /^!\[\]\((opfs:\/\/\S+)\)$/;
 const AUDIO_RE = new RegExp(`^\\[${AUDIO_LABEL}\\]\\((opfs:\\/\\/\\S+) "moss-audio"\\)$`);
-const FILE_RE = /^\[(.*)\]\((opfs:\/\/\S+) "moss-file"\)$/;
-const LINK_RE = /^\[(.*)\]\((\S+) "moss-link"\)$/;
+/** 라벨은 escapeLabel 결과만 인정한다 — 이스케이프 안 된 `\ ] " ( )`가 있으면 불일치. */
+const LABEL = String.raw`((?:[^\\\]"()]|\\.)*)`;
+const FILE_RE = new RegExp(String.raw`^\[${LABEL}\]\((opfs:\/\/\S+) "moss-file"\)$`);
+const LINK_RE = new RegExp(String.raw`^\[${LABEL}\]\((\S+) "moss-link"\)$`);
 
 /**
  * 문단 텍스트 하나가 네 블록 중 하나로 "단독"으로 있으면 Block을, 아니면
@@ -135,8 +137,9 @@ export function parseBlock(paragraphText: string): Block | null {
 
   m = LINK_RE.exec(s);
   if (m) {
-    // 스킴만 검사하고 원문 URL을 유지한다(손으로 쓴 `https://a.com`도 왕복 보존).
-    if (!normalizeLinkUrl(m[2])) return null;
+    // 정규형(허용 스킴 + 공백·따옴표·괄호 인코딩됨)일 때만 블록 — 인코딩 안 된 `"`·`)`가
+    // 든 URL은 Milkdown이 링크 경계를 다르게 잘라 블록 판정과 렌더가 어긋난다(재심사 P1).
+    if (normalizeLinkUrl(m[2]) !== m[2]) return null;
     const title = unescapeLabel(m[1]);
     return { type: "link", url: m[2], title: title || undefined };
   }
