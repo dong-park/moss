@@ -1,0 +1,96 @@
+# Plan: FEAT-sticky-redesign — 운영 규약 + DAG
+
+> spec: [`FEAT-sticky-redesign.md`](FEAT-sticky-redesign.md) · kind=issues. 노드 브리프는 [`FEAT-sticky-redesign/`](FEAT-sticky-redesign/).
+> 실행: `/go docs/specs/FEAT-sticky-redesign.plan.md` + 노드 브리프 경로. deps 없는 노드는 한 메시지에 병렬.
+> runner는 자기 브리프의 `상태`·`구현 메모`만 고친다. 이 파일의 노드 표는 호출자가 고친다.
+
+## 사람용 요약
+
+**한 줄로**: 카드 종류를 메모 하나로 합치고, 이미지·링크·녹음·파일은 메모 안 블록으로, 사이드바는 하단 독으로, 묶음은 메모판 틀로 바꾼다.
+
+1. **DB v5 자리 만들기** — 메모판 종류와 소속·백업 필드를 저장소에 추가한다. (토대)
+2. **블록 문법** — 링크·녹음·파일 블록을 마크다운에 적고 읽는 순수 모듈. (토대)
+3. **옛 카드 이관** — 이미지·링크·녹음·파일·마인드맵 카드를 블록 든 메모로 옮기고, 되돌리기를 만든다.
+4. **메모 창 블록** — 창 안에서 네 블록을 넣고 보고 재생한다.
+5. **메모 앞면** — 첫 이미지 크게, 나머지는 배지.
+6. **캔버스 붙여넣기·드롭** — 이미지·URL·파일이 블록 든 메모가 된다.
+7. **메모판** — 틀 그리기, 소속 판정, 같이 옮기기.
+8. **하단 독** — 사이드바를 걷고 독에서 끌어 만든다.
+9. **명칭** — 보드→프로젝트, 함→파일함.
+10. **마무리 검증** — 옛 생성 경로 제거, 수동 시나리오, 시안 대조.
+
+진행: 1·2·9 동시 시작 → 3·4·6·7 병렬 → 5·8 → 10.
+
+## 공통 완료 기준
+
+1. `cd web && npx tsc --noEmit` 통과
+2. `cd web && npx vitest run` 전체 통과, `cd web && bun scripts/check-i18n.mjs` 통과
+3. `cd web && npx eslint <바꾼 파일>` 경고 0
+4. 새 로직마다 테스트 최소 1개. Conventional Commits, 노드당 커밋 1개 이상
+5. **실경로 검증(green≠done)**: stub·직접 주입으로만 green이면 브리프 `구현 메모`에 갭을 적는다
+6. `web/AGENTS.md` 경고(Next 16 비표준)를 읽고 시작한다
+
+## DAG
+
+```
+n1-db-v5 ────┬──────────────► n3-migration ─────────────┐
+             │                   ▲                      │
+             └──► n7-frames ──► n8-dock ────────────────┤
+                                                        │
+n2-blocks ───┬──► n3-migration                          ├──► n10-finish
+             ├──► n4-memo-window ──► n5-memo-front ─────┤
+             └──► n6-canvas-capture ────────────────────┤
+                                                        │
+n9-naming ──────────────────────────────────────────────┘
+```
+
+진입점: n1, n2, n9 · critical path 길이 4 (n2→n4→n5→n10, n1→n7→n8→n10) < 노드 10
+
+### edge 사유
+
+| edge | 사유 |
+|---|---|
+| n1→n3 | n3가 n1의 `legacy` 필드와 Dexie v5 버전 선언 위에 upgrade 함수를 얹는다 |
+| n2→n3 | n3가 n2의 `serializeBlock`으로 이관 본문을 만든다 |
+| n1→n7 | n7이 n1의 `kind:"frame"`·`frameId` 필드로 판과 소속을 저장한다 |
+| n7→n8 | n8의 메모판 드롭이 n7의 `addFrameAt` 액션을 부른다 |
+| n2→n4 | n4의 NodeView가 n2의 `parseBlock`으로 블록 문단을 알아본다 |
+| n4→n5 | n5 앞면이 n4의 읽기 전용 NodeView를 재사용한다(카드·창 높이 1:1 규칙) |
+| n2→n6 | n6이 n2의 `serializeBlock`으로 붙여넣기 본문을 만든다 |
+| n3,n5,n6,n8,n9→n10 | n10이 옛 생성 경로를 지우고 전체 시나리오를 검증한다 — 모든 기능이 들어와 있어야 한다 |
+
+### 커버리지 (spec AC → 노드)
+
+| spec | 노드 |
+|---|---|
+| AC-1·2·3·4·5 독 | n8 |
+| AC-6·7 붙여넣기·드롭 | n6 |
+| AC-8 앞면 | n5 |
+| AC-9 창 블록 | n4 |
+| AC-10·11·12 메모판 | n7 (드롭 생성은 n8) |
+| AC-13 파일함·명칭 | n9 |
+| AC-14·15 이관·되돌리기 | n3 |
+| §6 데이터 모델 | n1 · 블록 문법 n2 |
+| §8 비기능(성능·접근성) | n7(판 이동 16ms) · n8(독 60fps·a11y) · n3(1,000장 2초) · n5(렌더 10%) |
+| §10 DOD 수동·시안 대조, 옛 경로 제거 | n10 |
+
+## 노드 인덱스
+
+| ID | 브리프 | deps | 상태 |
+|---|---|---|---|
+| n1 | [n1-db-v5.md](FEAT-sticky-redesign/n1-db-v5.md) | — | pending |
+| n2 | [n2-blocks.md](FEAT-sticky-redesign/n2-blocks.md) | — | pending |
+| n3 | [n3-migration.md](FEAT-sticky-redesign/n3-migration.md) | n1, n2 | pending |
+| n4 | [n4-memo-window.md](FEAT-sticky-redesign/n4-memo-window.md) | n2 | pending |
+| n5 | [n5-memo-front.md](FEAT-sticky-redesign/n5-memo-front.md) | n4 | pending |
+| n6 | [n6-canvas-capture.md](FEAT-sticky-redesign/n6-canvas-capture.md) | n2 | pending |
+| n7 | [n7-frames.md](FEAT-sticky-redesign/n7-frames.md) | n1 | pending |
+| n8 | [n8-dock.md](FEAT-sticky-redesign/n8-dock.md) | n7 | pending |
+| n9 | [n9-naming.md](FEAT-sticky-redesign/n9-naming.md) | — | pending |
+| n10 | [n10-finish.md](FEAT-sticky-redesign/n10-finish.md) | n3, n5, n6, n8, n9 | pending |
+
+## 파킹 / 보류 로그
+
+| 날짜 | 노드 | 사유 |
+|---|---|---|
+| | | |
