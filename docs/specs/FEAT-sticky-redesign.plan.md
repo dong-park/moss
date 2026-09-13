@@ -82,11 +82,11 @@ n9-naming ───────────────────────�
 |---|---|---|---|
 | n1 | [n1-db-v5.md](FEAT-sticky-redesign/n1-db-v5.md) | — | done |
 | n2 | [n2-blocks.md](FEAT-sticky-redesign/n2-blocks.md) | — | done |
-| n3 | [n3-migration.md](FEAT-sticky-redesign/n3-migration.md) | n1, n2 | pending |
-| n4 | [n4-memo-window.md](FEAT-sticky-redesign/n4-memo-window.md) | n2 | pending |
+| n3 | [n3-migration.md](FEAT-sticky-redesign/n3-migration.md) | n1, n2 | done (리뷰 중) |
+| n4 | [n4-memo-window.md](FEAT-sticky-redesign/n4-memo-window.md) | n2 | done (리뷰 중) |
 | n5 | [n5-memo-front.md](FEAT-sticky-redesign/n5-memo-front.md) | n4 | pending |
-| n6 | [n6-canvas-capture.md](FEAT-sticky-redesign/n6-canvas-capture.md) | n2 | pending |
-| n7 | [n7-frames.md](FEAT-sticky-redesign/n7-frames.md) | n1 | pending |
+| n6 | [n6-canvas-capture.md](FEAT-sticky-redesign/n6-canvas-capture.md) | n2 | done (리뷰 중) |
+| n7 | [n7-frames.md](FEAT-sticky-redesign/n7-frames.md) | n1 | done (리뷰 중) |
 | n8 | [n8-dock.md](FEAT-sticky-redesign/n8-dock.md) | n7 | pending |
 | n9 | [n9-naming.md](FEAT-sticky-redesign/n9-naming.md) | — | done |
 | n10 | [n10-finish.md](FEAT-sticky-redesign/n10-finish.md) | n3, n5, n6, n8, n9 | pending |
