@@ -14,7 +14,6 @@ import {
   SYSTEM_BOARD_ID,
   useWorkspace,
   widthForKind,
-  type Card,
   type ToolId,
 } from "@/state/workspace";
 import { useToasts } from "@/state/notifications";
@@ -78,46 +77,6 @@ export function magnifiedSize(distance: number): number {
 type Centers = Partial<Record<DockToolId, number>>;
 
 /**
- * 2단계 리뷰 P1-2: 카드 하나가 독 화면 영역(dockRect)과 겹치는지 순수 함수로
- * 판정한다(AC-5). 판(frame) 카드는 배경 레이어라 대상에서 제외(n8 구현 메모).
- * Dock 컴포넌트 밖에서도 단위 테스트할 수 있도록 export한다.
- *
- * n10 브라우저 결함1: 이 계산은 world-layer가 화면(0,0)에서 시작한다고
- * 가정한다 — 실제로는 캔버스 루트 자신의 화면 오프셋(canvasOffset)만큼 더
- * 밀려 있을 수 있다(레이아웃에 따라 캔버스가 왼쪽 끝에서 시작하지 않는
- * 경우, 또는 카드가 실측 DOM과 다른 폭/높이로 렌더된 경우). Dock 컴포넌트는
- * 이 순수 함수를 "실제 DOM에 카드가 없을 때"의 폴백으로만 쓰고, 렌더된
- * 카드가 있으면 실제 getBoundingClientRect를 우선한다(아래 recompute).
- */
-export function cardOccludesDock(
-  card: Card,
-  viewport: { x: number; y: number; scale: number },
-  dockRect: { left: number; right: number; top: number; bottom: number },
-  canvasOffset: { left: number; top: number } = { left: 0, top: 0 },
-): boolean {
-  if (card.kind === "frame") return false;
-  const left = canvasOffset.left + viewport.x + card.x * viewport.scale;
-  const top = canvasOffset.top + viewport.y + card.y * viewport.scale;
-  const height = card.height ?? widthForKind(card.kind);
-  const right = left + card.width * viewport.scale;
-  const bottom = top + height * viewport.scale;
-  return (
-    right >= dockRect.left &&
-    left <= dockRect.right &&
-    bottom >= dockRect.top &&
-    top <= dockRect.bottom
-  );
-}
-
-/** 화면(getBoundingClientRect) 사각형 두 개가 겹치는지 — 실측 DOM 기반 판정용. */
-function domRectsOverlap(
-  a: { left: number; right: number; top: number; bottom: number },
-  b: { left: number; right: number; top: number; bottom: number },
-): boolean {
-  return a.right >= b.left && a.left <= b.right && a.bottom >= b.top && a.top <= b.bottom;
-}
-
-/**
  * FEAT-sticky-redesign n8: 화면 아래 가운데 독.
  * 왼쪽 사이드바(Sidebar.tsx)를 대체 — tryDrop 좌표 변환·시스템 보드 토스트를
  * 이식했다. 순서: 메모판·메모·파일함 | 구분선 | 펜·시그널스 (spec §2).
@@ -156,7 +115,6 @@ export function Dock({
       ? window.matchMedia("(prefers-reduced-motion: reduce)").matches
       : false,
   );
-  const [dockHover, setDockHover] = useState(false);
   // 이름표를 보여줄 아이콘 — 바뀔 때만 setState(렌더). 크기는 아래 MotionValue가 맡는다.
   const [hoveredId, setHoveredId] = useState<DockToolId | null>(null);
   const hoveredRef = useRef<DockToolId | null>(null);
@@ -167,7 +125,6 @@ export function Dock({
   const centersValidRef = useRef(false);
   /** 버튼별 현재 크기 MotionValue — 측정 시 확대분을 빼 평상시 좌표로 되돌리는 데 쓴다. */
   const sizeValuesRef = useRef<Partial<Record<DockToolId, MotionValue<number>>>>({});
-  const [occluded, setOccluded] = useState(false);
   // 2단계 리뷰 P1-1: 독 실제 렌더 폭(레이아웃 토큰은 근사치일 뿐 — 버튼 슬롯이
   // hover로 커지면 실제 폭도 달라진다). 가운데 정렬·툴바 회피는 이 실측값을 쓴다.
   const [dockWidth, setDockWidth] = useState<number>(layout.dock.width);
@@ -225,50 +182,6 @@ export function Dock({
   // 동작 줄이기(prefers-reduced-motion)는 hover는 추적하되 크기 확대만 끈다(이름표는 유지).
   const hoverTrackingEnabled = effectiveCanvasWidth >= MIN_MAGNIFY_CANVAS_WIDTH;
   const sizingEnabled = hoverTrackingEnabled && !reducedMotion;
-
-  /* ─ 가려짐(AC-5): 독의 화면 영역과 겹치는 카드가 있으면 옅어진다(2단계 리뷰 P1-2)
-   * — 순수 함수(cardOccludesDock) + useWorkspace.subscribe로 직접 구독하고
-   * rAF로 스로틀한다(cards·viewport를 훅으로 구독하면 effect deps에서 독 자체
-   * 위치가 바뀌는 계기인 signalsOpen·effectiveCanvasWidth를 빠뜨리기 쉽다).
-   * 값이 실제로 바뀔 때만 setOccluded를 불러 불필요한 리렌더를 막는다. */
-  useEffect(() => {
-    let rafId = 0;
-    let scheduled = false;
-    const recompute = () => {
-      scheduled = false;
-      const dockEl = dockRef.current;
-      if (!dockEl) return;
-      const dockBox = dockEl.getBoundingClientRect();
-      const state = useWorkspace.getState();
-      // n10 결함1: 캔버스 루트가 화면 (0,0)에서 시작하지 않을 수 있다 — 실측
-      // 오프셋을 폴백 계산에 더한다(카드가 아직 DOM에 없을 때만 쓰인다).
-      const canvasEl = document.querySelector<HTMLElement>("[data-canvas-root='true']");
-      const canvasOffset = canvasEl
-        ? { left: canvasEl.getBoundingClientRect().left, top: canvasEl.getBoundingClientRect().top }
-        : { left: 0, top: 0 };
-      const hit = state.cards.some((c) => {
-        if (c.kind === "frame") return false;
-        // 실제 렌더된 카드 DOM이 있으면 그 실측 rect를 우선한다 — 캔버스 오프셋·
-        // 실제 높이(auto-grow)·round 등 어떤 근사도 필요 없이 정확하다.
-        const cardEl = document.querySelector<HTMLElement>(`[data-card-id="${c.id}"]`);
-        if (cardEl) return domRectsOverlap(cardEl.getBoundingClientRect(), dockBox);
-        return cardOccludesDock(c, state.viewport, dockBox, canvasOffset);
-      });
-      setOccluded((prev) => (prev === hit ? prev : hit));
-    };
-    const schedule = () => {
-      if (scheduled) return;
-      scheduled = true;
-      rafId = requestAnimationFrame(recompute);
-    };
-    recompute(); // 초기 1회는 즉시(마운트 직후 테스트도 동기적으로 통과해야 한다).
-    const unsubscribe = useWorkspace.subscribe(schedule);
-    return () => {
-      unsubscribe();
-      if (rafId) cancelAnimationFrame(rafId);
-    };
-    // 독 위치(따라서 dockRect)가 바뀌는 계기 — 시그널스 열림/닫힘, 캔버스 폭 변화.
-  }, [signalsOpen, effectiveCanvasWidth, dockWidth]);
 
   /**
    * 맥 독 확대 — 버튼 중심(평상시 레이아웃 기준)을 한 번 재서 캐시한다.
@@ -332,7 +245,6 @@ export function Dock({
   };
   const handleDockMouseLeave = () => {
     mouseX.set(Infinity);
-    setDockHover(false);
     hoveredRef.current = null;
     setHoveredId(null);
   };
@@ -435,7 +347,6 @@ export function Dock({
       aria-label={t("workspace.dock.label")}
       onMouseEnter={() => {
         centersValidRef.current = false;
-        setDockHover(true);
       }}
       onMouseLeave={handleDockMouseLeave}
       onMouseMove={handleDockMouseMove}
@@ -451,8 +362,6 @@ export function Dock({
         height: layout.dock.height,
         background: "var(--gradient-paper)",
         boxShadow: "var(--shadow-card)",
-        opacity: occluded && !dockHover ? 0.6 : 1,
-        transition: "opacity 180ms ease",
       }}
     >
       {DOCK_ITEMS.slice(0, 3).map((item) => (

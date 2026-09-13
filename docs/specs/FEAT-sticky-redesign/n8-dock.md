@@ -68,3 +68,5 @@
 - `SignalsPanel.tsx`의 `PANEL_WIDTH`를 export해 Dock의 중복 `SIGNALS_PANEL_WIDTH` 상수를 제거.
 - 드래그 중 창 밖으로 나가 blur가 발생하면(다른 탭/창으로 포커스 이동) mouseup 없이 드래그 상태가 남던 것을 `window.addEventListener("blur", ...)`로 정리하도록 추가.
 - 미사용 CSS 변수 `--layout-sidebar-expanded`/`--layout-sidebar-collapsed` 제거.
+
+**사용자 결정 수정(2026-09-13)**: 가림 판정(AC-5, `cardOccludesDock`/`domRectsOverlap`/`occluded` state·opacity 0.6)을 통째로 제거 — 독은 항상 불투명(opacity 1)이다. `dockHover` state도 이 용도로만 쓰여 같이 제거. 관련 단위 테스트 삭제, hover 확대·드래그·Enter 생성·시그널스 위치·툴바 회피는 무변경.
