@@ -196,8 +196,8 @@ export interface PendingSubcanvasUndo {
   expiresAt: number;
 }
 
-export const MIN_SCALE = 0.25;
-export const MAX_SCALE = 3;
+export const MIN_SCALE = 0.8;
+export const MAX_SCALE = 1.1;
 
 /** 카드 리사이즈 한계. SPEC AC-3. */
 export const CARD_MIN_WIDTH = 120;
@@ -1190,8 +1190,13 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const notes = await storage.loadCards(storageBoardId(id));
     const cards = notes.map(decodeNoteToCard);
 
-    // 4) state 교체 — viewport 복원 (없으면 reset)
-    const restored = get().viewportByBoard[id] ?? { x: 0, y: 0, scale: 1 };
+    // 4) state 교체 — viewport 복원 (없으면 reset). AC-5: 저장된 scale이 한계 밖일 수
+    // 있으므로 복원 시점에 범위로 자른다.
+    const saved = get().viewportByBoard[id] ?? { x: 0, y: 0, scale: 1 };
+    const restored = {
+      ...saved,
+      scale: clamp(saved.scale, MIN_SCALE, MAX_SCALE),
+    };
     const lastNonSystem = id === SYSTEM_BOARD_ID ? get().lastNonSystemBoardId : id;
     set({
       cards,

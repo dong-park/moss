@@ -3,6 +3,8 @@ import {
   __internal,
   BOARD_FADE_MS,
   CAPTURE_TOOLS,
+  MAX_SCALE,
+  MIN_SCALE,
   SYSTEM_BOARD_ID,
   useWorkspace,
   type Card,
@@ -568,7 +570,7 @@ describe("FEAT-boards · 보드 store", () => {
   it("setCurrentBoard — viewport 보존·복원 + 카드 교체", async () => {
     const idA = await useWorkspace.getState().createBoard("A");
     await waitFade();
-    useWorkspace.setState({ viewport: { x: 100, y: 200, scale: 1.5 } });
+    useWorkspace.setState({ viewport: { x: 100, y: 200, scale: 1.05 } });
 
     const idB = await useWorkspace.getState().createBoard("B");
     await waitFade();
@@ -580,7 +582,7 @@ describe("FEAT-boards · 보드 store", () => {
     expect(useWorkspace.getState().viewport).toEqual({
       x: 100,
       y: 200,
-      scale: 1.5,
+      scale: 1.05,
     });
 
     await useWorkspace.getState().setCurrentBoard(idB);
@@ -590,6 +592,23 @@ describe("FEAT-boards · 보드 store", () => {
       y: -80,
       scale: 0.8,
     });
+  });
+
+  it("setCurrentBoard — 한계 밖 viewport는 범위로 clamp (AC-5)", async () => {
+    const idA = await useWorkspace.getState().createBoard("A");
+    await waitFade();
+    useWorkspace.setState({ viewport: { x: 100, y: 200, scale: 3 } });
+
+    const idB = await useWorkspace.getState().createBoard("B");
+    await waitFade();
+
+    await useWorkspace.getState().setCurrentBoard(idA);
+    await waitFade();
+    const restored = useWorkspace.getState().viewport;
+    expect(restored.scale).toBe(MAX_SCALE);
+    expect(restored.scale).toBeLessThanOrEqual(MAX_SCALE);
+    expect(restored.scale).toBeGreaterThanOrEqual(MIN_SCALE);
+    void idB;
   });
 
   it("setCurrentBoard — boardTransitioning 플래그 200ms 후 해제", async () => {
@@ -750,5 +769,32 @@ describe("FEAT-templates · createBoardFromTemplate", () => {
     await expect(
       useWorkspace.getState().createBoardFromTemplate("nope", "x", t),
     ).rejects.toThrow();
+  });
+});
+
+describe("FEAT-canvas-initial-view — 줌 한계 80~110%", () => {
+  it("setScale·zoomAt이 0.8 아래와 1.1 위를 자른다 (AC-3)", () => {
+    useWorkspace.setState({ viewport: { x: 0, y: 0, scale: 1 } });
+
+    useWorkspace.getState().setScale(0.1);
+    expect(useWorkspace.getState().viewport.scale).toBe(MIN_SCALE);
+    useWorkspace.getState().setScale(5);
+    expect(useWorkspace.getState().viewport.scale).toBe(MAX_SCALE);
+
+    useWorkspace.getState().zoomAt(0.5, 100, 100);
+    expect(useWorkspace.getState().viewport.scale).toBe(MIN_SCALE);
+    useWorkspace.getState().zoomAt(10, 100, 100);
+    expect(useWorkspace.getState().viewport.scale).toBe(MAX_SCALE);
+  });
+
+  it("fitToCards — 넓게 흩어진 메모도 0.8 밑으로 내려가지 않는다 (AC-1)", () => {
+    useWorkspace.setState({
+      cards: [
+        { id: "a", kind: "text", x: 0, y: 0, width: 240, content: "" },
+        { id: "b", kind: "text", x: 10000, y: 10000, width: 240, content: "" },
+      ],
+    });
+    useWorkspace.getState().fitToCards({ width: 1000, height: 800 });
+    expect(useWorkspace.getState().viewport.scale).toBe(MIN_SCALE);
   });
 });
