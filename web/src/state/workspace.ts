@@ -32,15 +32,6 @@ import { encodeFrameContent } from "./frameContent";
 import { searchMemos as searchMemosImpl } from "./memoSearch";
 import { getTemplate } from "@/templates";
 import type { Translator } from "@/i18n";
-// FEAT-memo-empty-cleanup (W7): 빈 메모 자동 정리 — never-filled 추적 + undo 토스트.
-import { useToasts } from "@/state/notifications";
-import {
-  isMemoEmpty,
-  wasNeverFilled,
-  markFilled,
-  forgetCard,
-  startEmptyTracking,
-} from "@/state/emptyCleanup";
 import {
   PEN_MIN_WIDTH,
   PEN_MAX_WIDTH,
@@ -405,14 +396,6 @@ interface WorkspaceState {
 
   remove: (id: string) => void;
   removeSelected: () => void;
-
-  /**
-   * FEAT-memo-empty-cleanup (W7): 본문·overlay가 모두 비었고 "한 번도 채워진 적이
-   * 없는"(never-filled) 메모 카드만 삭제한다. text 카드 blur 훅에서 호출.
-   * 보수적 — 내용을 지운 카드(AC-3)나 펜 overlay가 있는 카드(AC-2)는 보존한다.
-   * 삭제는 undo 토스트로 복원 가능(AC-4).
-   */
-  deleteCardIfEmpty: (id: string) => void;
 
   /**
    * FEAT-card-flow REQ-flow-1/2: 현 카드 편집 종료. 콘텐츠가 비어있지 않으면
@@ -1856,50 +1839,6 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     }
   },
 
-  deleteCardIfEmpty: (id) => {
-    const card = get().cards.find((c) => c.id === id);
-    // text(포스트잇) 카드만 대상 — 다른 종류는 스펙 범위 밖(§2 제외).
-    if (!card || card.kind !== "text") return;
-    // 보수적 3중 가드(AC-1~3): 본문·overlay 비었고 + 한 번도 채워진 적 없을 때만.
-    // overlay가 있으면 isMemoEmpty=false → 보존(AC-2). 내용을 지운 카드는
-    // everFilled에 남아 wasNeverFilled=false → 보존(AC-3, 데이터 보호 우선).
-    if (!isMemoEmpty(card) || !wasNeverFilled(id)) return;
-
-    const boardId = storageBoardId(get().currentBoardId);
-    // 삭제 전 스냅샷 — undo 복원 대상. 대기 중 persist는 취소(지운 카드 재기록 방지).
-    const snapshot: Card = { ...card };
-    set((s) => ({
-      cards: s.cards.filter((c) => c.id !== id),
-      selectedIds: s.selectedIds.filter((x) => x !== id),
-      editingId: s.editingId === id ? null : s.editingId,
-      expandedCardId: s.expandedCardId === id ? null : s.expandedCardId,
-    }));
-    cancelPersist(id);
-    forgetCard(id);
-    const storage = useStorage.getState();
-    if (storage.initialized) void storage.removeNote(id);
-
-    // AC-4: undo 토스트. 복원 시 카드를 되살리고 다시 영속, 채워졌음으로 표시해
-    // (markFilled) 같은 카드가 즉시 재삭제되는 루프를 막는다.
-    useToasts.getState().push({
-      tone: "calm",
-      title: "빈 메모 삭제됨",
-      duration: 5000,
-      action: {
-        label: "실행취소",
-        onClick: () => {
-          markFilled(snapshot.id);
-          set((s) =>
-            s.cards.some((c) => c.id === snapshot.id)
-              ? {}
-              : { cards: [...s.cards, snapshot] },
-          );
-          void persistCard(snapshot, boardId);
-        },
-      },
-    });
-  },
-
   commitAndAddNext: (currentCardId) => {
     const current = get().cards.find((c) => c.id === currentCardId);
     if (!current) {
@@ -2324,10 +2263,6 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     });
   },
 }));
-
-// FEAT-memo-empty-cleanup (W7): never-filled 추적 구독 시작(멱등). store 생성 직후
-// 자기 store를 주입 — 순환 의존 없이 deleteCardIfEmpty가 보존 판정에 쓸 기록을 쌓는다.
-startEmptyTracking(useWorkspace);
 
 /* 테스트·디버깅용 export — 프로덕션 코드는 직접 호출 금지. */
 export const __internal = {

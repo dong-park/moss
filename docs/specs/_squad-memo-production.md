@@ -23,7 +23,7 @@
 | **W4** ✅ | [FEAT-memo-fulltext-search.md](FEAT-memo-fulltext-search.md) | 메모 전문 검색 + 캔버스 필터 | state/memoSearch(신규) | C | M |
 | **W5** ✅ | [FEAT-memo-wikilinks.md](FEAT-memo-wikilinks.md) | `[[위키링크]]` + 백링크 | editor/wikilink(신규) | C | L |
 | **W6** ✅ | [FEAT-memo-paste-sanitize.md](FEAT-memo-paste-sanitize.md) | 붙여넣기 정제(HTML→MD) | editor/paste(신규) | C | S |
-| **W7** ✅ | [FEAT-memo-empty-cleanup.md](FEAT-memo-empty-cleanup.md) | 빈 메모 자동 정리 | workspace 액션 | C | S |
+| **W7** ⛔ | [FEAT-memo-empty-cleanup.md](FEAT-memo-empty-cleanup.md) (폐기 — [FEAT-memo-empty-keep.md](FEAT-memo-empty-keep.md)로 대체) | 빈 메모 자동 정리 → 자동 삭제 제거 | workspace 액션 | C | S |
 | **W8** ✅ | [FEAT-memo-multitab-sync.md](FEAT-memo-multitab-sync.md) | 다중 탭 동기화 | state/db/liveSync(신규) | C | M |
 | **W9** ✅ | [FEAT-memo-a11y.md](FEAT-memo-a11y.md) | 접근성(role·aria·단축·포커스) | editor 컨테이너 | C | S |
 | **W10** ✅ | [FEAT-memo-autolink.md](FEAT-memo-autolink.md) | URL 자동 링크화 | editor/autolink(신규) | C | S |
@@ -157,7 +157,7 @@ bubbleMenuItems: [...memoBubbleItems /*W3*/]
 - "W4: `FEAT-memo-fulltext-search.md`. state/memoSearch.ts + workspace searchMemos 셀렉터 + 캔버스 하이라이트."
 - "W5: `FEAT-memo-wikilinks.md`. editor/wikilink.ts(Milkdown 플러그인) + editorPlugins[] 등록 + 백링크 셀렉터."
 - "W6: `FEAT-memo-paste-sanitize.md`. editor/sanitizePaste.ts, pasteHandlers[]에 등록(sanitize=먼저)."
-- "W7: `FEAT-memo-empty-cleanup.md`. workspace deleteCardIfEmpty + Content blur 훅. 빈 메모 자동 삭제."
+- "W7: [폐기] `FEAT-memo-empty-cleanup.md` — 자동 삭제 제거([[FEAT-memo-empty-keep]]). worker brief 무효."
 - "W8: `FEAT-memo-multitab-sync.md`. state/db/liveSync.ts(BroadcastChannel/Dexie liveQuery) + store 구독 1줄."
 - "W9: `FEAT-memo-a11y.md`. EditorRegion role/aria-label/단축(Cmd+B/I)/포커스 링 보강."
 - "W10: `FEAT-memo-autolink.md`. editor/autolink.ts + editorPlugins[] 등록. URL 자동 링크화."

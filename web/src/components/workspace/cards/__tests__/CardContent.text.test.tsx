@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, screen } from "@testing-library/react";
+import { useWorkspace } from "@/state/workspace";
 import { renderCard } from "./setupCard";
 
 /* Milkdown(ProseMirror)은 jsdom에서 신뢰성이 낮아 MarkdownEditor를 textarea
@@ -86,6 +87,18 @@ describe("TextCardContent · UX", () => {
     const editor = screen.getByTestId("text-card-editor") as HTMLTextAreaElement;
     fireEvent.blur(editor);
     expect(onCommit).toHaveBeenCalledTimes(1);
+  });
+
+  it("onBlur — 편집을 끝내도 빈 메모가 삭제되지 않는다 (FEAT-memo-empty-keep AC-1)", () => {
+    useWorkspace.setState({
+      cards: [{ id: "c1", kind: "text", x: 0, y: 0, width: 300, content: "" }],
+    });
+    const { onCommit } = renderCard("text", { content: "", editing: true });
+    fireEvent.blur(screen.getByTestId("text-card-editor"));
+    expect(onCommit).toHaveBeenCalledTimes(1);
+    expect(
+      useWorkspace.getState().cards.find((c) => c.id === "c1"),
+    ).toBeDefined();
   });
 
   it("CardBlock[] JSON 레거시 content는 blocksToMarkdown으로 표시", () => {

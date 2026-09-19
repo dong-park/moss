@@ -1,6 +1,6 @@
 # FEAT-memo-empty-cleanup (W7)
 
-**Status**: ✅ complete (2026-06-04) — feat/memo-editor-seams 합본 머지. **Squad**: [[_squad-memo-production]] · [[FEAT-memo-editor-seams]]
+**Status**: ⛔ 폐기 (2026-09-19) — [[FEAT-memo-empty-keep]]로 대체. **Squad**: [[_squad-memo-production]] · [[FEAT-memo-editor-seams]]
 **심각도**: 🟡 중.
 
 ## 1. 목표
