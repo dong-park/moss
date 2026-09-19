@@ -312,6 +312,7 @@ export interface Note {
 - frame은 임베딩 대상 제외. `workspace.ts:484`의 comment·board 제외 조건에 추가.
 - **뒤집힌 결정(2026-09-13)**: 2단계 리뷰에서 넣었던 독 가림 옅어짐(AC-5, `cardOccludesDock`/`domRectsOverlap`/`occluded` state·opacity 0.6)을 사용자 결정으로 통째로 뺐다. `Dock.tsx`에서 판정 코드·테스트를 제거, 독은 항상 opacity 1.
 - **하이드레이션(2026-09-19)**: 독의 `canvasWidth`·`reducedMotion` 초기값을 렌더 중 `window` 측정(innerWidth·matchMedia)에서 서버와 같은 폴백(`FALLBACK_VIEWPORT_WIDTH`=1280, reducedMotion=false)으로 바꾸고 실측은 마운트 effect에서만 반영 — 좌측 정렬이 서버 px와 클라 숫자로 갈리던 mismatch 해소.
+- **임시 숨김(2026-09-19 사용자 결정)**: 독의 펜 토글·시그널스 버튼과 구분선을 삭제하지 않고 주석 처리로 숨김. 시그널스 진입점(Dock `onSignalsClick`)과 관련 알림 아이콘(Header 🔔)도 함께 주석 처리. 패널·상태·컴포넌트는 유지 — 버튼 주석을 풀어 되돌린다.
 
 ### 블록 마크다운 문법
 

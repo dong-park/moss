@@ -20,11 +20,11 @@ beforeEach(() => {
       removeEventListener: vi.fn(),
     })),
   });
-  // 버튼 5개를 40px 폭·48px 간격으로 배치(평상시 레이아웃).
+  // 버튼 3개(펜·시그널스 임시 숨김, 2026-09-19)를 40px 폭·48px 간격으로 배치.
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (
     this: HTMLElement,
   ) {
-    const order = ["메모판", "메모", "파일함", "펜", "시그널스"];
+    const order = ["메모판", "메모", "파일함"];
     const i = order.indexOf(this.getAttribute("aria-label") ?? "");
     const left = i < 0 ? 0 : i * 48;
     const width = i < 0 ? 260 : 40;
@@ -49,7 +49,7 @@ afterEach(() => {
 });
 
 describe("독 hover 성능", () => {
-  it("mousemove 100회에 Dock 렌더 커밋은 이름표 대상이 바뀐 횟수(아이콘 5개)뿐", () => {
+  it("mousemove 100회에 Dock 렌더 커밋은 이름표 대상이 바뀐 횟수(아이콘 3개)뿐", () => {
     let commits = 0;
     render(
       <I18nProvider locale="ko">

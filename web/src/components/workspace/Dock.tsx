@@ -92,9 +92,9 @@ type Centers = Partial<Record<DockToolId, number>>;
  * 드롭(dataTransfer.types에 "Files") 경로와 이벤트가 전혀 겹치지 않는다.
  */
 export function Dock({
-  onSignalsClick,
   signalsOpen = false,
 }: {
+  /** 2026-09-19 사용자 결정: 시그널스 진입점 임시 숨김 — 버튼 복원 시 다시 사용. */
   onSignalsClick?: () => void;
   /** §4: 시그널스 패널이 열리면 독은 남은 캔버스 폭(패널 420px 제외)의 가운데로. */
   signalsOpen?: boolean;
@@ -108,8 +108,9 @@ export function Dock({
   const createSubcanvas = useWorkspace((s) => s.createSubcanvas);
   const createSubcanvasAtViewportCenter = useWorkspace((s) => s.createSubcanvasAtViewportCenter);
   const promoteCardToNewBoard = useWorkspace((s) => s.promoteCardToNewBoard);
-  const penMode = useWorkspace((s) => s.penMode);
-  const togglePenMode = useWorkspace((s) => s.togglePenMode);
+  // 2026-09-19 사용자 결정: 펜·시그널스 진입점 임시 숨김 — 버튼 복원 시 함께 되살린다.
+  // const penMode = useWorkspace((s) => s.penMode);
+  // const togglePenMode = useWorkspace((s) => s.togglePenMode);
   const pushToast = useToasts((s) => s.push);
 
   const dockRef = useRef<HTMLDivElement>(null);
@@ -390,6 +391,10 @@ export function Dock({
         />
       ))}
 
+      {/*
+       * 2026-09-19 사용자 결정: 펜·시그널스 진입점 임시 숨김(삭제 아님).
+       * 되돌리려면 이 블록의 주석을 풀고, 위 penMode·togglePenMode selector와
+       * Dock의 onSignalsClick prop도 함께 복원한다.
       <div className="mx-1 h-6 w-px bg-border" aria-hidden />
 
       <DockButton
@@ -414,6 +419,7 @@ export function Dock({
         reducedMotion={reducedMotion}
         onClick={() => onSignalsClick?.()}
       />
+      */}
     </div>
   );
 }

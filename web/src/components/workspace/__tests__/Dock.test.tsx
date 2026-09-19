@@ -122,16 +122,17 @@ afterEach(async () => {
   }
 });
 
-describe("AC-1: 독 버튼 5개 + 구분선 1개", () => {
-  it("메모판·메모·파일함·펜·시그널스 순서로 버튼 5개가 있다", () => {
+describe("AC-1: 독 버튼 3개 (펜·시그널스 임시 숨김)", () => {
+  // 2026-09-19 사용자 결정: 펜·시그널스 진입점 임시 숨김 — 복원 시 5개+구분선으로 되돌린다.
+  it("메모판·메모·파일함 순서로 버튼 3개가 있다(구분선 없음)", () => {
     renderDock();
     const toolbar = screen.getByRole("toolbar");
     expect(toolbar).toBeTruthy();
     const buttons = screen.getAllByRole("button");
     const labels = buttons.map((b) => b.getAttribute("aria-label"));
-    expect(labels).toEqual(["메모판", "메모", "파일함", "펜", "시그널스"]);
-    // 구분선 — aria-hidden div.
-    expect(toolbar.querySelector("[aria-hidden]")).toBeTruthy();
+    expect(labels).toEqual(["메모판", "메모", "파일함"]);
+    // 구분선 — 펜·시그널스와 함께 숨김.
+    expect(toolbar.querySelector("[aria-hidden]")).toBeNull();
   });
 
   it("사이드바 DOM이 없다", () => {
@@ -368,8 +369,9 @@ describe("AC-3: 독에서 끌어 만들기", () => {
   });
 });
 
-describe("AC-4: 독의 펜과 시그널스", () => {
-  it("펜 버튼을 누르면 펜 모드가 켜지고 aria-pressed가 true다", () => {
+describe("AC-4: 독의 펜과 시그널스 (2026-09-19 임시 숨김)", () => {
+  // 펜·시그널스 진입점을 주석 처리로 숨겨 버튼이 DOM에 없다 — 복원 시 아래 둘을 되살린다.
+  it.skip("펜 버튼을 누르면 펜 모드가 켜지고 aria-pressed가 true다", () => {
     renderDock();
     const penBtn = screen.getByLabelText("펜");
     expect(penBtn.getAttribute("aria-pressed")).toBe("false");
@@ -379,7 +381,7 @@ describe("AC-4: 독의 펜과 시그널스", () => {
     expect(useWorkspace.getState().penMode).toBe(false);
   });
 
-  it("시그널스 버튼을 누르면 onSignalsClick이 호출된다", () => {
+  it.skip("시그널스 버튼을 누르면 onSignalsClick이 호출된다", () => {
     const onSignalsClick = vi.fn();
     renderDock({ onSignalsClick });
     fireEvent.click(screen.getByLabelText("시그널스"));

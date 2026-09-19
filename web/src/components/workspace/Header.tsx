@@ -19,7 +19,9 @@ export function Header() {
 
       <div className="flex items-center gap-2 text-base text-text-muted">
         <IconButton label={t("common.search")}>🔍</IconButton>
+        {/* 2026-09-19 사용자 결정: 시그널스(AI 모드) 관련 알림 아이콘 임시 숨김 — 삭제 아님.
         <IconButton label={t("common.notifications")}>🔔</IconButton>
+        */}
         <button
           aria-label={t("common.profile")}
           className="ml-1 flex h-7 w-7 cursor-pointer items-center justify-center rounded-full bg-accent-lime text-sm text-bg transition-opacity hover:opacity-80"
