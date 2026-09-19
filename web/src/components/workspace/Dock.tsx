@@ -35,6 +35,12 @@ const MIN_MAGNIFY_CANVAS_WIDTH = 360;
 const RIGHT_TOOLBAR_RESERVED = 210;
 const EDGE_MARGIN = 12;
 
+/**
+ * SSR 폴백 뷰포트 폭. 서버에는 window가 없으므로 클라이언트 첫 렌더도 이 값을 써야
+ * 하이드레이션이 맞는다 — 실측값은 마운트 후 effect에서 반영한다(렌더 중 window 접근 금지).
+ */
+const FALLBACK_VIEWPORT_WIDTH = 1280;
+
 /** 이웃 아이콘 확대가 0으로 꺼지는 거리(px). 맥 독 확대 falloff 반경. */
 const MAGNIFY_SPREAD = 90;
 /** 이 거리 안에 있는 아이콘만 이름표를 보여준다("hover한 그 아이콘"만). */
@@ -107,14 +113,8 @@ export function Dock({
   const pushToast = useToasts((s) => s.push);
 
   const dockRef = useRef<HTMLDivElement>(null);
-  const [canvasWidth, setCanvasWidth] = useState(() =>
-    typeof window !== "undefined" ? window.innerWidth : 1280,
-  );
-  const [reducedMotion, setReducedMotion] = useState(() =>
-    typeof window !== "undefined"
-      ? window.matchMedia("(prefers-reduced-motion: reduce)").matches
-      : false,
-  );
+  const [canvasWidth, setCanvasWidth] = useState(FALLBACK_VIEWPORT_WIDTH);
+  const [reducedMotion, setReducedMotion] = useState(false);
   // 이름표를 보여줄 아이콘 — 바뀔 때만 setState(렌더). 크기는 아래 MotionValue가 맡는다.
   const [hoveredId, setHoveredId] = useState<DockToolId | null>(null);
   const hoveredRef = useRef<DockToolId | null>(null);
@@ -146,6 +146,8 @@ export function Dock({
       centersValidRef.current = false;
       setCanvasWidth(window.innerWidth);
     };
+    // 하이드레이션 첫 렌더는 서버와 같은 폴백을 쓴다 — 실측값은 여기(커밋 후)에서 반영.
+    onResize();
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
@@ -154,6 +156,8 @@ export function Dock({
   useEffect(() => {
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
     const onChange = () => setReducedMotion(mq.matches);
+    // 초기값도 effect에서 반영(렌더 중 window.matchMedia 접근 금지).
+    onChange();
     mq.addEventListener("change", onChange);
     return () => mq.removeEventListener("change", onChange);
   }, []);
