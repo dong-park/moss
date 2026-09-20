@@ -153,6 +153,36 @@ describe("dispatchOp", () => {
     expect(countBlocks(c2).file).toBe(1);
   });
 
+  it("notes.create placeholder in fence → 치환하지 않고 append", async () => {
+    const r = (await dispatchOp("notes.create", {
+      content: "```\n{{ph}}\n```",
+      blocks: [{ type: "image", dataBase64: PNG_B64, mimeType: "image/png", placeholder: "ph" }],
+    })) as { id: string };
+    const content = useWorkspace.getState().cards.find((c) => c.id === r.id)!.content;
+    expect(content).toContain("```\n{{ph}}\n```");
+    expect(countBlocks(content).image).toBe(1);
+    expect(content).toMatch(/```\n\{\{ph\}\}\n```\n\n!\[\]\(opfs:\/\//);
+  });
+
+  it("notes.create 삽입 md가 다음 placeholder에 재매칭되지 않는다", async () => {
+    const r = (await dispatchOp("notes.create", {
+      content: "{{b}}\n\n{{a}}",
+      blocks: [
+        {
+          type: "file",
+          dataBase64: "AAAA",
+          mimeType: "application/pdf",
+          filename: "doc.pdf",
+        },
+        { type: "image", dataBase64: PNG_B64, mimeType: "image/png", placeholder: "a" },
+      ],
+    })) as { id: string };
+    const content = useWorkspace.getState().cards.find((c) => c.id === r.id)!.content;
+    expect(countBlocks(content).image).toBe(1);
+    expect(countBlocks(content).file).toBe(1);
+    expect(content).toMatch(/!\[\]\(opfs:\/\/.+\)\n\n\[doc\.pdf\]/);
+  });
+
   it("notes.create 여러 블록 → 글과 블록이 순서대로 들어간다", async () => {
     const r = (await dispatchOp("notes.create", {
       content: "앞글",

@@ -84,9 +84,54 @@ const DEFAULT_FILE_LABEL = "파일";
  * 카드를 만들기 전에 모든 블록을 여기서 처리하므로, 하나라도 던지면 카드는 생기지
  * 않는다(AC-6). 앞서 올린 blob은 고아로 남을 수 있다(§4 실패 모드 — 용량 경고가 받음).
  */
+function isFenceDelim(line: string): boolean {
+  return /^\s*```/.test(line);
+}
+
+/** 펜스 밖 본문에 토큰이 있는지 — 코드 블록 안 placeholder는 치환하지 않는다. */
+function contentIncludesTokenOutsideFences(content: string, token: string): boolean {
+  const lines = content.split("\n");
+  let inFence = false;
+  for (const line of lines) {
+    if (isFenceDelim(line)) {
+      inFence = !inFence;
+      continue;
+    }
+    if (!inFence && line.includes(token)) return true;
+  }
+  return false;
+}
+
+/** 원문 기준 1패스 치환 — 누적 out을 다시 스캔하지 않아 삽입 md가 다음 토큰에 재매칭되지 않는다. */
+function replacePlaceholdersOutsideFences(
+  content: string,
+  replacements: ReadonlyArray<{ token: string; md: string }>,
+): string {
+  if (replacements.length === 0) return content;
+  const lines = content.split("\n");
+  let inFence = false;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (isFenceDelim(line)) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) continue;
+    let next = line;
+    for (const { token, md } of replacements) {
+      if (next.includes(token)) next = next.split(token).join(`\n\n${md}\n\n`);
+    }
+    lines[i] = next;
+  }
+  return lines.join("\n");
+}
+
 async function blockToMarkdown(raw: unknown): Promise<{ md: string; placeholder: string }> {
   const b = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   const placeholder = typeof b.placeholder === "string" ? b.placeholder : "";
+  if (placeholder && !/^[a-zA-Z0-9_-]+$/.test(placeholder)) {
+    throw new Error(`placeholder는 영문·숫자·_- 만 허용합니다: ${placeholder}`);
+  }
   const type = typeof b.type === "string" ? b.type : "";
   const dataBase64 = typeof b.dataBase64 === "string" ? b.dataBase64 : "";
   const mimeType = typeof b.mimeType === "string" ? b.mimeType : "";
@@ -148,17 +193,29 @@ async function blockToMarkdown(raw: unknown): Promise<{ md: string; placeholder:
  */
 async function embedInlineBlocks(content: string, blocks: unknown): Promise<string> {
   if (!Array.isArray(blocks) || blocks.length === 0) return content;
-  let out = content;
+
+  const replacements: { token: string; md: string }[] = [];
+  const append: string[] = [];
+
   for (const raw of blocks) {
     const { md, placeholder } = await blockToMarkdown(raw);
     const token = placeholder ? `{{${placeholder}}}` : "";
-    if (token && out.includes(token)) {
-      out = out.split(token).join(`\n\n${md}\n\n`);
+    if (token && contentIncludesTokenOutsideFences(content, token)) {
+      // 같은 토큰은 blocks[] 순서상 첫 블록만 치환한다.
+      if (!replacements.some((r) => r.token === token)) {
+        replacements.push({ token, md });
+      } else {
+        append.push(md);
+      }
     } else {
-      out += (out ? "\n\n" : "") + md;
+      append.push(md);
     }
   }
-  // placeholder가 자기 문단이었으면 빈 줄이 겹친다 — 블록 격리(\n\n)는 유지하며 정리.
+
+  let out = replacePlaceholdersOutsideFences(content, replacements);
+  for (const md of append) {
+    out += (out ? "\n\n" : "") + md;
+  }
   return out.replace(/\n{3,}/g, "\n\n");
 }
 

@@ -68,8 +68,12 @@ try {
     afterCreate.every((n) => n.kind === "text") &&
     afterCreate.some((n) => n.content.includes('[https://example.com](https://example.com "moss-link")')) &&
     afterCreate.some((n) => n.content.includes("![](opfs://")) &&
-    afterCreate.some((n) => n.content.includes("[녹음](opfs://") && afterCreate.some((n) => n.content.includes('"moss-audio"')) &&
-    afterCreate.some((n) => n.content.includes("[문서.pdf](opfs://")) && afterCreate.some((n) => n.content.includes('"moss-file"'));
+    afterCreate.some(
+      (n) => n.content.includes("[녹음](opfs://") && n.content.includes('"moss-audio"'),
+    ) &&
+    afterCreate.some(
+      (n) => n.content.includes("[문서.pdf](opfs://") && n.content.includes('"moss-file"'),
+    );
   await call("boards.list");
 
   // 현재-보드 외 직접 타겟: system으로 전환한 뒤 boardId로 보드 A에 직접 생성
