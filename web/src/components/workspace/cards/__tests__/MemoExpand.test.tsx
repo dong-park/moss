@@ -47,8 +47,10 @@ vi.mock("@/components/workspace/cards/_shared/MarkdownEditor", () => ({
         onChange={(e) => props.onChange(e.target.value)}
       />
       {props.overlay}
+      {props.titleSlot}
     </div>
   ),
+  focusMemoBodyStart: () => {},
 }));
 
 function textCard(over: Partial<Card> = {}): Card {
