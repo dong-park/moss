@@ -5,10 +5,10 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { MilkdownProvider } from "@milkdown/react";
 import { useT } from "@/i18n/Provider";
 import { useWorkspace } from "@/state/workspace";
-import { ExpandedMarkdownEditor, focusMemoBodyStart } from "./_shared/MarkdownEditor";
+import { ExpandedMarkdownEditor } from "./_shared/MarkdownEditor";
 import { DrawingLayer, type DrawingTool } from "./_shared/DrawingLayer";
 import { BlockMenu } from "./_shared/editor/BlockMenu";
-import { MemoTitleRow } from "./_shared/MemoTitleRow"; // FEAT-memo-title
+import { MemoExpandTitleSlot } from "./_shared/MemoExpandTitleSlot"; // FEAT-memo-title
 
 /* ─────────────────────────────────────────────────────────────
  * FEAT-memo-expand — 메모(text) 카드 펼치기 모달.
@@ -131,11 +131,9 @@ export function MemoExpandDialog() {
                 // (고정 폭) 안에 1:1로 얹힌다 — 카드와 동일 좌표공간. drawing=false면
                 // pointer-events:none → 클릭이 편집으로 통과.
                 titleSlot={
-                  <MemoTitleRow
-                    editable
+                  <MemoExpandTitleSlot
                     title={card.title ?? ""}
                     onCommit={(title) => setTitle(card.id, title)}
-                    onEnter={focusMemoBodyStart}
                   />
                 }
                 overlay={

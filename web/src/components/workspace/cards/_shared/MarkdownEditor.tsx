@@ -39,6 +39,11 @@ import { editorPlugins } from "./editor/extensions";
 import { markdownPlaceholder } from "./markdownPlaceholder";
 import { BubbleMenuHost } from "./editor/BubbleMenuHost";
 import { EditorRegion } from "./editor/EditorRegion";
+import {
+  memoTitleArrowUpPlugin,
+} from "./memoTitleFocus";
+
+export { focusMemoTitleEnd } from "./memoTitleFocus";
 
 import "@milkdown/theme-nord/style.css";
 import "prosemirror-view/style/prosemirror.css";
@@ -94,7 +99,14 @@ export function MilkdownInner({ value, editable, onChange, onBlur, expanded }: M
         })
         .config(nord)
         // 펼치기 모달은 placeholder 힌트를 끈다 — 그 외엔 카드와 동일.
-        .use(expanded ? editorPlugins.filter((p) => p !== markdownPlaceholder) : editorPlugins),
+        .use(
+          expanded
+            ? [
+                ...editorPlugins.filter((p) => p !== markdownPlaceholder),
+                memoTitleArrowUpPlugin,
+              ]
+            : editorPlugins,
+        ),
     // editable 변화 시 재생성. readonly일 때만 value를 deps에 포함해
     // 외부 변경을 반영하고, 편집 중에는 제외해 커서를 보존.
     [editable, editable ? "" : value],
@@ -108,22 +120,6 @@ export function MilkdownInner({ value, editable, onChange, onBlur, expanded }: M
       <BubbleMenuHost />
     </>
   );
-}
-
-/** FEAT-memo-title AC-7: 본문 에디터 뷰에 포커스 + 커서를 문서 맨 앞으로. */
-export function focusMemoBodyStart(): void {
-  const view = document.querySelector<HTMLElement>(".milkdown[contenteditable]");
-  if (!view) return;
-  view.focus();
-  // ProseMirror 공개 API가 아닌 DOM range로 맨 앞을 잡는다 — 모달이 MilkdownProvider
-  // 아래 인스턴스를 공유하므로 여기서 인스턴스 참조 없이 문서 시작으로 커서를 옮긴다.
-  const sel = window.getSelection();
-  if (!sel) return;
-  const range = document.createRange();
-  range.selectNodeContents(view);
-  range.collapse(true);
-  sel.removeAllRanges();
-  sel.addRange(range);
 }
 
 export default function MarkdownEditor(props: MarkdownEditorProps) {

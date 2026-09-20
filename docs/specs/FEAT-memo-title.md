@@ -243,4 +243,4 @@ n2와 n4는 n1 뒤에 나란히 돌 수 있다.
 - n4 `5e8e850`·`6219e56`: 검색 haystack에 제목 포함 — 매칭 카운트를 `haystack`으로 잡는 버그를 테스트로 잡아 수정. AC-8 3건. 경계 걸친 토큰("회의"+"록"→"회의록")은 공백 결합 규약상 매칭 안 되는 게 맞아 케이스 제거.
 - n2·n3 `cfd667d`: `MemoTitleRow`(읽기 전용/편집 공용, 높이 `MEMO_TITLE_ROW_HEIGHT`=30 고정), 앞면은 컬럼 바깥 위 형제(본문 컬럼 div 불변 — 펜 1:1), `ExpandedMarkdownEditor` `titleSlot`(스크롤 영역 안), `focusMemoBodyStart`(Enter → 본문 맥 앞), i18n 2키. 컴포넌트 테스트 4건.
 - n5 `55c9709`: 게이트 — `tsc --noEmit` 0 오류, `vitest run` 787 통과/1 실패(기준선 `Canvas.virtualization` — 스펙 전 커밋에서도 동일 실패, 무관 확인).
-- DOD 수동 확인(AC-1·4·5·7 브라우저)은 대기 중.
+- DOD 수동 확인(AC-1·4·5·7 브라우저) 완료(2026-09-20). AC-7 Enter는 Milkdown `TextSelection.atStart`로 본문 커서 동기화, ArrowUp은 `memoTitleArrowUpPlugin`+`focusMemoTitleEnd`.

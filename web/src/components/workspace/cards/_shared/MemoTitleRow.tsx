@@ -65,6 +65,7 @@ export function MemoTitleRow({
     <input
       ref={inputRef}
       type="text"
+      data-memo-title-input
       className="moss-md w-full border-none bg-transparent text-[15px] font-bold text-text outline-none placeholder:text-text-faint"
       style={style}
       value={title}
