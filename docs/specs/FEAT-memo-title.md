@@ -244,3 +244,4 @@ n2와 n4는 n1 뒤에 나란히 돌 수 있다.
 - n2·n3 `cfd667d`: `MemoTitleRow`(읽기 전용/편집 공용, 높이 `MEMO_TITLE_ROW_HEIGHT`=30 고정), 앞면은 컬럼 바깥 위 형제(본문 컬럼 div 불변 — 펜 1:1), `ExpandedMarkdownEditor` `titleSlot`(스크롤 영역 안), `focusMemoBodyStart`(Enter → 본문 맥 앞), i18n 2키. 컴포넌트 테스트 4건.
 - n5 `55c9709`: 게이트 — `tsc --noEmit` 0 오류, `vitest run` 787 통과/1 실패(기준선 `Canvas.virtualization` — 스펙 전 커밋에서도 동일 실패, 무관 확인).
 - DOD 수동 확인(AC-1·4·5·7 브라우저) 완료(2026-09-20). AC-7 Enter는 Milkdown `TextSelection.atStart`로 본문 커서 동기화, ArrowUp은 `memoTitleArrowUpPlugin`+`focusMemoTitleEnd`.
+- 앞면 편집 확장 `547d6af`([[FEAT-memo-title-front-edit]]): AC-7의 "본문 맨 앞 위 화살표 → 제목 줄"이 앞면 카드에서도 성립 — 키맵을 `extensions.ts` 공통 등록 + `focusMemoTitleEnd`를 카드 스코프화.

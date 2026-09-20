@@ -2,7 +2,7 @@
 
 > 창을 열지 않고 캔버스 위에서 바로 메모 제목을 달고 고친다.
 
-**Status**: spec 작성
+**Status**: 구현 완료 (수동 AC 확인 대기)
 **Owner**: dong-park
 **Estimated**: S
 **상위 스펙**: [[FEAT-memo-title]] §9 D1 — "v1은 창에서만, 앞면 편집은 다음 iteration"
@@ -207,7 +207,8 @@
 - 편집 중 드래그: `DraggableCard.tsx` `onMouseDown`의 `if (editing) return;` — 제목 입력 클릭이 카드 끌기를 일으키지 않는다. 읽기 전용은 `MemoTitleRow`의 `select-none` div라 클릭이 카드로 간다(AC-9 이미 충족).
 - 제목 줄 컴포넌트: `_shared/MemoTitleRow.tsx`. `editable` 프롭, 높이 `MEMO_TITLE_ROW_HEIGHT=30`(`memoLayout.ts:21`), Enter → `onEnter`, ArrowDown → `onArrowDown`. `useEffect(:41-43)`가 `editable`일 때 입력에 포커스를 박는다 — **AC-2와 정면 충돌하므로 이 effect를 걷어내거나 프롭으로 꺼야 한다.**
 - `onArrowDown`은 현재 아무 호출자도 넘기지 않는다. 제목 줄에서 ArrowDown이 `preventDefault`만 먹고 아무 일도 안 하는 상태다. 본문으로 내려가게 잇거나 키 가로채기를 없앤다.
-- 창 렌더: `MemoExpandDialog.tsx:133-140`이 `titleSlot`으로 `MemoTitleRow editable`을 넘기고 `onEnter={focusMemoBodyStart}`. `focusMemoBodyStart`는 `MarkdownEditor.tsx:114-127` — `.milkdown[contenteditable]` 전역 셀렉터라 앞면(메모 여럿)에서는 그대로 못 쓴다. 카드 스코프 인자를 받게 고쳐야 한다.
+- 창 렌더(2026-09-20 AC-7 완료): `MemoExpandTitleSlot.tsx`가 `useInstance`+`TextSelection.atStart`로 Enter→본문, `memoTitleFocus.ts`의 `memoTitleArrowUpPlugin`+`focusMemoTitleEnd`로 ArrowUp→제목. 앞면은 카드 스코프 버전이 필요(f4).
+- /hate(2026-09-20): D2 때문에 기존 메모 제목은 Cmd+E·새 메모 생성 경로만 — 의도된 tradeoff.
 - 저장: `workspace.ts:1648-1659` `setTitle`이 매 입력마다 `normalizeTitle` 후 디바운스 persist. `memoTitle.ts`의 `normalizeTitle`이 `trim()`까지 한 번에 해서 타이핑 중 공백이 사라진다(AC-7 대상).
 - 에디터 플러그인 슬롯: `_shared/editor/extensions.ts` — `editorPlugins[]`에 Milkdown 플러그인을 한 줄로 등록한다. 위 화살표 키맵의 자리.
 - 기존 테스트: `_shared/__tests__/MemoTitleRow.test.tsx` 4건.
@@ -243,5 +244,19 @@ blur 가드 판정: 본문이나 제목이 blur될 때 새 포커스 대상이 `
 | f3 | 앞면 편집 제목 줄 — `MemoTitleRow` 자동 포커스 제거, `Content.tsx` editable 연결 | f1, f2 |
 | f4 | 위 화살표 키맵 + `focusMemoBodyStart` 카드 스코프화, 창 반영 | f2 |
 | f5 | 합본 게이트: tsc·vitest, 브라우저 AC-1·3·5·8 | f3, f4 |
+
+### 구현 기록 (2026-09-20)
+
+- f1 `510cb4f`: `normalizeTitleTyping`(줄바꿈 치환+80자) / `normalizeTitle`(확정 trim) 분리. `setTitle`은 타이핑용, `commitTitle`은 확정 trim + `cancelPersist` 후 즉시 `persistCard`(대기 중 잘리지 않은 값이 확정 값을 덮지 않게). `memoTitle.test.ts` 11건.
+- f2·f3·f4 `547d6af`: 한 슬라이스로 함께 반영(같은 파일을 공유해 분리 불가).
+  - `MemoTitleRow`: `editable` 자동 포커스 effect 제거(AC-2), `onBlur(relatedTarget)` 추가.
+  - `Content.tsx`: 편집 모드 제목 줄 `editable` 연결, `isFocusInSameCard` blur 가드(같은 카드면 유지 AC-3, 밖이면 `commitTitle`+종료 AC-4), Esc도 확정, 제목 Enter/ArrowDown → `focusMemoBodyStart`.
+  - `MarkdownEditor`: blur 대신 `focusout`(relatedTarget) — 리스너 플러그인 blur는 대상을 못 실음. `cardId`로 본문 포커스 레지스트리 등록.
+  - `memoTitleFocus`: `focusMemoTitleEnd(view)` 카드 스코프화(`[data-card-id]` 조상), `isFocusInSameCard`, 본문 포커스 레지스트리.
+  - 신규 `editor/titleArrowUp.ts`: `view.editable`+`endOfTextblock("backward")`일 때만 키 소비(AC-5). `extensions.ts`에 등록 — 앞면·창 공통.
+  - `MemoExpandDialog`: 창 닫을 때 `commitTitle`(AC-7 창 확정).
+  - 테스트: `memoTitleFocus.test.ts` 6건, `titleArrowUp.test.ts` 4건, `MemoTitleRow.test.tsx` +3건, `CardContent.text.test.tsx` +4건.
+- f5 게이트: `tsc --noEmit` 0 오류. `vitest run` 808 통과 / 1 실패(기준선 `Canvas.virtualization` — 스펙 전 커밋과 동일, 무관) / 2 skip.
+- 남음: 브라우저 수동 확인 AC-1·3·5·8(호출자).
 
 f1과 f2는 나란히 돌 수 있다.
