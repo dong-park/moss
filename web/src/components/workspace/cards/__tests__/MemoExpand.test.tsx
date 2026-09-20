@@ -33,6 +33,7 @@ vi.mock("@/components/workspace/cards/_shared/MarkdownEditor", () => ({
     value: string;
     onChange: (md: string) => void;
     overlay?: ReactNode;
+    titleSlot?: ReactNode;
     contentWidth?: number;
     contentHeight?: number;
   }) => (

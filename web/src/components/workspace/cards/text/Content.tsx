@@ -9,6 +9,10 @@ import { DrawingLayer } from "../_shared/DrawingLayer";
 import { MultitabConflictBanner } from "../_shared/MultitabConflictBanner"; // W8
 import { MEMO_CONTENT_WIDTH } from "../_shared/memoLayout";
 import { MemoTitleRow } from "../_shared/MemoTitleRow"; // FEAT-memo-title
+import {
+  focusMemoBodyStart,
+  isFocusInSameCard,
+} from "../_shared/memoTitleFocus"; // FEAT-memo-title-front-edit
 import { BacklinkPanel } from "../_shared/editor/BacklinkPanel"; // W5 위키링크 백링크 패널
 import { MemoFrontBadges } from "../_shared/MemoFrontBadges"; // FEAT-sticky-redesign n5
 import type { CardContentProps } from "../_shared/types";
@@ -49,6 +53,24 @@ export function TextCardContent({
   onCommitEdit,
 }: CardContentProps) {
   const markdown = useMemo(() => blocksToMarkdown(card.content), [card.content]);
+
+  // FEAT-memo-title-front-edit: 제목 편집 — 타이핑은 setTitle, 확정은 commitTitle.
+  const setTitle = useWorkspace((s) => s.setTitle);
+  const commitTitle = useWorkspace((s) => s.commitTitle);
+
+  // f2 blur 가드: 새 포커스 대상이 같은 카드 안이면 편집을 끝내지 않는다(AC-3).
+  // 카드 밖(또는 포커스 소실)이면 제목을 확정하고 편집 종료(AC-4).
+  const handleBlur = (relatedTarget: EventTarget | null) => {
+    if (!editing) return;
+    if (isFocusInSameCard(relatedTarget, card.id)) return;
+    commitTitle(card.id);
+    onCommitEdit();
+  };
+  // Esc 등 명시적 종료 — 제목을 확정하고 편집 종료(AC-4).
+  const handleCommitEdit = () => {
+    commitTitle(card.id);
+    onCommitEdit();
+  };
 
   // FEAT-markdown-memo-pen: 펜 overlay 상태(보드 전역). 그림이 있거나 펜 모드면 표시.
   const penMode = useWorkspace((s) => s.penMode);
@@ -93,14 +115,21 @@ export function TextCardContent({
         // Milkdown(prose-mirror)에 ESC가 도달하면 onCommitEdit.
         if (e.key === "Escape") {
           e.preventDefault();
-          onCommitEdit();
+          handleCommitEdit();
         }
       }}
     >
       <MultitabConflictBanner cardId={card.id} /> {/* W8: 다른 탭 변경 배너 */}
       {/* FEAT-memo-title: 제목 줄 — 펜 1:1을 위해 본문 컬럼(relative)과 형제로 둔다.
-        * 제목 없으면 MemoTitleRow가 null을 반환해 앞면 배치는 지금과 동일하다(AC-2). */}
-      <MemoTitleRow title={card.title ?? ""} />
+        * 읽기 전용은 제목 없으면 null. 편집 모드는 빈 값이어도 입력 줄을 그린다(AC-1). */}
+      <MemoTitleRow
+        title={card.title ?? ""}
+        editable={editing}
+        onCommit={(title) => setTitle(card.id, title)}
+        onBlur={handleBlur}
+        onEnter={() => focusMemoBodyStart(card.id)}
+        onArrowDown={() => focusMemoBodyStart(card.id)}
+      />
       {/* 고정 폭 컬럼 — 카드/모달 공통 좌표계. 카드 폭보다 넓으면 위 overflow-hidden이
         * 우측을 크롭한다. padding 6/9 + text-[13px]은 모달 컬럼과 정확히 일치해야
         * 펜이 같은 글자를 가리킨다. position:relative로 펜 overlay의 기준 박스. */}
@@ -111,8 +140,9 @@ export function TextCardContent({
         <MarkdownEditor
           value={markdown}
           editable={editing}
+          cardId={card.id}
           onChange={onChange}
-          onBlur={onCommitEdit}
+          onBlur={handleBlur}
         />
         {showOverlay && (
           <DrawingLayer

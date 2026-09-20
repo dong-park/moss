@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { I18nProvider } from "@/i18n/Provider";
 import { useWorkspace } from "@/state/workspace";
+import { CardContent } from "@/components/workspace/cards/CardContent";
 import { renderCard } from "./setupCard";
 
 /* Milkdown(ProseMirror)은 jsdom에서 신뢰성이 낮아 MarkdownEditor를 textarea
@@ -109,5 +111,60 @@ describe("TextCardContent · UX", () => {
     renderCard("text", { content: json, editing: true });
     const editor = screen.getByTestId("text-card-editor") as HTMLTextAreaElement;
     expect(editor.value).toBe("안녕\n\n```py\nx = 1\n```");
+  });
+});
+
+/* FEAT-memo-title-front-edit — 앞면 제목 편집 배선(AC-1·AC-3·AC-4). */
+describe("TextCardContent · 앞면 제목 편집", () => {
+  const card = {
+    id: "c1",
+    kind: "text" as const,
+    x: 0,
+    y: 0,
+    width: 300,
+    content: "",
+  };
+
+  function renderInCard(editing: boolean, onCommit: () => void) {
+    return render(
+      <I18nProvider locale="ko">
+        <div data-card-id="c1">
+          <CardContent
+            card={card}
+            editing={editing}
+            onChange={vi.fn()}
+            onCommitEdit={onCommit}
+          />
+        </div>
+      </I18nProvider>,
+    );
+  }
+
+  it("편집 모드에서는 제목이 비어도 입력 줄을 그린다 (AC-1)", () => {
+    renderCard("text", { content: "", editing: true });
+    expect(screen.getByLabelText("메모 제목")).toBeTruthy();
+  });
+
+  it("읽기 전용 + 제목 없음 → 제목 줄이 없다 (AC-9)", () => {
+    renderCard("text", { content: "", editing: false });
+    expect(screen.queryByLabelText("메모 제목")).toBeNull();
+  });
+
+  it("같은 카드 안 포커스 이동은 편집 종료를 부르지 않는다 (AC-3)", () => {
+    const onCommit = vi.fn();
+    renderInCard(true, onCommit);
+    const title = screen.getByLabelText("메모 제목");
+    const body = screen.getByTestId("text-card-editor");
+    fireEvent.blur(title, { relatedTarget: body });
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it("카드 밖으로 나가면 편집을 끝낸다 (AC-4)", () => {
+    const onCommit = vi.fn();
+    renderInCard(true, onCommit);
+    fireEvent.blur(screen.getByLabelText("메모 제목"), {
+      relatedTarget: document.body,
+    });
+    expect(onCommit).toHaveBeenCalledTimes(1);
   });
 });

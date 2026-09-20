@@ -37,6 +37,7 @@ export function MemoExpandDialog() {
   const setExpandedCard = useWorkspace((s) => s.setExpandedCard);
   const setContent = useWorkspace((s) => s.setContent);
   const setTitle = useWorkspace((s) => s.setTitle);
+  const commitTitle = useWorkspace((s) => s.commitTitle);
   const setOverlay = useWorkspace((s) => s.setOverlay);
   const penWidth = useWorkspace((s) => s.penWidth);
   // expandedCardId가 가리키는 카드만 좁혀 구독 — 다른 카드 변경에 리렌더되지 않게.
@@ -54,6 +55,8 @@ export function MemoExpandDialog() {
   // id는 있는데 카드가 사라진 경우(삭제 등) — store 정리가 처리하지만 방어적으로 닫힘.
   const open = expandedCardId !== null && card !== null;
   const close = () => {
+    // FEAT-memo-title-front-edit AC-7: 창을 닫을 때 제목 앞뒤 공백을 확정한다.
+    if (card) commitTitle(card.id);
     setDrawing(false); // 다음에 열 때 텍스트 모드로 시작.
     setExpandedCard(null);
   };

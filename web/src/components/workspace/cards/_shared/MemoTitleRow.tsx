@@ -9,11 +9,11 @@
  * 제목을 달거나 지워도 본문 컬럼의 className·style은 하나도 바꾸지 않는다(AC-4).
  * 폭·좌우 여백은 본문 컬럼과 같은 720px·padding 9px로 왼쪽 끝이 맞는다(§7).
  *
- * 앞면은 제목이 없으면 이 줄을 아예 그리지 않는다(AC-2). 창은 항상 그리고
- * 편집 가능하다 — placeholder는 앞면이 아니라 창에서만 보인다(AC-3).
+ * 앞면은 읽기 전용일 때 제목이 없으면 이 줄을 아예 그리지 않는다(AC-2).
+ * 편집 모드(앞면·창)에서는 제목이 비어도 항상 입력 줄을 그려 앞면에서 새 제목을
+ * 만들 수 있게 한다 — placeholder는 편집 가능할 때만 보인다(AC-1·AC-3).
  * ───────────────────────────────────────────────────────────── */
 
-import { useEffect, useRef } from "react";
 import { t } from "@/i18n";
 import {
   MEMO_CONTENT_WIDTH,
@@ -26,22 +26,18 @@ export function MemoTitleRow({
   onCommit,
   onEnter,
   onArrowDown,
+  onBlur,
 }: {
   title: string;
   editable?: boolean;
   onCommit?: (title: string) => void;
-  /** Enter — 커서를 본문 맨 앞으로 보낸다(AC-7). */
+  /** Enter — 커서를 본문 맨 앞으로 보낸다(AC-5). */
   onEnter?: () => void;
-  /** 본문 맨 앞에서 위 화살표의 역방향 — 제목 줄 끝으로 온다(AC-7). */
+  /** ArrowDown — 본문 맨 앞으로 내려간다(Enter와 같은 목적지). */
   onArrowDown?: () => void;
+  /** blur 시 새 포커스 대상(relatedTarget) 전달 — 카드 스코프 blur 가드용(AC-3). */
+  onBlur?: (relatedTarget: EventTarget | null) => void;
 }) {
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  // 편집 모드 진입 시 제목 줄에 포커스 — 프롭은 그대로 두고 effect로만 잡는다.
-  useEffect(() => {
-    if (editable) inputRef.current?.focus();
-  }, [editable]);
-
   const style: React.CSSProperties = {
     width: MEMO_CONTENT_WIDTH,
     height: MEMO_TITLE_ROW_HEIGHT,
@@ -63,7 +59,6 @@ export function MemoTitleRow({
 
   return (
     <input
-      ref={inputRef}
       type="text"
       data-memo-title-input
       className="moss-md w-full border-none bg-transparent text-[15px] font-bold text-text outline-none placeholder:text-text-faint"
@@ -72,6 +67,7 @@ export function MemoTitleRow({
       placeholder={t("workspace.memo.title.placeholder")}
       aria-label={t("workspace.memo.title.label")}
       onChange={(e) => onCommit?.(e.target.value)}
+      onBlur={(e) => onBlur?.(e.relatedTarget)}
       onKeyDown={(e) => {
         if (e.key === "Enter") {
           e.preventDefault();

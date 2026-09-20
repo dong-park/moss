@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoTitleRow } from "../MemoTitleRow";
 import { MEMO_TITLE_ROW_HEIGHT } from "../memoLayout";
 
@@ -28,5 +28,41 @@ describe("MemoTitleRow — 렌더 (AC-2·AC-3·AC-5)", () => {
     render(<MemoTitleRow title={"가".repeat(80)} />);
     const el = screen.getByText("가".repeat(80));
     expect(el.style.height).toBe(`${MEMO_TITLE_ROW_HEIGHT}px`);
+  });
+});
+
+describe("MemoTitleRow — 편집 동작 (AC-2·AC-5)", () => {
+  it("편집 모드로 마운트돼도 스스로 포커스를 잡지 않는다 (AC-2)", () => {
+    render(<MemoTitleRow editable title="" />);
+    const input = screen.getByLabelText("메모 제목");
+    expect(document.activeElement).not.toBe(input);
+  });
+
+  it("Enter → onEnter, ArrowDown → onArrowDown", () => {
+    const onEnter = vi.fn();
+    const onArrowDown = vi.fn();
+    render(
+      <MemoTitleRow
+        editable
+        title=""
+        onEnter={onEnter}
+        onArrowDown={onArrowDown}
+      />,
+    );
+    const input = screen.getByLabelText("메모 제목");
+    fireEvent.keyDown(input, { key: "Enter" });
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    expect(onEnter).toHaveBeenCalledTimes(1);
+    expect(onArrowDown).toHaveBeenCalledTimes(1);
+  });
+
+  it("blur 시 relatedTarget을 onBlur로 넘긴다 (AC-3 가드용)", () => {
+    const onBlur = vi.fn();
+    render(<MemoTitleRow editable title="" onBlur={onBlur} />);
+    const target = document.createElement("div");
+    fireEvent.blur(screen.getByLabelText("메모 제목"), {
+      relatedTarget: target,
+    });
+    expect(onBlur).toHaveBeenCalledWith(target);
   });
 });

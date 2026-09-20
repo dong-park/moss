@@ -32,6 +32,7 @@ import {
 import { listenerCtx } from "@milkdown/plugin-listener";
 import { nord } from "@milkdown/theme-nord";
 import { Milkdown, MilkdownProvider, useEditor } from "@milkdown/react";
+import { TextSelection } from "@milkdown/prose/state";
 
 import { MarkdownToolbar } from "./MarkdownToolbar";
 import { MEMO_CONTENT_WIDTH } from "./memoLayout";
@@ -39,11 +40,7 @@ import { editorPlugins } from "./editor/extensions";
 import { markdownPlaceholder } from "./markdownPlaceholder";
 import { BubbleMenuHost } from "./editor/BubbleMenuHost";
 import { EditorRegion } from "./editor/EditorRegion";
-import {
-  memoTitleArrowUpPlugin,
-} from "./memoTitleFocus";
-
-export { focusMemoTitleEnd } from "./memoTitleFocus";
+import { registerMemoBodyFocus } from "./memoTitleFocus";
 
 import "@milkdown/theme-nord/style.css";
 import "prosemirror-view/style/prosemirror.css";
@@ -52,10 +49,13 @@ export type MarkdownEditorProps = {
   value: string;
   editable: boolean;
   onChange: (markdown: string) => void;
-  onBlur?: () => void;
+  /** blur 시 새 포커스 대상(relatedTarget)을 넘긴다 — 카드 스코프 blur 가드용(AC-3). */
+  onBlur?: (relatedTarget: EventTarget | null) => void;
   // 펼치기 모달 본문이면 true — 포커스 링과 placeholder 힌트를 끈다(모달은
   // 항상 편집 모드라 링/힌트가 군더더기). 카드 인라인 편집은 그대로 유지.
   expanded?: boolean;
+  /** 앞면 카드 id — 제목 줄 Enter가 이 카드의 본문으로 오도록 포커서를 등록한다(f4). */
+  cardId?: string;
 };
 
 // 서버에선 false, client에선 true — setState-in-effect 없이 클라이언트 감지.
@@ -68,7 +68,7 @@ function useIsClient() {
   );
 }
 
-export function MilkdownInner({ value, editable, onChange, onBlur, expanded }: MarkdownEditorProps) {
+export function MilkdownInner({ value, editable, onChange, onBlur, expanded, cardId }: MarkdownEditorProps) {
   // 콜백은 ref로 고정해 에디터 재생성 없이 최신 핸들러를 부른다.
   // ref 갱신은 render가 아닌 effect에서 (react-hooks/refs).
   const onChangeRef = useRef(onChange);
@@ -78,7 +78,7 @@ export function MilkdownInner({ value, editable, onChange, onBlur, expanded }: M
     onBlurRef.current = onBlur;
   });
 
-  useEditor(
+  const { get } = useEditor(
     (root) =>
       Editor.make()
         .config((ctx) => {
@@ -87,12 +87,20 @@ export function MilkdownInner({ value, editable, onChange, onBlur, expanded }: M
           ctx.update(editorViewOptionsCtx, (prev) => ({
             ...prev,
             editable: () => editable,
+            handleDOMEvents: {
+              ...prev.handleDOMEvents,
+              // blur 대신 focusout — relatedTarget(새 포커스 대상)을 얻기 위함.
+              // 리스너 플러그인의 blur는 대상을 못 실어 카드 스코프 가드가 불가능하다.
+              focusout: (_view, event) => {
+                onBlurRef.current?.((event as FocusEvent).relatedTarget);
+                return false;
+              },
+            },
           }));
           const l = ctx.get(listenerCtx);
           l.markdownUpdated((_, markdown) => onChangeRef.current(markdown));
-          l.blur(() => onBlurRef.current?.());
           // FEAT-card-entry-mode: 편집 진입(editable) 시 mount 직후 포커스 —
-          // 더블클릭→첫 키스트로크 손실 방지.
+          // 더블클릭→첫 키스트로크 손실 방지. 제목 줄은 포커스를 뺏지 않는다(AC-2).
           l.mounted((mctx) => {
             if (editable) mctx.get(editorViewCtx).focus();
           });
@@ -101,16 +109,31 @@ export function MilkdownInner({ value, editable, onChange, onBlur, expanded }: M
         // 펼치기 모달은 placeholder 힌트를 끈다 — 그 외엔 카드와 동일.
         .use(
           expanded
-            ? [
-                ...editorPlugins.filter((p) => p !== markdownPlaceholder),
-                memoTitleArrowUpPlugin,
-              ]
+            ? editorPlugins.filter((p) => p !== markdownPlaceholder)
             : editorPlugins,
         ),
     // editable 변화 시 재생성. readonly일 때만 value를 deps에 포함해
     // 외부 변경을 반영하고, 편집 중에는 제외해 커서를 보존.
     [editable, editable ? "" : value],
   );
+
+  // f4: 제목 줄 Enter가 이 카드의 본문 맨 앞으로 갈 수 있게 포커서를 등록.
+  useEffect(() => {
+    if (!cardId) return;
+    registerMemoBodyFocus(cardId, () => {
+      const editor = get();
+      if (!editor) return;
+      editor.action((ctx) => {
+        const view = ctx.get(editorViewCtx);
+        const tr = view.state.tr.setSelection(
+          TextSelection.atStart(view.state.doc),
+        );
+        view.dispatch(tr);
+        view.focus();
+      });
+    });
+    return () => registerMemoBodyFocus(cardId, null);
+  }, [cardId, get]);
 
   return (
     <>
