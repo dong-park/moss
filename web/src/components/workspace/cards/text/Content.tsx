@@ -8,6 +8,7 @@ import { MemoSaveGuard } from "../_shared/editor/MemoSaveGuard"; // W1 자동저
 import { DrawingLayer } from "../_shared/DrawingLayer";
 import { MultitabConflictBanner } from "../_shared/MultitabConflictBanner"; // W8
 import { MEMO_CONTENT_WIDTH } from "../_shared/memoLayout";
+import { MemoTitleRow } from "../_shared/MemoTitleRow"; // FEAT-memo-title
 import { BacklinkPanel } from "../_shared/editor/BacklinkPanel"; // W5 위키링크 백링크 패널
 import { MemoFrontBadges } from "../_shared/MemoFrontBadges"; // FEAT-sticky-redesign n5
 import type { CardContentProps } from "../_shared/types";
@@ -97,6 +98,9 @@ export function TextCardContent({
       }}
     >
       <MultitabConflictBanner cardId={card.id} /> {/* W8: 다른 탭 변경 배너 */}
+      {/* FEAT-memo-title: 제목 줄 — 펜 1:1을 위해 본문 컬럼(relative)과 형제로 둔다.
+        * 제목 없으면 MemoTitleRow가 null을 반환해 앞면 배치는 지금과 동일하다(AC-2). */}
+      <MemoTitleRow title={card.title ?? ""} />
       {/* 고정 폭 컬럼 — 카드/모달 공통 좌표계. 카드 폭보다 넓으면 위 overflow-hidden이
         * 우측을 크롭한다. padding 6/9 + text-[13px]은 모달 컬럼과 정확히 일치해야
         * 펜이 같은 글자를 가리킨다. position:relative로 펜 overlay의 기준 박스. */}

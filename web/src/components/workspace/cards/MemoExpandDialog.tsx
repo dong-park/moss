@@ -5,9 +5,10 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { MilkdownProvider } from "@milkdown/react";
 import { useT } from "@/i18n/Provider";
 import { useWorkspace } from "@/state/workspace";
-import { ExpandedMarkdownEditor } from "./_shared/MarkdownEditor";
+import { ExpandedMarkdownEditor, focusMemoBodyStart } from "./_shared/MarkdownEditor";
 import { DrawingLayer, type DrawingTool } from "./_shared/DrawingLayer";
 import { BlockMenu } from "./_shared/editor/BlockMenu";
+import { MemoTitleRow } from "./_shared/MemoTitleRow"; // FEAT-memo-title
 
 /* ─────────────────────────────────────────────────────────────
  * FEAT-memo-expand — 메모(text) 카드 펼치기 모달.
@@ -35,6 +36,7 @@ export function MemoExpandDialog() {
   const expandedCardId = useWorkspace((s) => s.expandedCardId);
   const setExpandedCard = useWorkspace((s) => s.setExpandedCard);
   const setContent = useWorkspace((s) => s.setContent);
+  const setTitle = useWorkspace((s) => s.setTitle);
   const setOverlay = useWorkspace((s) => s.setOverlay);
   const penWidth = useWorkspace((s) => s.penWidth);
   // expandedCardId가 가리키는 카드만 좁혀 구독 — 다른 카드 변경에 리렌더되지 않게.
@@ -124,8 +126,18 @@ export function MemoExpandDialog() {
                 key={card.id}
                 value={card.content}
                 onChange={(md) => setContent(card.id, md)}
-                // 펜 overlay는 본문 컬럼(고정 폭) 안에 1:1로 얹힌다 — 카드와 동일
-                // 좌표공간. drawing=false면 pointer-events:none → 클릭이 편집으로 통과.
+                // FEAT-memo-title: 본문 위 제목 줄 — 스크롤 영역 안, 창에서만 편집(D1).
+                // Enter는 본문 맨 앞으로 포커스를 넘긴다(AC-7). 펜 overlay는 본문 컬럼
+                // (고정 폭) 안에 1:1로 얹힌다 — 카드와 동일 좌표공간. drawing=false면
+                // pointer-events:none → 클릭이 편집으로 통과.
+                titleSlot={
+                  <MemoTitleRow
+                    editable
+                    title={card.title ?? ""}
+                    onCommit={(title) => setTitle(card.id, title)}
+                    onEnter={focusMemoBodyStart}
+                  />
+                }
                 overlay={
                   <DrawingLayer
                     value={card.overlay ?? ""}

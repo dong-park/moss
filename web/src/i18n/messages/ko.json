@@ -10,6 +10,10 @@
   },
   "workspace": {
     "memo": {
+      "title": {
+        "placeholder": "제목",
+        "label": "메모 제목"
+      },
       "placeholder": {
         "hint": "무슨 생각이 드나요?"
       },

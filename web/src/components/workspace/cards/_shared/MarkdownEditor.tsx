@@ -110,6 +110,22 @@ export function MilkdownInner({ value, editable, onChange, onBlur, expanded }: M
   );
 }
 
+/** FEAT-memo-title AC-7: 본문 에디터 뷰에 포커스 + 커서를 문서 맨 앞으로. */
+export function focusMemoBodyStart(): void {
+  const view = document.querySelector<HTMLElement>(".milkdown[contenteditable]");
+  if (!view) return;
+  view.focus();
+  // ProseMirror 공개 API가 아닌 DOM range로 맨 앞을 잡는다 — 모달이 MilkdownProvider
+  // 아래 인스턴스를 공유하므로 여기서 인스턴스 참조 없이 문서 시작으로 커서를 옮긴다.
+  const sel = window.getSelection();
+  if (!sel) return;
+  const range = document.createRange();
+  range.selectNodeContents(view);
+  range.collapse(true);
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+
 export default function MarkdownEditor(props: MarkdownEditorProps) {
   const isClient = useIsClient();
   if (!isClient) {
@@ -145,10 +161,13 @@ export function ExpandedMarkdownEditor({
   value,
   onChange,
   overlay,
+  titleSlot,
 }: {
   value: string;
   onChange: (markdown: string) => void;
   overlay?: ReactNode;
+  /** FEAT-memo-title: 본문 컬럼 위에 둘 제목 줄(스크롤 영역 안). */
+  titleSlot?: ReactNode;
 }) {
   const isClient = useIsClient();
 
@@ -156,6 +175,7 @@ export function ExpandedMarkdownEditor({
     // SSR/jsdom 폴백 — 원문 마크다운만 표시(ProseMirror 미생성).
     return (
       <div className="min-h-0 flex-1 overflow-auto">
+        {titleSlot}
         <div
           className="moss-md relative whitespace-pre-wrap text-[13px] leading-6 text-text"
           style={{ width: MEMO_CONTENT_WIDTH, padding: "6px 9px" }}
@@ -173,6 +193,7 @@ export function ExpandedMarkdownEditor({
     <>
       <MarkdownToolbar />
       <div className="min-h-0 flex-1 overflow-auto">
+        {titleSlot}
         {/* 카드 컬럼과 동일: 고정 폭 + padding 6/9 + text-[13px]. 펜 정렬의 핵심. */}
         <div
           className="moss-md relative text-[13px]"
