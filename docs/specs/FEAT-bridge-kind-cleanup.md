@@ -2,7 +2,7 @@
 
 > 외부 에이전트가 브리지로 만드는 카드도 사람이 만드는 카드와 같아진다. 메모 한 종류에 블록이 들어간다.
 
-**Status**: spec 작성
+**Status**: 구현 완료(vitest·tsc·bun test 통과; 브라우저 수동 스모크 AC-7 대기)
 **Owner**: (미정)
 **Estimated**: M
 **상위 스펙**: [[FEAT-sticky-redesign]]
@@ -238,6 +238,10 @@ type BridgeBlockInput =
 - 70–79행 `kindsOk`: 전부 `kind === "text"` + 본문에 블록 문자열 포함 확인으로 교체.
 - 93행 `boardAList.length === 9`: 카드 개수가 줄어든다. 새 값으로 고친다.
 
+### 블록 삽입 규칙 (/hate 2026-09-20)
+
+`countBlocks`·`parseBlock`은 **빈 줄로 둘러싸인 단독 줄**만 블록으로 본다(`blocks.ts:isolatedBlockLines`). placeholder 치환·본문 끝 append 모두 `serializeBlock` 결과를 `\n\n…\n\n` 형태로 넣어야 AC-2~5·8이 성립한다. 문장 안 `{{name}}`에 문자열만 끼우면 블록이 아니다.
+
 ### 재사용할 것
 
 - `web/src/state/blocks.ts` — `serializeBlock`, `normalizeLinkUrl`. 문법·이스케이프·스킴 검사의 유일한 출처.
@@ -250,6 +254,16 @@ type BridgeBlockInput =
 - 옛 카드 화면은 n10에서 삭제됐다. `cards/` 아래에 `board`·`comment`·`frame`·`text`만 남는다.
 - `CardContent.tsx`의 `default`가 image·link·audio·file·mindmap을 `TextCardContent`로 떨군다. 그래서 link 카드는 `{"url":"..."}` JSON이 글자로 보인다.
 - `markdownMigration.ts`의 `migratedContent`는 code·checklist·highlight만 다룬다. link·mindmap·image·audio·file은 `null`을 받아 kind가 그대로 남는다. 다른 보드에 저장한 뒤 나중에 열어도 열화 렌더다.
+
+### 구현 기록 (2026-09-20)
+
+- 베이스: 브랜치 `feat/sticky-redesign`, HEAD `32b814d`. D1(마인드맵 없앰)·D2(`blocks[]` 통합)·D3(web+mcp 한 커밋) 추천대로 확정(§9).
+- `mossBridge.ts`: `buildNoteContent`·`createAttachmentCard`·`embedInlineImages`·`buildMindmapNode`와 `notes.createImage/Audio/File/Mindmap` op 삭제. `blockToMarkdown`·`embedInlineBlocks` 추가 — 첨부는 OPFS 업로드 후 `serializeBlock`으로 문법화하고, `attachmentLimits.ts`로 형식·용량을 검사해 초과 시 카드 생성 전에 throw한다. `notes.create`는 `kind`를 text만 허용(그 외 throw), `blocks[]` 처리. 카드가 있으면 width 기본 720.
+- `server.ts`: `notes_create`의 `kind` enum·`images[]` 제거 → `blocks[]`(discriminated union). `notes_create_link_preview`가 링크·썸네일을 블록으로 만들고 placeholder로 (링크 → 썸네일 → 요약) 순서를 잡는다. `notes_create_{image,audio,file}`은 같은 `notes.create` blocks 경로로 재구현, `notes_create_mindmap` 삭제. 도구 이름은 유지.
+- `smoke.ts`: 옛 kind/첨부 op 호출 전부 블록 기반으로 교체. 보드 A 카드 7장(텍스트2+link+image+audio+file+원격1) 전부 `kind:"text"`, 본문에 블록 문자열 포함 확인.
+- `mcp/README.md` 도구 표·본문 갱신.
+- 검증: web vitest 41/41(mossBridge), mcp bun test 31/31, tsc(web 기존 `MemoExpand.test.tsx` 오류 1건은 스펙 전부터), lint. 전체 web 스위트는 기준선 `Canvas.virtualization` 1건 실패 유지.
+- 커밋: D3에 따라 web+mcp 한 커밋.
 
 ### 관련 스펙
 
