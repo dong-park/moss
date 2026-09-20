@@ -2,7 +2,7 @@
 
 > 데이터 소유권 확인. 무손실 백업·이전. 표준 포맷 호환 우선.
 
-**Status**: spec
+**Status**: 구현 완료 (수동 DOD 대기)
 **Estimated**: M
 **Blueprint**: `features[id="FEAT-export"]`
 **갱신**: 2026-09-20 — 옛 종류 가져오기 거부, 제목·메모판·펜 획 싣기 규칙 추가
@@ -22,7 +22,7 @@ PRD §28-1 약속 1: "메모 본문은 기본적으로 사용자 기기에만 �
     2. **JSON Canvas** (Obsidian 호환, 캔버스 좌표·연결 보존)
     3. **.moss 번들** (zip 내 JSON + OPFS blob, 무손실, 백업·이전용)
   - 범위 선택: 전체 / 현재 보드 / 선택한 메모
-  - 진입: 설정 메뉴, 보드 우클릭, `Cmd+E`
+  - 진입: 보드피커 하단·보드 우클릭, `Cmd+Shift+E` (`Cmd+E`는 편집 진입)
   - 3 variant (SCR-export):
     - `modal-default` (범위 + 포맷 선택)
     - `in-progress` (버튼 → 진행 막대)
@@ -297,4 +297,9 @@ updatedAt: 1716279600000
 - 제목 정규화: `web/src/state/memoTitle.ts`의 `normalizeTitle`, 최대 80자.
 - 메모판 이름 인코딩: `web/src/state/frameContent.ts`의 `encodeFrameContent`·`decodeFrameContent`, 최대 40자, 기본값 `새 메모판`.
 - 첨부 읽기: `web/src/state/db/opfs.ts`의 `getBlob(ref)`가 없으면 `null`을 반환한다. AC-10의 빠진 첨부 판정에 그대로 쓴다.
-- 이 기능은 아직 코드가 없다. `web/src` 어디에도 export·import 경로가 없다.
+- **단축키**: export는 `Cmd+Shift+E` — `Cmd+E`는 FEAT-card-flow 편집 진입(`useCardFlowShortcuts`)과 충돌 방지.
+- **파일 트리**:
+  - 순수 로직: `web/src/state/export/*` (validateManifest, partitionImportNotes, mossBundleExport/Import, markdownExport, jsonCanvasExport)
+  - store: `web/src/state/exportStore.ts`
+  - UI: `web/src/components/export/*` (ExportModal, ExportProgress, ImportDialog, DataTransferMenu)
+  - 진입: `BoardPicker` 보드 ContextMenu·하단 메뉴, `ShortcutsBinder` → `useExportShortcuts`
