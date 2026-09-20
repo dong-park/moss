@@ -113,22 +113,75 @@ server.registerTool(
   async ({ id }) => viaBridge("notes.get", { id }),
 );
 
+/**
+ * notes_create의 blocks[] 스키마. path 또는 dataBase64로 첨부를 주면 여기서
+ * base64+mimeType로 정규화하고, link는 url/title 그대로 브리지에 넘긴다.
+ * 브리지가 `serializeBlock`으로 본문 블록을 만든다(문법·이스케이프 단일 출처).
+ */
+const bridgeBlockSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("image"),
+    path: z.string().optional().describe("로컬 이미지 파일 경로(MCP가 읽음)"),
+    dataBase64: z.string().optional().describe("base64 이미지(path 미지정 시)"),
+    mimeType: z.string().optional().describe("dataBase64면 필수, path면 확장자로 추론"),
+    placeholder: z.string().optional().describe('본문 내 {{이름}} 치환 위치'),
+  }),
+  z.object({
+    type: z.literal("audio"),
+    path: z.string().optional().describe("로컬 오디오 파일 경로(MCP가 읽음)"),
+    dataBase64: z.string().optional().describe("base64 오디오(path 미지정 시)"),
+    mimeType: z.string().optional().describe("dataBase64면 필수, path면 추론"),
+    placeholder: z.string().optional().describe('본문 내 {{이름}} 치환 위치'),
+  }),
+  z.object({
+    type: z.literal("file"),
+    path: z.string().optional().describe("로컬 파일 경로(MCP가 읽음)"),
+    dataBase64: z.string().optional().describe("base64 파일(path 미지정 시)"),
+    mimeType: z.string().optional().describe("미상이면 application/octet-stream"),
+    filename: z.string().optional().describe('블록 라벨(생략 시 기본 "파일")'),
+    placeholder: z.string().optional().describe('본문 내 {{이름}} 치환 위치'),
+  }),
+  z.object({
+    type: z.literal("link"),
+    url: z.string().describe("http·https·mailto URL"),
+    title: z.string().optional().describe("링크 라벨(생략 시 url)"),
+    placeholder: z.string().optional().describe('본문 내 {{이름}} 치환 위치'),
+  }),
+]);
+
+/** 브리지로 보낼 blocks[]를 정규화한다(첨부는 base64+mimeType로). */
+async function resolveBridgeBlocks(
+  blocks: z.infer<typeof bridgeBlockSchema>[],
+): Promise<Record<string, unknown>[]> {
+  return Promise.all(
+    blocks.map(async (b) => {
+      if (b.type === "link") {
+        return { type: "link", url: b.url, title: b.title, placeholder: b.placeholder };
+      }
+      const allow = b.type === "image" ? "image" : b.type === "audio" ? "audio" : "any";
+      const m = await resolveMediaInput(
+        { path: b.path, dataBase64: b.dataBase64, mimeType: b.mimeType },
+        allow,
+      );
+      return {
+        type: b.type,
+        dataBase64: m.dataBase64,
+        mimeType: m.mimeType,
+        ...(b.type === "file" ? { filename: b.filename } : {}),
+        ...(b.placeholder ? { placeholder: b.placeholder } : {}),
+      };
+    }),
+  );
+}
+
 server.registerTool(
   "notes_create",
   {
     description:
-      "새 카드를 만들고 id를 반환한다. boardId를 주면 그 보드에 직접 생성한다(현재 보드면 화면 즉시 렌더, 다른 보드면 전환 시 보임). 생략 시 현재 보드.",
+      "본문(text 메모)을 만들고 id를 반환한다. 이미지·녹음·파일·링크는 blocks[]로 넣으면 본문 블록이 된다. boardId를 주면 그 보드에 직접 생성한다(현재 보드면 화면 즉시 렌더, 다른 보드면 전환 시 보임). 생략 시 현재 보드.",
     inputSchema: {
-      content: z
-        .string()
-        .describe('본문. kind에 따라 해석: text=마크다운, link=URL, mindmap=중심 토픽.'),
+      content: z.string().optional().describe("본문 마크다운(코드·체크리스트·인용 포함)."),
       boardId: z.string().optional().describe('대상 보드 id 또는 "system"(생략 시 현재 보드)'),
-      kind: z
-        .enum(["text", "link", "mindmap"])
-        .optional()
-        .describe(
-          '카드 종류(기본 "text"). 코드/체크리스트/인용은 text 카드에 마크다운으로 넣는다. image/audio/file은 첨부가 필요해 미지원.',
-        ),
       x: z.number().optional().describe("월드 좌표 x (기본 40)"),
       y: z.number().optional().describe("월드 좌표 y (기본 40)"),
       width: z
@@ -136,53 +189,25 @@ server.registerTool(
         .optional()
         .describe("카드 폭(px). 메모 본문은 720폭 고정 컬럼이라, 긴 글은 ~720으로 넓혀야 안 잘림."),
       height: z.number().optional().describe("카드 높이(px). 생략 시 콘텐츠 자동 높이."),
-      images: z
-        .array(
-          z.object({
-            path: z.string().optional().describe("로컬 이미지 파일 경로"),
-            dataBase64: z.string().optional().describe("base64 이미지(path 미지정 시)"),
-            mimeType: z.string().optional().describe("dataBase64면 필수, path면 추론"),
-            alt: z.string().optional().describe("대체 텍스트"),
-            placeholder: z
-              .string()
-              .optional()
-              .describe('본문 내 {{이름}} 치환 위치(생략 시 본문 끝에 추가)'),
-          }),
-        )
+      blocks: z
+        .array(bridgeBlockSchema)
         .optional()
         .describe(
-          "본문에 인라인으로 박을 이미지들(OPFS 업로드 후 ![](opfs://..)). text 메모만. 이미지 있으면 width 기본 720.",
+          "본문에 박을 블록들(이미지·녹음·파일·링크). placeholder로 {{이름}} 자리에 넣고, 없으면 끝에 붙인다. 블록이 있으면 width 기본 720.",
         ),
     },
   },
-  async ({ content, boardId, kind, x, y, width, height, images }) =>
+  async ({ content, boardId, x, y, width, height, blocks }) =>
     attempt(async () => {
-      // 각 이미지를 base64로 정규화(path/dataBase64) 후 브리지로 전달.
-      const resolved = images
-        ? await Promise.all(
-            images.map(async (im) => {
-              const m = await resolveMediaInput(
-                { path: im.path, dataBase64: im.dataBase64, mimeType: im.mimeType },
-                "image",
-              );
-              return {
-                dataBase64: m.dataBase64,
-                mimeType: m.mimeType,
-                alt: im.alt,
-                placeholder: im.placeholder,
-              };
-            }),
-          )
-        : undefined;
+      const resolved = blocks ? await resolveBridgeBlocks(blocks) : undefined;
       return bridge.call("notes.create", {
         content,
         boardId,
-        kind,
         x,
         y,
         width,
         height,
-        images: resolved,
+        blocks: resolved,
       });
     }),
 );
@@ -207,18 +232,30 @@ server.registerTool(
         thumbUrl?: string;
       };
       const title = og.title?.trim() || url;
-      let content = `[**${title}**](${url})`;
-      if (og.summary?.trim()) content += `\n\n${og.summary.trim()}`;
-      const images: { dataBase64: string; mimeType: string; alt?: string }[] = [];
+      // 순서: 제목 링크 블록 → 썸네일 이미지 블록 → 요약 글(AC-8). placeholder로 자리를 잡아
+      // 블록이 글 앞뒤에 정확히 놓이게 한다(브리지가 serializeBlock으로 직렬화).
+      const blocks: Record<string, unknown>[] = [];
+      const parts: string[] = [];
+      parts.push("{{link}}");
+      blocks.push({ type: "link", url, title, placeholder: "link" });
       if (og.thumbUrl) {
         try {
           const t = await fetchImageAsBase64(og.thumbUrl);
-          images.push({ dataBase64: t.dataBase64, mimeType: t.mimeType, alt: title });
+          parts.push("{{thumb}}");
+          blocks.push({ type: "image", dataBase64: t.dataBase64, mimeType: t.mimeType, placeholder: "thumb" });
         } catch {
           /* 썸네일 실패는 무시 — 제목 링크 + 요약만으로 메모 생성 */
         }
       }
-      return bridge.call("notes.create", { content, images, width: 720, boardId, x, y });
+      if (og.summary?.trim()) parts.push(og.summary.trim());
+      return bridge.call("notes.create", {
+        content: parts.join("\n\n"),
+        blocks,
+        width: 720,
+        boardId,
+        x,
+        y,
+      });
     }),
 );
 
@@ -247,7 +284,7 @@ server.registerTool(
   "notes_create_image",
   {
     description:
-      "이미지 카드를 만든다. path(로컬 파일) 또는 dataBase64+mimeType로 이미지를 주면 OPFS에 저장하고 image 카드를 생성한다. 현재 보드면 화면 즉시 렌더, boardId로 타 보드 지정 가능.",
+      "이미지를 본문 블록으로 넣은 text 메모를 만든다. path(로컬 파일) 또는 dataBase64+mimeType로 이미지를 주면 OPFS에 저장하고 ![](opfs://..) 블록을 본문에 넣는다(AC-2). 현재 보드면 화면 즉시 렌더, boardId로 타 보드 지정 가능.",
     inputSchema: {
       path: z.string().optional().describe("로컬 이미지 파일 경로(MCP가 읽음)"),
       dataBase64: z.string().optional().describe("base64 이미지 데이터(path 미지정 시)"),
@@ -255,22 +292,24 @@ server.registerTool(
         .string()
         .optional()
         .describe("예: image/png. dataBase64면 필수, path면 확장자로 추론"),
-      content: z.string().optional().describe("캡션/대체 텍스트(선택)"),
+      content: z.string().optional().describe("본문 글(선택)"),
+      placeholder: z.string().optional().describe("본문 내 {{이름}} 치환 위치"),
       boardId: z.string().optional().describe('대상 보드 id 또는 "system"(생략 시 현재 보드)'),
       x: z.number().optional().describe("월드 좌표 x (기본 40)"),
       y: z.number().optional().describe("월드 좌표 y (기본 40)"),
     },
   },
-  async ({ path, dataBase64, mimeType, content, boardId, x, y }) =>
+  async ({ path, dataBase64, mimeType, content, placeholder, boardId, x, y }) =>
     attempt(async () => {
       const img = await resolveImageInput({ path, dataBase64, mimeType });
-      return await bridge.call("notes.createImage", {
-        dataBase64: img.dataBase64,
-        mimeType: img.mimeType,
+      return await bridge.call("notes.create", {
         content,
         boardId,
         x,
         y,
+        blocks: [
+          { type: "image", dataBase64: img.dataBase64, mimeType: img.mimeType, placeholder },
+        ],
       });
     }),
 );
@@ -279,27 +318,29 @@ server.registerTool(
   "notes_create_audio",
   {
     description:
-      "오디오 카드를 만든다. path(로컬 파일) 또는 dataBase64+mimeType(audio/*)로 오디오를 주면 OPFS에 저장한다. boardId로 타 보드 지정 가능.",
+      "녹음을 본문 블록으로 넣은 text 메모를 만든다. path(로컬 파일) 또는 dataBase64+mimeType(audio/*)로 주면 OPFS에 저장하고 [녹음](opfs://.. \"moss-audio\") 블록을 넣는다(AC-3). boardId로 타 보드 지정 가능.",
     inputSchema: {
       path: z.string().optional().describe("로컬 오디오 파일 경로(MCP가 읽음)"),
       dataBase64: z.string().optional().describe("base64 오디오 데이터(path 미지정 시)"),
       mimeType: z.string().optional().describe("예: audio/mpeg. dataBase64면 필수, path면 추론"),
-      content: z.string().optional().describe("캡션(선택)"),
+      content: z.string().optional().describe("본문 글(선택)"),
+      placeholder: z.string().optional().describe("본문 내 {{이름}} 치환 위치"),
       boardId: z.string().optional().describe('대상 보드 id 또는 "system"(생략 시 현재 보드)'),
       x: z.number().optional().describe("월드 좌표 x (기본 40)"),
       y: z.number().optional().describe("월드 좌표 y (기본 40)"),
     },
   },
-  async ({ path, dataBase64, mimeType, content, boardId, x, y }) =>
+  async ({ path, dataBase64, mimeType, content, placeholder, boardId, x, y }) =>
     attempt(async () => {
       const m = await resolveMediaInput({ path, dataBase64, mimeType }, "audio");
-      return await bridge.call("notes.createAudio", {
-        dataBase64: m.dataBase64,
-        mimeType: m.mimeType,
+      return await bridge.call("notes.create", {
         content,
         boardId,
         x,
         y,
+        blocks: [
+          { type: "audio", dataBase64: m.dataBase64, mimeType: m.mimeType, placeholder },
+        ],
       });
     }),
 );
@@ -308,46 +349,38 @@ server.registerTool(
   "notes_create_file",
   {
     description:
-      "파일 카드를 만든다. path(로컬 파일) 또는 dataBase64(+mimeType)로 임의 파일을 주면 OPFS에 저장한다. mimeType 미상이면 application/octet-stream. boardId로 타 보드 지정 가능.",
+      "파일을 본문 블록으로 넣은 text 메모를 만든다. path(로컬 파일) 또는 dataBase64(+mimeType)로 주면 OPFS에 저장하고 [파일명](opfs://.. \"moss-file\") 블록을 넣는다(AC-3). mimeType 미상이면 application/octet-stream, filename 생략 시 기본 라벨. boardId로 타 보드 지정 가능.",
     inputSchema: {
       path: z.string().optional().describe("로컬 파일 경로(MCP가 읽음)"),
       dataBase64: z.string().optional().describe("base64 파일 데이터(path 미지정 시)"),
       mimeType: z.string().optional().describe("미상이면 application/octet-stream"),
-      content: z.string().optional().describe("캡션/파일명(선택)"),
+      filename: z.string().optional().describe('블록 라벨(생략 시 기본 "파일")'),
+      content: z.string().optional().describe("본문 글(선택)"),
+      placeholder: z.string().optional().describe("본문 내 {{이름}} 치환 위치"),
       boardId: z.string().optional().describe('대상 보드 id 또는 "system"(생략 시 현재 보드)'),
       x: z.number().optional().describe("월드 좌표 x (기본 40)"),
       y: z.number().optional().describe("월드 좌표 y (기본 40)"),
     },
   },
-  async ({ path, dataBase64, mimeType, content, boardId, x, y }) =>
+  async ({ path, dataBase64, mimeType, filename, content, placeholder, boardId, x, y }) =>
     attempt(async () => {
       const m = await resolveMediaInput({ path, dataBase64, mimeType }, "any");
-      return await bridge.call("notes.createFile", {
-        dataBase64: m.dataBase64,
-        mimeType: m.mimeType,
+      return await bridge.call("notes.create", {
         content,
         boardId,
         x,
         y,
+        blocks: [
+          {
+            type: "file",
+            dataBase64: m.dataBase64,
+            mimeType: m.mimeType,
+            filename,
+            placeholder,
+          },
+        ],
       });
     }),
-);
-
-server.registerTool(
-  "notes_create_mindmap",
-  {
-    description:
-      "가지(children)가 있는 마인드맵 카드를 만든다. tree = {text, children?:[{text, children?}, ...]} 중첩 구조. 현재 보드면 화면 즉시 렌더, boardId로 타 보드 지정 가능.",
-    inputSchema: {
-      tree: z
-        .record(z.unknown())
-        .describe("중심 노드 {text, children?:[...]} (children도 같은 구조로 중첩)"),
-      boardId: z.string().optional().describe('대상 보드 id 또는 "system"(생략 시 현재 보드)'),
-      x: z.number().optional().describe("월드 좌표 x (기본 40)"),
-      y: z.number().optional().describe("월드 좌표 y (기본 40)"),
-    },
-  },
-  async ({ tree, boardId, x, y }) => viaBridge("notes.createMindmap", { tree, boardId, x, y }),
 );
 
 server.registerTool(

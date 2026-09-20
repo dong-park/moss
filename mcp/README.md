@@ -20,12 +20,11 @@ moss의 사용자 데이터는 브라우저 IndexedDB(Dexie)에만 산다 — No
 | `ping` | 브리지 연결 상태 + 현재 보드 id |
 | `notes_list` | 현재 보드의 카드 목록 |
 | `notes_get` | id로 카드 단건 조회 |
-| `notes_create` | 카드 생성(kind: text·link·mindmap; `images`로 인라인 이미지; `width`/`height`) |
+| `notes_create` | text 메모 생성(`blocks[]`로 이미지·녹음·파일·링크 본문 블록; `width`/`height`) |
 | `notes_create_link_preview` | URL의 OG(제목·요약·썸네일)로 미리보기 메모 생성 |
-| `notes_create_image` | 이미지 카드 생성(path 또는 dataBase64 → OPFS 저장) |
-| `notes_create_audio` | 오디오 카드 생성(audio/*, OPFS) |
-| `notes_create_file` | 파일 카드 생성(임의 타입, OPFS) |
-| `notes_create_mindmap` | 가지(children) 있는 마인드맵 카드 생성 |
+| `notes_create_image` | 이미지를 본문 블록으로 넣은 메모 생성(path 또는 dataBase64 → OPFS 저장) |
+| `notes_create_audio` | 녹음을 본문 블록으로 넣은 메모 생성(audio/*, OPFS) |
+| `notes_create_file` | 파일을 본문 블록으로 넣은 메모 생성(임의 타입, OPFS) |
 | `notes_create_comment` | 코멘트(주석) 카드 생성(author/time 메타) |
 | `notes_create_board` | 함(서브캔버스 funnel) 카드 + 빈 서브 보드 생성 |
 | `notes_update` | 카드 본문 교체 |
@@ -42,11 +41,12 @@ moss의 사용자 데이터는 브라우저 IndexedDB(Dexie)에만 산다 — No
 > ⚠️ 메모 본문은 **720px 고정 컬럼**이라 카드가 좁으면 우측이 잘린다. 제목/요약이 긴 글은
 > `notes_create`에 `width: 720`(+필요시 `height`)을 줘서 넓혀야 안 잘린다. 짧은 한 줄 메모는 기본 폭으로 OK.
 >
-> notes op는 기본 **현재 보드**(또는 `boardId`로 타 보드). `notes_create`의 `kind`:
-> `text`(마크다운)·`link`(content=URL)·`mindmap`(content=중심 토픽, 가지는 `notes_create_mindmap`).
-> 코드/체크리스트/인용은 text 카드에 마크다운으로. 첨부 카드는 `notes_create_{image,audio,file}`.
+> notes op는 기본 **현재 보드**(또는 `boardId`로 타 보드). 브리지가 만드는 카드는 **text 하나**다 —
+> 이미지·녹음·파일·링크는 `blocks[]`로 본문 블록이 되고, `notes_create_{image,audio,file}`도 같은
+> text 메모를 만든다. 코드/체크리스트/인용은 text 카드에 마크다운으로. 링크는 `[제목](url "moss-link")`,
+> 녹음은 `[녹음](opfs://.. "moss-audio")`, 파일은 `[파일명](opfs://.. "moss-file")` 블록 문법을 쓴다.
 >
-> ⚠️ 첨부 생성(image/audio/file)은 OPFS `createWritable`을 쓴다 — Chromium 계열 브라우저에서 동작하고
+> ⚠️ 첨부 저장(image/audio/file)은 OPFS `createWritable`을 쓴다 — Chromium 계열 브라우저에서 동작하고
 > WebKit(WKWebView/pharos webview/Safari)에서는 실패한다(moss 전반의 webview 한계).
 > connections는 캔버스에 렌더되지 않는 데이터(현재 AI 파이프라인이 사용).
 

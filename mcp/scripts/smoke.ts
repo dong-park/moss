@@ -39,44 +39,37 @@ try {
   const board = (await call("boards.create", { name: `MCP 보드 ${Date.now()}` })) as { id: string };
   const n1 = (await call("notes.create", { content: "연결 출발 카드" })) as { id: string };
   const n2 = (await call("notes.create", { content: "연결 도착 카드" })) as { id: string };
-  // text 외 카드 종류: link / mindmap
+  // 링크·이미지·녹음·파일은 blocks[]로 text 메모 안 블록이 된다(옛 독립 kind 없음).
   const link = (await call("notes.create", {
-    content: "https://example.com",
-    kind: "link",
+    content: "",
+    blocks: [{ type: "link", url: "https://example.com" }],
   })) as { id: string; kind: string };
-  const mind = (await call("notes.create", {
-    content: "중심 생각",
-    kind: "mindmap",
-  })) as { id: string; kind: string };
-  // OPFS 이미지 카드
-  const img = (await call("notes.createImage", {
-    dataBase64: PNG_B64,
-    mimeType: "image/png",
+  const img = (await call("notes.create", {
     content: "MCP 이미지",
-  })) as { id: string; kind: string; attachmentRef: string };
-  const audio = (await call("notes.createAudio", {
-    dataBase64: "AAAA",
-    mimeType: "audio/mpeg",
-    content: "녹음",
-  })) as { kind: string; attachmentRef: string };
-  const file = (await call("notes.createFile", {
-    dataBase64: "AAAA",
-    mimeType: "application/pdf",
-    content: "문서.pdf",
-  })) as { kind: string; attachmentRef: string };
-  const mtree = (await call("notes.createMindmap", {
-    tree: { text: "루트", children: [{ text: "가지A" }, { text: "가지B", children: [{ text: "잎" }] }] },
+    blocks: [{ type: "image", dataBase64: PNG_B64, mimeType: "image/png" }],
   })) as { id: string; kind: string };
+  const audio = (await call("notes.create", {
+    content: "녹음",
+    blocks: [{ type: "audio", dataBase64: "AAAA", mimeType: "audio/mpeg" }],
+  })) as { id: string; kind: string };
+  const file = (await call("notes.create", {
+    content: "",
+    blocks: [
+      { type: "file", dataBase64: "AAAA", mimeType: "application/pdf", filename: "문서.pdf" },
+    ],
+  })) as { id: string; kind: string };
+  const afterCreate = (await call("notes.list")) as { kind: string; content: string }[];
   const kindsOk =
-    link.kind === "link" &&
-    mind.kind === "mindmap" &&
-    img.kind === "image" &&
-    img.attachmentRef?.startsWith("opfs:") &&
-    audio.kind === "audio" &&
-    audio.attachmentRef?.startsWith("opfs:") &&
-    file.kind === "file" &&
-    file.attachmentRef?.startsWith("opfs:") &&
-    mtree.kind === "mindmap";
+    link.kind === "text" &&
+    img.kind === "text" &&
+    audio.kind === "text" &&
+    file.kind === "text" &&
+    Array.isArray(afterCreate) &&
+    afterCreate.every((n) => n.kind === "text") &&
+    afterCreate.some((n) => n.content.includes('[https://example.com](https://example.com "moss-link")')) &&
+    afterCreate.some((n) => n.content.includes("![](opfs://")) &&
+    afterCreate.some((n) => n.content.includes("[녹음](opfs://") && afterCreate.some((n) => n.content.includes('"moss-audio"')) &&
+    afterCreate.some((n) => n.content.includes("[문서.pdf](opfs://")) && afterCreate.some((n) => n.content.includes('"moss-file"'));
   await call("boards.list");
 
   // 현재-보드 외 직접 타겟: system으로 전환한 뒤 boardId로 보드 A에 직접 생성
@@ -90,7 +83,7 @@ try {
   const crossBoardOk =
     remote.boardId === board.id &&
     Array.isArray(boardAList) &&
-    boardAList.length === 9 && // 텍스트2 + link + mindmap + image + audio + file + mindmapTree + 원격1
+    boardAList.length === 7 && // 텍스트2 + link + image + audio + file + 원격1
     Array.isArray(sysList) &&
     !sysList.some((n) => (n as { id: string }).id === remote.id);
   console.error(`[smoke] cross-board: boardA=${boardAList.length} sys=${sysList.length} ok=${crossBoardOk}`);
@@ -106,7 +99,7 @@ try {
   // T6 ai_preview (브리지 경유 — same-origin 통과)
   const preview = (await call("ai.preview", { url: "https://example.com" })) as Record<string, unknown>;
 
-  // 화면 확인을 위해 보드 A로 되돌려 끝낸다(스크린샷에 link/mindmap 렌더 노출).
+  // 화면 확인을 위해 보드 A로 되돌려 끝낸다(스크린샷에 link/image/audio/file 블록 렌더 노출).
   await call("boards.switch", { id: board.id });
 
   const ok =

@@ -22,21 +22,20 @@
 import {
   useWorkspace,
   type Card,
-  type ToolId,
   SYSTEM_BOARD_ID,
   encodeComment,
   encodeSubcanvas,
   __internal,
 } from "@/state/workspace";
 import { useStorage } from "@/state/storage";
-import { getDB, type NoteKind } from "@/state/db/schema";
-import {
-  serializeLink,
-  serializeMindmap,
-  makeMindmapNodeId,
-  type MindmapNode,
-} from "@/state/cardContent";
+import { getDB } from "@/state/db/schema";
+import { serializeBlock } from "@/state/blocks";
 import { putBlob, makeAttachmentFilename } from "@/state/db/opfs";
+import {
+  MAX_ATTACHMENT_BYTES,
+  MAX_IMAGE_BYTES,
+  SUPPORTED_IMAGE_TYPES,
+} from "@/state/attachmentLimits";
 
 /** 외부로 노출하는 카드 표현 — 내부 Card에서 렌더·영속에 필요한 필드만 추린다. */
 export interface BridgeNote {
@@ -74,33 +73,93 @@ function newNoteId(): string {
   return `c-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6)}`;
 }
 
+/** 파일 블록 라벨을 안 주었을 때 쓰는 기본 이름. 빈 대괄호를 만들지 않는다(AC-3). */
+const DEFAULT_FILE_LABEL = "파일";
+
 /**
- * 생성 가능한 카드 종류 → 저장 content 인코딩.
- * - text: 마크다운 그대로(코드/체크리스트/인용도 moss는 text 카드의 마크다운으로 다룬다).
- * - link: content=URL → LinkContent JSON.
- * - mindmap: content=중심 토픽 → 루트 노드 1개.
- * image/audio/file(첨부 필요), comment/board(특수 인코딩), handwriting(획)은 미지원.
+ * 블록 입력 하나를 마크다운 한 줄로 만든다. 첨부(image/audio/file)는 OPFS에 blob을
+ * 올린 뒤 `serializeBlock`으로 문법화하고, link는 직렬화만 한다. 한도·형식 검사는
+ * `attachmentLimits.ts`를 유일한 출처로 쓰고, 실패는 op 에러로 던진다(§6).
+ *
+ * 카드를 만들기 전에 모든 블록을 여기서 처리하므로, 하나라도 던지면 카드는 생기지
+ * 않는다(AC-6). 앞서 올린 blob은 고아로 남을 수 있다(§4 실패 모드 — 용량 경고가 받음).
  */
-function buildNoteContent(
-  kind: string,
-  raw: string,
-): { noteKind: NoteKind; toolId: ToolId; stored: string } {
-  switch (kind) {
-    case "text":
-      return { noteKind: "text", toolId: "text", stored: raw };
-    case "link":
-      return { noteKind: "link", toolId: "link", stored: serializeLink({ url: raw }) };
-    case "mindmap":
-      return {
-        noteKind: "mindmap",
-        toolId: "mindmap",
-        stored: serializeMindmap({ root: { id: "root", text: raw, children: [] } }),
-      };
+async function blockToMarkdown(raw: unknown): Promise<{ md: string; placeholder: string }> {
+  const b = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const placeholder = typeof b.placeholder === "string" ? b.placeholder : "";
+  const type = typeof b.type === "string" ? b.type : "";
+  const dataBase64 = typeof b.dataBase64 === "string" ? b.dataBase64 : "";
+  const mimeType = typeof b.mimeType === "string" ? b.mimeType : "";
+
+  switch (type) {
+    case "image": {
+      if (!dataBase64 || !mimeType) {
+        throw new Error("image 블록에는 dataBase64와 mimeType이 필요합니다");
+      }
+      if (!SUPPORTED_IMAGE_TYPES.has(mimeType)) {
+        throw new Error(`지원하지 않는 이미지 형식입니다: ${mimeType}`);
+      }
+      const blob = base64ToBlob(dataBase64, mimeType);
+      if (blob.size > MAX_IMAGE_BYTES) {
+        throw new Error(`이미지가 너무 큽니다(${blob.size} bytes > ${MAX_IMAGE_BYTES}).`);
+      }
+      const ref = await putBlob(makeAttachmentFilename(mimeType), blob);
+      return { md: serializeBlock({ type: "image", ref }), placeholder };
+    }
+    case "audio": {
+      if (!dataBase64 || !mimeType) {
+        throw new Error("audio 블록에는 dataBase64와 mimeType이 필요합니다");
+      }
+      const blob = base64ToBlob(dataBase64, mimeType);
+      if (blob.size > MAX_ATTACHMENT_BYTES) {
+        throw new Error(`녹음이 너무 큽니다(${blob.size} bytes > ${MAX_ATTACHMENT_BYTES}).`);
+      }
+      const ref = await putBlob(makeAttachmentFilename(mimeType), blob);
+      return { md: serializeBlock({ type: "audio", ref }), placeholder };
+    }
+    case "file": {
+      if (!dataBase64) throw new Error("file 블록에는 dataBase64가 필요합니다");
+      const blob = base64ToBlob(dataBase64, mimeType || "application/octet-stream");
+      if (blob.size > MAX_ATTACHMENT_BYTES) {
+        throw new Error(`파일이 너무 큽니다(${blob.size} bytes > ${MAX_ATTACHMENT_BYTES}).`);
+      }
+      const ref = await putBlob(makeAttachmentFilename(mimeType || undefined), blob);
+      const filename =
+        typeof b.filename === "string" && b.filename.trim() ? b.filename : DEFAULT_FILE_LABEL;
+      return { md: serializeBlock({ type: "file", ref, filename }), placeholder };
+    }
+    case "link": {
+      const url = typeof b.url === "string" ? b.url : "";
+      const title = typeof b.title === "string" ? b.title : undefined;
+      const md = serializeBlock({ type: "link", url, title });
+      if (!md) throw new Error(`허용하지 않는 링크입니다: ${url}`);
+      return { md, placeholder };
+    }
     default:
-      throw new Error(
-        `지원하지 않는 kind: ${kind}. (text|link|mindmap) — 코드/체크리스트/인용은 text 카드에 마크다운으로, image/audio/file은 첨부가 필요해 미지원.`,
-      );
+      throw new Error(`지원하지 않는 block type: ${type}`);
   }
+}
+
+/**
+ * blocks[]를 본문에 박는다. 각 블록은 `serializeBlock` 결과를 빈 줄로 둘러싼
+ * 단독 문단으로 넣는다 — `{{이름}}` 자리가 있으면 치환, 없으면 본문 끝에 덧붙인다.
+ * 블록은 "자기 문단에 단독"일 때만 블록이므로(`blocks.ts:isolatedBlockLines`)
+ * 치환·append 모두 `\n\n…\n\n` 경계를 지킨다(§12 /hate).
+ */
+async function embedInlineBlocks(content: string, blocks: unknown): Promise<string> {
+  if (!Array.isArray(blocks) || blocks.length === 0) return content;
+  let out = content;
+  for (const raw of blocks) {
+    const { md, placeholder } = await blockToMarkdown(raw);
+    const token = placeholder ? `{{${placeholder}}}` : "";
+    if (token && out.includes(token)) {
+      out = out.split(token).join(`\n\n${md}\n\n`);
+    } else {
+      out += (out ? "\n\n" : "") + md;
+    }
+  }
+  // placeholder가 자기 문단이었으면 빈 줄이 겹친다 — 블록 격리(\n\n)는 유지하며 정리.
+  return out.replace(/\n{3,}/g, "\n\n");
 }
 
 function toBridgeNote(card: Card): BridgeNote {
@@ -124,88 +183,6 @@ function base64ToBlob(dataBase64: string, mimeType: string): Blob {
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
   return new Blob([bytes], { type: mimeType });
-}
-
-/**
- * 첨부(image/audio/file) 카드 공통 생성. base64 → OPFS blob(putBlob) → attachmentRef.
- * OPFS는 브라우저 전용이라 blob 저장이 여기(moss 탭)서 일어난다. kind는 곧 ToolId.
- */
-async function createAttachmentCard(
-  kind: "image" | "audio" | "file",
-  params: Record<string, unknown>,
-): Promise<Record<string, unknown>> {
-  const dataBase64 = typeof params.dataBase64 === "string" ? params.dataBase64 : "";
-  const mimeType = typeof params.mimeType === "string" ? params.mimeType : "";
-  if (!dataBase64 || !mimeType) throw new Error("dataBase64와 mimeType이 필요합니다");
-  const caption = typeof params.content === "string" ? params.content : "";
-  const x = typeof params.x === "number" ? params.x : 40;
-  const y = typeof params.y === "number" ? params.y : 40;
-  const ref = await putBlob(makeAttachmentFilename(mimeType), base64ToBlob(dataBase64, mimeType));
-  const { storageId, isCurrent } = resolveBoard(params.boardId);
-  if (isCurrent) {
-    const ws = useWorkspace.getState();
-    const id = ws.addCardAt(kind, x, y);
-    ws.setAttachment(id, ref, { mediaType: mimeType, content: caption });
-    ws.setEditing(null);
-    ws.clearSelection();
-    return { id, kind, attachmentRef: ref, mediaType: mimeType };
-  }
-  const id = newNoteId();
-  await useStorage.getState().saveNote({
-    id,
-    boardId: storageId,
-    kind,
-    attachmentRef: ref,
-    mediaType: mimeType,
-    content: caption,
-    x,
-    y,
-    aiOptOut: false,
-    rotation: 0,
-  });
-  return { id, kind, attachmentRef: ref, mediaType: mimeType, boardId: storageId };
-}
-
-/**
- * params.images(base64)를 OPFS에 올려 markdown 본문에 인라인 이미지로 박는다(text 메모용).
- * 마크다운 URL 스킴은 `opfs://<filename>`(opfsImagePlugin이 blob URL로 렌더).
- * placeholder가 있으면 본문의 `{{placeholder}}`를 치환, 없으면 본문 끝에 덧붙인다.
- */
-async function embedInlineImages(content: string, images: unknown): Promise<string> {
-  if (!Array.isArray(images) || images.length === 0) return content;
-  let out = content;
-  for (const img of images) {
-    const o = (img && typeof img === "object" ? img : {}) as {
-      dataBase64?: unknown;
-      mimeType?: unknown;
-      alt?: unknown;
-      placeholder?: unknown;
-    };
-    if (typeof o.dataBase64 !== "string" || typeof o.mimeType !== "string") continue;
-    const filename = makeAttachmentFilename(o.mimeType);
-    await putBlob(filename, base64ToBlob(o.dataBase64, o.mimeType));
-    const md = `![${typeof o.alt === "string" ? o.alt : ""}](opfs://${filename})`;
-    const ph = typeof o.placeholder === "string" ? o.placeholder : "";
-    if (ph && out.includes(`{{${ph}}}`)) out = out.split(`{{${ph}}}`).join(md);
-    else out += (out ? "\n\n" : "") + md;
-  }
-  return out;
-}
-
-/** {text, children?} 트리를 MindmapNode로 재귀 변환. 루트 id는 "root". */
-function buildMindmapNode(raw: unknown, isRoot: boolean): MindmapNode {
-  const o = (raw && typeof raw === "object" ? raw : {}) as {
-    text?: unknown;
-    children?: unknown;
-  };
-  const children = Array.isArray(o.children)
-    ? o.children.map((c) => buildMindmapNode(c, false))
-    : [];
-  return {
-    id: isRoot ? "root" : makeMindmapNodeId(),
-    text: typeof o.text === "string" ? o.text : "",
-    children,
-  };
 }
 
 /**
@@ -242,25 +219,29 @@ export async function dispatchOp(
       return toBridgeNote(__internal.decodeNoteToCard(note));
     }
 
+    // 브리지가 만드는 카드는 text 하나다. 옛 독립 kind(link·mindmap·image·audio·file)는
+    // 없앴다 — 이미지·녹음·파일·링크는 blocks[]로 본문에 넣는다(AC-1~5).
     case "notes.create": {
+      const kind = typeof params.kind === "string" && params.kind ? params.kind : "text";
+      if (kind !== "text") {
+        throw new Error(
+          `지원하지 않는 kind: ${kind}. 브리지는 text 메모만 만든다 — 이미지·녹음·파일·링크는 blocks[]로 넣는다.`,
+        );
+      }
       const raw = typeof params.content === "string" ? params.content : "";
       const x = typeof params.x === "number" ? params.x : 40;
       const y = typeof params.y === "number" ? params.y : 40;
       // 메모 본문은 고정 폭(MEMO_CONTENT_WIDTH=720) 컬럼이라, 카드가 그보다 좁으면
-      // 우측이 잘린다. 긴 텍스트는 width로 넓혀야 보인다.
+      // 우측이 잘린다. 블록이 있으면 width 미지정이어도 720을 기본으로 넓힌다.
       const width = typeof params.width === "number" ? params.width : undefined;
       const height = typeof params.height === "number" ? params.height : undefined;
-      const kind = typeof params.kind === "string" && params.kind ? params.kind : "text";
-      const { noteKind, toolId, stored } = buildNoteContent(kind, raw);
-      // 인라인 이미지(text 메모만): OPFS 업로드 후 ![](opfs://..)로 본문에 박는다.
-      const hasImages = Array.isArray(params.images) && params.images.length > 0;
-      const finalContent =
-        noteKind === "text" ? await embedInlineImages(stored, params.images) : stored;
-      // 이미지/긴 글은 720 컬럼이 필요 — width 미지정이면 이미지 있을 때 720 기본.
-      const effWidth = width !== undefined ? width : hasImages ? 720 : undefined;
+      const blocks = Array.isArray(params.blocks) ? params.blocks : [];
+      // 블록을 먼저 전부 처리한다 — 하나라도 실패하면 throw로 빠져 카드를 만들지 않는다.
+      const finalContent = await embedInlineBlocks(raw, blocks);
+      const effWidth = width !== undefined ? width : blocks.length > 0 ? 720 : undefined;
       const { storageId, isCurrent } = resolveBoard(params.boardId);
       if (isCurrent) {
-        const id = ws.addCardAt(toolId, x, y);
+        const id = ws.addCardAt("text", x, y);
         if (effWidth !== undefined || height !== undefined) {
           useWorkspace.setState((s) => ({
             cards: s.cards.map((c) =>
@@ -278,13 +259,13 @@ export async function dispatchOp(
         ws.setContent(id, finalContent);
         ws.setEditing(null);
         ws.clearSelection();
-        return { id, kind: noteKind };
+        return { id, kind: "text" };
       }
       const id = newNoteId();
       await useStorage.getState().saveNote({
         id,
         boardId: storageId,
-        kind: noteKind,
+        kind: "text",
         x,
         y,
         ...(effWidth !== undefined ? { width: effWidth } : {}),
@@ -293,7 +274,7 @@ export async function dispatchOp(
         aiOptOut: false,
         rotation: 0,
       });
-      return { id, kind: noteKind, boardId: storageId };
+      return { id, kind: "text", boardId: storageId };
     }
 
     case "notes.update": {
@@ -322,44 +303,6 @@ export async function dispatchOp(
       if (!note) throw new Error(`카드를 찾을 수 없습니다: ${id}`);
       await useStorage.getState().removeNote(id);
       return { id };
-    }
-
-    // 첨부 카드(image/audio/file): base64 → OPFS blob → attachmentRef.
-    case "notes.createImage":
-      return createAttachmentCard("image", params);
-    case "notes.createAudio":
-      return createAttachmentCard("audio", params);
-    case "notes.createFile":
-      return createAttachmentCard("file", params);
-
-    // 가지 있는 마인드맵: {text, children?} 트리 → MindmapNode → mindmap 카드.
-    case "notes.createMindmap": {
-      if (!params.tree || typeof params.tree !== "object") {
-        throw new Error("tree가 필요합니다");
-      }
-      const stored = serializeMindmap({ root: buildMindmapNode(params.tree, true) });
-      const x = typeof params.x === "number" ? params.x : 40;
-      const y = typeof params.y === "number" ? params.y : 40;
-      const { storageId, isCurrent } = resolveBoard(params.boardId);
-      if (isCurrent) {
-        const id = ws.addCardAt("mindmap", x, y);
-        ws.setContent(id, stored);
-        ws.setEditing(null);
-        ws.clearSelection();
-        return { id, kind: "mindmap" };
-      }
-      const id = newNoteId();
-      await useStorage.getState().saveNote({
-        id,
-        boardId: storageId,
-        kind: "mindmap",
-        content: stored,
-        x,
-        y,
-        aiOptOut: false,
-        rotation: 0,
-      });
-      return { id, kind: "mindmap", boardId: storageId };
     }
 
     // comment 카드: author/time 메타 + 본문. moss는 kind="text" + 마커 JSON으로 저장하고

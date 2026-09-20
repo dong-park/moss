@@ -9,6 +9,8 @@ vi.mock("@/state/db/opfs", async (importOriginal) => {
 import { useWorkspace, SYSTEM_BOARD_ID } from "@/state/workspace";
 import { useStorage } from "@/state/storage";
 import { resetDB } from "@/state/db/schema";
+import { countBlocks } from "@/state/blocks";
+import { putBlob } from "@/state/db/opfs";
 import { dispatchOp, type BridgeNote } from "@/state/bridge/mossBridge";
 
 // 1x1 PNG.
@@ -71,118 +73,149 @@ describe("dispatchOp", () => {
     expect(card.content).toBe("긴 메모");
   });
 
-  it("notes.create images → 본문에 인라인 ![](opfs://..) 박고 width 720 기본", async () => {
+  it("notes.create blocks[image] → ![](opfs://..) 문단 단독 + width 720 기본", async () => {
     const r = (await dispatchOp("notes.create", {
       content: "사진 메모",
-      images: [{ dataBase64: PNG_B64, mimeType: "image/png", alt: "썸네일" }],
-    })) as { id: string };
+      blocks: [{ type: "image", dataBase64: PNG_B64, mimeType: "image/png" }],
+    })) as { id: string; kind: string };
+    expect(r.kind).toBe("text");
     const card = useWorkspace.getState().cards.find((c) => c.id === r.id)!;
+    expect(card.kind).toBe("text");
     expect(card.content).toContain("사진 메모");
-    expect(card.content).toMatch(/!\[썸네일\]\(opfs:\/\/.+\)/);
+    expect(card.content).toMatch(/!\[\]\(opfs:\/\/.+\)/);
     expect(card.width).toBe(720);
+    expect(countBlocks(card.content).image).toBe(1);
   });
 
-  it("notes.create images placeholder → {{이름}} 치환", async () => {
+  it("notes.create blocks[image] placeholder → {{이름}} 치환, 블록 단독 유지", async () => {
     const r = (await dispatchOp("notes.create", {
       content: "위\n\n{{shot}}\n\n아래",
-      images: [{ dataBase64: PNG_B64, mimeType: "image/png", placeholder: "shot" }],
+      blocks: [{ type: "image", dataBase64: PNG_B64, mimeType: "image/png", placeholder: "shot" }],
     })) as { id: string };
     const content = useWorkspace.getState().cards.find((c) => c.id === r.id)!.content;
     expect(content).not.toContain("{{shot}}");
     expect(content).toMatch(/위\n\n!\[\]\(opfs:\/\/.+\)\n\n아래/);
+    expect(countBlocks(content).image).toBe(1);
   });
 
-  it("notes.create kind=link → link 카드 + URL JSON content", async () => {
+  it("notes.create blocks[link] → text 카드 + [url](url \"moss-link\")", async () => {
     const r = (await dispatchOp("notes.create", {
-      content: "https://example.com",
-      kind: "link",
-    })) as { id: string; kind: string };
-    expect(r.kind).toBe("link");
-    const card = useWorkspace.getState().cards[0]!;
-    expect(card.kind).toBe("link");
-    expect(JSON.parse(card.content)).toMatchObject({ url: "https://example.com" });
-  });
-
-  it("notes.create kind=mindmap → mindmap 카드 + 루트 토픽", async () => {
-    const r = (await dispatchOp("notes.create", {
-      content: "중심 생각",
-      kind: "mindmap",
+      content: "",
+      blocks: [{ type: "link", url: "https://example.com" }],
     })) as { kind: string };
-    expect(r.kind).toBe("mindmap");
+    expect(r.kind).toBe("text");
     const card = useWorkspace.getState().cards[0]!;
-    expect(card.kind).toBe("mindmap");
-    expect(JSON.parse(card.content).root.text).toBe("중심 생각");
+    expect(card.kind).toBe("text");
+    expect(card.content).toContain('[https://example.com](https://example.com "moss-link")');
+    expect(countBlocks(card.content).link).toBe(1);
   });
 
-  it("notes.create 미지원 kind → throw", async () => {
-    await expect(dispatchOp("notes.create", { content: "x", kind: "image" })).rejects.toThrow(
+  it("notes.create blocks[link] 허용 안 하는 스킴 → throw, 카드 없음", async () => {
+    await expect(
+      dispatchOp("notes.create", {
+        content: "",
+        blocks: [{ type: "link", url: "javascript:alert(1)" }],
+      }),
+    ).rejects.toThrow("허용하지 않는 링크");
+    expect(useWorkspace.getState().cards).toHaveLength(0);
+  });
+
+  it("notes.create blocks[audio] → [녹음](opfs://.. \"moss-audio\")", async () => {
+    const r = (await dispatchOp("notes.create", {
+      content: "",
+      blocks: [{ type: "audio", dataBase64: "AAAA", mimeType: "audio/mpeg" }],
+    })) as { kind: string };
+    expect(r.kind).toBe("text");
+    const content = useWorkspace.getState().cards[0]!.content;
+    expect(content).toMatch(/\[녹음\]\(opfs:\/\/.+ "moss-audio"\)/);
+    expect(countBlocks(content).audio).toBe(1);
+  });
+
+  it("notes.create blocks[file] → [원본 파일명](..), 파일명 없으면 기본 라벨", async () => {
+    await dispatchOp("notes.create", {
+      content: "",
+      blocks: [
+        { type: "file", dataBase64: "AAAA", mimeType: "application/pdf", filename: "문서.pdf" },
+      ],
+    });
+    const content = useWorkspace.getState().cards[0]!.content;
+    expect(content).toContain('[문서.pdf](opfs://');
+    expect(content).toContain('"moss-file")');
+    expect(countBlocks(content).file).toBe(1);
+
+    await dispatchOp("notes.create", {
+      content: "",
+      blocks: [{ type: "file", dataBase64: "AAAA", mimeType: "application/pdf" }],
+    });
+    const c2 = useWorkspace.getState().cards[1]!.content;
+    expect(c2).toContain("[파일](opfs://");
+    expect(c2).not.toContain("[](");
+    expect(countBlocks(c2).file).toBe(1);
+  });
+
+  it("notes.create 여러 블록 → 글과 블록이 순서대로 들어간다", async () => {
+    const r = (await dispatchOp("notes.create", {
+      content: "앞글",
+      blocks: [
+        { type: "link", url: "https://a.com" },
+        { type: "image", dataBase64: PNG_B64, mimeType: "image/png" },
+      ],
+    })) as { id: string };
+    const content = useWorkspace.getState().cards.find((c) => c.id === r.id)!.content;
+    const linkIdx = content.indexOf("https://a.com");
+    const imgIdx = content.indexOf("![");
+    expect(linkIdx).toBeGreaterThan(-1);
+    expect(imgIdx).toBeGreaterThan(linkIdx);
+    expect(countBlocks(content).link).toBe(1);
+    expect(countBlocks(content).image).toBe(1);
+  });
+
+  it("notes.create 이미지 MIME 미지원 → throw, 카드 없음", async () => {
+    await expect(
+      dispatchOp("notes.create", {
+        content: "",
+        blocks: [{ type: "image", dataBase64: PNG_B64, mimeType: "image/bmp" }],
+      }),
+    ).rejects.toThrow("지원하지 않는 이미지 형식");
+    expect(useWorkspace.getState().cards).toHaveLength(0);
+  });
+
+  it("notes.create 이미지 10MB 초과 → throw, OPFS 기록 없음", async () => {
+    vi.mocked(putBlob).mockClear();
+    const big = "A".repeat(15_000_000);
+    await expect(
+      dispatchOp("notes.create", {
+        content: "",
+        blocks: [{ type: "image", dataBase64: big, mimeType: "image/png" }],
+      }),
+    ).rejects.toThrow("이미지가 너무 큽니다");
+    expect(putBlob).not.toHaveBeenCalled();
+    expect(useWorkspace.getState().cards).toHaveLength(0);
+  });
+
+  it("notes.create kind=link|mindmap → throw(옛 독립 카드 금지)", async () => {
+    await expect(dispatchOp("notes.create", { content: "x", kind: "link" })).rejects.toThrow(
       "지원하지 않는 kind",
     );
-  });
-
-  it("notes.createImage → image 카드 + OPFS attachmentRef", async () => {
-    const r = (await dispatchOp("notes.createImage", {
-      dataBase64: PNG_B64,
-      mimeType: "image/png",
-      content: "캡션",
-    })) as { kind: string; attachmentRef: string; mediaType: string };
-    expect(r.kind).toBe("image");
-    expect(r.mediaType).toBe("image/png");
-    expect(r.attachmentRef).toMatch(/^opfs:/);
-    const card = useWorkspace.getState().cards[0]!;
-    expect(card.kind).toBe("image");
-    expect(card.attachmentRef).toMatch(/^opfs:/);
-    expect(card.mediaType).toBe("image/png");
-    expect(card.content).toBe("캡션");
-  });
-
-  it("notes.createImage 인자 누락 → throw", async () => {
-    await expect(dispatchOp("notes.createImage", { mimeType: "image/png" })).rejects.toThrow(
-      "필요",
+    await expect(dispatchOp("notes.create", { content: "x", kind: "mindmap" })).rejects.toThrow(
+      "지원하지 않는 kind",
     );
+    expect(useWorkspace.getState().cards).toHaveLength(0);
   });
 
-  it("notes.createAudio → audio 카드 + attachmentRef", async () => {
-    const r = (await dispatchOp("notes.createAudio", {
-      dataBase64: "AAAA",
-      mimeType: "audio/mpeg",
-      content: "녹음",
-    })) as { kind: string; attachmentRef: string; mediaType: string };
-    expect(r.kind).toBe("audio");
-    expect(r.mediaType).toBe("audio/mpeg");
-    expect(r.attachmentRef).toMatch(/^opfs:/);
-    const card = useWorkspace.getState().cards[0]!;
-    expect(card.kind).toBe("audio");
-    expect(card.attachmentRef).toMatch(/^opfs:/);
-  });
-
-  it("notes.createFile → file 카드 + attachmentRef", async () => {
-    const r = (await dispatchOp("notes.createFile", {
-      dataBase64: "AAAA",
-      mimeType: "application/pdf",
-    })) as { kind: string; mediaType: string };
-    expect(r.kind).toBe("file");
-    expect(r.mediaType).toBe("application/pdf");
-    expect(useWorkspace.getState().cards[0]!.kind).toBe("file");
-  });
-
-  it("notes.createMindmap → 가지 트리 직렬화", async () => {
-    const r = (await dispatchOp("notes.createMindmap", {
-      tree: { text: "루트", children: [{ text: "가지A" }, { text: "가지B", children: [{ text: "잎" }] }] },
-    })) as { id: string; kind: string };
-    expect(r.kind).toBe("mindmap");
-    const card = useWorkspace.getState().cards[0]!;
-    expect(card.kind).toBe("mindmap");
-    const root = JSON.parse(card.content).root;
-    expect(root.id).toBe("root");
-    expect(root.text).toBe("루트");
-    expect(root.children).toHaveLength(2);
-    expect(root.children[1].children[0].text).toBe("잎");
-    expect(root.children[0].id).not.toBe("root"); // 비루트는 생성 id
-  });
-
-  it("notes.createMindmap tree 누락 → throw", async () => {
-    await expect(dispatchOp("notes.createMindmap", {})).rejects.toThrow("tree");
+  it("옛 첨부/마인드맵 op → 알 수 없는 op", async () => {
+    await expect(
+      dispatchOp("notes.createImage", { dataBase64: PNG_B64, mimeType: "image/png" }),
+    ).rejects.toThrow("알 수 없는 op");
+    await expect(
+      dispatchOp("notes.createAudio", { dataBase64: "AAAA", mimeType: "audio/mpeg" }),
+    ).rejects.toThrow("알 수 없는 op");
+    await expect(dispatchOp("notes.createFile", { dataBase64: "AAAA" })).rejects.toThrow(
+      "알 수 없는 op",
+    );
+    await expect(dispatchOp("notes.createMindmap", { tree: { text: "x" } })).rejects.toThrow(
+      "알 수 없는 op",
+    );
   });
 
   it("notes.createComment → comment 카드(author/time + 본문)", async () => {
@@ -399,16 +432,16 @@ describe("dispatchOp", () => {
       expect(notes.map((n) => n.content)).toContain("딴 보드 카드");
     });
 
-    it("notes.create kind=link + boardId → 그 보드에 link 카드 저장", async () => {
+    it("notes.create blocks[link] + boardId → 그 보드에 text 카드 저장", async () => {
       const r = (await dispatchOp("notes.create", {
-        content: "https://moss.app",
-        kind: "link",
+        content: "",
+        blocks: [{ type: "link", url: "https://moss.app" }],
         boardId: "b-z",
       })) as { kind: string; boardId: string | null };
-      expect(r.kind).toBe("link");
+      expect(r.kind).toBe("text");
       const notes = await useStorage.getState().loadCards("b-z");
-      expect(notes[0]!.kind).toBe("link");
-      expect(JSON.parse(notes[0]!.content)).toMatchObject({ url: "https://moss.app" });
+      expect(notes[0]!.kind).toBe("text");
+      expect(notes[0]!.content).toContain('[https://moss.app](https://moss.app "moss-link")');
     });
 
     it("notes.list boardId → 그 보드만 반환, 현재 보드와 분리", async () => {
