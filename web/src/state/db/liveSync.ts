@@ -251,6 +251,8 @@ function noteToCard(note: Note): Card {
     attachmentRef: note.attachmentRef,
     mediaType: note.mediaType,
     overlay: note.overlay,
+    // FEAT-memo-title: 여러 탭 동기화 변환에도 제목이 실린다.
+    title: note.title,
     author,
     time,
     aiOptOut: note.aiOptOut || undefined,

@@ -54,6 +54,11 @@ export interface Note {
    * frame 행 자신은 항상 undefined.
    */
   frameId?: string;
+  /**
+   * FEAT-memo-title: 메모 제목. 평문 한 줄, 최대 80자. normalizeTitle 통과 값만
+   * 저장되고 비면 undefined다. 비인덱스 optional — Dexie stores() 변경 불필요.
+   */
+  title?: string;
   aiOptOut: boolean;
   createdAt: number;
   updatedAt: number;

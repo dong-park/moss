@@ -30,6 +30,7 @@ import {
 import { encodeFrameContent } from "./frameContent";
 // FEAT-memo-fulltext-search (W4): 본문 평문 검색 — 셀렉터/액션이 위임.
 import { searchMemos as searchMemosImpl } from "./memoSearch";
+import { normalizeTitle } from "./memoTitle";
 import { getTemplate } from "@/templates";
 import type { Translator } from "@/i18n";
 import {
@@ -123,6 +124,8 @@ export interface Card {
    * frame 카드 자신은 항상 undefined. [[resolveMembership]]이 갱신한다.
    */
   frameId?: string;
+  /** FEAT-memo-title: 메모 제목. 평문 한 줄(최대 80자). 비면 undefined. */
+  title?: string;
   author?: string;
   time?: string;
   aiOptOut?: boolean;
@@ -351,6 +354,8 @@ interface WorkspaceState {
   deleteFrame: (id: string) => void;
 
   setContent: (id: string, content: string) => void;
+  /** FEAT-memo-title: 제목 변경. normalizeTitle 통과 값만 저장, 비면 제목 제거. */
+  setTitle: (id: string, title: string) => void;
   setAttachment: (
     id: string,
     ref: string | undefined,
@@ -846,6 +851,8 @@ function decodeNoteToCard(note: Note): Card {
     overlay: note.overlay,
     // FEAT-sticky-redesign: 메모판 소속 — frame 행 자신은 항상 undefined로 저장돼 있다.
     frameId: note.frameId,
+    // FEAT-memo-title: 제목. 옛 행은 필드가 없다 — undefined = 제목 없음.
+    title: note.title,
     author,
     time,
     aiOptOut: note.aiOptOut || undefined,
@@ -959,7 +966,10 @@ function persistCard(card: Card, boardId: string | null): Promise<void> {
   // FEAT-subcanvas: 함 카드 content는 boardRef JSON일 뿐이라 임베딩 대상 아님 — skip.
   // FEAT-sticky-redesign: 메모판(frame) content는 {name} JSON이라 역시 skip.
   if (card.kind !== "board" && card.kind !== "frame") {
-    enqueueEmbedRaw(card.id, content, !!card.aiOptOut);
+    // FEAT-memo-title: 임베딩 입력은 "제목 + 빈 줄 + 본문". 해시가 입력 전체로 계산되므로
+    // 제목만 바뀌어도 다시 임베딩된다(AC-9). 제목 없으면 본문만.
+    const embedInput = card.title ? `${card.title}\n\n${content}` : content;
+    enqueueEmbedRaw(card.id, embedInput, !!card.aiOptOut);
   }
   return storage.saveNote({
     id: card.id,
@@ -976,6 +986,7 @@ function persistCard(card: Card, boardId: string | null): Promise<void> {
     // FEAT-sticky-redesign: 메모판 소속. resolveMembership/moveFrame이 별도 트랜잭션으로
     // 갱신하는 경로도 있지만, 일반 persist 경로(setContent 등)에서도 값이 실려야 유실이 없다.
     frameId: card.frameId,
+    title: card.title,
     aiOptOut: !!card.aiOptOut,
     rotation: 0,
   });
@@ -1628,6 +1639,19 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       cards: s.cards.map((c) => {
         if (c.id !== id) return c;
         updated = { ...c, content };
+        return updated;
+      }),
+    }));
+    if (updated) persistCardDebounced(updated, storageBoardId(get().currentBoardId));
+  },
+
+  setTitle: (id, title) => {
+    const normalized = normalizeTitle(title);
+    let updated: Card | undefined;
+    set((s) => ({
+      cards: s.cards.map((c) => {
+        if (c.id !== id) return c;
+        updated = { ...c, title: normalized || undefined };
         return updated;
       }),
     }));
