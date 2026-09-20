@@ -99,12 +99,15 @@ export function searchMemos(
   for (const card of cards) {
     // 메모는 글(text) 카드 — 그 외(image/board/comment 등)는 본문 검색 대상 아님.
     if (card.kind !== "text") continue;
+    // FEAT-memo-title: 제목도 검색 대상. "제목 + 공백 + 본문 평문"에서 매칭한다(AC-8).
     const text = cachedPlainText(card.content);
-    if (!text) continue;
+    const haystack =
+      card.title && text ? `${card.title} ${text}` : (card.title ?? text);
+    if (!haystack) continue;
     let total = 0;
     let allPresent = true;
     for (const tok of tokens) {
-      const c = occurrences(text, tok);
+      const c = occurrences(haystack, tok);
       if (c === 0) {
         allPresent = false;
         break;

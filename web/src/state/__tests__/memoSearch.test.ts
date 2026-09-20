@@ -102,6 +102,27 @@ describe("searchMemos — 매칭·랭킹 (AC-1)", () => {
   });
 });
 
+describe("FEAT-memo-title AC-8 — 제목 검색", () => {
+  it("본문에 없는 말이 제목에만 있어도 매칭된다", () => {
+    const cards = [
+      card("a", "회의록 내용입니다", "text"),
+      { ...card("b", "완전히 다른 본문"), title: "주간 회고" },
+    ] satisfies Card[];
+    const hits = searchMemos(cards, "회고");
+    expect(hits.map((h) => h.id)).toEqual(["b"]);
+  });
+
+  it("제목만 있는(본문 빈) 메모도 매칭된다", () => {
+    const cards = [{ ...card("a", ""), title: "주간 회고" }] satisfies Card[];
+    expect(searchMemos(cards, "주간")).toHaveLength(1);
+  });
+
+  it("제목+본문 이어붙인 경계에서 토큰이 매칭된다", () => {
+    const cards = [{ ...card("a", "록 정리"), title: "회의" }] satisfies Card[];
+    expect(searchMemos(cards, "회의록")).toHaveLength(1);
+  });
+});
+
 describe("AC-4 — 수백 장 검색 성능(< 16ms)", () => {
   it("500장 검색이 16ms 미만", () => {
     const cards = Array.from({ length: 500 }, (_, i) =>
