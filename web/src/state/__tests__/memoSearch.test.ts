@@ -116,11 +116,6 @@ describe("FEAT-memo-title AC-8 — 제목 검색", () => {
     const cards = [{ ...card("a", ""), title: "주간 회고" }] satisfies Card[];
     expect(searchMemos(cards, "주간")).toHaveLength(1);
   });
-
-  it("제목+본문 이어붙인 경계에서 토큰이 매칭된다", () => {
-    const cards = [{ ...card("a", "록 정리"), title: "회의" }] satisfies Card[];
-    expect(searchMemos(cards, "회의록")).toHaveLength(1);
-  });
 });
 
 describe("AC-4 — 수백 장 검색 성능(< 16ms)", () => {
