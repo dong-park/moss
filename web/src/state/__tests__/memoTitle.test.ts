@@ -1,16 +1,23 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   MEMO_TITLE_MAX_LENGTH,
   normalizeTitle,
+  normalizeTitleTyping,
 } from "@/state/memoTitle";
 import { useWorkspace } from "@/state/workspace";
 import { useStorage } from "@/state/storage";
 import { resetDB } from "@/state/db/schema";
+import { flushAll } from "@/state/cardPersist";
 
 beforeEach(async () => {
   await resetDB();
   await useStorage.getState().init();
   await useWorkspace.getState().loadFromStorage();
+});
+
+// 다음 테스트의 resetDB가 닫은 DB에 대기 중 디바운스 영속이 쓰지 않게 먼저 내보낸다.
+afterEach(async () => {
+  await flushAll();
 });
 
 describe("normalizeTitle — 제목 정규화 (spec §4)", () => {
@@ -35,16 +42,41 @@ describe("normalizeTitle — 제목 정규화 (spec §4)", () => {
   });
 });
 
-describe("setTitle — 저장 경로 (AC-1·AC-2)", () => {
-  it("제목을 달면 카드와 저장소에 반영된다", async () => {
+describe("normalizeTitleTyping — 타이핑용 정규화 (AC-7)", () => {
+  it("앞뒤 공백을 살려 둔다 — '주간 ' 뒤에 이어 칠 수 있다", () => {
+    expect(normalizeTitleTyping("주간 ")).toBe("주간 ");
+    expect(normalizeTitleTyping("  주간")).toBe("  주간");
+  });
+
+  it("줄바꿈·탭은 칠 때 바로 공백 한 칸으로 바꾼다", () => {
+    expect(normalizeTitleTyping("첫줄\n둘째\t셋째")).toBe("첫줄 둘째 셋째");
+  });
+
+  it("80자 상한은 칠 때 걸린다", () => {
+    expect(normalizeTitleTyping("가".repeat(90))).toBe(
+      "가".repeat(MEMO_TITLE_MAX_LENGTH),
+    );
+  });
+});
+
+describe("setTitle / commitTitle — 저장 경로 (AC-1·AC-7)", () => {
+  it("setTitle은 타이핑 값(공백 포함)을 그대로 반영한다", () => {
+    const id = useWorkspace.getState().addCardAt("text", 0, 0);
+    useWorkspace.getState().setTitle(id, "주간 ");
+    const card = useWorkspace.getState().cards.find((c) => c.id === id);
+    expect(card?.title).toBe("주간 ");
+  });
+
+  it("commitTitle이 앞뒤 공백을 자르고 저장소에 반영한다", async () => {
     const id = useWorkspace.getState().addCardAt("text", 0, 0);
     useWorkspace.getState().setTitle(id, "  주간 회고 ");
-    await new Promise((r) => setTimeout(r, 320));
+    useWorkspace.getState().commitTitle(id);
+    await new Promise((r) => setTimeout(r, 20));
 
     const card = useWorkspace.getState().cards.find((c) => c.id === id);
     expect(card?.title).toBe("주간 회고");
 
-    // 새 세션 복원
+    // 새 세션 복원 — 확정 값이 영속됐는지.
     useStorage.setState({ initialized: false, settings: null, quota: null });
     useWorkspace.setState({ cards: [], selectedIds: [], editingId: null });
     await useStorage.getState().init();
@@ -53,11 +85,12 @@ describe("setTitle — 저장 경로 (AC-1·AC-2)", () => {
     expect(restored?.title).toBe("주간 회고");
   });
 
-  it("빈 제목은 undefined로 저장된다", async () => {
+  it("빈 제목은 commitTitle 후 undefined로 저장된다", async () => {
     const id = useWorkspace.getState().addCardAt("text", 0, 0);
     useWorkspace.getState().setTitle(id, "임시");
     useWorkspace.getState().setTitle(id, "   ");
-    await new Promise((r) => setTimeout(r, 320));
+    useWorkspace.getState().commitTitle(id);
+    await new Promise((r) => setTimeout(r, 20));
 
     const card = useWorkspace.getState().cards.find((c) => c.id === id);
     expect(card?.title).toBeUndefined();

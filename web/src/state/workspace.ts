@@ -30,7 +30,7 @@ import {
 import { encodeFrameContent } from "./frameContent";
 // FEAT-memo-fulltext-search (W4): 본문 평문 검색 — 셀렉터/액션이 위임.
 import { searchMemos as searchMemosImpl } from "./memoSearch";
-import { normalizeTitle } from "./memoTitle";
+import { normalizeTitle, normalizeTitleTyping } from "./memoTitle";
 import { getTemplate } from "@/templates";
 import type { Translator } from "@/i18n";
 import {
@@ -354,8 +354,10 @@ interface WorkspaceState {
   deleteFrame: (id: string) => void;
 
   setContent: (id: string, content: string) => void;
-  /** FEAT-memo-title: 제목 변경. normalizeTitle 통과 값만 저장, 비면 제목 제거. */
+  /** FEAT-memo-title: 제목 타이핑. normalizeTitleTyping만 적용 — 앞뒤 공백은 살려 둔다(AC-7). */
   setTitle: (id: string, title: string) => void;
+  /** FEAT-memo-title-front-edit AC-7: 편집 종료 시 제목 확정 — 앞뒤 공백을 자르고 즉시 영속. */
+  commitTitle: (id: string) => void;
   setAttachment: (
     id: string,
     ref: string | undefined,
@@ -1646,7 +1648,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   setTitle: (id, title) => {
-    const normalized = normalizeTitle(title);
+    const normalized = normalizeTitleTyping(title);
     let updated: Card | undefined;
     set((s) => ({
       cards: s.cards.map((c) => {
@@ -1656,6 +1658,27 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       }),
     }));
     if (updated) persistCardDebounced(updated, storageBoardId(get().currentBoardId));
+  },
+
+  commitTitle: (id) => {
+    const card = get().cards.find((c) => c.id === id);
+    if (!card) return;
+    const normalized = normalizeTitle(card.title ?? "");
+    // 타이핑 값이 이미 확정형이면 대기 중인 디바운스 영속이 그대로 처리한다.
+    if ((card.title ?? "") === normalized) return;
+    let updated: Card | undefined;
+    set((s) => ({
+      cards: s.cards.map((c) => {
+        if (c.id !== id) return c;
+        updated = { ...c, title: normalized || undefined };
+        return updated;
+      }),
+    }));
+    if (updated) {
+      // 대기 중인 타이핑 영속(잘리지 않은 값)을 버리고 확정 값을 즉시 내보낸다(§4).
+      cancelPersist(id);
+      void persistCard(updated, storageBoardId(get().currentBoardId));
+    }
   },
 
   setAttachment: (id, ref, meta) => {
