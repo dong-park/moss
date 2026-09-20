@@ -7,7 +7,7 @@ import { exportJsonCanvasZip } from "./export/jsonCanvasExport";
 import { exportMossBundle } from "./export/mossBundleExport";
 import {
   importMossBundle,
-  type ImportRejectedError,
+  ImportRejectedError,
 } from "./export/mossBundleImport";
 import type {
   ExportFormat,
@@ -23,11 +23,23 @@ export class ExportEmptyError extends Error {
   }
 }
 
+export interface ExportModalDefaults {
+  scope?: ExportScope;
+  boardId?: string;
+}
+
 interface ExportState {
   exporting: boolean;
   importing: boolean;
   progress: { phase: string; current: number; total: number } | null;
+  exportModalOpen: boolean;
+  importDialogOpen: boolean;
+  exportDefaults: ExportModalDefaults | null;
 
+  openExportModal: (defaults?: ExportModalDefaults) => void;
+  closeExportModal: () => void;
+  openImportDialog: () => void;
+  closeImportDialog: () => void;
   runExport: (opts: ExportOptions) => Promise<Blob>;
   downloadBlob: (blob: Blob, filename: string) => void;
   importMossBundle: (
@@ -52,6 +64,15 @@ export const useExportStore = create<ExportState>((set) => ({
   exporting: false,
   importing: false,
   progress: null,
+  exportModalOpen: false,
+  importDialogOpen: false,
+  exportDefaults: null,
+
+  openExportModal: (defaults) =>
+    set({ exportModalOpen: true, exportDefaults: defaults ?? null }),
+  closeExportModal: () => set({ exportModalOpen: false, exportDefaults: null }),
+  openImportDialog: () => set({ importDialogOpen: true }),
+  closeImportDialog: () => set({ importDialogOpen: false }),
 
   runExport: async (opts) => {
     set({ exporting: true, progress: null });
@@ -109,5 +130,5 @@ export const useExportStore = create<ExportState>((set) => ({
   },
 }));
 
-export type { ImportReport, ImportRejectedError };
-export { exportFilename };
+export type { ImportReport };
+export { exportFilename, ImportRejectedError };

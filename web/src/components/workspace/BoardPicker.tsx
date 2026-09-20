@@ -9,6 +9,8 @@ import type { Board } from "@/state/db/schema";
 import { TemplatePicker } from "./TemplatePicker";
 import { BoardDeleteDialog } from "./BoardDeleteDialog";
 import { BoardUndoToast } from "./BoardUndoToast";
+import { useExportStore } from "@/state/exportStore";
+import { DataTransferMenu } from "@/components/export/DataTransferMenu";
 
 // 단축키(Cmd+N)와 "+ 새 보드" 진입점이 같은 모달을 공유하기 위해 store 상태 사용.
 
@@ -32,6 +34,7 @@ export function BoardPicker() {
   const clearRenameRequest = useWorkspace((s) => s.clearRenameRequest);
   const templatePickerOpen = useWorkspace((s) => s.templatePickerOpen);
   const setTemplatePickerOpen = useWorkspace((s) => s.setTemplatePickerOpen);
+  const openExportModal = useExportStore((s) => s.openExportModal);
   const triggerRef = useRef<HTMLButtonElement>(null);
 
   const isSystem = currentBoardId === SYSTEM_BOARD_ID;
@@ -179,6 +182,14 @@ export function BoardPicker() {
                     {t("workspace.boardPicker.rename")}
                   </ContextMenu.Item>
                   <ContextMenu.Item
+                    className="cursor-pointer rounded-md px-3 py-1.5 text-sm text-text outline-none transition-colors data-[highlighted]:bg-panel"
+                    onSelect={() =>
+                      openExportModal({ scope: "board", boardId: board.id })
+                    }
+                  >
+                    {t("export.menu.boardExport")}
+                  </ContextMenu.Item>
+                  <ContextMenu.Item
                     className="cursor-pointer rounded-md px-3 py-1.5 text-sm text-red-600 outline-none transition-colors data-[highlighted]:bg-panel"
                     onSelect={() => openDeleteDialog(board.id)}
                   >
@@ -198,6 +209,12 @@ export function BoardPicker() {
             <span className="text-base leading-none">+</span>
             <span>{t("workspace.boardPicker.newBoard")}</span>
           </DropdownMenu.Item>
+
+          <DropdownMenu.Separator className="my-1 h-px bg-border" />
+
+          <div className="px-1 py-1">
+            <DataTransferMenu />
+          </div>
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
       <TemplatePicker

@@ -308,6 +308,78 @@
       "dismiss": "닫기"
     }
   },
+  "export": {
+    "menu": {
+      "export": "데이터 내보내기",
+      "boardExport": "이 보드 내보내기"
+    },
+    "modal": {
+      "title": "내보내기",
+      "subtitle": "당신의 데이터입니다. 언제든 가져갈 수 있어요.",
+      "cancel": "취소",
+      "submit": "내보내기",
+      "exporting": "내보내는 중…"
+    },
+    "scope": {
+      "label": "범위",
+      "all": "전체",
+      "board": "현재 보드",
+      "selection": "선택한 메모",
+      "selectionEmpty": "선택 없음"
+    },
+    "format": {
+      "label": "포맷",
+      "moss": ".moss 번들 (무손실 백업)",
+      "markdown": "Markdown (호환)",
+      "jsonCanvas": "JSON Canvas (Obsidian)"
+    },
+    "progress": {
+      "collect": "데이터 수집 중",
+      "attachments": "첨부 압축 중",
+      "zip": "zip 생성 중"
+    },
+    "success": {
+      "title": "내보내기 완료",
+      "body": "{filename} — 다운로드 폴더를 확인하세요."
+    },
+    "error": {
+      "empty": "내보낼 것이 없어요.",
+      "generic": "내보내기에 실패했어요. 다시 시도해 주세요."
+    }
+  },
+  "import": {
+    "menu": {
+      "import": "데이터 가져오기"
+    },
+    "dialog": {
+      "title": "가져오기",
+      "subtitle": ".moss 번들만 지원해요.",
+      "cancel": "취소",
+      "submit": "가져오기",
+      "importing": "가져오는 중…",
+      "done": "닫기"
+    },
+    "mode": {
+      "label": "방식",
+      "merge": "병합 (겹치는 id는 건너뛰기)",
+      "overwrite": "덮어쓰기 (기존 데이터 삭제)"
+    },
+    "overwriteWarning": "기존 메모·보드·연결이 모두 지워집니다. 계속할까요?",
+    "error": {
+      "invalidFile": "zip 파일이 아니거나 비어 있어요.",
+      "noManifest": "manifest.json이 없어요.",
+      "rejected": "이 백업은 가져올 수 없어요.",
+      "schemaOld": "이 백업은 예전 버전이라 가져올 수 없어요. (번들 v{bundle}, 현재 v{current})",
+      "generic": "가져오기에 실패했어요."
+    },
+    "report": {
+      "imported": "메모 {count}개를 가져왔어요.",
+      "skippedLegacy": "옛 종류 {count}개를 건너뛰었어요 ({detail}).",
+      "skippedDuplicate": "겹치는 id {count}개를 건너뛰었어요.",
+      "missingAttachments": "첨부 {count}개를 찾지 못했어요.",
+      "unlinkedFrames": "지워진 메모판 참조 {count}개를 풀었어요."
+    }
+  },
   "signals": {
     "sidebar": {
       "label": "시그널스"

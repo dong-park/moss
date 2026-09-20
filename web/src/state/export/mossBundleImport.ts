@@ -18,9 +18,12 @@ export type ImportRejectReason =
   | "empty_file"
   | "not_zip"
   | "manifest_missing"
-  | ReturnType<typeof validateManifest> extends { ok: false; reason: infer R }
-    ? R
-    : never;
+  | "manifest_not_found"
+  | "invalid_version"
+  | "invalid_schema_version"
+  | "schema_too_old"
+  | "schema_too_new"
+  | "invalid_structure";
 
 export class ImportRejectedError extends Error {
   constructor(public readonly reason: ImportRejectReason) {

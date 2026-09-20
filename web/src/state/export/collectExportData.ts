@@ -38,10 +38,12 @@ export async function collectExportData(opts: {
       boardId === null
         ? await db.notes.filter((n) => n.boardId === null).toArray()
         : await db.notes.where("boardId").equals(boardId).toArray();
-    boards =
-      boardId === null
-        ? []
-        : ((await db.boards.get(boardId)) ? [await db.boards.get(boardId)!] : []);
+    if (boardId === null) {
+      boards = [];
+    } else {
+      const board = await db.boards.get(boardId);
+      boards = board ? [board] : [];
+    }
   } else {
     const ids = new Set(opts.noteIds ?? []);
     notes = ids.size > 0 ? (await db.notes.bulkGet([...ids])).filter((n): n is Note => !!n) : [];

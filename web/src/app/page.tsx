@@ -10,6 +10,8 @@ import { DockDragPreview } from "@/components/workspace/DockDragPreview";
 import { ShortcutsBinder } from "@/components/workspace/ShortcutsBinder";
 import { AICallPreview } from "@/components/privacy/AICallPreview";
 import { SignalsPanel } from "@/components/signals/SignalsPanel";
+import { ExportModal } from "@/components/export/ExportModal";
+import { ImportDialog } from "@/components/export/ImportDialog";
 
 export default function WorkspacePage() {
   const [signalsOpen, setSignalsOpen] = useState(false);
@@ -32,6 +34,8 @@ export default function WorkspacePage() {
       <MemoExpandDialog />
       {/* FEAT-subcanvas: 함 삭제 5초 undo 토스트 (position: fixed bottom-center). */}
       <SubcanvasUndoToast />
+      <ExportModal />
+      <ImportDialog />
     </main>
   );
 }
