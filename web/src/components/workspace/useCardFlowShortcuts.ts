@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { useWorkspace } from "@/state/workspace";
+import { isExpandable } from "./cards/_shared/expandable";
 
 /**
  * FEAT-card-flow §6: 카드 간 키보드 흐름 단축키.
@@ -47,6 +48,22 @@ export function useCardFlowShortcuts(): void {
         if (store.selectedIds.length !== 1) return;
         e.preventDefault();
         store.focusNextCard(e.shiftKey ? -1 : 1);
+        return;
+      }
+
+      /* 글자 키 — 고른 메모 한 장에서 바로 제목 편집으로 들어간다(2026-09-22
+       * 사용자 결정). 누르기는 선택까지고, 치기 시작하면 고치기다.
+       * 기존 제목은 지우지 않는다 — 친 글자를 끝에 붙이고 커서도 끝에 둔다.
+       * Space는 캔버스 이동에 쓰므로 뺀다. */
+      if (!mod && !e.altKey && e.key.length === 1 && e.key !== " ") {
+        if (typing || store.editingId) return;
+        if (store.selectedIds.length !== 1) return;
+        const id = store.selectedIds[0];
+        const card = store.cards.find((c) => c.id === id);
+        if (!card || !isExpandable(card)) return;
+        e.preventDefault();
+        store.setTitle(id, (card.title ?? "") + e.key);
+        store.enterEditOnSelected();
       }
     };
 

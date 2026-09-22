@@ -304,7 +304,9 @@ describe("FEAT-sticky-redesign n6 · 캔버스 파일 드롭", () => {
     input.remove();
   });
 
-  it("시스템 보드에 드롭하면 새 보드 승격 토스트를 띄운다", async () => {
+  // 무소속 토스트를 Canvas.tsx에서 주석 처리해 숨김(2026-09-22 사용자 결정).
+  // 토스트를 되살릴 때 이 skip도 함께 푼다.
+  it.skip("시스템 보드에 드롭하면 새 보드 승격 토스트를 띄운다", async () => {
     useWorkspace.setState({ currentBoardId: SYSTEM_BOARD_ID });
     const { container } = mount();
     const root = container.querySelector("[data-canvas-root='true']")!;

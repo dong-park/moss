@@ -1,20 +1,15 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { blocksToMarkdown } from "@/state/cardContent";
 import { useWorkspace } from "@/state/workspace";
-import MarkdownEditor from "../_shared/MarkdownEditor";
 import { MemoSaveGuard } from "../_shared/editor/MemoSaveGuard"; // W1 자동저장 유실 가드
-import { DrawingLayer } from "../_shared/DrawingLayer";
 import { MultitabConflictBanner } from "../_shared/MultitabConflictBanner"; // W8
-import { MEMO_CONTENT_WIDTH } from "../_shared/memoLayout";
 import { MemoTitleRow } from "../_shared/MemoTitleRow"; // FEAT-memo-title
-import {
-  focusMemoBodyStart,
-  isFocusInSameCard,
-} from "../_shared/memoTitleFocus"; // FEAT-memo-title-front-edit
-import { BacklinkPanel } from "../_shared/editor/BacklinkPanel"; // W5 위키링크 백링크 패널
+import { isFocusInSameCard } from "../_shared/memoTitleFocus"; // FEAT-memo-title-front-edit
+import { useAutoFocusOnEdit } from "../_shared/useAutoFocusOnEdit"; // ponytail: 기존 파일 재사용, import 누락만 보강
 import { MemoFrontBadges } from "../_shared/MemoFrontBadges"; // FEAT-sticky-redesign n5
+import { useT } from "@/i18n/Provider";
 import type { CardContentProps } from "../_shared/types";
 
 /* ─────────────────────────────────────────────────────────────
@@ -46,17 +41,20 @@ import type { CardContentProps } from "../_shared/types";
  * 메모 창을 연다 — 일반 본문 텍스트 클릭은 카드 선택/드래그로 남긴다.
  * ───────────────────────────────────────────────────────────── */
 
-export function TextCardContent({
-  card,
-  editing,
-  onChange,
-  onCommitEdit,
-}: CardContentProps) {
+// onChange(본문 변경)는 앞면이 더 이상 본문을 편집하지 않아 쓰지 않는다 — 메모 창이 쓴다.
+export function TextCardContent({ card, editing, onCommitEdit }: CardContentProps) {
   const markdown = useMemo(() => blocksToMarkdown(card.content), [card.content]);
+  const t = useT();
 
   // FEAT-memo-title-front-edit: 제목 편집 — 타이핑은 setTitle, 확정은 commitTitle.
   const setTitle = useWorkspace((s) => s.setTitle);
   const commitTitle = useWorkspace((s) => s.commitTitle);
+
+  // 2026-09-22 사용자 결정: 앞면에서 고칠 수 있는 건 제목뿐이다. 본문은 언제나
+  // 읽기 전용이고, 내용은 더블클릭으로 여는 메모 창에서 고친다. 한 번 클릭하면
+  // (DraggableCard가 setEditing) 이 입력에 포커스가 박힌다.
+  const titleInputRef = useRef<HTMLInputElement>(null);
+  useAutoFocusOnEdit(titleInputRef, editing);
 
   // f2 blur 가드: 새 포커스 대상이 같은 카드 안이면 편집을 끝내지 않는다(AC-3).
   // 카드 밖(또는 포커스 소실)이면 제목을 확정하고 편집 종료(AC-4).
@@ -72,13 +70,8 @@ export function TextCardContent({
     onCommitEdit();
   };
 
-  // FEAT-markdown-memo-pen: 펜 overlay 상태(보드 전역). 그림이 있거나 펜 모드면 표시.
-  const penMode = useWorkspace((s) => s.penMode);
-  const penTool = useWorkspace((s) => s.penTool);
-  const penWidth = useWorkspace((s) => s.penWidth);
-  const setOverlay = useWorkspace((s) => s.setOverlay);
+  // 펜 overlay(DrawingLayer)·본문·백링크는 앞면에서 빠졌다 — 메모 창이 맡는다.
   const setExpandedCard = useWorkspace((s) => s.setExpandedCard);
-  const showOverlay = penMode || !!card.overlay;
 
   // FEAT-sticky-redesign n5: 앞면에서 이미지·블록 막대를 누르면 메모 창을 연다.
   // globals.css가 readonly 에디터의 <a>는 여전히 pointer-events:none으로 막지만
@@ -90,7 +83,6 @@ export function TextCardContent({
   // mailto)만 링크로 만들도록 별도로 막고 있지만, 방어를 한 겹 더 둔다.
   // 재심사 P1: 가운데 클릭(auxclick)과 키보드로 활성화된 <a>도 같은 경로로 막는다.
   const onFrontClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (editing) return;
     const target = e.target as HTMLElement;
     if (target.closest("img, [data-moss-block], a")) {
       e.preventDefault();
@@ -120,44 +112,25 @@ export function TextCardContent({
       }}
     >
       <MultitabConflictBanner cardId={card.id} /> {/* W8: 다른 탭 변경 배너 */}
-      {/* FEAT-memo-title: 제목 줄 — 펜 1:1을 위해 본문 컬럼(relative)과 형제로 둔다.
-        * 읽기 전용은 제목 없으면 null. 편집 모드는 빈 값이어도 입력 줄을 그린다(AC-1). */}
-      <MemoTitleRow
-        title={card.title ?? ""}
-        editable={editing}
-        onCommit={(title) => setTitle(card.id, title)}
-        onBlur={handleBlur}
-        onEnter={() => focusMemoBodyStart(card.id)}
-        onArrowDown={() => focusMemoBodyStart(card.id)}
-      />
-      {/* 고정 폭 컬럼 — 카드/모달 공통 좌표계. 카드 폭보다 넓으면 위 overflow-hidden이
-        * 우측을 크롭한다. padding 6/9 + text-[13px]은 모달 컬럼과 정확히 일치해야
-        * 펜이 같은 글자를 가리킨다. position:relative로 펜 overlay의 기준 박스. */}
-      <div
-        className="moss-md relative text-[13px]"
-        style={{ width: MEMO_CONTENT_WIDTH, padding: "6px 9px" }}
-      >
-        <MarkdownEditor
-          value={markdown}
+      {/* 2026-09-22 사용자 결정: 메모지 앞면은 제목 하나만 정가운데에 보여준다.
+        * 본문·펜 overlay·백링크는 더블클릭으로 여는 메모 창이 맡는다. */}
+      <div className="absolute inset-0 flex items-center justify-center">
+        <MemoTitleRow
+          title={card.title ?? ""}
           editable={editing}
-          cardId={card.id}
-          onChange={onChange}
+          variant="center"
+          placeholder={t("workspace.memo.placeholder.hint")}
+          inputRef={titleInputRef}
+          onCommit={(title) => setTitle(card.id, title)}
           onBlur={handleBlur}
+          // 앞면은 제목만 고친다 — Enter는 본문으로 내려가지 않고 제목을 확정한다.
+          onEnter={handleCommitEdit}
         />
-        {showOverlay && (
-          <DrawingLayer
-            value={card.overlay ?? ""}
-            active={penMode}
-            penWidth={penWidth}
-            tool={penTool}
-            onChange={(json) => setOverlay(card.id, json)}
-          />
-        )}
-        <BacklinkPanel card={card} />
       </div>
       {/* FEAT-sticky-redesign n5: 앞면 전용 배지 — 카드 박스 기준 하단에 겹쳐 올린다
         * (컬럼이 아니라 이 바깥 relative 박스 기준이라야 카드 폭 안에 항상 붙는다). */}
-      {!editing && <MemoFrontBadges markdown={markdown} onActivate={() => setExpandedCard(card.id)} />}
+      {/* 제목을 고치는 중에도 배지는 그대로 둔다 — 앞면 배치가 흔들리지 않는다. */}
+      <MemoFrontBadges markdown={markdown} onActivate={() => setExpandedCard(card.id)} />
       <MemoSaveGuard cardId={card.id} content={markdown} editing={editing} />
     </div>
   );

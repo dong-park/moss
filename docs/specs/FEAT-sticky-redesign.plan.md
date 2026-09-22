@@ -88,7 +88,7 @@ n9-naming ───────────────────────�
 | n7 | [n7-frames.md](FEAT-sticky-redesign/n7-frames.md) | n1 | done |
 | n8 | [n8-dock.md](FEAT-sticky-redesign/n8-dock.md) | n7 | done |
 | n9 | [n9-naming.md](FEAT-sticky-redesign/n9-naming.md) | — | done |
-| n10 | [n10-finish.md](FEAT-sticky-redesign/n10-finish.md) | n3, n5, n6, n8, n9 | pending |
+| n10 | [n10-finish.md](FEAT-sticky-redesign/n10-finish.md) | n3, n5, n6, n8, n9 | 시나리오 A·B 검증 완료, 시안 대조 남음 |
 
 ## 파킹 / 보류 로그
 

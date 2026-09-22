@@ -17,9 +17,10 @@
 import { contentHash } from "./hash";
 import { filterNotesForAI } from "../aiGate";
 import { getDB } from "../db/schema";
-import { useToasts } from "../notifications";
+// AI 오류 토스트와 함께 임시 숨김(2026-09-22).
+// import { useToasts } from "../notifications";
 import { useStorage } from "../storage";
-import { t } from "@/i18n";
+// import { t } from "@/i18n";
 
 const DEBOUNCE_MS = 5000;
 const BATCH_SIZE = 50;
@@ -45,12 +46,14 @@ let deps: QueueDeps = {
   fetcher: typeof fetch === "function" ? fetch : (async () => {
     throw new Error("fetch unavailable");
   }) as typeof fetch,
+  // 임시 숨김(2026-09-22 사용자 결정): "AI가 잠시 멈췄어요" 토스트. AI 키가 없으면
+  // 메모를 칠 때마다 올라와 방해된다. 되돌리려면 주석을 푼다.
   onError: () => {
-    useToasts.getState().push({
-      tone: "calm",
-      title: t("ai.error.toast"),
-      duration: 3000,
-    });
+    // useToasts.getState().push({
+    //   tone: "calm",
+    //   title: t("ai.error.toast"),
+    //   duration: 3000,
+    // });
   },
 };
 

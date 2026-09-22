@@ -198,11 +198,7 @@ export async function importMossBundle(
   // 단일 Dexie tx — 실패 시 롤백 (§3-1)
   await db.transaction(
     "rw",
-    db.notes,
-    db.boards,
-    db.connections,
-    db.embeddings,
-    db.settings,
+    [db.notes, db.boards, db.connections, db.embeddings, db.settings],
     async () => {
       if (mode === "overwrite") {
         await Promise.all([

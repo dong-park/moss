@@ -41,76 +41,45 @@ describe("TextCardContent · UX", () => {
     expect(root.style.background).toContain("cards/v2/text.png");
   });
 
-  it("edit-mode — editing=true에서 에디터가 마운트된다", () => {
-    renderCard("text", { content: "메모", editing: true });
-    const editor = screen.getByTestId("text-card-editor") as HTMLTextAreaElement;
-    expect(editor.value).toBe("메모");
+  /* 2026-09-22 사용자 결정: 메모지 앞면은 제목 하나만 정가운데에 보여준다.
+   * 본문 에디터·펜 overlay·백링크는 앞면에서 빠졌다 — 메모 창(MemoExpand)이 맡는다.
+   * 아래 세 개가 새 계약이고, 옛 "앞면 본문 편집" 검사는 창 쪽 테스트가 덮는다. */
+  it("앞면에는 본문 에디터가 없다", () => {
+    renderCard("text", { content: "메모", editing: false });
+    expect(screen.queryByTestId("text-card-editor")).toBeNull();
+  });
+
+  it("앞면 제목은 가운데 정렬로 보인다", () => {
+    renderCard("text", {
+      content: "본문",
+      editing: false,
+      card: { title: "회의 메모" },
+    });
+    const title = screen.getByText("회의 메모") as HTMLElement;
+    expect(title.style.textAlign).toBe("center");
+  });
+
+  it("제목이 비면 안내 글씨를 보여준다 — 누를 자리", () => {
+    renderCard("text", { content: "", editing: false });
+    expect(screen.getByText("무슨 생각이 드나요?")).toBeTruthy();
   });
 
   it("Esc — 카드 컨테이너 onKeyDown이 onCommitEdit 호출", () => {
-    const { onCommit } = renderCard("text", {
-      content: "안녕",
-      editing: true,
-    });
-    const editor = screen.getByTestId("text-card-editor") as HTMLTextAreaElement;
-    // 에디터에서 발생한 Esc가 카드 root onKeyDown(버블)으로 올라가 commit.
-    fireEvent.keyDown(editor, { key: "Escape" });
+    const { onCommit } = renderCard("text", { content: "안녕", editing: true });
+    fireEvent.keyDown(screen.getByLabelText("메모 제목"), { key: "Escape" });
     expect(onCommit).toHaveBeenCalled();
   });
 
-  it("Enter — onCommit 트리거되지 않음(텍스트 입력 보존)", () => {
-    const { onCommit } = renderCard("text", {
-      content: "",
-      editing: true,
-    });
-    const editor = screen.getByTestId("text-card-editor") as HTMLTextAreaElement;
-    fireEvent.keyDown(editor, { key: "Enter" });
-    expect(onCommit).not.toHaveBeenCalled();
-  });
-
-  it("onChange — 입력마다 markdown payload 그대로 전달", () => {
-    const { onChange } = renderCard("text", {
-      content: "",
-      editing: true,
-    });
-    const editor = screen.getByTestId("text-card-editor") as HTMLTextAreaElement;
-    fireEvent.change(editor, { target: { value: "h" } });
-    fireEvent.change(editor, { target: { value: "hi" } });
-    expect(onChange).toHaveBeenCalledTimes(2);
-    expect(onChange.mock.calls[0][0]).toBe("h");
-    expect(onChange.mock.calls[1][0]).toBe("hi");
-  });
-
-  it("onBlur — 에디터 blur 시 onCommitEdit 호출 (밖 클릭으로 편집 종료)", () => {
-    const { onCommit } = renderCard("text", {
-      content: "안녕",
-      editing: true,
-    });
-    const editor = screen.getByTestId("text-card-editor") as HTMLTextAreaElement;
-    fireEvent.blur(editor);
-    expect(onCommit).toHaveBeenCalledTimes(1);
-  });
-
-  it("onBlur — 편집을 끝내도 빈 메모가 삭제되지 않는다 (FEAT-memo-empty-keep AC-1)", () => {
+  it("제목 편집을 끝내도 빈 메모가 삭제되지 않는다 (FEAT-memo-empty-keep AC-1)", () => {
     useWorkspace.setState({
       cards: [{ id: "c1", kind: "text", x: 0, y: 0, width: 300, content: "" }],
     });
     const { onCommit } = renderCard("text", { content: "", editing: true });
-    fireEvent.blur(screen.getByTestId("text-card-editor"));
+    fireEvent.blur(screen.getByLabelText("메모 제목"));
     expect(onCommit).toHaveBeenCalledTimes(1);
     expect(
       useWorkspace.getState().cards.find((c) => c.id === "c1"),
     ).toBeDefined();
-  });
-
-  it("CardBlock[] JSON 레거시 content는 blocksToMarkdown으로 표시", () => {
-    const json = JSON.stringify([
-      { type: "text", text: "안녕" },
-      { type: "code", code: "x = 1", lang: "py" },
-    ]);
-    renderCard("text", { content: json, editing: true });
-    const editor = screen.getByTestId("text-card-editor") as HTMLTextAreaElement;
-    expect(editor.value).toBe("안녕\n\n```py\nx = 1\n```");
   });
 });
 
@@ -154,8 +123,9 @@ describe("TextCardContent · 앞면 제목 편집", () => {
     const onCommit = vi.fn();
     renderInCard(true, onCommit);
     const title = screen.getByLabelText("메모 제목");
-    const body = screen.getByTestId("text-card-editor");
-    fireEvent.blur(title, { relatedTarget: body });
+    // 앞면에 본문 에디터가 없으므로 같은 카드 안 다른 요소(카드 루트)로 옮긴다.
+    const sameCard = document.querySelector('[data-card-id="c1"]')!;
+    fireEvent.blur(title, { relatedTarget: sameCard });
     expect(onCommit).not.toHaveBeenCalled();
   });
 

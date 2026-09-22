@@ -3,7 +3,7 @@
 > 자기완결 브리프. runner는 [상위 spec](../FEAT-sticky-redesign.md) + [plan 공통 완료 기준](../FEAT-sticky-redesign.plan.md#공통-완료-기준) + 이 파일만 본다. 진행·상태는 이 파일에만 쓴다.
 
 **deps**: n3-fresh-db, n5-memo-front, n6-canvas-capture, n8-dock, n9-naming
-**상태**: 코드 정리 완료 + 브라우저 검증 결함 1~8 수정 완료(runner). 결함9(좁은 창 토스트가 독을 가림)·10(콘솔 Script error/NotFoundError)은 이번 실행 범위 밖(호출자 지시 없음) — 미해결로 남음.
+**상태**: 시나리오 A 통과, 시나리오 B 부분 통과(2026-09-22). 시안 대조·결함 9·10은 미완.
 
 ## 문제
 
@@ -215,3 +215,40 @@ npm run start` 프로덕션 빌드로 직접 확인해야 한다. 완료 기준�
 - 독 hover 확대(AC-2): **통과** — 가운데 아이콘 72px, 이웃 48px, 나머지 40px. 벗어나면 전부 40px. 확대 중 독 left 232px 고정(흔들림 없음). 평소 독 폭 250px, 화면 중심과 11px 차이.
 - 메모판 이름표: 판 안쪽 위(top +7px)로 옮김, 이름표 윗부분 최상단 픽셀이 이름표 자신 — 잘림 해소.
 - 메모 앞면: 원래 종이 이미지(`/cards/v2/text.png`)로 복구 확인.
+
+### 시나리오 A·B 실행 (2026-09-22, 8c309f6 + tsc fix, `npm run build && npm run start`, pharos 브라우저 pane 859px)
+
+먼저 `npm run build`가 깨져 있었다 — `state/export/mossBundleImport.ts:206` Dexie
+`transaction("rw", 테이블 5개, cb)`가 오버로드 상한(테이블 4개)을 넘어 타입 에러.
+테이블을 배열로 묶어 고쳤다(FEAT-export가 남긴 회귀, 런타임 동작은 동일).
+
+**시나리오 A — 통과.** 스크린샷 `/tmp/moss-s1..s14.png`.
+
+| 단계 | 결과 |
+|---|---|
+| 독 클릭으로 메모판·파일함 생성 | 통과 — "새 메모판", "이름 없는 파일함 / 카드 0개" |
+| 메모 창 블록 추가 메뉴 | 통과 — 이미지·링크·녹음·파일 4개 |
+| 링크 블록 삽입 | 통과 — 창에 막대, 앞면에 버튼 없는 막대 |
+| 이미지·파일 블록 삽입 | 통과 — 창에 이미지와 `note.txt` 열기 막대 |
+| 앞면 배지 | 통과 — 🔗1 · 📎1 |
+| 메모를 판에 넣고 판 이동 | 통과 — 판을 −130,−80 끌자 메모가 같은 양만큼 따라옴 |
+| 새로고침 | 통과 — 판·파일함·메모·블록·배지 전부 유지 |
+
+**시나리오 B — 부분 통과.** v4 DB를 손으로 심어 v5 업그레이드를 태우는 건 못 했다.
+페이지가 DB 연결을 붙들고 있어 `indexedDB.deleteDatabase`가 무기한 블록된다.
+DB 비우기는 `freshV5.test.ts`(실제 Dexie v4→v5 upgrade)가 덮고, 브라우저에서만
+확인 가능한 OPFS 첨부 비우기는 직접 실증했다: `moss-attachments/old.png`를 심고
+`moss:opfsPurgePending=1`을 세운 뒤 새로고침하면 디렉터리가 사라지고 플래그가
+`null`이 된다. n3가 남긴 "OPFS 비우기 실기동 미확인" 갭은 이걸로 닫힌다.
+
+주의 — localhost:3000에서 위 실험을 하다 `deleteDatabase`가 블록된 채 남아
+그 origin의 IDB가 잠겼다. 127.0.0.1:3000(별도 origin)에서 다시 재서 확인했다.
+같은 실험을 반복하려면 origin을 바꾸거나 webview 저장소를 비울 것.
+
+**미완**: 시안 대조(작업 5) — 시안이 claude.ai artifact라 CLI에서 못 연다. 사람이 볼 몫.
+결함 9(좁은 창 토스트가 독을 가림)·10(콘솔 Script error/NotFoundError)도 그대로다.
+
+**옆에서 발견**: `Canvas.virtualization.test.tsx`의 "viewport 밖 카드는 DOM에
+마운트되지 않는다"가 실패한다(`expected [] to include 'in-0'` — 카드가 하나도
+마운트되지 않음). 이 세션 변경과 무관하고 FEAT-canvas AC-3 소관이다.
+전체는 834/837 통과, tsc 0.

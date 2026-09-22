@@ -52,9 +52,12 @@ afterEach(() => {
 });
 
 describe("FEAT-sticky-redesign n5 · 메모 앞면", () => {
-  it("이미지가 보인다", () => {
+  /* 2026-09-22 사용자 결정: 앞면은 제목 하나만 정가운데에 보여준다.
+   * 본문·이미지·블록 막대는 앞면에서 빠지고 배지만 남았다 — 실물은 메모 창에서 본다. */
+  it("본문과 이미지는 앞면에 그리지 않는다", () => {
     renderCard("text", { content: MEMO_MD, editing: false });
-    expect(document.querySelector("img")).toBeTruthy();
+    expect(document.querySelector("img")).toBeNull();
+    expect(document.querySelector("[data-moss-block]")).toBeNull();
   });
 
   it("녹음 2개·링크 1개 배지가 뜨고, 파일 배지는 없다", () => {
@@ -69,9 +72,9 @@ describe("FEAT-sticky-redesign n5 · 메모 앞면", () => {
     expect(document.querySelector("[data-moss-front-badges]")).toBeNull();
   });
 
-  it("편집 모드(editing=true)에서는 배지를 그리지 않는다", () => {
+  it("제목을 고치는 중에도 배지는 그대로 있다", () => {
     renderCard("text", { content: MEMO_MD, editing: true });
-    expect(document.querySelector("[data-moss-front-badges]")).toBeNull();
+    expect(document.querySelector("[data-moss-front-badges]")).toBeTruthy();
   });
 
   it("배지를 누르면 expandedCardId가 그 카드로 설정된다", () => {
@@ -80,22 +83,13 @@ describe("FEAT-sticky-redesign n5 · 메모 앞면", () => {
     expect(useWorkspace.getState().expandedCardId).toBe("c1");
   });
 
-  it("앞면 이미지를 누르면 expandedCardId가 그 카드로 설정된다", () => {
-    renderCard("text", { content: MEMO_MD, editing: false, card: { id: "c1" } });
-    fireEvent.click(document.querySelector("img")!);
-    expect(useWorkspace.getState().expandedCardId).toBe("c1");
-  });
-
-  it("2단계 리뷰 P1-5: 이미지 클릭은 preventDefault로 기본 동작(링크로 감싼 이미지의 이동)을 막는다", () => {
-    renderCard("text", { content: MEMO_MD, editing: false, card: { id: "c1" } });
-    // dispatchEvent는 cancelable 이벤트에서 preventDefault가 호출되면 false를 반환한다.
-    const notCancelled = fireEvent.click(document.querySelector("img")!);
-    expect(notCancelled).toBe(false);
-  });
-
-  it("본문 일반 텍스트를 누르면 확대되지 않는다(카드 선택/드래그만)", () => {
-    renderCard("text", { content: "그냥 본문", editing: false, card: { id: "c1" } });
-    fireEvent.click(screen.getByText("그냥 본문"));
+  it("제목을 누르면 확대되지 않는다 — 한 번 누르기는 제목 편집이다", () => {
+    renderCard("text", {
+      content: MEMO_MD,
+      editing: false,
+      card: { id: "c1", title: "회의 메모" },
+    });
+    fireEvent.click(screen.getByText("회의 메모"));
     expect(useWorkspace.getState().expandedCardId).toBeNull();
   });
 });

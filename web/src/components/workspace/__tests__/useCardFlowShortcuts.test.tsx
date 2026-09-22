@@ -96,6 +96,44 @@ describe("FEAT-card-flow · useCardFlowShortcuts", () => {
     expect(useWorkspace.getState().editingId).toBe("A");
   });
 
+  /* 2026-09-22 사용자 결정: 누르기는 선택, 치기 시작하면 제목 편집. */
+  it("글자 키 → 고른 메모의 제목 편집으로 들어가고 그 글자가 첫 글자가 된다", () => {
+    useWorkspace.setState({
+      cards: [makeCard({ id: "A", kind: "text" })],
+      selectedIds: ["A"],
+      editingId: null,
+    });
+    render(<Mount />);
+
+    fireEvent.keyDown(window, { key: "회" });
+    expect(useWorkspace.getState().editingId).toBe("A");
+    expect(useWorkspace.getState().cards.find((c) => c.id === "A")?.title).toBe("회");
+  });
+
+  it("기존 제목은 지우지 않고 뒤에 붙인다", () => {
+    useWorkspace.setState({
+      cards: [makeCard({ id: "A", kind: "text", title: "회의" })],
+      selectedIds: ["A"],
+      editingId: null,
+    });
+    render(<Mount />);
+
+    fireEvent.keyDown(window, { key: "록" });
+    expect(useWorkspace.getState().cards.find((c) => c.id === "A")?.title).toBe("회의록");
+  });
+
+  it("Space는 캔버스 이동용이라 제목 편집으로 들어가지 않는다", () => {
+    useWorkspace.setState({
+      cards: [makeCard({ id: "A", kind: "text" })],
+      selectedIds: ["A"],
+      editingId: null,
+    });
+    render(<Mount />);
+
+    fireEvent.keyDown(window, { key: " " });
+    expect(useWorkspace.getState().editingId).toBeNull();
+  });
+
   it("AC-4: 입력 중 Cmd+E는 무시 (typing guard)", async () => {
     // storage init은 안 함 — store 액션의 메모리 동작만 검증.
     // afterEach.resetDB와 addCardAt의 비동기 persist 사이 race 회피.

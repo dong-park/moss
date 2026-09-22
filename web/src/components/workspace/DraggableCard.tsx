@@ -117,7 +117,9 @@ export function DraggableCard({ card }: { card: Card }) {
 
   const onMouseDown = (e: React.MouseEvent) => {
     if (penMode) return; // 펜 모드: 드래그 대신 그리기 (DrawingLayer가 포인터 처리)
-    if (editing) return; // 편집 중에는 드래그 안 함 (텍스트 선택 가능하게)
+    // 제목 입력 위에서 누르면 글자 선택·커서 이동이라 끌지 않는다. 앞면 본문은
+    // 읽기 전용이므로 편집 중이어도 종이 아무 데나 잡아 카드를 끌 수 있다.
+    if (editing && (e.target as HTMLElement).closest("[data-memo-title-input]")) return;
     if (e.button !== 0) return; // 좌클릭만
     e.stopPropagation();
 
@@ -330,6 +332,8 @@ export function DraggableCard({ card }: { card: Card }) {
       if (!d || !d.moved) {
         setDropTargetFunnel(null);
         setDropTargetCrumb(null);
+        // 한 번 누르기는 선택까지다(2026-09-22 사용자 결정). 선택한 채로 글자를
+        // 치면 제목 편집으로 들어간다 — useCardFlowShortcuts가 맡는다.
         return;
       }
       // FEAT-eject: 브레드크럼 조각 위에서 놓았으면 역모션 후 상위 보드로 내보낸다(crumb 우선).
@@ -398,10 +402,10 @@ export function DraggableCard({ card }: { card: Card }) {
     // FEAT-memo-expand: 확대 지원 카드(text 등)는 더블클릭으로 펼치기 모달을 연다.
     // 인라인 편집(setEditing)을 완전 대체 — 편집은 모달 안에서 한다.
     if (isExpandable(card)) {
+      setEditing(null); // 첫 클릭이 켠 앞면 제목 편집을 닫고 창으로 넘긴다.
       setExpandedCard(card.id);
       return;
     }
-    if (card.kind === "comment") return;
     // FEAT-sticky-redesign: 판은 이름표 자체 더블클릭(FrameCardContent)이 이름 편집을
     // 담당한다 — 카드 본문 편집 모드(editingId)로 들어가지 않는다.
     if (card.kind === "frame") return;
@@ -537,7 +541,7 @@ export function DraggableCard({ card }: { card: Card }) {
           <LockIcon size={12} />
         </button>
       )}
-      {isOnlySelected && !editing && card.kind !== "comment" && (
+      {isOnlySelected && !editing && (
         <ResizeHandles card={card} measuredHeight={measuredHeight} />
       )}
     </div>

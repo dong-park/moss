@@ -88,7 +88,8 @@ export function Canvas() {
   const addCardAtViewportCenter = useWorkspace((s) => s.addCardAtViewportCenter);
   // FEAT-sticky-redesign n6: 파일 드롭 — 놓은 좌표에 블록 든 메모를 만든다.
   const addCardAt = useWorkspace((s) => s.addCardAt);
-  const promoteCardToNewBoard = useWorkspace((s) => s.promoteCardToNewBoard);
+  // 무소속 토스트와 함께 임시 숨김(2026-09-22).
+  // const promoteCardToNewBoard = useWorkspace((s) => s.promoteCardToNewBoard);
   const setContent = useWorkspace((s) => s.setContent);
   const setEditing = useWorkspace((s) => s.setEditing);
   // FEAT-markdown-memo-pen: 펜 모드 — 전역 커서 변경 + E/[/]/Esc 키.
@@ -277,20 +278,22 @@ export function Canvas() {
         }
         i += 1;
       }
-      if (createdOnSystemBoard.length > 0) {
-        pushToast({
-          tone: "calm",
-          title: t("workspace.system.drop.toastTitle"),
-          body: t("workspace.system.drop.toastBody"),
-          duration: 6000,
-          action: {
-            label: t("workspace.system.drop.newBoard"),
-            onClick: async () => {
-              await Promise.all(createdOnSystemBoard.map((cid) => promoteCardToNewBoard(cid)));
-            },
-          },
-        });
-      }
+      // 임시 숨김(2026-09-22 사용자 결정): "이 메모는 무소속이에요 / 새 프로젝트" 토스트.
+      // 되돌리려면 주석을 푼다.
+      // if (createdOnSystemBoard.length > 0) {
+      //   pushToast({
+      //     tone: "calm",
+      //     title: t("workspace.system.drop.toastTitle"),
+      //     body: t("workspace.system.drop.toastBody"),
+      //     duration: 6000,
+      //     action: {
+      //       label: t("workspace.system.drop.newBoard"),
+      //       onClick: async () => {
+      //         await Promise.all(createdOnSystemBoard.map((cid) => promoteCardToNewBoard(cid)));
+      //       },
+      //     },
+      //   });
+      // }
     })();
   };
 
@@ -572,20 +575,6 @@ export function Canvas() {
             <SystemBoard />
           </div>
         )}
-
-      {/* 우상단 정리 안 됨 배지 (viewport 영향 받지 않음) */}
-      <div className="pointer-events-none absolute right-7 top-5 z-[var(--z-panel)]">
-        <div
-          className="rounded-md px-2.5 py-1.5 text-[12px]"
-          style={{
-            background: "var(--gradient-paper)",
-            boxShadow: "var(--shadow-card)",
-          }}
-        >
-          <span className="font-semibold text-text">{cards.length}</span>
-          <span className="ml-1 text-text-muted">Unsorted</span>
-        </div>
-      </div>
 
       {/* rubber-band 다중선택 박스 (screen 좌표, viewport 변환 받지 않음) */}
       {marquee && marquee.active && (

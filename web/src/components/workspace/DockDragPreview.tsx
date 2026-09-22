@@ -21,9 +21,16 @@ import {
  * 아이콘, 판은 틀 렌더). 드래그 프리뷰는 그 대신 독 아이콘(`/icons/dock/*.png`)을
  * 쓴다 — 빈 상자 대신 무엇이 만들어지는지 알아볼 수 있게.
  */
-const PREVIEW_SCALE = 0.55;
-const OFFSET_X = 14;
-const OFFSET_Y = 14;
+/**
+ * 2026-09-22: 프리뷰를 "놓으면 생길 카드 그 자체"로 맞췄다. 예전에는 카드 폭의
+ * 55%짜리 그림을 커서 오른쪽 아래 14px에 달아두고, 정작 카드는 커서를 가로
+ * 중심으로 삼아 생겼다 — 손을 떼는 순간 카드가 왼쪽 위로 튀었다. 이제 프리뷰의
+ * 좌표·크기는 Dock.tsx `tryDrop`의 계산과 같은 식을 쓴다:
+ *   카드 왼쪽 위 = (커서x − 폭/2, 커서y − 20) 월드 좌표.
+ * 캔버스 배율도 곱해 줌 상태에서도 놓일 크기 그대로 보인다.
+ */
+/** tryDrop의 `wy = ... - 20`과 같은 값이어야 한다. 바꿀 때 함께 바꾼다. */
+const DROP_TOP_OFFSET = 20;
 
 /** frame·board는 카드 surface PNG가 없어 독 아이콘으로 대신한다(위 주석). */
 const PREVIEW_IMAGE_OVERRIDE: Partial<Record<string, string>> = {
@@ -33,6 +40,7 @@ const PREVIEW_IMAGE_OVERRIDE: Partial<Record<string, string>> = {
 
 export function DockDragPreview() {
   const drag = useWorkspace((s) => s.dockDrag);
+  const scale = useWorkspace((s) => s.viewport.scale);
   if (!drag) return null;
 
   const kind = kindForTool(drag.toolId);
@@ -41,8 +49,8 @@ export function DockDragPreview() {
     CARD_MAX_HEIGHT,
     Math.max(CARD_MIN_HEIGHT, baseW / aspectForKind(kind)),
   );
-  const width = baseW * PREVIEW_SCALE;
-  const height = baseH * PREVIEW_SCALE;
+  const width = baseW * scale;
+  const height = baseH * scale;
   const imageSrc = PREVIEW_IMAGE_OVERRIDE[kind] ?? `/cards/v2/${kind}.png`;
   const backgroundSize = PREVIEW_IMAGE_OVERRIDE[kind] ? "50% 50%" : "contain";
 
@@ -51,13 +59,15 @@ export function DockDragPreview() {
       aria-hidden
       className="pointer-events-none fixed z-[var(--z-toast)]"
       style={{
-        left: drag.screenX + OFFSET_X,
-        top: drag.screenY + OFFSET_Y,
+        left: drag.screenX - width / 2,
+        top: drag.screenY - DROP_TOP_OFFSET * scale,
         width,
         height,
         background: `url("${imageSrc}") center/${backgroundSize} no-repeat`,
-        transform: "rotate(-3deg)",
-        transformOrigin: "top left",
+        // 살짝 기울이고 키워 "집어 든 종이"처럼 보이게 한다. 놓으면 카드가 제자리에
+        // 반듯이 앉는다 — 위치는 이미 같으므로 기울기만 펴진다.
+        transform: "rotate(-2deg) scale(1.02)",
+        transformOrigin: "center",
         filter:
           "drop-shadow(0 10px 18px rgba(0,0,0,0.18)) drop-shadow(0 2px 4px rgba(0,0,0,0.12))",
         opacity: 0.92,

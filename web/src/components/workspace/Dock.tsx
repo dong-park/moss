@@ -11,12 +11,11 @@ import {
 } from "motion/react";
 import {
   kindForTool,
-  SYSTEM_BOARD_ID,
   useWorkspace,
   widthForKind,
   type ToolId,
 } from "@/state/workspace";
-import { useToasts } from "@/state/notifications";
+// import { useToasts } from "@/state/notifications"; // 무소속 토스트 숨김(2026-09-22)
 import { useT } from "@/i18n/Provider";
 import { layout } from "@/design/tokens";
 import { PANEL_WIDTH as SIGNALS_PANEL_WIDTH } from "@/components/signals/SignalsPanel";
@@ -107,11 +106,12 @@ export function Dock({
   const addFrameAtViewportCenter = useWorkspace((s) => s.addFrameAtViewportCenter);
   const createSubcanvas = useWorkspace((s) => s.createSubcanvas);
   const createSubcanvasAtViewportCenter = useWorkspace((s) => s.createSubcanvasAtViewportCenter);
-  const promoteCardToNewBoard = useWorkspace((s) => s.promoteCardToNewBoard);
+  // 무소속 토스트와 함께 임시 숨김(2026-09-22).
+  // const promoteCardToNewBoard = useWorkspace((s) => s.promoteCardToNewBoard);
   // 2026-09-19 사용자 결정: 펜·시그널스 진입점 임시 숨김 — 버튼 복원 시 함께 되살린다.
   // const penMode = useWorkspace((s) => s.penMode);
   // const togglePenMode = useWorkspace((s) => s.togglePenMode);
-  const pushToast = useToasts((s) => s.push);
+  // const pushToast = useToasts((s) => s.push);
 
   const dockRef = useRef<HTMLDivElement>(null);
   const [canvasWidth, setCanvasWidth] = useState(FALLBACK_VIEWPORT_WIDTH);
@@ -283,23 +283,26 @@ export function Dock({
         return;
       }
 
-      const newCardId = addCardAt(toolId, wx, wy);
-      if (useWorkspace.getState().currentBoardId === SYSTEM_BOARD_ID) {
-        pushToast({
-          tone: "calm",
-          title: t("workspace.system.drop.toastTitle"),
-          body: t("workspace.system.drop.toastBody"),
-          duration: 6000,
-          action: {
-            label: t("workspace.system.drop.newBoard"),
-            onClick: async () => {
-              await promoteCardToNewBoard(newCardId);
-            },
-          },
-        });
-      }
+      addCardAt(toolId, wx, wy);
+      // 임시 숨김(2026-09-22 사용자 결정): 시스템 보드에 메모를 놓을 때 뜨던
+      // "이 메모는 무소속이에요 / 새 프로젝트" 토스트. 되돌리려면 주석을 푼다.
+      // const newCardId = addCardAt(toolId, wx, wy);
+      // if (useWorkspace.getState().currentBoardId === SYSTEM_BOARD_ID) {
+      //   pushToast({
+      //     tone: "calm",
+      //     title: t("workspace.system.drop.toastTitle"),
+      //     body: t("workspace.system.drop.toastBody"),
+      //     duration: 6000,
+      //     action: {
+      //       label: t("workspace.system.drop.newBoard"),
+      //       onClick: async () => {
+      //         await promoteCardToNewBoard(newCardId);
+      //       },
+      //     },
+      //   });
+      // }
     },
-    [addCardAt, addFrameAt, createSubcanvas, promoteCardToNewBoard, pushToast, t],
+    [addCardAt, addFrameAt, createSubcanvas],
   );
 
   /**
