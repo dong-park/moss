@@ -132,7 +132,7 @@ interface TrashEntry {
 - `listTrash(): Promise<TrashEntry[]>` — deletedAt 내림차순.
 - `restoreNote(id, fallback: {boardId, x, y}): Promise<Note>` — 보드 존재 여부로 위치를 정하고, 판 존재 여부로 frameId를 정하고, 양 끝이 살아 있는 연결선만 다시 넣는다. 복구한 Note를 돌려준다.
 - `purgeTrash(ids?: string[]): Promise<void>` — 생략하면 전체. 행과 blob을 지운다.
-- 기존 `removeNote`는 영구 삭제 전용으로 남긴다. 판 삭제와 함 cascade가 계속 쓴다.
+- 기존 `removeNote`는 영구 삭제 전용으로 남긴다. 호출자는 브리지로 다른 보드의 판을 지울 때 하나다. 캔버스의 판 삭제와 함 cascade는 `db.notes.delete`를 직접 쓴다.
 
 ### Store (Zustand) actions
 - `remove(id)` / `removeSelected()` — 메모 분기를 `storage.removeNote`에서 `storage.trashNote`로 바꾼다. 판·함 분기는 그대로.
@@ -295,3 +295,4 @@ cd web && npx eslint src/components/workspace/TrashPanel.tsx src/components/work
 
 - summary: Dock 끝에 휴지통 버튼(드래그 불가, 점 배지) 추가, Canvas에 TrashPanel 마운트. 패널은 최신순 목록·복구·영구 삭제·비우기(confirm)·빈 상태·Esc/바깥 클릭 닫기, role=dialog. 문구 전부 i18n(ko). Dock.test 3개·TrashPanel.test 6개 추가, eslint·tsc·i18n 통과.
 <!-- /STEP -->
+- 뒤집힌 결정: trashNote가 휴지통 전체를 읽어 반대편 스냅샷의 연결선을 모았다. 리뷰에서 삭제마다 O(휴지통 크기)이고 연달아 지우면 연결선이 사라지는 경쟁이 나왔다. 지금은 삭제 때 살아 있는 연결선만 트랜잭션 안에서 담고, 복구 때 반대편이 휴지통에 있으면 그 스냅샷으로 넘긴다.

@@ -357,7 +357,10 @@ export async function dispatchOp(
       }
       const note = await getDB().notes.get(id);
       if (!note) throw new Error(`카드를 찾을 수 없습니다: ${id}`);
-      await useStorage.getState().trashNote(id);
+      // 판은 휴지통 대상이 아니다(spec §2) — 지금처럼 즉시 삭제.
+      if (note.kind === "frame") await useStorage.getState().removeNote(id);
+      else await useStorage.getState().trashNote(id);
+      void ws.refreshTrashCount();
       return { id };
     }
 

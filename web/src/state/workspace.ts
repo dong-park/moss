@@ -1846,8 +1846,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const storage = useStorage.getState();
     if (!storage.initialized) return;
     try {
-      const list = await storage.listTrash();
-      set({ trashCount: list.length });
+      set({ trashCount: await getDB().trash.count() });
     } catch {
       /* DB가 닫히는 중(테스트 teardown·새로고침 경계) — 배지는 다음 기회에 갱신. */
     }
@@ -1859,7 +1858,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const v = get().viewport;
     const { sx, sy } = viewportCenterScreenPoint();
     // 화면 가운데 정렬 — 카드 폭 절반을 빼고 상단 여백 20px(중앙 생성과 같은 규약).
-    const entry = (await storage.listTrash()).find((e) => e.id === id);
+    const entry = await getDB().trash.get(id);
     const w = entry?.note.width ?? 0;
     const boardId = storageBoardId(get().currentBoardId);
     const note = await storage.restoreNote(id, {

@@ -119,7 +119,8 @@ export function TrashPanel() {
       t("workspace.trash.confirmEmpty", { count: entries.length }),
     );
     if (!ok) return;
-    await useStorage.getState().purgeTrash();
+    // 확인한 N개만 지운다 — 패널을 연 뒤 새로 들어온 메모까지 지우지 않게.
+    await useStorage.getState().purgeTrash(entries.map((e) => e.id));
     await reload();
   };
 
@@ -167,7 +168,10 @@ export function TrashPanel() {
                   {entryLabel(entry) || "—"}
                 </div>
                 <div className="truncate text-[11px] text-text-muted">
-                  {entry.boardName ?? t("workspace.trash.deletedBoard")} ·{" "}
+                  {entry.note.boardId === null
+                    ? t("workspace.boardPicker.system")
+                    : (entry.boardName ?? t("workspace.trash.deletedBoard"))}{" "}
+                  ·{" "}
                   {new Date(entry.deletedAt).toLocaleString()}
                 </div>
               </div>

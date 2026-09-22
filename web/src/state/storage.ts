@@ -243,33 +243,22 @@ export const useStorage = create<StorageState>((set, get) => ({
 
   trashNote: async (id) => {
     const db = getDB();
-    const note = await db.notes.get(id);
-    if (!note) return;
-    // 살아 있는 연결선 + 이미 휴지통에 있는 다른 메모의 스냅샷에서 이 메모와 닿는
-    // 연결선. 후자가 없으면 AC-8이 깨진다 — A를 먼저 지워 A–C가 테이블에서 사라진
-    // 뒤 C를 지우면, C의 스냅샷이 A–C를 담지 못해 C 복구 때 되살릴 수 없다.
-    const live = await db.connections
-      .where("sourceNoteId")
-      .equals(id)
-      .or("targetNoteId")
-      .equals(id)
-      .toArray();
-    const carried = (await db.trash.toArray()).flatMap((e) =>
-      e.connections.filter(
-        (c) => c.sourceNoteId === id || c.targetNoteId === id,
-      ),
-    );
-    const byId = new Map([...live, ...carried].map((c) => [c.id, c]));
-    const incident = [...byId.values()];
-    const board =
-      note.boardId === null ? undefined : await db.boards.get(note.boardId);
+    // 읽기까지 한 트랜잭션 안에서 — 연달아 지운 두 메모가 같은 연결선을 서로 놓치지 않게.
+    // 이미 휴지통에 있는 반대편과의 연결선은 restoreNote가 그 반대편 스냅샷으로 넘긴다(AC-8).
     await db.transaction(
       "rw",
-      db.notes,
-      db.connections,
-      db.embeddings,
-      db.trash,
+      [db.notes, db.connections, db.embeddings, db.trash, db.boards],
       async () => {
+        const note = await db.notes.get(id);
+        if (!note) return;
+        const incident = await db.connections
+          .where("sourceNoteId")
+          .equals(id)
+          .or("targetNoteId")
+          .equals(id)
+          .toArray();
+        const board =
+          note.boardId === null ? undefined : await db.boards.get(note.boardId);
         await db.trash.put({
           id,
           note,
@@ -321,12 +310,21 @@ export const useStorage = create<StorageState>((set, get) => ({
         const restored: Note = { ...note, boardId, x, y, frameId };
         await db.notes.put(restored);
         // 양 끝이 살아 있는 연결선만 되돌린다(AC-8). 복구한 메모는 방금 넣었다.
+        // 반대편이 휴지통에 있으면 그 스냅샷으로 넘겨, 반대편 복구 때 되살린다.
         for (const conn of entry.connections) {
-          const [src, tgt] = await Promise.all([
-            db.notes.get(conn.sourceNoteId),
-            db.notes.get(conn.targetNoteId),
-          ]);
-          if (src && tgt) await db.connections.put(conn);
+          const otherId =
+            conn.sourceNoteId === id ? conn.targetNoteId : conn.sourceNoteId;
+          if (await db.notes.get(otherId)) {
+            await db.connections.put(conn);
+            continue;
+          }
+          const other = await db.trash.get(otherId);
+          if (other && !other.connections.some((c) => c.id === conn.id)) {
+            await db.trash.put({
+              ...other,
+              connections: [...other.connections, conn],
+            });
+          }
         }
         await db.trash.delete(id);
         return restored;

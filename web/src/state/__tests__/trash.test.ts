@@ -210,6 +210,19 @@ describe("FEAT-trash · storage", () => {
     expect(await db.connections.get("ac")).toBeDefined();
   });
 
+  it("AC-8: 연결된 두 메모를 동시에 지워도 둘 다 복구하면 연결선이 돌아온다", async () => {
+    const s = await setup();
+    await s.saveNote({ id: "A", content: "a" });
+    await s.saveNote({ id: "B", content: "b" });
+    await s.saveConnection({ id: "ab", sourceNoteId: "A", targetNoteId: "B" });
+
+    await Promise.all([s.trashNote("A"), s.trashNote("B")]);
+    await s.restoreNote("A", { boardId: null, x: 0, y: 0 });
+    await s.restoreNote("B", { boardId: null, x: 0, y: 0 });
+
+    expect(await getDB().connections.get("ab")).toBeDefined();
+  });
+
   it("AC-9: 개별 영구 삭제는 행과 첨부 blob을 지운다", async () => {
     const s = await setup();
     await s.saveNote({ id: "n1", attachmentRef: "opfs:photo.png", content: "x" });
