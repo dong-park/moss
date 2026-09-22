@@ -401,7 +401,7 @@ export function Dock({
 
       {/* FEAT-trash: 독 맨 끝 휴지통 — 클릭하면 패널, 메모가 있으면 점 배지. */}
       <DockButton
-        item={DOCK_ITEMS[5]}
+        item={DOCK_ITEMS.find((i) => i.toolId === "trash")!}
         label={LABELS["workspace.tool.trash"]}
         mouseX={mouseX}
         centers={centers}

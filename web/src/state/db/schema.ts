@@ -138,8 +138,6 @@ export interface TrashEntry {
   id: string;
   /** 지울 때의 행 전체 스냅샷. boardId·frameId·x·y 포함. */
   note: Note;
-  /** 지울 때 이 메모에 붙어 있던 연결선 전체. */
-  connections: Connection[];
   /** 지울 때의 보드 이름. 보드가 사라져도 목록에 이름을 남긴다. */
   boardName: string | null;
   deletedAt: number;
@@ -170,6 +168,8 @@ export class MossDB extends Dexie {
   embeddings!: Table<EmbeddingCacheEntry, string>;
   settings!: Table<Settings, "singleton">;
   trash!: Table<TrashEntry, string>;
+  /** 휴지통 메모에 닿아 있던 연결선. 양 끝이 다시 살아나면 connections로 돌아간다. */
+  trashConnections!: Table<Connection, string>;
 
   constructor(name = "moss") {
     super(name);
@@ -239,8 +239,12 @@ export class MossDB extends Dexie {
         markOpfsPurgePending();
       });
     // v6 (FEAT-trash): trash 테이블 추가 — 지운 메모 스냅샷 전용. 기존 테이블·데이터는
-    // 그대로 둔다(무손실). 인덱스는 id(기본키)와 deletedAt(목록 정렬) 뿐.
-    const storesV6 = { ...storesV4, trash: "id, deletedAt" };
+    // 그대로 둔다(무손실). trashConnections는 휴지통 메모에 닿은 연결선을 평평하게 보관.
+    const storesV6 = {
+      ...storesV4,
+      trash: "id, deletedAt",
+      trashConnections: "id, sourceNoteId, targetNoteId",
+    };
     this.version(6).stores(storesV6);
   }
 }

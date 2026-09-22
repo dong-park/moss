@@ -244,10 +244,9 @@ export const useStorage = create<StorageState>((set, get) => ({
   trashNote: async (id) => {
     const db = getDB();
     // 읽기까지 한 트랜잭션 안에서 — 연달아 지운 두 메모가 같은 연결선을 서로 놓치지 않게.
-    // 이미 휴지통에 있는 반대편과의 연결선은 restoreNote가 그 반대편 스냅샷으로 넘긴다(AC-8).
     await db.transaction(
       "rw",
-      [db.notes, db.connections, db.embeddings, db.trash, db.boards],
+      [db.notes, db.connections, db.embeddings, db.trash, db.trashConnections, db.boards],
       async () => {
         const note = await db.notes.get(id);
         if (!note) return;
@@ -262,10 +261,10 @@ export const useStorage = create<StorageState>((set, get) => ({
         await db.trash.put({
           id,
           note,
-          connections: incident,
           boardName: board?.name ?? null,
           deletedAt: Date.now(),
         });
+        await db.trashConnections.bulkPut(incident);
         await db.connections.bulkDelete(incident.map((c) => c.id));
         await db.embeddings.delete(id);
         await db.notes.delete(id);
@@ -280,16 +279,13 @@ export const useStorage = create<StorageState>((set, get) => ({
 
   restoreNote: async (id, fallback) => {
     const db = getDB();
-    const entry = await db.trash.get(id);
-    if (!entry) throw new Error(`휴지통에 없는 메모입니다: ${id}`);
-    const note = entry.note;
     return db.transaction(
       "rw",
-      db.notes,
-      db.connections,
-      db.trash,
-      db.boards,
+      [db.notes, db.connections, db.trash, db.trashConnections, db.boards],
       async () => {
+        const entry = await db.trash.get(id);
+        if (!entry) throw new Error(`휴지통에 없는 메모입니다: ${id}`);
+        const note = entry.note;
         // 원래 보드가 살아 있으면 원래 자리, 없으면 fallback 자리로.
         let boardId = note.boardId;
         let x = note.x;
@@ -309,24 +305,21 @@ export const useStorage = create<StorageState>((set, get) => ({
         }
         const restored: Note = { ...note, boardId, x, y, frameId };
         await db.notes.put(restored);
-        // 양 끝이 살아 있는 연결선만 되돌린다(AC-8). 복구한 메모는 방금 넣었다.
-        // 반대편이 휴지통에 있으면 그 스냅샷으로 넘겨, 반대편 복구 때 되살린다.
-        for (const conn of entry.connections) {
-          const otherId =
-            conn.sourceNoteId === id ? conn.targetNoteId : conn.sourceNoteId;
-          if (await db.notes.get(otherId)) {
-            await db.connections.put(conn);
-            continue;
-          }
-          const other = await db.trash.get(otherId);
-          if (other && !other.connections.some((c) => c.id === conn.id)) {
-            await db.trash.put({
-              ...other,
-              connections: [...other.connections, conn],
-            });
-          }
-        }
         await db.trash.delete(id);
+        // 양 끝이 살아 있는 연결선만 되돌린다(AC-8). 반대편이 아직 휴지통이면
+        // trashConnections에 그대로 남아 반대편 복구 때 돌아온다.
+        const parked = await db.trashConnections
+          .where("sourceNoteId")
+          .equals(id)
+          .or("targetNoteId")
+          .equals(id)
+          .toArray();
+        const others = await db.notes.bulkGet(
+          parked.map((c) => (c.sourceNoteId === id ? c.targetNoteId : c.sourceNoteId)),
+        );
+        const back = parked.filter((_, i) => others[i]);
+        await db.connections.bulkPut(back);
+        await db.trashConnections.bulkDelete(back.map((c) => c.id));
         return restored;
       },
     );
@@ -334,23 +327,39 @@ export const useStorage = create<StorageState>((set, get) => ({
 
   purgeTrash: async (ids) => {
     const db = getDB();
-    const entries =
-      ids === undefined
-        ? await db.trash.toArray()
-        : (await db.trash.bulkGet(ids)).filter(
-            (e): e is TrashEntry => !!e,
-          );
-    if (entries.length === 0) return;
-    await db.trash.bulkDelete(entries.map((e) => e.id));
-    for (const entry of entries) {
-      const ref = entry.note.attachmentRef;
-      if (!ref) continue;
-      try {
-        await deleteBlob(ref);
-      } catch {
-        /* OPFS 삭제 실패는 무시 — 다음 GC에서 재시도 가능 */
-      }
-    }
+    const entries = await db.transaction(
+      "rw",
+      db.trash,
+      db.trashConnections,
+      async () => {
+        const found =
+          ids === undefined
+            ? await db.trash.toArray()
+            : (await db.trash.bulkGet(ids)).filter((e): e is TrashEntry => !!e);
+        const purged = found.map((e) => e.id);
+        await db.trash.bulkDelete(purged);
+        // 영구 삭제된 메모에 닿은 연결선은 다시 살아날 일이 없다.
+        const dead = await db.trashConnections
+          .where("sourceNoteId")
+          .anyOf(purged)
+          .or("targetNoteId")
+          .anyOf(purged)
+          .primaryKeys();
+        await db.trashConnections.bulkDelete(dead);
+        return found;
+      },
+    );
+    await Promise.all(
+      entries.map(async (entry) => {
+        const ref = entry.note.attachmentRef;
+        if (!ref) return;
+        try {
+          await deleteBlob(ref);
+        } catch {
+          /* OPFS 삭제 실패는 무시 — 다음 GC에서 재시도 가능 */
+        }
+      }),
+    );
   },
 
   loadBoards: async () => {

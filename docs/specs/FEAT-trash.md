@@ -114,11 +114,11 @@
 interface TrashEntry {
   id: string;             // 원래 note.id 그대로. 복구 시 id 보존.
   note: Note;             // 지울 때의 행 전체 스냅샷. boardId·frameId·x·y 포함.
-  connections: Connection[]; // 지울 때 이 메모에 붙어 있던 연결선 전체.
   boardName: string | null;  // 지울 때의 보드 이름. 보드가 사라져도 목록에 이름을 남긴다.
   deletedAt: number;
 }
-// stores: trash: "id, deletedAt"
+// stores: trash: "id, deletedAt", trashConnections: "id, sourceNoteId, targetNoteId"
+// trashConnections — 휴지통 메모에 닿아 있던 연결선을 평평하게 보관. 양 끝이 살아나면 connections로 돌아간다.
 ```
 
 - 임베딩은 저장하지 않는다. 복구 뒤 기존 AI 파이프라인이 다시 만든다.
@@ -128,7 +128,7 @@ interface TrashEntry {
 ## 6. 인터페이스
 
 ### storage
-- `trashNote(id): Promise<void>` — 한 트랜잭션에서 notes·connections·embeddings에서 지우고 `trash`에 스냅샷을 넣는다. 기존 `removeNote`의 blob 삭제만 뺀 형태다.
+- `trashNote(id): Promise<void>` — 한 트랜잭션에서 notes·connections·embeddings에서 지우고 `trash`에 스냅샷, `trashConnections`에 연결선을 넣는다. 기존 `removeNote`의 blob 삭제만 뺀 형태다.
 - `listTrash(): Promise<TrashEntry[]>` — deletedAt 내림차순.
 - `restoreNote(id, fallback: {boardId, x, y}): Promise<Note>` — 보드 존재 여부로 위치를 정하고, 판 존재 여부로 frameId를 정하고, 양 끝이 살아 있는 연결선만 다시 넣는다. 복구한 Note를 돌려준다.
 - `purgeTrash(ids?: string[]): Promise<void>` — 생략하면 전체. 행과 blob을 지운다.
@@ -295,4 +295,4 @@ cd web && npx eslint src/components/workspace/TrashPanel.tsx src/components/work
 
 - summary: Dock 끝에 휴지통 버튼(드래그 불가, 점 배지) 추가, Canvas에 TrashPanel 마운트. 패널은 최신순 목록·복구·영구 삭제·비우기(confirm)·빈 상태·Esc/바깥 클릭 닫기, role=dialog. 문구 전부 i18n(ko). Dock.test 3개·TrashPanel.test 6개 추가, eslint·tsc·i18n 통과.
 <!-- /STEP -->
-- 뒤집힌 결정: trashNote가 휴지통 전체를 읽어 반대편 스냅샷의 연결선을 모았다. 리뷰에서 삭제마다 O(휴지통 크기)이고 연달아 지우면 연결선이 사라지는 경쟁이 나왔다. 지금은 삭제 때 살아 있는 연결선만 트랜잭션 안에서 담고, 복구 때 반대편이 휴지통에 있으면 그 스냅샷으로 넘긴다.
+- 뒤집힌 결정: 연결선을 처음엔 TrashEntry 안에 담았다. 리뷰에서 삭제마다 휴지통 전체를 읽는 비용과, 복구가 다른 메모의 휴지통 행을 고치는 숨은 경로가 나왔다. 지금은 `trashConnections` 테이블 하나에 평평하게 두고, 복구 때 양 끝이 살아 있는 것만 connections로 옮긴다. 영구 삭제는 그 메모에 닿은 행도 지운다.

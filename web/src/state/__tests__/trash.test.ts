@@ -99,7 +99,7 @@ describe("FEAT-trash · storage", () => {
     expect([list[0]!.note.x, list[0]!.note.y]).toEqual([300, 200]);
     expect(list[0]!.note.boardId).toBe("b1");
     expect(list[0]!.boardName).toBe("보드 B");
-    expect(list[0]!.connections.map((c) => c.id)).toEqual(["c1"]);
+    expect((await getDB().trashConnections.toArray()).map((c) => c.id)).toEqual(["c1"]);
 
     // 기존 조회 경로에는 안 나온다(AC-12).
     expect((await s.loadCards("b1")).map((n) => n.id)).toEqual(["n2"]);
@@ -223,6 +223,35 @@ describe("FEAT-trash · storage", () => {
     expect(await getDB().connections.get("ab")).toBeDefined();
   });
 
+  it("AC-8: 연결된 두 메모를 동시에 복구해도 연결선이 돌아온다", async () => {
+    const s = await setup();
+    await s.saveNote({ id: "A", content: "a" });
+    await s.saveNote({ id: "B", content: "b" });
+    await s.saveConnection({ id: "ab", sourceNoteId: "A", targetNoteId: "B" });
+    await s.trashNote("A");
+    await s.trashNote("B");
+
+    await Promise.all([
+      s.restoreNote("A", { boardId: null, x: 0, y: 0 }),
+      s.restoreNote("B", { boardId: null, x: 0, y: 0 }),
+    ]);
+
+    expect(await getDB().connections.get("ab")).toBeDefined();
+    expect(await getDB().trashConnections.count()).toBe(0);
+  });
+
+  it("영구 삭제하면 그 메모에 닿은 휴지통 연결선도 지운다", async () => {
+    const s = await setup();
+    await s.saveNote({ id: "A", content: "a" });
+    await s.saveNote({ id: "B", content: "b" });
+    await s.saveConnection({ id: "ab", sourceNoteId: "A", targetNoteId: "B" });
+    await s.trashNote("A");
+
+    await s.purgeTrash(["A"]);
+
+    expect(await getDB().trashConnections.count()).toBe(0);
+  });
+
   it("AC-9: 개별 영구 삭제는 행과 첨부 blob을 지운다", async () => {
     const s = await setup();
     await s.saveNote({ id: "n1", attachmentRef: "opfs:photo.png", content: "x" });
@@ -272,14 +301,12 @@ describe("FEAT-trash · storage", () => {
     await db.trash.put({
       id: "old",
       note: noteOf("old"),
-      connections: [],
       boardName: null,
       deletedAt: 1000,
     });
     await db.trash.put({
       id: "new",
       note: noteOf("new"),
-      connections: [],
       boardName: null,
       deletedAt: 2000,
     });

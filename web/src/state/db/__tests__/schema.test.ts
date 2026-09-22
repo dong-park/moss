@@ -47,7 +47,7 @@ function makeNote(overrides: Partial<Note> = {}): Note {
 }
 
 describe("MossDB schema v1", () => {
-  it("opens and exposes 6 tables (v6 trash 추가)", async () => {
+  it("opens and exposes 7 tables (v6 trash·trashConnections 추가)", async () => {
     const db = freshDB();
     await db.open();
     expect(db.tables.map((t) => t.name).sort()).toEqual([
@@ -57,6 +57,7 @@ describe("MossDB schema v1", () => {
       "notes",
       "settings",
       "trash",
+      "trashConnections",
     ]);
   });
 
