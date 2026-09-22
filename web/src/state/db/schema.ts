@@ -128,6 +128,23 @@ export interface EmbeddingCacheEntry {
   updatedAt: number;
 }
 
+/**
+ * FEAT-trash: 지운 메모의 스냅샷 한 건. 별도 테이블에 보관해 기존 notes 조회
+ * 경로를 건드리지 않는다(spec §5). 임베딩은 담지 않는다 — 복구 뒤 AI 파이프라인이
+ * 다시 만든다. 첨부 blob은 OPFS에 그대로 두고 영구 삭제 때만 지운다.
+ */
+export interface TrashEntry {
+  /** 원래 note.id 그대로. 복구 시 id 보존. */
+  id: string;
+  /** 지울 때의 행 전체 스냅샷. boardId·frameId·x·y 포함. */
+  note: Note;
+  /** 지울 때 이 메모에 붙어 있던 연결선 전체. */
+  connections: Connection[];
+  /** 지울 때의 보드 이름. 보드가 사라져도 목록에 이름을 남긴다. */
+  boardName: string | null;
+  deletedAt: number;
+}
+
 export interface Settings {
   id: "singleton";
   aiOptOutGlobal: boolean;
@@ -152,6 +169,7 @@ export class MossDB extends Dexie {
   connections!: Table<Connection, string>;
   embeddings!: Table<EmbeddingCacheEntry, string>;
   settings!: Table<Settings, "singleton">;
+  trash!: Table<TrashEntry, string>;
 
   constructor(name = "moss") {
     super(name);
@@ -220,6 +238,10 @@ export class MossDB extends Dexie {
         ]);
         markOpfsPurgePending();
       });
+    // v6 (FEAT-trash): trash 테이블 추가 — 지운 메모 스냅샷 전용. 기존 테이블·데이터는
+    // 그대로 둔다(무손실). 인덱스는 id(기본키)와 deletedAt(목록 정렬) 뿐.
+    const storesV6 = { ...storesV4, trash: "id, deletedAt" };
+    this.version(6).stores(storesV6);
   }
 }
 

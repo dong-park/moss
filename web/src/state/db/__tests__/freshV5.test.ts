@@ -120,7 +120,7 @@ describe("v5 새 DB로 시작 (FEAT-sticky-redesign n3)", () => {
     dbs.push(v5db);
     await v5db.open();
 
-    expect(v5db.verno).toBe(5);
+    expect(v5db.verno).toBe(6);
     expect(await v5db.notes.count()).toBe(0);
     expect(await v5db.boards.count()).toBe(0);
     expect(await v5db.connections.count()).toBe(0);
@@ -139,7 +139,7 @@ describe("v5 새 DB로 시작 (FEAT-sticky-redesign n3)", () => {
     const db = createDB(name);
     dbs.push(db);
     await db.open();
-    expect(db.verno).toBe(5);
+    expect(db.verno).toBe(6);
 
     await db.notes.put(makeNote({ id: "fresh-1", content: "새 메모" }));
     await db.boards.put(makeBoard({ id: "board-a", parentBoardId: "board-root" }));

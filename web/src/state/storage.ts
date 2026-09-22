@@ -7,6 +7,7 @@ import {
   type EmbeddingCacheEntry,
   type Note,
   type Settings,
+  type TrashEntry,
   DEFAULT_SETTINGS,
   type MossDB,
   getDB,
@@ -30,6 +31,28 @@ interface StorageState {
   loadCards: (boardId: string | null) => Promise<Note[]>;
   saveNote: (patch: Partial<Note> & { id: string }) => Promise<void>;
   removeNote: (id: string) => Promise<void>;
+
+  /**
+   * FEAT-trash: 메모를 영구 삭제 대신 휴지통으로 보낸다. 한 트랜잭션에서 연결선·보드
+   * 이름을 스냅샷해 `trash`에 넣고 notes·connections·embeddings에서 지운다.
+   * OPFS 첨부 blob은 지우지 않는다(복구 가능해야 한다).
+   */
+  trashNote: (id: string) => Promise<void>;
+  /** FEAT-trash: 휴지통 목록 — deletedAt 내림차순(최신순). */
+  listTrash: () => Promise<TrashEntry[]>;
+  /**
+   * FEAT-trash: 휴지통에서 복구. 원래 보드가 있으면 원래 좌표, 없으면 fallback 좌표·
+   * boardId에 frameId를 비운다. 같은 보드에 판이 살아 있으면 frameId를 유지한다.
+   * 양 끝 메모가 살아 있는 연결선만 다시 넣는다. 복구한 Note를 돌려준다.
+   */
+  restoreNote: (
+    id: string,
+    fallback: { boardId: string | null; x: number; y: number },
+  ) => Promise<Note>;
+  /**
+   * FEAT-trash: 영구 삭제. ids 생략 시 전체(비우기). 행을 지운 뒤 첨부 blob을 지운다.
+   */
+  purgeTrash: (ids?: string[]) => Promise<void>;
 
   loadBoards: () => Promise<Board[]>;
   saveBoard: (patch: Partial<Board> & { id: string }) => Promise<void>;
@@ -218,6 +241,120 @@ export const useStorage = create<StorageState>((set, get) => ({
     }
   },
 
+  trashNote: async (id) => {
+    const db = getDB();
+    const note = await db.notes.get(id);
+    if (!note) return;
+    // 살아 있는 연결선 + 이미 휴지통에 있는 다른 메모의 스냅샷에서 이 메모와 닿는
+    // 연결선. 후자가 없으면 AC-8이 깨진다 — A를 먼저 지워 A–C가 테이블에서 사라진
+    // 뒤 C를 지우면, C의 스냅샷이 A–C를 담지 못해 C 복구 때 되살릴 수 없다.
+    const live = await db.connections
+      .where("sourceNoteId")
+      .equals(id)
+      .or("targetNoteId")
+      .equals(id)
+      .toArray();
+    const carried = (await db.trash.toArray()).flatMap((e) =>
+      e.connections.filter(
+        (c) => c.sourceNoteId === id || c.targetNoteId === id,
+      ),
+    );
+    const byId = new Map([...live, ...carried].map((c) => [c.id, c]));
+    const incident = [...byId.values()];
+    const board =
+      note.boardId === null ? undefined : await db.boards.get(note.boardId);
+    await db.transaction(
+      "rw",
+      db.notes,
+      db.connections,
+      db.embeddings,
+      db.trash,
+      async () => {
+        await db.trash.put({
+          id,
+          note,
+          connections: incident,
+          boardName: board?.name ?? null,
+          deletedAt: Date.now(),
+        });
+        await db.connections.bulkDelete(incident.map((c) => c.id));
+        await db.embeddings.delete(id);
+        await db.notes.delete(id);
+      },
+    );
+  },
+
+  listTrash: async () => {
+    const db = getDB();
+    return db.trash.orderBy("deletedAt").reverse().toArray();
+  },
+
+  restoreNote: async (id, fallback) => {
+    const db = getDB();
+    const entry = await db.trash.get(id);
+    if (!entry) throw new Error(`휴지통에 없는 메모입니다: ${id}`);
+    const note = entry.note;
+    return db.transaction(
+      "rw",
+      db.notes,
+      db.connections,
+      db.trash,
+      db.boards,
+      async () => {
+        // 원래 보드가 살아 있으면 원래 자리, 없으면 fallback 자리로.
+        let boardId = note.boardId;
+        let x = note.x;
+        let y = note.y;
+        if (boardId !== null && !(await db.boards.get(boardId))) {
+          boardId = fallback.boardId;
+          x = fallback.x;
+          y = fallback.y;
+        }
+        // 판이 같은 보드에 아직 있으면 frameId 유지, 없으면 비운다(AC-7).
+        let frameId = note.frameId;
+        if (frameId !== undefined) {
+          const frame = await db.notes.get(frameId);
+          if (!frame || frame.kind !== "frame" || frame.boardId !== boardId) {
+            frameId = undefined;
+          }
+        }
+        const restored: Note = { ...note, boardId, x, y, frameId };
+        await db.notes.put(restored);
+        // 양 끝이 살아 있는 연결선만 되돌린다(AC-8). 복구한 메모는 방금 넣었다.
+        for (const conn of entry.connections) {
+          const [src, tgt] = await Promise.all([
+            db.notes.get(conn.sourceNoteId),
+            db.notes.get(conn.targetNoteId),
+          ]);
+          if (src && tgt) await db.connections.put(conn);
+        }
+        await db.trash.delete(id);
+        return restored;
+      },
+    );
+  },
+
+  purgeTrash: async (ids) => {
+    const db = getDB();
+    const entries =
+      ids === undefined
+        ? await db.trash.toArray()
+        : (await db.trash.bulkGet(ids)).filter(
+            (e): e is TrashEntry => !!e,
+          );
+    if (entries.length === 0) return;
+    await db.trash.bulkDelete(entries.map((e) => e.id));
+    for (const entry of entries) {
+      const ref = entry.note.attachmentRef;
+      if (!ref) continue;
+      try {
+        await deleteBlob(ref);
+      } catch {
+        /* OPFS 삭제 실패는 무시 — 다음 GC에서 재시도 가능 */
+      }
+    }
+  },
+
   loadBoards: async () => {
     const db = getDB();
     const boards = await db.boards.toArray();
@@ -356,4 +493,4 @@ export const useStorage = create<StorageState>((set, get) => ({
   },
 }));
 
-export type { Note, Board, Connection, Settings, EmbeddingCacheEntry, QuotaInfo };
+export type { Note, Board, Connection, Settings, EmbeddingCacheEntry, TrashEntry, QuotaInfo };

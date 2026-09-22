@@ -74,7 +74,7 @@ describe("MossDB frame·frameId (FEAT-sticky-redesign n1)", () => {
     dbs.push(v5db);
     await v5db.open();
     // v5는 n1이 아니라 n3가 "새 DB로 시작" upgrade와 함께 선언한다(리뷰 P1) — 실제로 5까지 올라간다.
-    expect(v5db.verno).toBe(5);
+    expect(v5db.verno).toBe(6);
 
     // n3: v5 upgrade는 이관하지 않고 notes를 비운다.
     const rows = await v5db.notes.toArray();
