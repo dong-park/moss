@@ -4,3 +4,6 @@
 # editor
 .vscode/
 .idea/
+
+# dependencies
+node_modules/
