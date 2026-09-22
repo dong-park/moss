@@ -16,12 +16,7 @@ describe("LEGACY_NOTE_KINDS + 현재 4종", () => {
     }
   });
 
-  it("ACCEPTED_LOGICAL_KINDS는 4종", () => {
-    expect(ACCEPTED_LOGICAL_KINDS).toEqual([
-      "text",
-      "comment",
-      "board",
-      "frame",
-    ]);
+  it("ACCEPTED_LOGICAL_KINDS는 3종 — comment 삭제됨", () => {
+    expect(ACCEPTED_LOGICAL_KINDS).toEqual(["text", "board", "frame"]);
   });
 });

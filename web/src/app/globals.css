@@ -27,8 +27,6 @@
   /* color — card (살짝 warm 톤으로 종이 느낌) */
   --color-card-base: #fdfcfa;
   --color-card-edge: #f5f3ef; /* 카드 하단 그라데이션 끝 */
-  --color-card-comment: #eef1f6;
-  --color-card-comment-edge: #e7eaf0;
   --color-card-yellow: #fbf5d8;
   --color-card-blue: #e5edf2;
   --color-card-lime: #e8eee0;
@@ -118,12 +116,6 @@
     0 10px 30px rgba(42, 39, 34, 0.1),
     inset 0 1px 0 rgba(255, 255, 255, 0.9);
 
-  /* 댓글 카드 — 카드보다 살짝 안쪽으로 내려앉음 */
-  --shadow-card-comment:
-    0 1px 2px rgba(42, 39, 34, 0.04),
-    0 4px 12px rgba(42, 39, 34, 0.04),
-    inset 0 1px 0 rgba(255, 255, 255, 0.6);
-
   --shadow-modal: 0 8px 32px rgba(42, 39, 34, 0.16);
 
   /* 카드 표면 그라데이션 (살짝 종이 결) */
@@ -132,12 +124,6 @@
     var(--color-card-base) 0%,
     var(--color-card-base) 60%,
     var(--color-card-edge) 100%
-  );
-  --gradient-paper-comment: linear-gradient(
-    180deg,
-    var(--color-card-comment) 0%,
-    var(--color-card-comment) 60%,
-    var(--color-card-comment-edge) 100%
   );
 
 }
@@ -166,8 +152,6 @@
   --color-card-blue: var(--color-card-blue);
   --color-card-lime: var(--color-card-lime);
   --color-card-purple: var(--color-card-purple);
-  --color-card-comment: var(--color-card-comment);
-  --color-card-comment-edge: var(--color-card-comment-edge);
   --color-hover: var(--color-hover);
   --color-active-bg: var(--color-active-bg);
   --color-active-fg: var(--color-active-fg);
@@ -185,7 +169,6 @@
   /* shadow */
   --shadow-card: var(--shadow-card);
   --shadow-card-lift: var(--shadow-card-lift);
-  --shadow-card-comment: var(--shadow-card-comment);
   --shadow-icon-box: var(--shadow-icon-box);
   --shadow-icon-soft: var(--shadow-icon-soft);
   --shadow-icon-active: var(--shadow-icon-active);

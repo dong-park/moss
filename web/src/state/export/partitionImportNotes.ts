@@ -1,5 +1,5 @@
 import type { Note, NoteKind } from "../db/schema";
-import { isCommentNote, LEGACY_NOTE_KINDS } from "./legacyKinds";
+import { LEGACY_NOTE_KINDS } from "./legacyKinds";
 
 export interface PartitionImportNotesResult {
   accepted: Note[];
@@ -36,11 +36,6 @@ export function partitionImportNotes(rows: unknown[]): PartitionImportNotesResul
   for (const row of rows) {
     if (!isNoteShape(row)) {
       skipped.push({ kind: "invalid" });
-      continue;
-    }
-
-    if (isCommentNote(row)) {
-      accepted.push(row);
       continue;
     }
 

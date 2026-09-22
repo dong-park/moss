@@ -52,39 +52,6 @@ afterEach(async () => {
 });
 
 describe("workspace ↔ storage 매핑", () => {
-  it("comment 카드 인코딩/디코딩 round-trip", () => {
-    const card: Card = {
-      id: "x",
-      kind: "comment",
-      x: 0,
-      y: 0,
-      width: 280,
-      content: "오호",
-      author: "동박",
-      time: "2 days ago",
-    };
-    const encoded = __internal.encodeCardContent(card);
-    expect(encoded.startsWith("{")).toBe(true);
-    const decoded = __internal.decodeNoteToCard({
-      id: "x",
-      boardId: null,
-      kind: "text",
-      x: 0,
-      y: 0,
-      width: 280,
-      rotation: 0,
-      content: encoded,
-      aiOptOut: false,
-      createdAt: 0,
-      updatedAt: 0,
-      lastVisitedAt: 0,
-    });
-    expect(decoded.kind).toBe("comment");
-    expect(decoded.author).toBe("동박");
-    expect(decoded.time).toBe("2 days ago");
-    expect(decoded.content).toBe("오호");
-  });
-
   it("text 카드는 plain text로 인코딩", () => {
     const encoded = __internal.encodeCardContent({
       id: "n",
@@ -97,24 +64,7 @@ describe("workspace ↔ storage 매핑", () => {
     expect(encoded).toBe("hello");
   });
 
-  it("CardKind → NoteKind 매핑 (comment만 text로 wrap, 나머지는 identity)", () => {
-    expect(__internal.cardKindToNoteKind("text")).toBe("text");
-    expect(__internal.cardKindToNoteKind("checklist")).toBe("checklist");
-    expect(__internal.cardKindToNoteKind("comment")).toBe("text");
-    expect(__internal.cardKindToNoteKind("image")).toBe("image");
-    expect(__internal.cardKindToNoteKind("handwriting")).toBe("handwriting");
-    expect(__internal.cardKindToNoteKind("mindmap")).toBe("mindmap");
-    expect(__internal.cardKindToNoteKind("highlight")).toBe("highlight");
-    expect(__internal.cardKindToNoteKind("link")).toBe("link");
-    expect(__internal.cardKindToNoteKind("audio")).toBe("audio");
-    expect(__internal.cardKindToNoteKind("file")).toBe("file");
-    expect(__internal.cardKindToNoteKind("code")).toBe("code");
-  });
-
-  it("사용자 본문에 우연히 `$comment: true`가 있어도 comment 오인 안 함 (v0 마커 namespace 안전)", () => {
-    // 새 마커는 `__moss_comment_v1__` — 사용자 본문이 충돌할 확률 사실상 0.
-    // v0 마커("$comment")는 이전 데이터에만 인정되도록 유지하되,
-    // 사용자가 직접 적은 단순 JSON은 정상 text로 유지되어야 한다.
+  it("옛 comment 마커 JSON('{'로 시작)도 그대로 text로 유지 — comment kind는 삭제됨", () => {
     const decoded = __internal.decodeNoteToCard({
       id: "x",
       boardId: null,
@@ -123,34 +73,16 @@ describe("workspace ↔ storage 매핑", () => {
       y: 0,
       width: 240,
       rotation: 0,
-      content: '{"unrelated":1,"$comment":"이건 사용자 코드 주석"}',
+      content: '{"__moss_comment_v1__":true,"author":"동박","time":"2 days ago","body":"오호"}',
       aiOptOut: false,
       createdAt: 0,
       updatedAt: 0,
       lastVisitedAt: 0,
     });
-    // $comment 키 값이 boolean이 아니라 string이면 comment로 오인하지 않음
     expect(decoded.kind).toBe("text");
-  });
-
-  it("v0 마커(`$comment: true`)는 backward-compat으로 comment로 인식", () => {
-    const decoded = __internal.decodeNoteToCard({
-      id: "x",
-      boardId: null,
-      kind: "text",
-      x: 0,
-      y: 0,
-      width: 240,
-      rotation: 0,
-      content: '{"$comment":true,"author":"옛","time":"old","body":"v0 본문"}',
-      aiOptOut: false,
-      createdAt: 0,
-      updatedAt: 0,
-      lastVisitedAt: 0,
-    });
-    expect(decoded.kind).toBe("comment");
-    expect(decoded.author).toBe("옛");
-    expect(decoded.content).toBe("v0 본문");
+    expect(decoded.content).toBe(
+      '{"__moss_comment_v1__":true,"author":"동박","time":"2 days ago","body":"오호"}',
+    );
   });
 
   it("text 본문이 마침 '{'로 시작하지만 마커가 없으면 text로 유지", () => {
@@ -224,16 +156,6 @@ describe("FEAT-capture AC-2: ToolId → CardKind 10종 매핑", () => {
     expect(state.editingId).toBe(null);
   });
 
-  it("comment 도구는 comment 카드 + editing 비활성 (system 카드)", async () => {
-    await useStorage.getState().init();
-    await useWorkspace.getState().loadFromStorage();
-    const id = useWorkspace.getState().addCardAt("comment", 0, 0);
-    await new Promise((r) => setTimeout(r, 10));
-    const state = useWorkspace.getState();
-    const card = state.cards.find((c) => c.id === id);
-    expect(card?.kind).toBe("comment");
-    expect(state.editingId).toBe(null);
-  });
 });
 
 describe("workspace.loadFromStorage seed 흐름", () => {
@@ -772,8 +694,8 @@ describe("FEAT-templates · createBoardFromTemplate", () => {
   });
 });
 
-describe("FEAT-canvas-initial-view — 줌 한계 80~110%", () => {
-  it("setScale·zoomAt이 0.8 아래와 1.1 위를 자른다 (AC-3)", () => {
+describe("FEAT-canvas-initial-view — 줌 한계 50~110%", () => {
+  it("setScale·zoomAt이 0.5 아래와 1.1 위를 자른다 (AC-3)", () => {
     useWorkspace.setState({ viewport: { x: 0, y: 0, scale: 1 } });
 
     useWorkspace.getState().setScale(0.1);
@@ -781,7 +703,7 @@ describe("FEAT-canvas-initial-view — 줌 한계 80~110%", () => {
     useWorkspace.getState().setScale(5);
     expect(useWorkspace.getState().viewport.scale).toBe(MAX_SCALE);
 
-    useWorkspace.getState().zoomAt(0.5, 100, 100);
+    useWorkspace.getState().zoomAt(0.1, 100, 100);
     expect(useWorkspace.getState().viewport.scale).toBe(MIN_SCALE);
     useWorkspace.getState().zoomAt(10, 100, 100);
     expect(useWorkspace.getState().viewport.scale).toBe(MAX_SCALE);

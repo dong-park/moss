@@ -48,11 +48,9 @@ export type CurrentBoardId = string;
 
 /**
  * 캔버스 카드 종류.
- * - 10종은 [[NoteKind]]와 동일 (FEAT-capture). storage 저장 시 그대로 매핑.
- * - "comment"는 system 카드 (FEAT-canvas) — author/time 메타를 JSON 인코딩해
- *   NoteKind="text"로 저장한다.
+ * 10종은 [[NoteKind]]와 동일 (FEAT-capture). storage 저장 시 그대로 매핑.
  */
-export type CardKind = NoteKind | "comment";
+export type CardKind = NoteKind;
 
 /**
  * 사이드바 도구 식별자.
@@ -75,7 +73,6 @@ export type ToolId =
   | "line"
   | "board"
   | "column"
-  | "comment"
   // FEAT-markdown-memo-pen: 펜 모드 토글 (드롭-캡처 아님).
   | "pen"
   | "more"
@@ -190,7 +187,7 @@ export interface PendingSubcanvasUndo {
   expiresAt: number;
 }
 
-export const MIN_SCALE = 0.8;
+export const MIN_SCALE = 0.5;
 export const MAX_SCALE = 1.1;
 
 /** 카드 리사이즈 한계. SPEC AC-3. */
@@ -219,7 +216,6 @@ const CARD_ASPECT_BY_KIND: Record<CardKind, number> = {
   text: 957 / 1021,
   checklist: 836 / 1169,
   code: 1114 / 811,
-  comment: 1007 / 984,
   file: 1062 / 1064,
   handwriting: 1148 / 1171,
   highlight: 1039 / 895,
@@ -522,8 +518,8 @@ interface WorkspaceState {
 }
 
 function isCaptureKind(kind: CardKind): boolean {
-  // comment·board·frame은 텍스트 입력 카드가 아니다 — drop/더블클릭 시 편집 모드로 들어가지 않는다.
-  return kind !== "comment" && kind !== "board" && kind !== "frame";
+  // board·frame은 텍스트 입력 카드가 아니다 — drop/더블클릭 시 편집 모드로 들어가지 않는다.
+  return kind !== "board" && kind !== "frame";
 }
 
 function kindToDefaultToolId(kind: CardKind): ToolId {
@@ -538,7 +534,6 @@ function kindToDefaultToolId(kind: CardKind): ToolId {
     case "audio":
     case "file":
     case "code":
-    case "comment":
       return kind;
     // FEAT-sticky-redesign: frame은 캡처 카드가 아니라 next-card 흐름에 오지 않지만
     // (isCaptureKind가 걸러낸다), 방어적으로 명시.
@@ -562,8 +557,6 @@ export function kindForTool(toolId: ToolId): CardKind {
     case "file":
     case "code":
       return toolId;
-    case "comment":
-      return "comment";
     // FEAT-subcanvas: board 도구 → 함 카드.
     case "board":
       return "board";
@@ -584,8 +577,6 @@ export function widthForKind(kind: CardKind): number {
     case "handwriting":
     case "mindmap":
       return 320;
-    case "comment":
-      return 280;
     case "code":
     case "link":
     case "highlight":
@@ -689,16 +680,6 @@ const SEED_CARDS: Card[] = [
     content: "",
   },
   {
-    id: "seed-comment",
-    kind: "comment",
-    x: 720,
-    y: 310,
-    width: 280,
-    content: "오호",
-    author: "동박",
-    time: "2 days ago",
-  },
-  {
     id: "seed-empty",
     kind: "text",
     x: 380,
@@ -716,26 +697,8 @@ const clamp = (n: number, lo: number, hi: number) =>
 
 /* ─────────── 영속 매핑 ─────────── */
 
-function cardKindToNoteKind(kind: CardKind): NoteKind {
-  // comment는 author/time 메타를 본문 JSON에 묻혀 text로 저장.
-  if (kind === "comment") return "text";
-  return kind;
-}
-
-const COMMENT_MARKER = "__moss_comment_v1__";
-/** 마이그레이션 — 이전 v0 마커("$comment")로 저장된 카드도 인식. */
-const COMMENT_MARKER_V0 = "$comment";
-
 /** FEAT-subcanvas: 함 카드 content에 박는 마커. boardRef와 함께 JSON 인코딩. */
 const SUBCANVAS_MARKER = "__moss_subcanvas_v1__";
-
-/**
- * comment 카드 content 인코딩(저장은 kind="text" + 이 마커 JSON, decode 시 comment로 환원).
- * 외부 브리지(mossBridge)가 현재 보드 아닌 곳에 comment를 만들 때 쓴다 — encodeCardContent와 단일 소스.
- */
-export function encodeComment(body: string, author = "", time = ""): string {
-  return JSON.stringify({ [COMMENT_MARKER]: true, author, time, body });
-}
 
 /**
  * 함(board) 카드 content 인코딩(boardRef를 가리킨다). 외부 브리지가 현재 보드 아닌 곳에
@@ -746,14 +709,6 @@ export function encodeSubcanvas(boardRef: string): string {
 }
 
 function encodeCardContent(card: Card): string {
-  if (card.kind === "comment") {
-    return JSON.stringify({
-      [COMMENT_MARKER]: true,
-      author: card.author ?? "",
-      time: card.time ?? "",
-      body: card.content,
-    });
-  }
   if (card.kind === "board") {
     return JSON.stringify({
       [SUBCANVAS_MARKER]: true,
@@ -764,7 +719,7 @@ function encodeCardContent(card: Card): string {
 }
 
 function decodeNoteToCard(note: Note): Card {
-  // FEAT-subcanvas: 함 카드 — content JSON에서 boardRef 복원. comment/migration 경로 전에 처리.
+  // FEAT-subcanvas: 함 카드 — content JSON에서 boardRef 복원. migration 경로 전에 처리.
   if (note.kind === "board") {
     let boardRef: string | undefined;
     try {
@@ -793,29 +748,9 @@ function decodeNoteToCard(note: Note): Card {
 
   let kind: CardKind = note.kind;
   let content = note.content;
-  let author: string | undefined;
-  let time: string | undefined;
 
-  // comment 메타가 인코딩된 text는 comment로 환원 (현재 + 이전 v0 마커 둘 다).
-  if (note.kind === "text" && content.startsWith("{")) {
-    try {
-      const parsed = JSON.parse(content) as {
-        [COMMENT_MARKER]?: boolean;
-        [COMMENT_MARKER_V0]?: boolean;
-        author?: string;
-        time?: string;
-        body?: string;
-      };
-      if (parsed[COMMENT_MARKER] === true || parsed[COMMENT_MARKER_V0] === true) {
-        kind = "comment";
-        content = String(parsed.body ?? "");
-        author = parsed.author ?? undefined;
-        time = parsed.time ?? undefined;
-      }
-    } catch {
-      /* plain text — keep as note */
-    }
-  }
+  // 옛 comment 마커 JSON(__moss_comment_v1__/$comment)이 담긴 text 행도 그대로
+  // 평문 text로 렌더한다 — comment kind는 삭제됐다(크래시 없이 열화 렌더).
 
   // FEAT-card-allinone + FEAT-markdown-memo-pen: 레거시 단독 카드를 글(text) 카드
   // 블록 모델로 무손실 환원한다. 단독 캡처 도구(code/checklist/highlight/handwriting)는
@@ -855,8 +790,6 @@ function decodeNoteToCard(note: Note): Card {
     frameId: note.frameId,
     // FEAT-memo-title: 제목. 옛 행은 필드가 없다 — undefined = 제목 없음.
     title: note.title,
-    author,
-    time,
     aiOptOut: note.aiOptOut || undefined,
     lastVisitedAt: note.lastVisitedAt,
   };
@@ -976,7 +909,7 @@ function persistCard(card: Card, boardId: string | null): Promise<void> {
   return storage.saveNote({
     id: card.id,
     boardId,
-    kind: cardKindToNoteKind(card.kind),
+    kind: card.kind,
     x: card.x,
     y: card.y,
     width: card.width,
@@ -2315,7 +2248,6 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 export const __internal = {
   decodeNoteToCard,
   encodeCardContent,
-  cardKindToNoteKind,
   kindForTool,
   widthForKind,
   isCaptureKind,

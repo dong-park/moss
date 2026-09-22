@@ -30,7 +30,6 @@ export const color = {
     blue: "var(--color-card-blue)",
     lime: "var(--color-card-lime)",
     purple: "var(--color-card-purple)",
-    comment: "var(--color-card-comment)",
   },
   hover: "var(--color-hover)",
   active: {

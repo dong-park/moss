@@ -8,7 +8,7 @@ import { DraggableCard } from "@/components/workspace/DraggableCard";
 /**
  * FEAT-pen-mode-ux AC-2: 펜 모드에서 그릴 수 있는 곳 affordance.
  * - 메모(text) 카드 → "그릴 수 있음" 하이라이트(data-pen-drawable), 펜 커서 유지.
- * - 비메모 카드(comment 등) → 커서 not-allowed, 하이라이트 없음.
+ * - 비메모 카드(board 등) → 커서 not-allowed, 하이라이트 없음.
  *
  * Milkdown은 jsdom에서 불안정해 MarkdownEditor를 textarea로 모킹(dragLift 전략과 동일).
  */
@@ -47,8 +47,8 @@ beforeEach(() => {
 function textCard(over: Partial<Card> = {}): Card {
   return { id: "t1", kind: "text", x: 0, y: 0, width: 300, content: "안녕", ...over };
 }
-function commentCard(over: Partial<Card> = {}): Card {
-  return { id: "n1", kind: "comment", x: 0, y: 0, width: 300, content: "메모", ...over };
+function boardCard(over: Partial<Card> = {}): Card {
+  return { id: "n1", kind: "board", x: 0, y: 0, width: 300, content: "", ...over };
 }
 
 describe("DraggableCard · 펜 모드 affordance", () => {
@@ -68,8 +68,8 @@ describe("DraggableCard · 펜 모드 affordance", () => {
     expect(el.className).not.toContain("cursor-not-allowed");
   });
 
-  it("펜 ON · 비메모(comment) 카드 → not-allowed 커서 + 하이라이트 없음", () => {
-    const c = commentCard();
+  it("펜 ON · 비메모(board) 카드 → not-allowed 커서 + 하이라이트 없음", () => {
+    const c = boardCard();
     useWorkspace.setState({ cards: [c], penMode: true });
     const { container } = wrap(<DraggableCard card={c} />);
     const el = root(container, "n1");

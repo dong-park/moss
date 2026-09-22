@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Note } from "@/state/db/schema";
 import { partitionImportNotes } from "../partitionImportNotes";
-import { encodeComment } from "@/state/workspace";
 
 function makeNote(partial: Partial<Note> & Pick<Note, "id" | "kind">): Note {
   const now = Date.now();
@@ -44,13 +43,8 @@ describe("partitionImportNotes", () => {
     }
   });
 
-  it("text·comment·board·frame은 accepted", () => {
+  it("text·board·frame은 accepted", () => {
     const text = makeNote({ id: "t1", kind: "text", content: "hello" });
-    const comment = makeNote({
-      id: "c1",
-      kind: "text",
-      content: encodeComment("body", "a", "t"),
-    });
     const board = makeNote({
       id: "b1",
       kind: "board",
@@ -64,11 +58,10 @@ describe("partitionImportNotes", () => {
     });
     const { accepted, skipped } = partitionImportNotes([
       text,
-      comment,
       board,
       frame,
     ]);
     expect(skipped).toHaveLength(0);
-    expect(accepted).toHaveLength(4);
+    expect(accepted).toHaveLength(3);
   });
 });

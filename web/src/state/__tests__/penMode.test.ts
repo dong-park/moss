@@ -77,18 +77,8 @@ describe("decodeNoteToCard — 방어적 마이그레이션", () => {
     expect(card.content).toBe(serializeBlocks([{ type: "text", text: "- [ ] 할 일" }]));
   });
 
-  it("comment 인코딩 text는 건드리지 않고 comment로 환원", () => {
-    const content = JSON.stringify({
-      __moss_comment_v1__: true,
-      author: "동박",
-      time: "2 days ago",
-      body: "오호",
-    });
-    const card = decodeNoteToCard(makeNote({ id: "cm", content }));
-    expect(card.kind).toBe("comment");
-    expect(card.content).toBe("오호");
-    expect(card.author).toBe("동박");
-  });
+  // comment 종류 삭제(2026-09-22) — 옛 마커 JSON이 text로 남는 것은
+  // workspace.test.ts "옛 comment 마커 JSON도 그대로 text로 유지"가 지킨다.
 });
 
 describe("펜 모드 액션", () => {

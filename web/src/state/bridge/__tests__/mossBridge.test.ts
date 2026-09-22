@@ -248,18 +248,10 @@ describe("dispatchOp", () => {
     );
   });
 
-  it("notes.createComment → comment 카드(author/time + 본문)", async () => {
-    const r = (await dispatchOp("notes.createComment", {
-      content: "리뷰 코멘트",
-      author: "리뷰어",
-      time: "방금",
-    })) as { kind: string };
-    expect(r.kind).toBe("comment");
-    const card = useWorkspace.getState().cards[0]!;
-    expect(card.kind).toBe("comment");
-    expect(card.content).toBe("리뷰 코멘트");
-    expect(card.author).toBe("리뷰어");
-    expect(card.time).toBe("방금");
+  it("notes.createComment는 삭제된 op — 알 수 없는 op로 거부", async () => {
+    await expect(dispatchOp("notes.createComment", { content: "x" })).rejects.toThrow(
+      "알 수 없는 op",
+    );
   });
 
   it("notes.list → BridgeNote 배열", async () => {
@@ -522,17 +514,6 @@ describe("dispatchOp", () => {
       expect(list[0]!.boardRef).toBe(r.boardRef);
       const boards = await useStorage.getState().loadBoards();
       expect(boards.find((b) => b.id === r.boardRef)?.parentBoardId).toBe("b-host");
-    });
-
-    it("notes.createComment boardId → 그 보드에 저장, list에서 comment로 환원", async () => {
-      await dispatchOp("notes.createComment", {
-        content: "원격 코멘트",
-        author: "봇",
-        boardId: "b-cm",
-      });
-      const list = (await dispatchOp("notes.list", { boardId: "b-cm" })) as BridgeNote[];
-      expect(list[0]!.kind).toBe("comment");
-      expect(list[0]!.content).toBe("원격 코멘트");
     });
 
     it('boardId "system"은 현재가 사용자 보드여도 시스템 보드(null)를 타겟', async () => {

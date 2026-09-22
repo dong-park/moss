@@ -198,28 +198,6 @@ function noteToCard(note: Note): Card {
 
   let kind: CardKind = note.kind;
   let content = note.content;
-  let author: string | undefined;
-  let time: string | undefined;
-
-  if (note.kind === "text" && content.startsWith("{")) {
-    try {
-      const parsed = JSON.parse(content) as {
-        __moss_comment_v1__?: boolean;
-        $comment?: boolean;
-        author?: string;
-        time?: string;
-        body?: string;
-      };
-      if (parsed.__moss_comment_v1__ === true || parsed.$comment === true) {
-        kind = "comment";
-        content = String(parsed.body ?? "");
-        author = parsed.author ?? undefined;
-        time = parsed.time ?? undefined;
-      }
-    } catch {
-      /* plain text */
-    }
-  }
 
   if (note.kind === "code") {
     const { code, lang } = parseCode(content);
@@ -253,8 +231,6 @@ function noteToCard(note: Note): Card {
     overlay: note.overlay,
     // FEAT-memo-title: 여러 탭 동기화 변환에도 제목이 실린다.
     title: note.title,
-    author,
-    time,
     aiOptOut: note.aiOptOut || undefined,
     lastVisitedAt: note.lastVisitedAt,
   };

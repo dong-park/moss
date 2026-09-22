@@ -23,7 +23,6 @@ import {
   useWorkspace,
   type Card,
   SYSTEM_BOARD_ID,
-  encodeComment,
   encodeSubcanvas,
   __internal,
 } from "@/state/workspace";
@@ -360,40 +359,6 @@ export async function dispatchOp(
       if (!note) throw new Error(`카드를 찾을 수 없습니다: ${id}`);
       await useStorage.getState().removeNote(id);
       return { id };
-    }
-
-    // comment 카드: author/time 메타 + 본문. moss는 kind="text" + 마커 JSON으로 저장하고
-    // decode 시 comment로 환원한다. 현재 보드면 store(comment 카드)로 즉시 렌더.
-    case "notes.createComment": {
-      const body = typeof params.content === "string" ? params.content : "";
-      const author = typeof params.author === "string" ? params.author : "MCP";
-      const time = typeof params.time === "string" ? params.time : "";
-      const x = typeof params.x === "number" ? params.x : 40;
-      const y = typeof params.y === "number" ? params.y : 40;
-      const { storageId, isCurrent } = resolveBoard(params.boardId);
-      if (isCurrent) {
-        const id = ws.addCardAt("comment", x, y);
-        // author/time을 카드에 먼저 심고(setContent의 persist가 함께 인코딩하도록), 본문 설정.
-        useWorkspace.setState((s) => ({
-          cards: s.cards.map((c) => (c.id === id ? { ...c, author, time } : c)),
-        }));
-        ws.setContent(id, body);
-        ws.setEditing(null);
-        ws.clearSelection();
-        return { id, kind: "comment" };
-      }
-      const id = newNoteId();
-      await useStorage.getState().saveNote({
-        id,
-        boardId: storageId,
-        kind: "text", // comment는 text + 마커로 저장(decode가 comment로 환원)
-        content: encodeComment(body, author, time),
-        x,
-        y,
-        aiOptOut: false,
-        rotation: 0,
-      });
-      return { id, kind: "comment", boardId: storageId };
     }
 
     // 함(board) 카드: 서브 캔버스를 가리키는 funnel + 빈 서브 보드 생성.

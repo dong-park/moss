@@ -1,7 +1,6 @@
 "use client";
 
 import { BoardCardContent } from "./board/Content";
-import { CommentCardContent } from "./comment/Content";
 import { FrameCardContent } from "./frame/Content";
 import { TextCardContent } from "./text/Content";
 import type { CardContentProps } from "./_shared/types";
@@ -18,8 +17,6 @@ export function CardContent({
   onCommitEdit,
 }: CardContentProps) {
   switch (card.kind) {
-    case "comment":
-      return <CommentCardContent card={card} />;
     // FEAT-subcanvas: 함 카드. 더블클릭 진입은 DraggableCard가 처리.
     case "board":
       return <BoardCardContent card={card} />;

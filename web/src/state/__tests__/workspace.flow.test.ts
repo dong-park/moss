@@ -140,16 +140,14 @@ describe("FEAT-card-flow · commitAndAddNext (AC-1, AC-2)", () => {
     expect(useWorkspace.getState().editingId).toBeNull();
   });
 
-  it("AC-2 변형: comment 카드(non-capture)에서 호출 시 새 카드 안 생김", async () => {
+  it("AC-2 변형: board 카드(non-capture)에서 호출 시 새 카드 안 생김", async () => {
     bootstrap();
     useWorkspace.setState({
       cards: [
         makeCard({
           id: "src",
-          kind: "comment",
-          content: "comment body",
-          author: "u",
-          time: "now",
+          kind: "board",
+          content: "",
         }),
       ],
       editingId: "src",
@@ -268,10 +266,10 @@ describe("FEAT-card-flow · enterEditOnSelected (AC-4)", () => {
     expect(useWorkspace.getState().editingId).toBeNull();
   });
 
-  it("comment(비-capture) 카드 → no-op", async () => {
+  it("board(비-capture) 카드 → no-op", async () => {
     bootstrap();
     useWorkspace.setState({
-      cards: [makeCard({ id: "C", kind: "comment", author: "u", time: "n" })],
+      cards: [makeCard({ id: "C", kind: "board" })],
       selectedIds: ["C"],
     });
     useWorkspace.getState().enterEditOnSelected();
