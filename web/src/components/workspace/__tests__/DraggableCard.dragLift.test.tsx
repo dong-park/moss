@@ -82,7 +82,8 @@ describe("DraggableCard · grab lift", () => {
     fireEvent.mouseMove(window, { clientX: 12, clientY: 0 });
     expect(useWorkspace.getState().draggingId).toBe("c1");
     expect(useWorkspace.getState().draggingMulti).toBe(false);
-    expect(el.style.transform).toContain("scale(1.03)");
+    // FEAT-drag-tilt: 단일 메모는 1.03배를 CSS 변수 폴백으로 받는다.
+    expect(el.style.transform).toMatch(/scale\((var\(--lift-scale, )?1\.03/);
     expect(el.style.zIndex).toBe("40");
   });
 

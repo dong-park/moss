@@ -25,6 +25,17 @@ const DRAG_THRESHOLD = 3; // px — 이 거리 넘으면 드래그로 인식
  */
 const TILT_SPRING = { stiffness: 320, damping: 18, mass: 0.6 } as const;
 
+/** 들어올린 카드의 고정 기울기 — 묶음·메모판·reduced-motion 드래그가 쓴다. */
+const LIFT_TILT_DEG = -1.5;
+
+/**
+ * FEAT-drag-tilt: 동적 기울기 중 transform. React가 이 문자열 하나만 소유하고,
+ * 드래그 코드는 CSS 변수(--tilt, --tilt-origin, --lift-scale)만 쓴다.
+ * 문자열이 바뀌지 않으니 리렌더가 직접 쓴 각도를 덮을 일이 없다.
+ */
+const TILT_TRANSFORM = `scale(var(--lift-scale, 1.03)) rotate(var(--tilt, ${LIFT_TILT_DEG}deg))`;
+const TILT_VARS = ["--tilt", "--tilt-origin", "--lift-scale"] as const;
+
 export function DraggableCard({ card }: { card: Card }) {
   const t = useT();
   const moveCard = useWorkspace((s) => s.moveCard);
@@ -80,32 +91,20 @@ export function DraggableCard({ card }: { card: Card }) {
   const getScale = () => useWorkspace.getState().viewport.scale;
 
   /**
-   * FEAT-drag-tilt: 단일 카드 드래그(묶음·메모판 아님)인지. 이때만 동적 기울기를
-   * DOM에 직접 쓰고, React가 관리하는 lift transform에서는 회전을 뺀다.
-   * 회전을 React prop에 두면 moveCard 리렌더 때 -1.5도로 덮여 직접 쓴 각도가 날아간다.
+   * FEAT-drag-tilt: 동적 기울기 중인지 — 드래그 임계 통과부터 스프링 안착 끝까지.
+   * 이 동안 transform은 TILT_TRANSFORM이고, transform 전환(170ms)은 꺼서 rAF·스프링
+   * 프레임이 지연과 싸우지 않게 한다.
    */
-  const draggingSingle = useWorkspace(
-    (s) =>
-      s.draggingId === card.id && !s.draggingMulti && card.kind !== "frame",
-  );
+  const [tiltActive, setTiltActive] = useState(false);
+  // 안착 스프링. 안착 중 다시 잡으면 멈춰야 옛 스프링과 새 드래그가 같은 변수에 쓰지 않는다.
+  const settleAnimRef = useRef<{ stop: () => void } | null>(null);
+  useEffect(() => () => settleAnimRef.current?.stop(), []);
 
-  /**
-   * FEAT-drag-tilt AC-7: prefers-reduced-motion이면 동적 기울기 대신 지금의
-   * -1.5도 고정 기울기를 쓴다. 렌더 중 matchMedia 접근을 피해 effect에서 반영.
-   */
-  const [reducedMotion, setReducedMotion] = useState(false);
-  useEffect(() => {
-    if (typeof window.matchMedia !== "function") return;
-    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const onChange = () => setReducedMotion(mq.matches);
-    onChange();
-    mq.addEventListener("change", onChange);
-    return () => mq.removeEventListener("change", onChange);
-  }, []);
-
-  const tilting = draggingSingle && !reducedMotion;
-  // 스프링 안착 중에는 transform 전환을 꺼야 스프링 프레임이 170ms 지연과 싸우지 않는다.
-  const [settling, setSettling] = useState(false);
+  const endTilt = () => {
+    const el = containerRef.current;
+    if (el) for (const v of TILT_VARS) el.style.removeProperty(v);
+    setTiltActive(false);
+  };
 
   /**
    * FEAT-pen-mode-ux B2 (AC-2): 그릴 수 있는 곳 affordance.
@@ -215,84 +214,97 @@ export function DraggableCard({ card }: { card: Card }) {
       return null;
     };
 
+    // FEAT-drag-tilt: 안착 중 다시 잡으면 옛 스프링을 멈추고 기울기 상태를 비운다.
+    // 안 비우면 단순 클릭(드래그 없음)일 때 카드가 흔들리던 각도 그대로 굳는다.
+    if (settleAnimRef.current) {
+      settleAnimRef.current.stop();
+      settleAnimRef.current = null;
+      endTilt();
+    }
+
     /**
      * FEAT-drag-tilt: 단일 메모(묶음·메모판 아님)를 끄는 동안 종이처럼 흔들린다.
-     * 각도는 스토어에 쓰지 않고 containerRef에 직접 쓴다(AC-8). rAF 루프를 계속 돌려
-     * 커서가 멈춰도(dx=0) 각도가 0으로 수렴하게 한다(AC-2).
+     * 각도는 스토어가 아니라 CSS 변수로 DOM에 쓴다(AC-8). 계산은 rAF 한 곳에서만 해
+     * 포인터 주사율과 무관하게 프레임당 한 번 갱신되고, 커서가 멈춰도(dx=0) 0으로
+     * 수렴한다(AC-2). reduced-motion은 누르는 순간 한 번 읽는다(AC-7).
      */
+    const reducedMotion =
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
     const willTilt = !wasInMulti && card.kind !== "frame" && !reducedMotion;
-    // AC-3: 회전축 = 잡은 지점. 카드 로컬 좌표(월드 scale 보정).
-    const grabLocal = (() => {
-      const el = containerRef.current;
-      if (!el) return { x: 0, y: 0 };
-      const r = el.getBoundingClientRect();
-      const s = getScale() || 1;
-      return { x: (e.clientX - r.left) / s, y: (e.clientY - r.top) / s };
-    })();
     let tiltAngle = 0;
-    let tiltOriginSet = false;
     let lastTiltX = e.clientX;
     let lastTiltT = 0;
     let latestX = e.clientX;
     let tiltRaf = 0;
 
-    const writeTilt = (now: number, cursorX: number) => {
-      const dt = lastTiltT ? now - lastTiltT : 16;
-      const dx = cursorX - lastTiltX;
-      tiltAngle = nextTiltAngle(tiltAngle, dx, dt);
-      lastTiltX = cursorX;
-      lastTiltT = now;
-      const el = containerRef.current;
-      if (!el) return;
-      if (!tiltOriginSet) {
-        el.style.transformOrigin = `${grabLocal.x}px ${grabLocal.y}px`;
-        tiltOriginSet = true;
-      }
-      el.style.transform = `scale(1.03) rotate(${tiltAngle}deg)`;
-    };
-
     const tiltTick = (now: number) => {
-      if (!dragRef.current) return;
-      writeTilt(now, latestX);
+      const el = containerRef.current;
+      // 놓았거나 카드가 언마운트되면 루프를 끝낸다.
+      if (!dragRef.current || !el) {
+        tiltRaf = 0;
+        return;
+      }
+      tiltAngle = nextTiltAngle(tiltAngle, latestX - lastTiltX, lastTiltT ? now - lastTiltT : 16);
+      lastTiltX = latestX;
+      lastTiltT = now;
+      el.style.setProperty("--tilt", `${tiltAngle}deg`);
       tiltRaf = requestAnimationFrame(tiltTick);
     };
 
     const startTilt = () => {
-      if (!willTilt || tiltRaf) return;
+      const el = containerRef.current;
+      if (!el) return;
+      // AC-3: 회전축 = 잡은 지점. 카드 로컬 좌표(월드 scale 보정). lift 전이라 rect가 원본 크기다.
+      const r = el.getBoundingClientRect();
+      const s = getScale() || 1;
+      el.style.setProperty(
+        "--tilt-origin",
+        `${(e.clientX - r.left) / s}px ${(e.clientY - r.top) / s}px`,
+      );
+      el.style.setProperty("--tilt", "0deg");
+      setTiltActive(true);
       tiltRaf = requestAnimationFrame(tiltTick);
     };
 
-    // 놓기 직전의 실제 각도 — 흡수/꺼내기 첫 프레임과 스프링 시작값(AC-5).
-    const currentTiltAngle = () =>
-      willTilt ? tiltAngle : reducedMotion ? -1.5 : 0;
+    // 놓기 직전의 실제 각도 — 흡수/꺼내기 첫 프레임(AC-5). 동적 기울기가 아니면 고정 lift 각도.
+    const currentTiltAngle = () => (willTilt ? tiltAngle : LIFT_TILT_DEG);
 
     /**
      * FEAT-drag-tilt T3: 놓으면 스프링으로 현재 각도에서 0도로 간다(2~3회 흔들림).
-     * 끝나면 직접 쓴 transform과 origin을 지운다(AC-4).
+     * 끝나면 변수를 지우고 tiltActive를 내려 transform이 비워진다(AC-4).
      */
     const settleTilt = () => {
       const el = containerRef.current;
-      if (!el || typeof animate !== "function") {
-        if (el) {
-          el.style.transform = "";
-          el.style.transformOrigin = "";
-        }
-        setSettling(false);
-        return;
-      }
-      animate(tiltAngle, 0, {
+      if (!el) return endTilt();
+      // stale: 다시 잡혀 멈춘 옛 스프링. done: 시작값이 0이면 animate 안에서 동기로 끝난다.
+      let stale = false;
+      let done = false;
+      const controls = animate(tiltAngle, 0, {
         ...TILT_SPRING,
         type: "spring",
         onUpdate: (v) => {
-          const scale = 1 + 0.03 * Math.min(1, Math.abs(v) / MAX_TILT_DEG);
-          el.style.transform = `scale(${scale}) rotate(${v}deg)`;
+          el.style.setProperty("--tilt", `${v}deg`);
+          el.style.setProperty(
+            "--lift-scale",
+            String(1 + 0.03 * Math.min(1, Math.abs(v) / MAX_TILT_DEG)),
+          );
         },
         onComplete: () => {
-          el.style.transform = "";
-          el.style.transformOrigin = "";
-          setSettling(false);
+          done = true;
+          // 다시 잡혀 멈춘 옛 스프링이면 새 드래그의 상태를 건드리지 않는다.
+          if (stale) return;
+          settleAnimRef.current = null;
+          endTilt();
         },
       });
+      if (!done) {
+        settleAnimRef.current = {
+          stop: () => {
+            stale = true;
+            controls.stop();
+          },
+        };
+      }
     };
 
     const onMove = (ev: MouseEvent) => {
@@ -304,14 +316,11 @@ export function DraggableCard({ card }: { card: Card }) {
         d.moved = true;
         // 임계를 넘는 순간 카드가 떠오른다(lift). 묶음이면 선택 전체.
         setDragging(card.id, d.multi);
+        if (willTilt) startTilt();
       }
       if (!d.moved) return;
-      // FEAT-drag-tilt: 단일 메모만. 각도는 스토어가 아니라 DOM에 직접 쓴다(AC-8).
-      if (willTilt) {
-        latestX = ev.clientX;
-        startTilt();
-        writeTilt(performance.now(), ev.clientX);
-      }
+      // FEAT-drag-tilt: 커서만 기록한다. 각도 계산은 tiltTick(rAF) 한 곳에서.
+      latestX = ev.clientX;
       const s = getScale();
       if (d.multi) {
         const targetX = d.originX + dx / s;
@@ -357,7 +366,10 @@ export function DraggableCard({ card }: { card: Card }) {
       );
       // WAAPI 미지원(jsdom 등)·요소 없음 → 애니메이션 없이 즉시 이동.
       if (!cardEl || typeof cardEl.animate !== "function" || !funnelEl) {
-        void moveCardToSubcanvas(card.id, funnelId).then(() => setDragging(null));
+        void moveCardToSubcanvas(card.id, funnelId).then(() => {
+          setDragging(null);
+          endTilt();
+        });
         return;
       }
       const cr = cardEl.getBoundingClientRect();
@@ -373,7 +385,7 @@ export function DraggableCard({ card }: { card: Card }) {
       );
       // FEAT-drag-tilt AC-5: 흡수는 카드 중심 기준으로 날아가야 한다 — 잡은 지점
       // origin을 중앙으로 되돌리고, 첫 프레임 각도는 놓기 직전 실제 각도를 쓴다.
-      cardEl.style.transformOrigin = "50% 50%";
+      cardEl.style.setProperty("--tilt-origin", "50% 50%");
       const anim = cardEl.animate(
         [
           { transform: `scale(1.03) rotate(${currentTiltAngle()}deg)`, opacity: 1 },
@@ -388,7 +400,9 @@ export function DraggableCard({ card }: { card: Card }) {
           if (useWorkspace.getState().cards.some((c) => c.id === card.id)) {
             anim.cancel();
           }
+          // 이동이 거부돼 카드가 남았을 때 기울기 상태도 되돌린다(이동됐으면 언마운트라 무해).
           setDragging(null);
+          endTilt();
         });
       };
     };
@@ -406,6 +420,7 @@ export function DraggableCard({ card }: { card: Card }) {
       if (!cardEl || typeof cardEl.animate !== "function" || !crumbEl) {
         void moveCardToBoard(card.id, crumbBoardId).then(() => {
           setDragging(null);
+          endTilt();
           setDropTargetCrumb(null);
         });
         return;
@@ -422,7 +437,7 @@ export function DraggableCard({ card }: { card: Card }) {
         { duration: 260, easing: "ease-out" },
       );
       // FEAT-drag-tilt AC-5: 꺼내기도 카드 중심 기준 — origin 중앙 + 놓기 직전 각도.
-      cardEl.style.transformOrigin = "50% 50%";
+      cardEl.style.setProperty("--tilt-origin", "50% 50%");
       const anim = cardEl.animate(
         [
           { transform: `scale(1.03) rotate(${currentTiltAngle()}deg)`, opacity: 1 },
@@ -436,7 +451,9 @@ export function DraggableCard({ card }: { card: Card }) {
           if (useWorkspace.getState().cards.some((c) => c.id === card.id)) {
             anim.cancel();
           }
+          // 이동이 거부돼 카드가 남았을 때 기울기 상태도 되돌린다(이동됐으면 언마운트라 무해).
           setDragging(null);
+          endTilt();
           setDropTargetCrumb(null);
         });
       };
@@ -479,13 +496,8 @@ export function DraggableCard({ card }: { card: Card }) {
       }
       // 일반 드롭 — lift 해제(스프링 안착).
       // FEAT-drag-tilt T3: 동적 기울기 중이었으면 현재 각도에서 스프링으로 0도 안착.
-      if (willTilt) {
-        setSettling(true);
-        setDragging(null);
-        settleTilt();
-      } else {
-        setDragging(null);
-      }
+      setDragging(null);
+      if (willTilt) settleTilt();
       setDropTargetFunnel(null);
       setDropTargetCrumb(null);
       hoveredFunnelId = null;
@@ -587,20 +599,19 @@ export function DraggableCard({ card }: { card: Card }) {
         // transform이 스프링 곡선으로 1.0 복귀 → 제자리 안착(settle).
         // left/top은 transition 목록에서 제외해 드래그 중 커서를 즉시 추종한다.
         //
-        // FEAT-drag-tilt: 단일 메모(tilting)는 회전을 DOM에 직접 쓰므로 React lift
-        // transform에서 회전을 뺀다 — moveCard 리렌더가 직접 쓴 각도를 덮지 않게.
-        // reduced-motion(AC-7)은 지금처럼 -1.5도 고정.
-        transform: lifted
-          ? tilting
-            ? "scale(1.03)"
-            : "scale(1.03) rotate(-1.5deg)"
-          : undefined,
+        // FEAT-drag-tilt: 동적 기울기 중(tiltActive)엔 각도·축을 CSS 변수로 받는다.
+        // 묶음·메모판·reduced-motion(AC-6·7)은 지금처럼 -1.5도 고정.
+        transform: tiltActive
+          ? TILT_TRANSFORM
+          : lifted
+            ? `scale(1.03) rotate(${LIFT_TILT_DEG}deg)`
+            : undefined,
+        transformOrigin: tiltActive ? "var(--tilt-origin, 50% 50%)" : undefined,
         boxShadow: lifted ? "var(--shadow-card-lift)" : undefined,
-        transition:
-          tilting || settling
-            ? "box-shadow 170ms ease-out"
-            : "transform 170ms cubic-bezier(0.22, 0.9, 0.3, 1.25), box-shadow 170ms ease-out",
-        willChange: lifted ? "transform" : undefined,
+        transition: tiltActive
+          ? "box-shadow 170ms ease-out"
+          : "transform 170ms cubic-bezier(0.22, 0.9, 0.3, 1.25), box-shadow 170ms ease-out",
+        willChange: lifted || tiltActive ? "transform" : undefined,
         // height 지정 시 자식 콘텐츠가 카드를 가득 채우도록 flex column.
         // 각 CardContent 루트 div는 h-full을 가져 부모 높이를 상속받는다.
         display: card.height !== undefined ? "flex" : undefined,

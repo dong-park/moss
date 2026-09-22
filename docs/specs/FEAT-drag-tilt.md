@@ -2,7 +2,7 @@
 
 > 메모 한 장을 끌면 잡은 지점에 매달린 종이처럼 뒤로 처지고, 놓으면 두세 번 흔들리다 선다.
 
-**Status**: WORK 완료 — /review 대기
+**Status**: 리뷰 수정 완료 — 재심사 중
 **Owner**: dong-park
 **Estimated**: S
 **Started**: 2026-09-23
@@ -37,8 +37,8 @@
 - **AC-3** 회전축은 잡은 지점이다. `transform-origin`이 카드 로컬 좌표의 누른 위치다.
 - **AC-4** 놓으면 흔들림 안착이 끝난 뒤 카드의 `transform`이 비고 `transform-origin`도 기본값으로 돌아온다.
 - **AC-5** 함이나 브레드크럼 위에서 놓으면 흡수·꺼내기 모션이 카드 중심 기준으로 정확히 날아간다. 첫 프레임 각도는 놓기 직전 각도와 같다.
-- **AC-6** 묶음 드래그와 메모판 드래그의 lift 스타일은 지금과 같다. 기존 `DraggableCard.dragLift.test.tsx` 5개가 그대로 통과한다.
-- **AC-7** reduced-motion이면 AC-1~4 대신 지금의 고정 기울기와 170ms 안착이 나온다.
+- **AC-6** 묶음 드래그와 메모판 드래그의 lift 스타일은 지금과 같다. 기존 `DraggableCard.dragLift.test.tsx` 5개가 통과한다. 단일 메모 lift는 1.03배를 CSS 변수 폴백으로 받는다.
+- **AC-7** reduced-motion이면 누르는 순간 설정을 한 번 읽고, AC-1~4 대신 지금의 고정 기울기와 170ms 안착이 나온다.
 - **AC-8** 드래그 중 기울기 갱신이 스토어에 쓰지 않는다. 한 번 움직일 때 스토어 쓰기 횟수가 지금과 같다.
 
 ## 4. 태스크
@@ -52,18 +52,18 @@
 ## 5. 구현 메모
 
 - 드래그 경로는 `moss/web/src/components/workspace/DraggableCard.tsx:182` `onMove` 하나다. 단일 메모는 `:208` else 가지이고 `moveCard`를 매 이동마다 부른다.
-- lift 스타일은 `:451`의 `transform: lifted ? "scale(1.03) rotate(-1.5deg)"`와 `:453` 170ms transition이다. React는 prop 값이 이전 렌더와 같으면 DOM을 건드리지 않는다. 그래서 드래그 중 직접 쓴 transform은 리렌더에 덮이지 않는다. 확인 필요: `transition`이 직접 쓴 각도에도 170ms 지연을 건다. 드래그 중에는 transition을 꺼야 할 수 있다.
+- 각도는 CSS 변수 `--tilt`·`--tilt-origin`·`--lift-scale`로 쓴다. React는 `transform` 문자열 하나만 소유한다. 처음엔 `el.style.transform`에 직접 썼다가 리뷰 지적으로 바꿨다. React prop과 명령형 코드가 같은 속성을 나눠 쓰면 임계 통과 첫 프레임이 덮이고, lift 스타일을 고치는 사람이 그 규칙을 알아야 했다.
 - `-1.5deg`가 박힌 곳은 `:254` `runAbsorb`, `:301` `runEject` 두 곳이다. 이동 거리 dx·dy는 카드 중심 기준으로 계산한다. 그래서 origin이 잡은 지점이면 빗나간다.
 - 묶음은 `moveSelectedBy`, 메모판은 `moveFrame` 경로다. 건드리지 않는다.
 - `motion` ^13.2.0이 `package.json`에 있다.
 - jsdom에는 `element.animate`가 없다. 기존 코드는 `typeof cardEl.animate !== "function"`으로 건너뛴다. 같은 패턴을 따른다.
 - 브랜치는 현재 워크트리 브랜치 `재미있는액션추가`를 쓴다. base는 `main`이다.
+- 각도 계산은 rAF 한 곳에서만 한다. mousemove에서도 계산하면 포인터 주사율에 따라 각도가 달라진다.
+- 안착 스프링은 ref에 쥔다. 안착 중 다시 잡으면 멈추고 기울기 상태를 비운다. 안 그러면 옛 스프링이 새 드래그의 축을 지운다.
 - 느낌 상수 `MAX_TILT_DEG` 기본 8, 스프링 강성·감쇠는 파일 상단 상수로 둔다. 손으로 만져 보고 맞춘다.
 
-## 6. 진행 상황 (WORK)
+## 6. 진행 상황
 
-- T1~T5 구현 완료. 순수 함수 `web/src/components/workspace/dragTilt.ts` + `DraggableCard` 통합.
-- 테스트: `dragTilt.test.ts`(부호·상한·정지 수렴·dt 지터), `DraggableCard.tilt.test.tsx`(AC-1~5·7·8). 기존 `dragLift.test.tsx` 5개 불변 통과.
-- 전체 스위트에서 `Canvas.virtualization.test.tsx` 1건 실패 — HEAD에서도 동일 실패(선행 결함, 이 변경과 무관).
-- T2 급소 실험(실브라우저 5초 드래그 기록): **미증명** — 포트 3000이 다른 워크트리에 점유돼 있고 pharos 워크스페이스 컨텍스트가 없다. dt 지터에서 부호 안정성은 순수 함수 테스트로만 확인.
-- 스프링 시작 각도·흡수/꺼내기 첫 프레임 각도는 놓기 직전 DOM 각도에서 출발. reduced-motion이면 -1.5도 고정·170ms 안착.
+- T1~T5 구현, 5축 리뷰, 리뷰 수정까지 끝났다. 전체 스위트 850개 중 `Canvas.virtualization` 1건만 실패한다. 이 실패는 main에서도 난다.
+- T2 급소 실험은 **미증명**이다. 실제 브라우저에서 끌어 본 적이 없다. `TILT_GAIN`·`TILT_TAU_MS`·`TILT_SPRING`은 손으로 만져 보고 맞춰야 한다.
+- 가정: 함 카드도 단독으로 끌면 기운다. 메모판과 묶음만 뺐다.

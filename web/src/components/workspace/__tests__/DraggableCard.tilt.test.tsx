@@ -73,11 +73,15 @@ function stubMatchMedia(matches: boolean) {
   });
 }
 
+/** 동적 기울기 각도 — DOM에 직접 쓰는 CSS 변수 --tilt. */
 function rotateDeg(el: HTMLElement): number {
-  const m = el.style.transform.match(/rotate\((-?[\d.]+)deg\)/);
-  if (!m) throw new Error(`no rotate in "${el.style.transform}"`);
-  return parseFloat(m[1]);
+  const v = el.style.getPropertyValue("--tilt");
+  if (!v) throw new Error("no --tilt");
+  return parseFloat(v);
 }
+
+/** 각도는 rAF에서만 계산한다 — 가짜 타이머로 프레임을 흘린다. */
+const frames = (n: number) => vi.advanceTimersByTime(16 * n);
 
 beforeEach(() => {
   (document as unknown as { elementsFromPoint: () => Element[] }).elementsFromPoint =
@@ -89,12 +93,16 @@ beforeEach(() => {
 afterEach(() => {
   // 드래그 중 끝난 테스트가 window에 남긴 onMove/onUp 리스너와 rAF 루프를 정리한다.
   // (mouseUp을 안 부르면 다음 테스트의 mousemove가 옛 핸들러까지 돌려 스토어 쓰기가 늘어난다.)
+  // 가짜 타이머를 먼저 끈다 — mouseUp이 시작하는 안착 스프링이 가짜 rAF에 예약되면
+  // motion 프레임 루프가 멈춰 다음 테스트의 스프링까지 끝나지 않는다.
+  vi.useRealTimers();
   fireEvent.mouseUp(window);
   vi.restoreAllMocks();
 });
 
 describe("FEAT-drag-tilt · 드래그 중 기울기", () => {
   it("AC-1: 오른쪽으로 빠르게 끌면 시계 반대(음수)로 기울고 상한을 넘지 않는다", () => {
+    vi.useFakeTimers();
     const c = textCard();
     seed([c]);
     const { container } = wrap(<DraggableCard card={c} />);
@@ -103,6 +111,7 @@ describe("FEAT-drag-tilt · 드래그 중 기울기", () => {
     fireEvent.mouseDown(el, { button: 0, clientX: 0, clientY: 0 });
     fireEvent.mouseMove(window, { clientX: 12, clientY: 0 });
     fireEvent.mouseMove(window, { clientX: 120, clientY: 0 });
+    frames(1);
 
     const deg = rotateDeg(el);
     expect(deg).toBeLessThan(0);
@@ -118,7 +127,8 @@ describe("FEAT-drag-tilt · 드래그 중 기울기", () => {
     fireEvent.mouseDown(el, { button: 0, clientX: 30, clientY: 40 });
     fireEvent.mouseMove(window, { clientX: 50, clientY: 40 });
 
-    expect(el.style.transformOrigin).toBe("30px 40px");
+    expect(el.style.getPropertyValue("--tilt-origin")).toBe("30px 40px");
+    expect(el.style.transformOrigin).toBe("var(--tilt-origin, 50% 50%)");
   });
 
   it("AC-2: 끌다 멈추고 누른 채로 있으면 0도 근처로 돌아온다", () => {
@@ -132,6 +142,7 @@ describe("FEAT-drag-tilt · 드래그 중 기울기", () => {
       fireEvent.mouseDown(el, { button: 0, clientX: 0, clientY: 0 });
       fireEvent.mouseMove(window, { clientX: 12, clientY: 0 });
       fireEvent.mouseMove(window, { clientX: 80, clientY: 0 });
+      frames(1);
       expect(Math.abs(rotateDeg(el))).toBeGreaterThan(0.3);
 
       // 커서를 멈춘 채 프레임만 흐르면 rAF 루프가 각도를 0으로 수렴시킨다.
@@ -173,11 +184,34 @@ describe("FEAT-drag-tilt · 드래그 중 기울기", () => {
     expect(el.style.transformOrigin).not.toBe("");
 
     fireEvent.mouseUp(window, { clientX: 90, clientY: 0 });
+    // 안착 중에도 lift가 풀린 뒤 transform을 쥐고 흔든다.
+    expect(el.style.transform).toContain("var(--tilt");
 
     await waitFor(() => expect(el.style.transformOrigin).toBe(""), {
       timeout: 3000,
     });
     expect(el.style.transform).toBe("");
+    expect(el.style.getPropertyValue("--tilt")).toBe("");
+  });
+
+  it("안착 중 다시 눌렀다 떼면(클릭) 흔들리던 각도로 굳지 않는다", () => {
+    const c = textCard();
+    seed([c]);
+    const { container } = wrap(<DraggableCard card={c} />);
+    const el = root(container, "c1");
+
+    fireEvent.mouseDown(el, { button: 0, clientX: 0, clientY: 0 });
+    fireEvent.mouseMove(window, { clientX: 12, clientY: 0 });
+    fireEvent.mouseMove(window, { clientX: 90, clientY: 0 });
+    fireEvent.mouseUp(window, { clientX: 90, clientY: 0 });
+    expect(el.style.transform).toContain("var(--tilt");
+
+    // 스프링이 끝나기 전에 다시 클릭 — 옛 스프링을 멈추고 기울기 상태를 비운다.
+    fireEvent.mouseDown(el, { button: 0, clientX: 90, clientY: 0 });
+    fireEvent.mouseUp(window, { clientX: 90, clientY: 0 });
+    expect(el.style.transform).toBe("");
+    expect(el.style.transformOrigin).toBe("");
+    expect(el.style.getPropertyValue("--tilt")).toBe("");
   });
 
   it("AC-7: reduced-motion이면 지금의 고정 -1.5도와 170ms 안착을 쓴다", () => {
@@ -202,6 +236,7 @@ describe("FEAT-drag-tilt · 드래그 중 기울기", () => {
 
 describe("FEAT-drag-tilt · 흡수 첫 프레임", () => {
   it("AC-5: 흡수 모션 첫 프레임 각도가 놓기 직전 각도와 같고 origin은 중앙이다", () => {
+    vi.useFakeTimers();
     const funnel = boardCard();
     const c = textCard();
     seed([c, funnel]);
@@ -229,8 +264,10 @@ describe("FEAT-drag-tilt · 흡수 첫 프레임", () => {
       fireEvent.mouseDown(el, { button: 0, clientX: 0, clientY: 0 });
       fireEvent.mouseMove(window, { clientX: 12, clientY: 0 });
       fireEvent.mouseMove(window, { clientX: 90, clientY: 0 });
+      frames(1);
 
       const before = rotateDeg(el);
+      expect(before).not.toBe(0);
       fireEvent.mouseUp(window, { clientX: 90, clientY: 0 });
 
       const cardCall = calls.find((x) => x.el === el);
@@ -238,7 +275,7 @@ describe("FEAT-drag-tilt · 흡수 첫 프레임", () => {
       expect(String(cardCall!.frames[0].transform)).toContain(
         `rotate(${before}deg)`,
       );
-      expect(el.style.transformOrigin).toBe("50% 50%");
+      expect(el.style.getPropertyValue("--tilt-origin")).toBe("50% 50%");
     } finally {
       Element.prototype.animate = original;
       funnelEl.remove();
