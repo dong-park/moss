@@ -18,6 +18,9 @@ import { MemoFrontBadges } from "../_shared/MemoFrontBadges"; // FEAT-sticky-red
 import { memoTint } from "../../memoVariety"; // FEAT-memo-variety 색조
 import type { CardContentProps } from "../_shared/types";
 
+// 종이 사진. 색조 층 mask도 같은 파일이어야 종이 바깥 투명부에 색이 안 칠해진다.
+const MEMO_PAPER = 'url("/cards/v2/text.png") 0 0 / 100% 100% no-repeat';
+
 /* ─────────────────────────────────────────────────────────────
  * 글(포스트잇) 카드 — Milkdown 인라인 에디터.
  *
@@ -108,7 +111,9 @@ export function TextCardContent({
         borderRadius: 6,
         // background-size 100% 100%로 카드 박스에 맞춰 늘어나게 — content가
         // 커져 카드가 auto-grow하면 포스트잇 비주얼도 같이 늘어난다.
-        background: `url("/cards/v2/text.png") 0 0 / 100% 100% no-repeat`,
+        background: MEMO_PAPER,
+        // 색조 층(z-index:-1)이 이 배경 위, 모든 자식 아래에 깔리게 스택을 가둔다.
+        isolation: "isolate",
       }}
       onClick={onFrontClick}
       onAuxClick={onFrontClick}
@@ -121,8 +126,8 @@ export function TextCardContent({
       }}
     >
       {/* FEAT-memo-variety: 노랑 색조 — 종이 png와 같은 mask로 잘라 바깥 투명부엔
-        * 칠하지 않고, multiply로 종이 결을 비친다. 클릭을 가로채지 않고 글자보다
-        * 아래에 있다(포인터 이벤트 없음 + 이후 형제가 위층). */}
+        * 칠하지 않고, multiply로 종이 결을 비친다. z-index:-1 + 루트 isolation이라
+        * 형제 순서·position과 무관하게 모든 내용 아래에 있다. */}
       <div
         aria-hidden="true"
         data-memo-tint
@@ -130,9 +135,10 @@ export function TextCardContent({
         style={{
           background: memoTint(card.id),
           mixBlendMode: "multiply",
+          zIndex: -1,
           borderRadius: 6,
-          WebkitMask: 'url("/cards/v2/text.png") 0 0 / 100% 100% no-repeat',
-          mask: 'url("/cards/v2/text.png") 0 0 / 100% 100% no-repeat',
+          WebkitMask: MEMO_PAPER,
+          mask: MEMO_PAPER,
         }}
       />
       <MultitabConflictBanner cardId={card.id} /> {/* W8: 다른 탭 변경 배너 */}

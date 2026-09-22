@@ -6,10 +6,13 @@
  * extensions.ts의 bubbleSlot이 선택 좌표를 외부 store에 쓰면, 이 컴포넌트가
  * 구독해 선택 위에 floating 툴바를 그린다. 항목(bubbleMenuItems)이 0개면
  * 절대 렌더하지 않는다(P0 AC-4). W3가 항목을 채우고 스타일을 다듬는다.
- * position:fixed + 뷰포트 좌표(coordsAtPos)라 어디에 마운트해도 정렬된다.
+ * position:fixed + 뷰포트 좌표(coordsAtPos). body로 portal한다 — 조상(world layer,
+ * FEAT-memo-variety 메모 기울기)에 transform이 있으면 fixed가 그 조상 기준이 되고
+ * 카드 overflow:hidden에 잘린다.
  * ───────────────────────────────────────────────────────────── */
 
 import { useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 import {
   bubbleMenuItems,
   subscribeBubble,
@@ -27,7 +30,7 @@ export function BubbleMenuHost() {
   if (!state.open || !state.view || bubbleMenuItems.length === 0) return null;
   const view = state.view;
 
-  return (
+  return createPortal(
     <div
       role="toolbar"
       aria-label="서식"
@@ -50,6 +53,7 @@ export function BubbleMenuHost() {
           {item.label}
         </button>
       ))}
-    </div>
+    </div>,
+    document.body,
   );
 }
