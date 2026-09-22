@@ -42,6 +42,9 @@ export function MemoTitleRow({
     width: MEMO_CONTENT_WIDTH,
     height: MEMO_TITLE_ROW_HEIGHT,
     padding: "0 9px",
+    // FEAT-memo-variety: 색조 층(absolute)은 위치 지정 형제 뒤에 그려진다.
+    // 제목 줄이 그 아래로 깔리지 않도록 위치 지정 요소로 올린다.
+    position: "relative",
   };
 
   if (!editable && !title) return null; // AC-2: 앞면은 빈 제목 줄을 그리지 않는다.

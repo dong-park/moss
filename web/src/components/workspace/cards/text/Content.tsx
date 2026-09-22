@@ -15,6 +15,7 @@ import {
 } from "../_shared/memoTitleFocus"; // FEAT-memo-title-front-edit
 import { BacklinkPanel } from "../_shared/editor/BacklinkPanel"; // W5 위키링크 백링크 패널
 import { MemoFrontBadges } from "../_shared/MemoFrontBadges"; // FEAT-sticky-redesign n5
+import { memoTint } from "../../memoVariety"; // FEAT-memo-variety 색조
 import type { CardContentProps } from "../_shared/types";
 
 /* ─────────────────────────────────────────────────────────────
@@ -119,6 +120,21 @@ export function TextCardContent({
         }
       }}
     >
+      {/* FEAT-memo-variety: 노랑 색조 — 종이 png와 같은 mask로 잘라 바깥 투명부엔
+        * 칠하지 않고, multiply로 종이 결을 비친다. 클릭을 가로채지 않고 글자보다
+        * 아래에 있다(포인터 이벤트 없음 + 이후 형제가 위층). */}
+      <div
+        aria-hidden="true"
+        data-memo-tint
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background: memoTint(card.id),
+          mixBlendMode: "multiply",
+          borderRadius: 6,
+          WebkitMask: 'url("/cards/v2/text.png") 0 0 / 100% 100% no-repeat',
+          mask: 'url("/cards/v2/text.png") 0 0 / 100% 100% no-repeat',
+        }}
+      />
       <MultitabConflictBanner cardId={card.id} /> {/* W8: 다른 탭 변경 배너 */}
       {/* FEAT-memo-title: 제목 줄 — 펜 1:1을 위해 본문 컬럼(relative)과 형제로 둔다.
         * 읽기 전용은 제목 없으면 null. 편집 모드는 빈 값이어도 입력 줄을 그린다(AC-1). */}

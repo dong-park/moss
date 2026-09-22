@@ -11,6 +11,10 @@ import {
 import { CardContent } from "./cards/CardContent";
 import { isExpandable } from "./cards/_shared/expandable";
 import { ResizeHandles } from "./ResizeHandles";
+import {
+  memoBaseTransform,
+  memoLiftedTransform,
+} from "./memoVariety"; // FEAT-memo-variety
 import { AIOptOutBadge } from "@/components/privacy/AIOptOutBadge";
 import { ExpandIcon, LockIcon } from "@/components/icons";
 import { useT } from "@/i18n/Provider";
@@ -69,6 +73,9 @@ export function DraggableCard({ card }: { card: Card }) {
       s.draggingId === card.id ||
       (s.draggingMulti && s.selectedIds.includes(card.id)),
   );
+  // FEAT-memo-variety: 메모 고유 각도·색조는 id 해시로 정해진다. 비메모는 무변화.
+  const baseTransform = memoBaseTransform(card, penMode);
+  const liftedTransform = memoLiftedTransform(card, penMode);
   const getScale = () => useWorkspace.getState().viewport.scale;
 
   /**
@@ -251,7 +258,7 @@ export function DraggableCard({ card }: { card: Card }) {
       );
       const anim = cardEl.animate(
         [
-          { transform: "scale(1.03) rotate(-1.5deg)", opacity: 1 },
+          { transform: memoLiftedTransform(card, penMode), opacity: 1 },
           { transform: `translate(${dx}px, ${dy}px) scale(0.12)`, opacity: 0 },
         ],
         { duration: 240, easing: "cubic-bezier(0.4, 0, 0.6, 1)", fill: "forwards" },
@@ -298,7 +305,7 @@ export function DraggableCard({ card }: { card: Card }) {
       );
       const anim = cardEl.animate(
         [
-          { transform: "scale(1.03) rotate(-1.5deg)", opacity: 1 },
+          { transform: memoLiftedTransform(card, penMode), opacity: 1 },
           { transform: `translate(${dx}px, ${dy}px) scale(0.12)`, opacity: 0 },
         ],
         { duration: 240, easing: "cubic-bezier(0.4, 0, 0.6, 1)", fill: "forwards" },
@@ -448,7 +455,7 @@ export function DraggableCard({ card }: { card: Card }) {
         // 들어올림(grab): 살짝 떠오르며 그림자 깊어짐. 손 떼면(lifted=false)
         // transform이 스프링 곡선으로 1.0 복귀 → 제자리 안착(settle).
         // left/top은 transition 목록에서 제외해 드래그 중 커서를 즉시 추종한다.
-        transform: lifted ? "scale(1.03) rotate(-1.5deg)" : undefined,
+        transform: lifted ? liftedTransform : baseTransform,
         boxShadow: lifted ? "var(--shadow-card-lift)" : undefined,
         transition:
           "transform 170ms cubic-bezier(0.22, 0.9, 0.3, 1.25), box-shadow 170ms ease-out",
