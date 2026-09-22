@@ -400,6 +400,20 @@ interface WorkspaceState {
   remove: (id: string) => void;
   removeSelected: () => void;
 
+  /* ─────────── FEAT-trash: 휴지통 ─────────── */
+  /** 휴지통 패널 열림 상태. */
+  trashOpen: boolean;
+  /** 휴지통 항목 수 — Dock의 점 배지가 구독. */
+  trashCount: number;
+  setTrashOpen: (open: boolean) => void;
+  /** 휴지통 항목 수를 다시 센다(삭제·복구·영구삭제 뒤). */
+  refreshTrashCount: () => Promise<void>;
+  /**
+   * 휴지통에서 복구. fallback으로 현재 보드와 뷰포트 중심을 넘긴다. 복구된 메모의
+   * boardId가 현재 보드이면 cards에 넣는다. 아니면 cards는 그대로(AC-5).
+   */
+  restoreFromTrash: (id: string) => Promise<void>;
+
   /**
    * FEAT-card-flow REQ-flow-1/2: 현 카드 편집 종료. 콘텐츠가 비어있지 않으면
    * 같은 종류의 새 카드를 현 카드 아래 64px에 생성·편집 모드로 진입.
@@ -1068,6 +1082,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   // FEAT-memo-fulltext-search (W4): 검색 상태 초기값 — 비활성.
   memoSearchQuery: "",
   memoSearchMatchIds: [],
+  // FEAT-trash: 휴지통 패널 닫힘·빈 상태.
+  trashOpen: false,
+  trashCount: 0,
 
   setDockDrag: (s) => set({ dockDrag: s }),
   setDragging: (id, multi = false) =>
@@ -1100,6 +1117,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const cards = notes.map(decodeNoteToCard);
     set({ cards, boards });
     void get().refreshSubcanvasCounts();
+    void get().refreshTrashCount();
   },
 
   setCurrentBoard: async (id) => {
@@ -1775,7 +1793,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     if (funnel) {
       void cascadeDeleteFunnels([funnel], boardAtDeletion, set, get);
     } else {
-      void storage.removeNote(id);
+      // FEAT-trash: 메모는 영구 삭제 대신 휴지통으로.
+      void storage.trashNote(id).then(() => get().refreshTrashCount());
     }
   },
 
@@ -1809,14 +1828,49 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     for (const id of remainingIds) cancelPersist(id);
     const storage = useStorage.getState();
     if (!storage.initialized) return;
-    // 함이 아닌 일반 카드는 기존대로 즉시 삭제(blob 해제 포함, undo 없음).
-    // frameIds는 위에서 deleteFrame이 이미 처리했으므로 여기서 다시 지우지 않는다.
-    for (const id of remainingIds)
-      if (!funnelIdSet.has(id)) void storage.removeNote(id);
+    // 함이 아닌 일반 메모는 휴지통으로(AC-2). frameIds는 위에서 deleteFrame이 이미
+    // 처리했으므로 여기서 다시 지우지 않는다.
+    const generalIds = remainingIds.filter((id) => !funnelIdSet.has(id));
+    void Promise.all(generalIds.map((id) => storage.trashNote(id))).then(() =>
+      get().refreshTrashCount(),
+    );
     // 함 카드는 cascade + 5초 undo.
     if (funnelCards.length > 0) {
       void cascadeDeleteFunnels(funnelCards, boardAtDeletion, set, get);
     }
+  },
+
+  setTrashOpen: (open) => set({ trashOpen: open }),
+
+  refreshTrashCount: async () => {
+    const storage = useStorage.getState();
+    if (!storage.initialized) return;
+    try {
+      const list = await storage.listTrash();
+      set({ trashCount: list.length });
+    } catch {
+      /* DB가 닫히는 중(테스트 teardown·새로고침 경계) — 배지는 다음 기회에 갱신. */
+    }
+  },
+
+  restoreFromTrash: async (id) => {
+    const storage = useStorage.getState();
+    if (!storage.initialized) await storage.init();
+    const v = get().viewport;
+    const { sx, sy } = viewportCenterScreenPoint();
+    // 화면 가운데 정렬 — 카드 폭 절반을 빼고 상단 여백 20px(중앙 생성과 같은 규약).
+    const entry = (await storage.listTrash()).find((e) => e.id === id);
+    const w = entry?.note.width ?? 0;
+    const boardId = storageBoardId(get().currentBoardId);
+    const note = await storage.restoreNote(id, {
+      boardId,
+      x: (sx - v.x) / v.scale - w / 2,
+      y: (sy - v.y) / v.scale - 20,
+    });
+    if (note.boardId === boardId) {
+      set((s) => ({ cards: [...s.cards, decodeNoteToCard(note)] }));
+    }
+    void get().refreshTrashCount();
   },
 
   commitAndAddNext: (currentCardId) => {

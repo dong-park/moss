@@ -489,6 +489,33 @@ describe("dispatchOp", () => {
       await expect(dispatchOp("notes.get", { id })).rejects.toThrow("찾을 수 없습니다");
     });
 
+    it("notes.delete 타 보드 메모 → 휴지통 경로를 탄다 (AC-3)", async () => {
+      const { id } = (await dispatchOp("notes.create", {
+        content: "타보드",
+        boardId: "b-trash",
+      })) as { id: string };
+
+      await dispatchOp("notes.delete", { id });
+
+      const list = await useStorage.getState().listTrash();
+      expect(list.map((e) => e.id)).toContain(id);
+      expect(await useStorage.getState().loadCards("b-trash")).toHaveLength(0);
+    });
+
+    it("notes.delete 현재 보드 카드 → 휴지통 경로를 탄다 (AC-3)", async () => {
+      const { id } = (await dispatchOp("notes.create", { content: "현재" })) as {
+        id: string;
+      };
+      await new Promise((r) => setTimeout(r, 50)); // addCardAt의 persistCard 완료 대기
+
+      await dispatchOp("notes.delete", { id });
+      await new Promise((r) => setTimeout(r, 80)); // ws.remove → trashNote 비동기 대기
+
+      const list = await useStorage.getState().listTrash();
+      expect(list.map((e) => e.id)).toContain(id);
+      expect(await useStorage.getState().loadCards(null)).toHaveLength(0);
+    });
+
     it("notes.createBoard (현재 보드) → funnel 카드 + 서브 보드 생성", async () => {
       const r = (await dispatchOp("notes.createBoard", {})) as {
         id: string;

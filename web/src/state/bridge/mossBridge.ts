@@ -357,7 +357,7 @@ export async function dispatchOp(
       }
       const note = await getDB().notes.get(id);
       if (!note) throw new Error(`카드를 찾을 수 없습니다: ${id}`);
-      await useStorage.getState().removeNote(id);
+      await useStorage.getState().trashNote(id);
       return { id };
     }
 

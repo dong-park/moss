@@ -181,6 +181,8 @@ describe("workspace.loadFromStorage seed 흐름", () => {
     // 사용자가 모든 카드 삭제 시뮬레이션
     const ids = useWorkspace.getState().cards.map((c) => c.id);
     for (const id of ids) useWorkspace.getState().remove(id);
+    // remove*는 storage.trashNote를 비동기로 부른다 — 새 세션 전에 완료를 기다린다.
+    await new Promise((r) => setTimeout(r, 20));
 
     // 새 세션 시뮬레이션
     useStorage.setState({ initialized: false, settings: null, quota: null });
@@ -718,5 +720,83 @@ describe("FEAT-canvas-initial-view — 줌 한계 50~110%", () => {
     });
     useWorkspace.getState().fitToCards({ width: 1000, height: 800 });
     expect(useWorkspace.getState().viewport.scale).toBe(MIN_SCALE);
+  });
+});
+
+describe("FEAT-trash · 삭제 경로와 복구", () => {
+  beforeEach(async () => {
+    await useStorage.getState().init();
+    await useWorkspace.getState().loadFromStorage();
+    useWorkspace.setState({ cards: [], selectedIds: [], editingId: null });
+  });
+
+  // remove*는 storage.trashNote를 비동기로 부른다 — resetDB 전에 flush.
+  afterEach(async () => {
+    await new Promise((r) => setTimeout(r, 20));
+    vi.restoreAllMocks();
+  });
+
+  it("remove — 메모는 trashNote로 간다", async () => {
+    const trashSpy = vi.spyOn(useStorage.getState(), "trashNote");
+    const id = useWorkspace.getState().addCardAt("text", 0, 0);
+    await new Promise((r) => setTimeout(r, 10));
+
+    useWorkspace.getState().remove(id);
+
+    expect(trashSpy).toHaveBeenCalledWith(id);
+  });
+
+  it("removeSelected — 선택된 메모 전부 trashNote로 간다", async () => {
+    const trashSpy = vi.spyOn(useStorage.getState(), "trashNote");
+    const a = useWorkspace.getState().addCardAt("text", 0, 0);
+    const b = useWorkspace.getState().addCardAt("text", 10, 10);
+    await new Promise((r) => setTimeout(r, 10));
+
+    useWorkspace.getState().selectMany([a, b]);
+    useWorkspace.getState().removeSelected();
+
+    expect(trashSpy).toHaveBeenCalledWith(a);
+    expect(trashSpy).toHaveBeenCalledWith(b);
+  });
+
+  it("remove — 함 카드는 cascade로 가고 trashNote를 타지 않는다 (AC-2)", async () => {
+    const trashSpy = vi.spyOn(useStorage.getState(), "trashNote");
+    const cascadeSpy = vi.spyOn(useStorage.getState(), "removeBoardCascade");
+    const id = useWorkspace.getState().createSubcanvas(0, 0);
+    await new Promise((r) => setTimeout(r, 20));
+
+    useWorkspace.getState().remove(id);
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(cascadeSpy).toHaveBeenCalled();
+    expect(trashSpy).not.toHaveBeenCalled();
+  });
+
+  it("restoreFromTrash — 복구된 메모가 현재 보드면 cards에 추가된다", async () => {
+    const id = useWorkspace.getState().addCardAt("text", 5, 5);
+    await new Promise((r) => setTimeout(r, 10));
+    useWorkspace.getState().remove(id);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(useWorkspace.getState().cards.find((c) => c.id === id)).toBeUndefined();
+
+    await useWorkspace.getState().restoreFromTrash(id);
+
+    expect(useWorkspace.getState().cards.find((c) => c.id === id)).toBeDefined();
+  });
+
+  it("restoreFromTrash — 다른 보드 메모는 cards를 바꾸지 않는다 (AC-5)", async () => {
+    await useStorage.getState().saveBoard({ id: "b1", name: "B" });
+    await useStorage
+      .getState()
+      .saveNote({ id: "other", boardId: "b1", content: "x" });
+    await useStorage.getState().trashNote("other");
+    const before = useWorkspace.getState().cards.length;
+
+    await useWorkspace.getState().restoreFromTrash("other");
+
+    expect(useWorkspace.getState().cards.length).toBe(before);
+    expect(
+      (await useStorage.getState().loadCards("b1")).map((n) => n.id),
+    ).toEqual(["other"]);
   });
 });

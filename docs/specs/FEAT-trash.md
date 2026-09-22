@@ -240,7 +240,7 @@ cd web && npx vitest run   # 기존 테스트 그린 유지, v6 upgrade 무손�
 - summary: schema v6에 trash 테이블 추가(기존 5테이블 무손실), storage에 trashNote/listTrash/restoreNote/purgeTrash 4함수 구현. trash.test.ts 10개 통과(AC-1·5~11 + v6 upgrade 무손실). AC-8을 위해 trashNote가 기존 휴지통 스냅샷의 연결선도 함께 담는다.
 <!-- /STEP -->
 
-<!-- STEP:1:trash-wiring:pending -->
+<!-- STEP:1:trash-wiring:done -->
 ### T-1: 메모 삭제 3경로를 휴지통으로, 복구 액션 추가
 
 #### 읽을 파일
@@ -264,7 +264,7 @@ cd web && npx vitest run
 - undo 토스트를 만들지 마라. 이유: 휴지통이 되돌리기다.
 - workspace.ts·두 테스트 파일의 기존 미커밋 변경을 덮어쓰지 마라. 이유: 다른 작업이 진행 중이다.
 
-- summary:
+- summary: workspace remove/removeSelected 메모 분기와 mossBridge notes.delete를 trashNote로 전환(판·함 cascade 유지). store에 trashOpen/trashCount/setTrashOpen/refreshTrashCount/restoreFromTrash 추가. workspace.test.ts 6개·mossBridge.test.ts 2개 통과.
 <!-- /STEP -->
 
 <!-- STEP:2:trash-ui:pending -->
