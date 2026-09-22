@@ -234,6 +234,39 @@ describe("FEAT-drag-tilt · 드래그 중 기울기", () => {
   });
 });
 
+describe("FEAT-drag-tilt · 흡수 거부", () => {
+  it("함 이동이 거부돼 카드가 남으면 기울기 상태가 풀린다", async () => {
+    vi.useFakeTimers();
+    const funnel = boardCard();
+    const c = textCard();
+    seed([c, funnel]);
+    // 사이클 가드 등으로 거부 — 카드를 옮기지 않고 끝난다. WAAPI 없는 즉시 경로를 탄다.
+    useWorkspace.setState({ moveCardToSubcanvas: async () => {} } as never);
+    const funnelEl = document.createElement("div");
+    funnelEl.setAttribute("data-card-id", "f");
+    document.body.appendChild(funnelEl);
+    (document as unknown as { elementsFromPoint: () => Element[] }).elementsFromPoint =
+      () => [funnelEl];
+    try {
+      const { container } = wrap(<DraggableCard card={c} />);
+      const el = root(container, "c1");
+      fireEvent.mouseDown(el, { button: 0, clientX: 0, clientY: 0 });
+      fireEvent.mouseMove(window, { clientX: 12, clientY: 0 });
+      fireEvent.mouseMove(window, { clientX: 90, clientY: 0 });
+      frames(1);
+      expect(rotateDeg(el)).not.toBe(0);
+
+      fireEvent.mouseUp(window, { clientX: 90, clientY: 0 });
+      vi.useRealTimers();
+      await waitFor(() => expect(el.style.transform).toBe(""));
+      expect(el.style.getPropertyValue("--tilt")).toBe("");
+      expect(useWorkspace.getState().draggingId).toBeNull();
+    } finally {
+      funnelEl.remove();
+    }
+  });
+});
+
 describe("FEAT-drag-tilt · 흡수 첫 프레임", () => {
   it("AC-5: 흡수 모션 첫 프레임 각도가 놓기 직전 각도와 같고 origin은 중앙이다", () => {
     vi.useFakeTimers();

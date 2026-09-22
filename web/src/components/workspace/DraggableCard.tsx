@@ -15,7 +15,7 @@ import { ResizeHandles } from "./ResizeHandles";
 import { AIOptOutBadge } from "@/components/privacy/AIOptOutBadge";
 import { ExpandIcon, LockIcon } from "@/components/icons";
 import { useT } from "@/i18n/Provider";
-import { MAX_TILT_DEG, nextTiltAngle } from "./dragTilt";
+import { nextTiltAngle } from "./dragTilt";
 
 const DRAG_THRESHOLD = 3; // px — 이 거리 넘으면 드래그로 인식
 
@@ -33,7 +33,9 @@ const LIFT_TILT_DEG = -1.5;
  * 드래그 코드는 CSS 변수(--tilt, --tilt-origin, --lift-scale)만 쓴다.
  * 문자열이 바뀌지 않으니 리렌더가 직접 쓴 각도를 덮을 일이 없다.
  */
-const TILT_TRANSFORM = `scale(var(--lift-scale, 1.03)) rotate(var(--tilt, ${LIFT_TILT_DEG}deg))`;
+// 폴백은 항등 변환이다. endTilt가 변수를 지운 뒤 tiltActive가 내려가기 전 한 프레임이
+// 그대로 그려지므로, 폴백이 lift 값이면 선 카드가 한 프레임 튄다.
+const TILT_TRANSFORM = "scale(var(--lift-scale, 1)) rotate(var(--tilt, 0deg))";
 const TILT_VARS = ["--tilt", "--tilt-origin", "--lift-scale"] as const;
 
 export function DraggableCard({ card }: { card: Card }) {
@@ -104,6 +106,11 @@ export function DraggableCard({ card }: { card: Card }) {
     const el = containerRef.current;
     if (el) for (const v of TILT_VARS) el.style.removeProperty(v);
     setTiltActive(false);
+  };
+  /** lift 종료 — 드래그 상태와 기울기 상태를 늘 함께 푼다. */
+  const releaseLift = () => {
+    setDragging(null);
+    endTilt();
   };
 
   /**
@@ -236,6 +243,15 @@ export function DraggableCard({ card }: { card: Card }) {
     let lastTiltT = 0;
     let latestX = e.clientX;
     let tiltRaf = 0;
+    // AC-3: 회전축 = 잡은 지점. 카드 로컬 좌표(월드 scale 보정). 누르는 순간 잰다 —
+    // 안착 중 재잡기여도 위 endTilt가 변수를 지워 지금 rect는 회전·확대가 없다.
+    const grabOrigin = (() => {
+      const el = containerRef.current;
+      if (!willTilt || !el) return "50% 50%";
+      const r = el.getBoundingClientRect();
+      const s = getScale() || 1;
+      return `${(e.clientX - r.left) / s}px ${(e.clientY - r.top) / s}px`;
+    })();
 
     const tiltTick = (now: number) => {
       const el = containerRef.current;
@@ -254,14 +270,9 @@ export function DraggableCard({ card }: { card: Card }) {
     const startTilt = () => {
       const el = containerRef.current;
       if (!el) return;
-      // AC-3: 회전축 = 잡은 지점. 카드 로컬 좌표(월드 scale 보정). lift 전이라 rect가 원본 크기다.
-      const r = el.getBoundingClientRect();
-      const s = getScale() || 1;
-      el.style.setProperty(
-        "--tilt-origin",
-        `${(e.clientX - r.left) / s}px ${(e.clientY - r.top) / s}px`,
-      );
+      el.style.setProperty("--tilt-origin", grabOrigin);
       el.style.setProperty("--tilt", "0deg");
+      el.style.setProperty("--lift-scale", "1.03");
       setTiltActive(true);
       tiltRaf = requestAnimationFrame(tiltTick);
     };
@@ -279,6 +290,7 @@ export function DraggableCard({ card }: { card: Card }) {
       // stale: 다시 잡혀 멈춘 옛 스프링. done: 시작값이 0이면 animate 안에서 동기로 끝난다.
       let stale = false;
       let done = false;
+      const from = tiltAngle;
       const controls = animate(tiltAngle, 0, {
         ...TILT_SPRING,
         type: "spring",
@@ -286,7 +298,8 @@ export function DraggableCard({ card }: { card: Card }) {
           el.style.setProperty("--tilt", `${v}deg`);
           el.style.setProperty(
             "--lift-scale",
-            String(1 + 0.03 * Math.min(1, Math.abs(v) / MAX_TILT_DEG)),
+            // 놓을 때 1.03에서 출발해 각도와 함께 1로 준다 — 첫 프레임 크기 튐 방지.
+            String(from ? 1 + 0.03 * Math.min(1, Math.abs(v / from)) : 1),
           );
         },
         onComplete: () => {
@@ -358,6 +371,8 @@ export function DraggableCard({ card }: { card: Card }) {
      * WAAPI(element.animate) 미지원 환경(jsdom 등)이면 애니메이션 없이 즉시 이동.
      * lift 상태는 흡수 애니메이션이 그대로 이어받고, 카드는 이동으로 언마운트되므로
      * 여기서 setDragging(null)을 미리 부르지 않는다(이동 완료 후 정리).
+     * 흡수 240ms 동안 같은 카드를 다시 잡는 경우는 지원하지 않는다 — 옛 완료 콜백이
+     * 새 드래그의 lift·기울기를 푼다(FEAT-drag-tilt 이전부터 같은 제약).
      */
     const runAbsorb = (funnelId: string) => {
       const cardEl = containerRef.current;
@@ -366,9 +381,8 @@ export function DraggableCard({ card }: { card: Card }) {
       );
       // WAAPI 미지원(jsdom 등)·요소 없음 → 애니메이션 없이 즉시 이동.
       if (!cardEl || typeof cardEl.animate !== "function" || !funnelEl) {
-        void moveCardToSubcanvas(card.id, funnelId).then(() => {
-          setDragging(null);
-          endTilt();
+        void moveCardToSubcanvas(card.id, funnelId).finally(() => {
+          releaseLift();
         });
         return;
       }
@@ -394,15 +408,14 @@ export function DraggableCard({ card }: { card: Card }) {
         { duration: 240, easing: "cubic-bezier(0.4, 0, 0.6, 1)", fill: "forwards" },
       );
       anim.onfinish = () => {
-        void moveCardToSubcanvas(card.id, funnelId).then(() => {
+        void moveCardToSubcanvas(card.id, funnelId).finally(() => {
           // 이동이 거부되면(사이클 가드 등) 카드가 state에 남는다 — fill:forwards로
           // 투명 고정된 흡수를 취소해 되돌려야 "사라진 것처럼" 보이지 않는다.
           if (useWorkspace.getState().cards.some((c) => c.id === card.id)) {
             anim.cancel();
           }
           // 이동이 거부돼 카드가 남았을 때 기울기 상태도 되돌린다(이동됐으면 언마운트라 무해).
-          setDragging(null);
-          endTilt();
+          releaseLift();
         });
       };
     };
@@ -418,9 +431,8 @@ export function DraggableCard({ card }: { card: Card }) {
         `[data-crumb-board-id="${crumbBoardId}"]`,
       );
       if (!cardEl || typeof cardEl.animate !== "function" || !crumbEl) {
-        void moveCardToBoard(card.id, crumbBoardId).then(() => {
-          setDragging(null);
-          endTilt();
+        void moveCardToBoard(card.id, crumbBoardId).finally(() => {
+          releaseLift();
           setDropTargetCrumb(null);
         });
         return;
@@ -446,14 +458,13 @@ export function DraggableCard({ card }: { card: Card }) {
         { duration: 240, easing: "cubic-bezier(0.4, 0, 0.6, 1)", fill: "forwards" },
       );
       anim.onfinish = () => {
-        void moveCardToBoard(card.id, crumbBoardId).then(() => {
+        void moveCardToBoard(card.id, crumbBoardId).finally(() => {
           // 이동이 거부되면 카드가 남는다 — fill:forwards 투명 고정을 취소해 되돌린다.
           if (useWorkspace.getState().cards.some((c) => c.id === card.id)) {
             anim.cancel();
           }
           // 이동이 거부돼 카드가 남았을 때 기울기 상태도 되돌린다(이동됐으면 언마운트라 무해).
-          setDragging(null);
-          endTilt();
+          releaseLift();
           setDropTargetCrumb(null);
         });
       };
