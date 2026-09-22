@@ -2,7 +2,7 @@
 
 > 캔버스 위 메모가 저마다 조금씩 기울고 노랑 색조가 달라서, 진짜 포스트잇 묶음을 붙여 둔 것처럼 보인다.
 
-**Status**: 구현 완료 (테스트 green · 리뷰 대기)
+**Status**: 구현 완료 · 리뷰 APPROVE
 **Estimated**: S
 **시안**: `~/docs/1-life/canvas/moss 메모 생김새 시안.canvas`의 A안. 색만 파스텔 6색 대신 노랑 계열이다.
 
@@ -71,3 +71,6 @@
 - 레포에 문자열 해시 헬퍼는 없다. 새로 작게 만든다.
 - 팔레트 6색은 구현자가 정한다. 노랑 계열 안에서 레몬, 버터, 크림, 살구빛 노랑처럼 가깝게 고른다.
 - 9/13에 앞면을 CSS 그라디언트로 바꿨다가 종이 질감이 사라져 되돌렸다. 배경 이미지를 대체하지 말고 위에 얹는다.
+- 뒤집힌 결정: 색조 층 아래 깔기를 처음엔 `MemoTitleRow`에 `position:relative`를 줘서 풀었다. 리뷰에서 "뒤에 오는 형제는 모두 positioned여야 한다"는 숨은 계약이 생긴다는 지적을 받았다. 그래서 색조 층 `z-index:-1`과 루트 `isolation:isolate`로 바꿨다.
+- 메모에 transform이 늘 붙으면 안쪽 `position:fixed` 요소는 카드 기준이 되고 `overflow:hidden`에 잘린다. 그래서 버블 툴바 `BubbleMenuHost`를 body로 portal했다. portal된 툴바는 `data-bubble-toolbar`로 표시하고, `isFocusInSameCard`가 이를 같은 카드로 인정한다.
+- 남은 한계: 툴바가 body 끝으로 옮겨져 편집기에서 Tab으로 바로 닿지 않는다. 서식은 Milkdown 단축키로 쓸 수 있다.

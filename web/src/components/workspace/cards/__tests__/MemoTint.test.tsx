@@ -50,16 +50,16 @@ describe("FEAT-memo-variety · 색조 층", () => {
     expect(tint.className).toContain("absolute");
   });
 
-  it("AC-2: 색조 층이 글자보다 아래에 있다(문서 순서)", () => {
+  it("AC-2: 색조 층이 글자보다 아래에 있다(z-index -1 + 루트 isolation)", () => {
     const { container } = renderCard("text", {
       content: "본문",
       editing: false,
       card: { id: "c1" },
     });
+    const root = container.firstChild as HTMLElement;
     const tint = container.querySelector("[data-memo-tint]") as HTMLElement;
-    const editor = container.querySelector('[data-testid="md"]') as HTMLElement;
-    // tint가 editor보다 앞 → 형제 페인트 순서에서 아래.
-    const rel = tint.compareDocumentPosition(editor);
-    expect(rel & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // 루트가 스택을 가둬야 -1 층이 루트 배경 위·모든 자식 아래에 깔린다.
+    expect(root.style.isolation).toBe("isolate");
+    expect(tint.style.zIndex).toBe("-1");
   });
 });

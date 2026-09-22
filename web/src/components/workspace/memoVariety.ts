@@ -26,8 +26,8 @@ export const MEMO_TINT_COUNT = MEMO_TINTS.length;
 /** 각도 상한(도) — tokens.card.rotation. 현재 1.5. */
 export const MEMO_ROTATION_MAX_DEG = layout.card.rotation;
 
-/** 집어 들 때 원래 각도에서 더 기우는 양(도). 각도 상한과는 별개 값이다. */
-export const MEMO_LIFT_DEG = 1.5;
+/** 집어 들 때 원래 각도에서 더 기우는 양(도). 모든 카드 공통, 각도 상한과는 별개 값이다. */
+export const CARD_LIFT_DEG = 1.5;
 
 /** FNV-1a 32비트 — 같은 id는 항상 같은 값을 낸다. */
 export function hashMemoId(id: string): number {
@@ -70,7 +70,8 @@ export function memoBaseTransform(
   penMode: boolean,
 ): string | undefined {
   if (!isText(card.kind)) return undefined;
-  return `rotate(${formatDeg(rotationOff(card.kind, penMode) ? 0 : memoRotationDeg(card.id))}deg)`;
+  const deg = penMode ? 0 : memoRotationDeg(card.id);
+  return `rotate(${formatDeg(deg)}deg)`;
 }
 
 /**
@@ -81,6 +82,6 @@ export function memoLiftedTransform(
   card: { id: string; kind: string },
   penMode: boolean,
 ): string {
-  const deg = (rotationOff(card.kind, penMode) ? 0 : memoRotationDeg(card.id)) - MEMO_LIFT_DEG;
+  const deg = (rotationOff(card.kind, penMode) ? 0 : memoRotationDeg(card.id)) - CARD_LIFT_DEG;
   return `scale(1.03) rotate(${formatDeg(deg)}deg)`;
 }
