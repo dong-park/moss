@@ -10,6 +10,7 @@ import { useWorkspace, SYSTEM_BOARD_ID } from "@/state/workspace";
 import { useStorage } from "@/state/storage";
 import { resetDB } from "@/state/db/schema";
 import { countBlocks } from "@/state/blocks";
+import { flushCard } from "@/state/cardPersist";
 import { putBlob } from "@/state/db/opfs";
 import { dispatchOp, type BridgeNote } from "@/state/bridge/mossBridge";
 
@@ -506,13 +507,20 @@ describe("dispatchOp", () => {
       const { id } = (await dispatchOp("notes.create", { content: "현재" })) as {
         id: string;
       };
-      await new Promise((r) => setTimeout(r, 50)); // addCardAt의 persistCard 완료 대기
+      // setContent의 300ms 디바운스를 즉시 영속시킨다 — delete 뒤 늦은 저장이
+      // note 행을 되살리는 경쟁을 막는다(테스트 결정성).
+      await flushCard(id);
+      await vi.waitFor(async () => {
+        const notes = await useStorage.getState().loadCards(null);
+        expect(notes.map((n) => n.id)).toContain(id);
+      });
 
       await dispatchOp("notes.delete", { id });
-      await new Promise((r) => setTimeout(r, 80)); // ws.remove → trashNote 비동기 대기
-
-      const list = await useStorage.getState().listTrash();
-      expect(list.map((e) => e.id)).toContain(id);
+      // ws.remove → trashNote(비동기)가 휴지통에 넣을 때까지 기다린다.
+      await vi.waitFor(async () => {
+        const list = await useStorage.getState().listTrash();
+        expect(list.map((e) => e.id)).toContain(id);
+      });
       expect(await useStorage.getState().loadCards(null)).toHaveLength(0);
     });
 

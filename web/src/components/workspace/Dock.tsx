@@ -61,6 +61,8 @@ const DOCK_ITEMS: DockItem[] = [
   { toolId: "board", icon: "/icons/dock/filebox.png", labelKey: "workspace.tool.board", draggable: true },
   { toolId: "pen", icon: "/icons/sidebar/draw-v2.png", labelKey: "workspace.tool.pen", draggable: false },
   { toolId: "signals", icon: "/icons/sidebar/signals-v2.png", labelKey: "signals.sidebar.label", draggable: false },
+  // FEAT-trash: 독 맨 끝 휴지통 — 클릭 전용(드래그해서 버리기는 다음 iteration).
+  { toolId: "trash", icon: "/icons/sidebar/trash-v2.png", labelKey: "workspace.tool.trash", draggable: false },
 ];
 
 /**
@@ -100,6 +102,8 @@ export function Dock({
 }) {
   const t = useT();
   const setDockDrag = useWorkspace((s) => s.setDockDrag);
+  const setTrashOpen = useWorkspace((s) => s.setTrashOpen);
+  const trashCount = useWorkspace((s) => s.trashCount);
   const addCardAt = useWorkspace((s) => s.addCardAt);
   const addCardAtViewportCenter = useWorkspace((s) => s.addCardAtViewportCenter);
   const addFrameAt = useWorkspace((s) => s.addFrameAt);
@@ -334,6 +338,7 @@ export function Dock({
     "workspace.tool.board": t("workspace.tool.board"),
     "workspace.tool.pen": t("workspace.tool.pen"),
     "signals.sidebar.label": t("signals.sidebar.label"),
+    "workspace.tool.trash": t("workspace.tool.trash"),
   };
 
   /* ─ 레이아웃: 남은 캔버스 폭 가운데 + 줌 바/펜 툴바 회피 ─
@@ -394,6 +399,19 @@ export function Dock({
         />
       ))}
 
+      {/* FEAT-trash: 독 맨 끝 휴지통 — 클릭하면 패널, 메모가 있으면 점 배지. */}
+      <DockButton
+        item={DOCK_ITEMS[5]}
+        label={LABELS["workspace.tool.trash"]}
+        mouseX={mouseX}
+        centers={centers}
+        registerSize={registerSize}
+        showLabel={hoveredId === "trash"}
+        reducedMotion={reducedMotion}
+        badge={trashCount > 0}
+        onClick={() => setTrashOpen(true)}
+      />
+
       {/*
        * 2026-09-19 사용자 결정: 펜·시그널스 진입점 임시 숨김(삭제 아님).
        * 되돌리려면 이 블록의 주석을 풀고, 위 penMode·togglePenMode selector와
@@ -436,6 +454,7 @@ function DockButton({
   showLabel,
   reducedMotion,
   pressed,
+  badge,
   onDragStart,
   onDragMove,
   onDragEnd,
@@ -452,6 +471,8 @@ function DockButton({
   showLabel: boolean;
   reducedMotion: boolean;
   pressed?: boolean;
+  /** FEAT-trash: 점 배지 — 휴지통에 메모가 있을 때. */
+  badge?: boolean;
   onDragStart?: (screenX: number, screenY: number) => void;
   onDragMove?: (screenX: number, screenY: number) => void;
   onDragEnd?: () => void;
@@ -575,6 +596,14 @@ function DockButton({
           className="select-none object-contain h-full w-full"
         />
       </motion.span>
+      {badge && (
+        <span
+          aria-hidden="true"
+          data-dock-badge="true"
+          className="absolute right-0 top-0 h-2 w-2 rounded-full"
+          style={{ background: "var(--color-accent-blue)" }}
+        />
+      )}
       {showLabel && (
         <span className="absolute -bottom-1 whitespace-nowrap text-[11px] leading-none text-text-muted">
           {label}

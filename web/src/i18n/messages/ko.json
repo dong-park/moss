@@ -151,6 +151,15 @@
       "trash": "휴지통",
       "frame": "메모판"
     },
+    "trash": {
+      "title": "휴지통",
+      "empty": "휴지통이 비어 있어요",
+      "restore": "복구",
+      "purge": "영구 삭제",
+      "emptyAll": "비우기",
+      "confirmEmpty": "메모 {count}개를 영구 삭제할까요?",
+      "deletedBoard": "삭제된 보드"
+    },
     "dock": {
       "label": "독"
     },

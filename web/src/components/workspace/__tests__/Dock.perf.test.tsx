@@ -20,11 +20,11 @@ beforeEach(() => {
       removeEventListener: vi.fn(),
     })),
   });
-  // 버튼 3개(펜·시그널스 임시 숨김, 2026-09-19)를 40px 폭·48px 간격으로 배치.
+  // 버튼 4개(펜·시그널스 임시 숨김 + 휴지통, 2026-09-19)를 40px 폭·48px 간격으로 배치.
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (
     this: HTMLElement,
   ) {
-    const order = ["메모판", "메모", "파일함"];
+    const order = ["메모판", "메모", "파일함", "휴지통"];
     const i = order.indexOf(this.getAttribute("aria-label") ?? "");
     const left = i < 0 ? 0 : i * 48;
     const width = i < 0 ? 260 : 40;

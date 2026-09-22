@@ -11,6 +11,7 @@ import { ZoomBar } from "./ZoomBar";
 import { PenModeHud } from "./PenModeHud";
 import { PenToolbar } from "./PenToolbar";
 import { MemoSearchLayer } from "./MemoSearchLayer";
+import { TrashPanel } from "./TrashPanel";
 import { useVirtualizedCards } from "./useVirtualizedCards";
 import { fetchLinkPreview, isUrlOnly } from "@/state/cardContent";
 import { serializeBlock } from "@/state/blocks";
@@ -612,6 +613,8 @@ export function Canvas() {
       <PenToolbar />
       {/* FEAT-memo-fulltext-search (W4): 검색 박스 + 강조/dim 오버레이. */}
       <MemoSearchLayer />
+      {/* FEAT-trash: 독 옆 휴지통 패널. */}
+      <TrashPanel />
 
       <ZoomBar />
     </div>

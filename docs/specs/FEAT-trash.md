@@ -267,7 +267,7 @@ cd web && npx vitest run
 - summary: workspace remove/removeSelected 메모 분기와 mossBridge notes.delete를 trashNote로 전환(판·함 cascade 유지). store에 trashOpen/trashCount/setTrashOpen/refreshTrashCount/restoreFromTrash 추가. workspace.test.ts 6개·mossBridge.test.ts 2개 통과.
 <!-- /STEP -->
 
-<!-- STEP:2:trash-ui:pending -->
+<!-- STEP:2:trash-ui:done -->
 ### T-2: 독 휴지통 버튼과 TrashPanel
 
 #### 읽을 파일
@@ -293,5 +293,5 @@ cd web && npx eslint src/components/workspace/TrashPanel.tsx src/components/work
 - 휴지통 버튼을 드래그 가능하게 하지 마라. 이유: 드래그해서 버리기는 다음 iteration이다.
 - 검색·정렬 옵션을 넣지 마라. 이유: 최신순 하나로 고정됐다.
 
-- summary:
+- summary: Dock 끝에 휴지통 버튼(드래그 불가, 점 배지) 추가, Canvas에 TrashPanel 마운트. 패널은 최신순 목록·복구·영구 삭제·비우기(confirm)·빈 상태·Esc/바깥 클릭 닫기, role=dialog. 문구 전부 i18n(ko). Dock.test 3개·TrashPanel.test 6개 추가, eslint·tsc·i18n 통과.
 <!-- /STEP -->

@@ -766,9 +766,8 @@ describe("FEAT-trash · 삭제 경로와 복구", () => {
     await new Promise((r) => setTimeout(r, 20));
 
     useWorkspace.getState().remove(id);
-    await new Promise((r) => setTimeout(r, 50));
+    await vi.waitFor(() => expect(cascadeSpy).toHaveBeenCalled());
 
-    expect(cascadeSpy).toHaveBeenCalled();
     expect(trashSpy).not.toHaveBeenCalled();
   });
 
@@ -776,7 +775,11 @@ describe("FEAT-trash · 삭제 경로와 복구", () => {
     const id = useWorkspace.getState().addCardAt("text", 5, 5);
     await new Promise((r) => setTimeout(r, 10));
     useWorkspace.getState().remove(id);
-    await new Promise((r) => setTimeout(r, 20));
+    await vi.waitFor(async () =>
+      expect(
+        (await useStorage.getState().listTrash()).some((e) => e.id === id),
+      ).toBe(true),
+    );
     expect(useWorkspace.getState().cards.find((c) => c.id === id)).toBeUndefined();
 
     await useWorkspace.getState().restoreFromTrash(id);

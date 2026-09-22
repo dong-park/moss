@@ -19,6 +19,7 @@ const RECTS: Record<string, { left: number; width: number }> = {
   파일함: { left: 160, width: 72 },
   펜: { left: 240, width: 72 },
   시그널스: { left: 320, width: 72 },
+  휴지통: { left: 400, width: 72 },
 };
 
 function mockRects() {
@@ -114,6 +115,8 @@ afterEach(async () => {
     editingId: null,
     penMode: false,
     dockDrag: null,
+    trashOpen: false,
+    trashCount: 0,
     viewport: { x: 0, y: 0, scale: 1 },
   });
   document.body.innerHTML = "";
@@ -122,17 +125,30 @@ afterEach(async () => {
   }
 });
 
-describe("AC-1: 독 버튼 3개 (펜·시그널스 임시 숨김)", () => {
+describe("AC-1: 독 버튼 (펜·시그널스 임시 숨김 + 휴지통)", () => {
   // 2026-09-19 사용자 결정: 펜·시그널스 진입점 임시 숨김 — 복원 시 5개+구분선으로 되돌린다.
-  it("메모판·메모·파일함 순서로 버튼 3개가 있다(구분선 없음)", () => {
+  it("메모판·메모·파일함·휴지통 순서로 버튼이 있다(구분선 없음)", () => {
     renderDock();
     const toolbar = screen.getByRole("toolbar");
     expect(toolbar).toBeTruthy();
     const buttons = screen.getAllByRole("button");
     const labels = buttons.map((b) => b.getAttribute("aria-label"));
-    expect(labels).toEqual(["메모판", "메모", "파일함"]);
+    expect(labels).toEqual(["메모판", "메모", "파일함", "휴지통"]);
     // 구분선 — 펜·시그널스와 함께 숨김.
     expect(toolbar.querySelector("[aria-hidden]")).toBeNull();
+  });
+
+  it("FEAT-trash: 휴지통 버튼을 누르면 패널 열림 상태가 된다", () => {
+    renderDock();
+    fireEvent.click(screen.getByLabelText("휴지통"));
+    expect(useWorkspace.getState().trashOpen).toBe(true);
+  });
+
+  it("FEAT-trash: 휴지통에 메모가 있으면 점 배지가 보인다", () => {
+    useWorkspace.setState({ trashCount: 2 });
+    renderDock();
+    const trashBtn = screen.getByLabelText("휴지통");
+    expect(trashBtn.querySelector("[data-dock-badge]")).not.toBeNull();
   });
 
   it("사이드바 DOM이 없다", () => {
