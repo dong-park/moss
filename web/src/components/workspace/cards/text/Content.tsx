@@ -15,7 +15,11 @@ import {
 } from "../_shared/memoTitleFocus"; // FEAT-memo-title-front-edit
 import { BacklinkPanel } from "../_shared/editor/BacklinkPanel"; // W5 위키링크 백링크 패널
 import { MemoFrontBadges } from "../_shared/MemoFrontBadges"; // FEAT-sticky-redesign n5
+import { memoTint } from "../../memoVariety"; // FEAT-memo-variety 색조
 import type { CardContentProps } from "../_shared/types";
+
+// 종이 사진. 색조 층 mask도 같은 파일이어야 종이 바깥 투명부에 색이 안 칠해진다.
+const MEMO_PAPER = 'url("/cards/v2/text.png") 0 0 / 100% 100% no-repeat';
 
 /* ─────────────────────────────────────────────────────────────
  * 글(포스트잇) 카드 — Milkdown 인라인 에디터.
@@ -107,7 +111,9 @@ export function TextCardContent({
         borderRadius: 6,
         // background-size 100% 100%로 카드 박스에 맞춰 늘어나게 — content가
         // 커져 카드가 auto-grow하면 포스트잇 비주얼도 같이 늘어난다.
-        background: `url("/cards/v2/text.png") 0 0 / 100% 100% no-repeat`,
+        background: MEMO_PAPER,
+        // 색조 층(z-index:-1)이 이 배경 위, 모든 자식 아래에 깔리게 스택을 가둔다.
+        isolation: "isolate",
       }}
       onClick={onFrontClick}
       onAuxClick={onFrontClick}
@@ -119,6 +125,22 @@ export function TextCardContent({
         }
       }}
     >
+      {/* FEAT-memo-variety: 노랑 색조 — 종이 png와 같은 mask로 잘라 바깥 투명부엔
+        * 칠하지 않고, multiply로 종이 결을 비친다. z-index:-1 + 루트 isolation이라
+        * 형제 순서·position과 무관하게 모든 내용 아래에 있다. */}
+      <div
+        aria-hidden="true"
+        data-memo-tint
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background: memoTint(card.id),
+          mixBlendMode: "multiply",
+          zIndex: -1,
+          borderRadius: 6,
+          WebkitMask: MEMO_PAPER,
+          mask: MEMO_PAPER,
+        }}
+      />
       <MultitabConflictBanner cardId={card.id} /> {/* W8: 다른 탭 변경 배너 */}
       {/* FEAT-memo-title: 제목 줄 — 펜 1:1을 위해 본문 컬럼(relative)과 형제로 둔다.
         * 읽기 전용은 제목 없으면 null. 편집 모드는 빈 값이어도 입력 줄을 그린다(AC-1). */}

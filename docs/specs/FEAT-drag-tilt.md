@@ -52,7 +52,9 @@
 ## 5. 구현 메모
 
 - 드래그 경로는 `moss/web/src/components/workspace/DraggableCard.tsx:182` `onMove` 하나다. 단일 메모는 `:208` else 가지이고 `moveCard`를 매 이동마다 부른다.
-- 각도는 CSS 변수 `--tilt`·`--tilt-origin`·`--lift-scale`로 쓴다. React는 `transform` 문자열 하나만 소유한다. 처음엔 `el.style.transform`에 직접 썼다가 리뷰 지적으로 바꿨다. React prop과 명령형 코드가 같은 속성을 나눠 쓰면 임계 통과 첫 프레임이 덮이고, lift 스타일을 고치는 사람이 그 규칙을 알아야 했다.
+- FEAT-memo-variety와 합성: 흔들림은 메모 고유 각도 위에 얹는다. 안착하면 고유 각도로 돌아온다. 고유 각도에서 -1.5도 더 기우는 고정 lift는 묶음·메모판·reduced-motion에만 남는다.
+- 회전축은 `transform-origin`이 아니라 `translate(--px,--py) … translate(-) rotate(고유각)` 조합이다. origin을 옮기면 고유 각도가 있는 메모가 들고 놓을 때 2~3px 튄다.
+- 각도는 CSS 변수 `--tilt`·`--px`·`--py`·`--lift-scale`로 쓴다. React는 `transform` 문자열 하나만 소유한다. 처음엔 `el.style.transform`에 직접 썼다가 리뷰 지적으로 바꿨다. React prop과 명령형 코드가 같은 속성을 나눠 쓰면 임계 통과 첫 프레임이 덮이고, lift 스타일을 고치는 사람이 그 규칙을 알아야 했다.
 - `-1.5deg`가 박힌 곳은 `:254` `runAbsorb`, `:301` `runEject` 두 곳이다. 이동 거리 dx·dy는 카드 중심 기준으로 계산한다. 그래서 origin이 잡은 지점이면 빗나간다.
 - 묶음은 `moveSelectedBy`, 메모판은 `moveFrame` 경로다. 건드리지 않는다.
 - `motion` ^13.2.0이 `package.json`에 있다.

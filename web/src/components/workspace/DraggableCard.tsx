@@ -12,6 +12,12 @@ import {
 import { CardContent } from "./cards/CardContent";
 import { isExpandable } from "./cards/_shared/expandable";
 import { ResizeHandles } from "./ResizeHandles";
+import {
+  formatDeg,
+  memoBaseTransform,
+  memoLiftedTransform,
+  memoRotationDeg,
+} from "./memoVariety"; // FEAT-memo-variety
 import { AIOptOutBadge } from "@/components/privacy/AIOptOutBadge";
 import { ExpandIcon, LockIcon } from "@/components/icons";
 import { useT } from "@/i18n/Provider";
@@ -25,18 +31,22 @@ const DRAG_THRESHOLD = 3; // px — 이 거리 넘으면 드래그로 인식
  */
 const TILT_SPRING = { stiffness: 320, damping: 18, mass: 0.6 } as const;
 
-/** 들어올린 카드의 고정 기울기 — 묶음·메모판·reduced-motion 드래그가 쓴다. */
-const LIFT_TILT_DEG = -1.5;
-
 /**
- * FEAT-drag-tilt: 동적 기울기 중 transform. React가 이 문자열 하나만 소유하고,
- * 드래그 코드는 CSS 변수(--tilt, --tilt-origin, --lift-scale)만 쓴다.
- * 문자열이 바뀌지 않으니 리렌더가 직접 쓴 각도를 덮을 일이 없다.
+ * FEAT-drag-tilt: 동적 기울기 중 transform. React가 이 문자열만 소유하고, 드래그 코드는
+ * CSS 변수(--tilt, --px, --py, --lift-scale)만 쓴다. 문자열이 안 바뀌니 리렌더가
+ * 직접 쓴 각도를 덮지 않는다.
+ *
+ * 오른쪽부터 적용된다: 메모 고유 각도(중심 기준) → 잡은 지점(--px,--py, 중심에서의
+ * 오프셋)을 축으로 확대·흔들림. transform-origin을 옮기지 않으니 흔들림이 0이면
+ * 정확히 고유 각도만 남아 들고 놓을 때 위치가 튀지 않는다.
+ * 폴백은 항등이다 — 변수를 지운 뒤 tiltActive가 내려가기 전 한 프레임도 제자리다.
  */
-// 폴백은 항등 변환이다. endTilt가 변수를 지운 뒤 tiltActive가 내려가기 전 한 프레임이
-// 그대로 그려지므로, 폴백이 lift 값이면 선 카드가 한 프레임 튄다.
-const TILT_TRANSFORM = "scale(var(--lift-scale, 1)) rotate(var(--tilt, 0deg))";
-const TILT_VARS = ["--tilt", "--tilt-origin", "--lift-scale"] as const;
+function tiltTransform(baseDeg: number): string {
+  const p = "var(--px, 0px), var(--py, 0px)";
+  const negP = "calc(-1 * var(--px, 0px)), calc(-1 * var(--py, 0px))";
+  return `translate(${p}) rotate(var(--tilt, 0deg)) scale(var(--lift-scale, 1)) translate(${negP}) rotate(${formatDeg(baseDeg)}deg)`;
+}
+const TILT_VARS = ["--tilt", "--px", "--py", "--lift-scale"] as const;
 
 export function DraggableCard({ card }: { card: Card }) {
   const t = useT();
@@ -90,6 +100,11 @@ export function DraggableCard({ card }: { card: Card }) {
       s.draggingId === card.id ||
       (s.draggingMulti && s.selectedIds.includes(card.id)),
   );
+  // FEAT-memo-variety: 메모 고유 각도·색조는 id 해시로 정해진다. 비메모는 무변화.
+  const baseTransform = memoBaseTransform(card, penMode);
+  const liftedTransform = memoLiftedTransform(card, penMode);
+  // FEAT-drag-tilt: 흔들림이 얹힐 메모 고유 각도. memoBaseTransform과 같은 규칙.
+  const baseDeg = card.kind === "text" && !penMode ? memoRotationDeg(card.id) : 0;
   const getScale = () => useWorkspace.getState().viewport.scale;
 
   /**
@@ -243,14 +258,18 @@ export function DraggableCard({ card }: { card: Card }) {
     let lastTiltT = 0;
     let latestX = e.clientX;
     let tiltRaf = 0;
-    // AC-3: 회전축 = 잡은 지점. 카드 로컬 좌표(월드 scale 보정). 누르는 순간 잰다 —
-    // 안착 중 재잡기여도 위 endTilt가 변수를 지워 지금 rect는 회전·확대가 없다.
-    const grabOrigin = (() => {
+    // AC-3: 회전축 = 잡은 지점. 카드 중심에서의 오프셋(월드 scale 보정). 누르는 순간
+    // 잰다 — 안착 중 재잡기여도 위 endTilt가 변수를 지워 지금 rect엔 흔들림·확대가 없다.
+    // 고유 각도는 중심 기준 회전이라 rect 중심이 곧 카드 중심이다.
+    const grabOffset = (() => {
       const el = containerRef.current;
-      if (!willTilt || !el) return "50% 50%";
+      if (!willTilt || !el) return { x: 0, y: 0 };
       const r = el.getBoundingClientRect();
       const s = getScale() || 1;
-      return `${(e.clientX - r.left) / s}px ${(e.clientY - r.top) / s}px`;
+      return {
+        x: (e.clientX - (r.left + r.width / 2)) / s,
+        y: (e.clientY - (r.top + r.height / 2)) / s,
+      };
     })();
 
     const tiltTick = (now: number) => {
@@ -270,15 +289,19 @@ export function DraggableCard({ card }: { card: Card }) {
     const startTilt = () => {
       const el = containerRef.current;
       if (!el) return;
-      el.style.setProperty("--tilt-origin", grabOrigin);
+      el.style.setProperty("--px", `${grabOffset.x}px`);
+      el.style.setProperty("--py", `${grabOffset.y}px`);
       el.style.setProperty("--tilt", "0deg");
       el.style.setProperty("--lift-scale", "1.03");
       setTiltActive(true);
       tiltRaf = requestAnimationFrame(tiltTick);
     };
 
-    // 놓기 직전의 실제 각도 — 흡수/꺼내기 첫 프레임(AC-5). 동적 기울기가 아니면 고정 lift 각도.
-    const currentTiltAngle = () => (willTilt ? tiltAngle : LIFT_TILT_DEG);
+    // 흡수/꺼내기 첫 프레임(AC-5) — 놓기 직전 실제 각도. 동적 기울기가 아니면 고정 lift.
+    const liftKeyframe = () =>
+      willTilt
+        ? `scale(1.03) rotate(${formatDeg(baseDeg + tiltAngle)}deg)`
+        : memoLiftedTransform(card, penMode);
 
     /**
      * FEAT-drag-tilt T3: 놓으면 스프링으로 현재 각도에서 0도로 간다(2~3회 흔들림).
@@ -397,12 +420,11 @@ export function DraggableCard({ card }: { card: Card }) {
         [{ transform: "scale(1)" }, { transform: "scale(1.08)" }, { transform: "scale(1)" }],
         { duration: 260, easing: "ease-out" },
       );
-      // FEAT-drag-tilt AC-5: 흡수는 카드 중심 기준으로 날아가야 한다 — 잡은 지점
-      // origin을 중앙으로 되돌리고, 첫 프레임 각도는 놓기 직전 실제 각도를 쓴다.
-      cardEl.style.setProperty("--tilt-origin", "50% 50%");
+      // FEAT-drag-tilt AC-5: 흡수는 카드 중심 기준으로 날아간다(origin 기본값 중앙).
+      // 첫 프레임 각도는 놓기 직전 실제 각도다.
       const anim = cardEl.animate(
         [
-          { transform: `scale(1.03) rotate(${currentTiltAngle()}deg)`, opacity: 1 },
+          { transform: liftKeyframe(), opacity: 1 },
           { transform: `translate(${dx}px, ${dy}px) scale(0.12)`, opacity: 0 },
         ],
         { duration: 240, easing: "cubic-bezier(0.4, 0, 0.6, 1)", fill: "forwards" },
@@ -448,11 +470,10 @@ export function DraggableCard({ card }: { card: Card }) {
         [{ transform: "scale(1)" }, { transform: "scale(1.12)" }, { transform: "scale(1)" }],
         { duration: 260, easing: "ease-out" },
       );
-      // FEAT-drag-tilt AC-5: 꺼내기도 카드 중심 기준 — origin 중앙 + 놓기 직전 각도.
-      cardEl.style.setProperty("--tilt-origin", "50% 50%");
+      // FEAT-drag-tilt AC-5: 꺼내기도 카드 중심 기준 + 놓기 직전 각도.
       const anim = cardEl.animate(
         [
-          { transform: `scale(1.03) rotate(${currentTiltAngle()}deg)`, opacity: 1 },
+          { transform: liftKeyframe(), opacity: 1 },
           { transform: `translate(${dx}px, ${dy}px) scale(0.12)`, opacity: 0 },
         ],
         { duration: 240, easing: "cubic-bezier(0.4, 0, 0.6, 1)", fill: "forwards" },
@@ -610,14 +631,13 @@ export function DraggableCard({ card }: { card: Card }) {
         // transform이 스프링 곡선으로 1.0 복귀 → 제자리 안착(settle).
         // left/top은 transition 목록에서 제외해 드래그 중 커서를 즉시 추종한다.
         //
-        // FEAT-drag-tilt: 동적 기울기 중(tiltActive)엔 각도·축을 CSS 변수로 받는다.
-        // 묶음·메모판·reduced-motion(AC-6·7)은 지금처럼 -1.5도 고정.
+        // FEAT-drag-tilt: 동적 기울기 중(tiltActive)엔 메모 고유 각도 위에 흔들림을 얹는다.
+        // 묶음·메모판·reduced-motion(AC-6·7)은 FEAT-memo-variety의 고정 lift 그대로.
         transform: tiltActive
-          ? TILT_TRANSFORM
+          ? tiltTransform(baseDeg)
           : lifted
-            ? `scale(1.03) rotate(${LIFT_TILT_DEG}deg)`
-            : undefined,
-        transformOrigin: tiltActive ? "var(--tilt-origin, 50% 50%)" : undefined,
+            ? liftedTransform
+            : baseTransform,
         boxShadow: lifted ? "var(--shadow-card-lift)" : undefined,
         transition: tiltActive
           ? "box-shadow 170ms ease-out"

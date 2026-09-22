@@ -5,6 +5,12 @@ import { I18nProvider } from "@/i18n/Provider";
 import { useWorkspace, type Card } from "@/state/workspace";
 import { DraggableCard } from "@/components/workspace/DraggableCard";
 import { MAX_TILT_DEG } from "@/components/workspace/dragTilt";
+import {
+  formatDeg,
+  memoBaseTransform,
+  memoLiftedTransform,
+  memoRotationDeg,
+} from "@/components/workspace/memoVariety";
 
 /**
  * FEAT-drag-tilt: 단일 메모 드래그의 동적 기울기(AC-1~5, 7, 8).
@@ -118,7 +124,7 @@ describe("FEAT-drag-tilt · 드래그 중 기울기", () => {
     expect(Math.abs(deg)).toBeLessThanOrEqual(MAX_TILT_DEG);
   });
 
-  it("AC-3: 회전축(transform-origin)이 잡은 지점(카드 로컬)이다", () => {
+  it("AC-3: 회전축이 잡은 지점이다 — 카드 중심에서의 오프셋을 transform에 싣는다", () => {
     const c = textCard();
     seed([c]);
     const { container } = wrap(<DraggableCard card={c} />);
@@ -127,8 +133,12 @@ describe("FEAT-drag-tilt · 드래그 중 기울기", () => {
     fireEvent.mouseDown(el, { button: 0, clientX: 30, clientY: 40 });
     fireEvent.mouseMove(window, { clientX: 50, clientY: 40 });
 
-    expect(el.style.getPropertyValue("--tilt-origin")).toBe("30px 40px");
-    expect(el.style.transformOrigin).toBe("var(--tilt-origin, 50% 50%)");
+    // jsdom rect는 0 크기라 중심이 (0,0) — 오프셋이 곧 누른 좌표다.
+    expect(el.style.getPropertyValue("--px")).toBe("30px");
+    expect(el.style.getPropertyValue("--py")).toBe("40px");
+    expect(el.style.transform).toContain("translate(var(--px");
+    // transform-origin은 옮기지 않는다 — 고유 각도가 있는 메모가 들고 놓을 때 튀지 않게.
+    expect(el.style.transformOrigin).toBe("");
   });
 
   it("AC-2: 끌다 멈추고 누른 채로 있으면 0도 근처로 돌아온다", () => {
@@ -172,7 +182,7 @@ describe("FEAT-drag-tilt · 드래그 중 기울기", () => {
     unsub();
   });
 
-  it("AC-4: 놓으면 흔들림 안착이 끝난 뒤 transform과 origin이 기본값으로 돌아온다", async () => {
+  it("AC-4: 놓으면 흔들림 안착이 끝난 뒤 메모 고유 각도로 돌아온다", async () => {
     const c = textCard();
     seed([c]);
     const { container } = wrap(<DraggableCard card={c} />);
@@ -181,16 +191,14 @@ describe("FEAT-drag-tilt · 드래그 중 기울기", () => {
     fireEvent.mouseDown(el, { button: 0, clientX: 0, clientY: 0 });
     fireEvent.mouseMove(window, { clientX: 12, clientY: 0 });
     fireEvent.mouseMove(window, { clientX: 90, clientY: 0 });
-    expect(el.style.transformOrigin).not.toBe("");
-
     fireEvent.mouseUp(window, { clientX: 90, clientY: 0 });
     // 안착 중에도 lift가 풀린 뒤 transform을 쥐고 흔든다.
     expect(el.style.transform).toContain("var(--tilt");
 
-    await waitFor(() => expect(el.style.transformOrigin).toBe(""), {
+    // 안착이 끝나면 메모 고유 각도(FEAT-memo-variety)로 돌아온다.
+    await waitFor(() => expect(el.style.transform).toBe(memoBaseTransform(c, false)), {
       timeout: 3000,
     });
-    expect(el.style.transform).toBe("");
     expect(el.style.getPropertyValue("--tilt")).toBe("");
   });
 
@@ -209,12 +217,11 @@ describe("FEAT-drag-tilt · 드래그 중 기울기", () => {
     // 스프링이 끝나기 전에 다시 클릭 — 옛 스프링을 멈추고 기울기 상태를 비운다.
     fireEvent.mouseDown(el, { button: 0, clientX: 90, clientY: 0 });
     fireEvent.mouseUp(window, { clientX: 90, clientY: 0 });
-    expect(el.style.transform).toBe("");
-    expect(el.style.transformOrigin).toBe("");
+    expect(el.style.transform).toBe(memoBaseTransform(c, false));
     expect(el.style.getPropertyValue("--tilt")).toBe("");
   });
 
-  it("AC-7: reduced-motion이면 지금의 고정 -1.5도와 170ms 안착을 쓴다", () => {
+  it("AC-7: reduced-motion이면 고정 lift와 170ms 안착을 쓴다", () => {
     stubMatchMedia(true);
     const c = textCard();
     seed([c]);
@@ -225,8 +232,8 @@ describe("FEAT-drag-tilt · 드래그 중 기울기", () => {
     fireEvent.mouseMove(window, { clientX: 12, clientY: 0 });
     fireEvent.mouseMove(window, { clientX: 90, clientY: 0 });
 
-    expect(el.style.transform).toContain("rotate(-1.5deg)");
-    expect(el.style.transformOrigin).toBe("");
+    // FEAT-memo-variety의 고정 lift — 고유 각도에서 -1.5도 더.
+    expect(el.style.transform).toBe(memoLiftedTransform(c, false));
     expect(el.style.transition).toContain("transform 170ms");
 
     fireEvent.mouseUp(window, { clientX: 90, clientY: 0 });
@@ -258,7 +265,7 @@ describe("FEAT-drag-tilt · 흡수 거부", () => {
 
       fireEvent.mouseUp(window, { clientX: 90, clientY: 0 });
       vi.useRealTimers();
-      await waitFor(() => expect(el.style.transform).toBe(""));
+      await waitFor(() => expect(el.style.transform).toBe(memoBaseTransform(c, false)));
       expect(el.style.getPropertyValue("--tilt")).toBe("");
       expect(useWorkspace.getState().draggingId).toBeNull();
     } finally {
@@ -268,7 +275,7 @@ describe("FEAT-drag-tilt · 흡수 거부", () => {
 });
 
 describe("FEAT-drag-tilt · 흡수 첫 프레임", () => {
-  it("AC-5: 흡수 모션 첫 프레임 각도가 놓기 직전 각도와 같고 origin은 중앙이다", () => {
+  it("AC-5: 흡수 모션 첫 프레임 각도가 놓기 직전 각도와 같다", () => {
     vi.useFakeTimers();
     const funnel = boardCard();
     const c = textCard();
@@ -305,10 +312,10 @@ describe("FEAT-drag-tilt · 흡수 첫 프레임", () => {
 
       const cardCall = calls.find((x) => x.el === el);
       expect(cardCall).toBeTruthy();
-      expect(String(cardCall!.frames[0].transform)).toContain(
-        `rotate(${before}deg)`,
+      // 고유 각도 + 놓기 직전 흔들림 각도.
+      expect(String(cardCall!.frames[0].transform)).toBe(
+        `scale(1.03) rotate(${formatDeg(memoRotationDeg("c1") + before)}deg)`,
       );
-      expect(el.style.getPropertyValue("--tilt-origin")).toBe("50% 50%");
     } finally {
       Element.prototype.animate = original;
       funnelEl.remove();
