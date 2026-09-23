@@ -233,6 +233,16 @@ export function aspectForKind(kind: CardKind): number {
   return CARD_ASPECT_BY_KIND[kind] ?? 1;
 }
 
+/**
+ * 메모 높이 보장 — 앞면은 제목만 absolute로 겹쳐 그려 내용 높이가 0이다. 높이 없는
+ * 메모는 띠처럼 납작해지므로 폭과 종이 비율로 채운다. 불러오기·저장·시드가 모두
+ * 이 함수를 지나 DB에도 화면에도 높이 없는 메모가 남지 않는다.
+ */
+function memoHeight(kind: CardKind, width: number, height: number | undefined) {
+  if (kind !== "text" || height !== undefined) return height;
+  return clamp(width / aspectForKind(kind), CARD_MIN_HEIGHT, CARD_MAX_HEIGHT);
+}
+
 interface WorkspaceState {
   cards: Card[];
   selectedIds: string[];
@@ -802,7 +812,7 @@ function decodeNoteToCard(note: Note): Card {
     x: note.x,
     y: note.y,
     width: note.width,
-    height: note.height,
+    height: memoHeight(kind, note.width, note.height),
     content,
     attachmentRef: note.attachmentRef,
     mediaType: note.mediaType,
@@ -934,7 +944,7 @@ function persistCard(card: Card, boardId: string | null): Promise<void> {
     x: card.x,
     y: card.y,
     width: card.width,
-    height: card.height,
+    height: memoHeight(card.kind, card.width, card.height),
     content,
     attachmentRef: card.attachmentRef,
     mediaType: card.mediaType,
@@ -1116,9 +1126,13 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
     if (notes.length === 0 && !storage.settings?.installPromptShown) {
       // 첫 실행 — 디자인 시드를 영속해두고 마킹.
-      await Promise.all(SEED_CARDS.map((card) => persistCard(card, null)));
+      const seeds = SEED_CARDS.map((c) => ({
+        ...c,
+        height: memoHeight(c.kind, c.width, c.height),
+      }));
+      await Promise.all(seeds.map((card) => persistCard(card, null)));
       await storage.updateSettings({ installPromptShown: true });
-      set({ cards: SEED_CARDS, boards });
+      set({ cards: seeds, boards });
       return;
     }
 
