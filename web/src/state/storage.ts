@@ -38,6 +38,8 @@ interface StorageState {
    * OPFS 첨부 blob은 지우지 않는다(복구 가능해야 한다).
    */
   trashNote: (id: string) => Promise<void>;
+  /** FEAT-trash: 여러 장을 한 트랜잭션으로 휴지통에 넣는다. */
+  trashNotes: (ids: string[]) => Promise<void>;
   /** FEAT-trash: 휴지통 목록 — deletedAt 내림차순(최신순). */
   listTrash: () => Promise<TrashEntry[]>;
   /**
@@ -92,7 +94,10 @@ async function ensureSettings(db: MossDB): Promise<Settings> {
   return { ...DEFAULT_SETTINGS };
 }
 
-function mergeNote(prev: Note | undefined, patch: Partial<Note> & { id: string }): Note {
+function mergeNote(
+  prev: Note | undefined,
+  patch: Partial<Note> & { id: string },
+): Note {
   const now = Date.now();
   if (prev) {
     return { ...prev, ...patch, updatedAt: now };
@@ -113,7 +118,10 @@ function mergeNote(prev: Note | undefined, patch: Partial<Note> & { id: string }
   };
 }
 
-function mergeBoard(prev: Board | undefined, patch: Partial<Board> & { id: string }): Board {
+function mergeBoard(
+  prev: Board | undefined,
+  patch: Partial<Board> & { id: string },
+): Board {
   const now = Date.now();
   if (prev) return { ...prev, ...patch, updatedAt: now };
   return {
@@ -218,56 +226,52 @@ export const useStorage = create<StorageState>((set, get) => ({
   },
 
   removeNote: async (id) => {
-    const db = getDB();
-    const note = await db.notes.get(id);
-    const attachmentRef = note?.attachmentRef;
-    await db.transaction("rw", db.notes, db.connections, db.embeddings, async () => {
-      const incidentIds = await db.connections
-        .where("sourceNoteId")
-        .equals(id)
-        .or("targetNoteId")
-        .equals(id)
-        .primaryKeys();
-      await db.connections.bulkDelete(incidentIds);
-      await db.embeddings.delete(id);
-      await db.notes.delete(id);
-    });
-    if (attachmentRef) {
-      try {
-        await deleteBlob(attachmentRef);
-      } catch {
-        /* OPFS 삭제 실패는 무시 — 다음 GC에서 다시 시도 가능 */
-      }
-    }
+    // 영구 삭제 = 휴지통에 넣고 바로 비우기. 정리 규칙을 trashNotes 한 곳에 둔다.
+    await get().trashNotes([id]);
+    await get().purgeTrash([id]);
   },
 
-  trashNote: async (id) => {
+  trashNote: (id) => get().trashNotes([id]),
+
+  trashNotes: async (ids) => {
+    if (ids.length === 0) return;
     const db = getDB();
     // 읽기까지 한 트랜잭션 안에서 — 연달아 지운 두 메모가 같은 연결선을 서로 놓치지 않게.
     await db.transaction(
       "rw",
-      [db.notes, db.connections, db.embeddings, db.trash, db.trashConnections, db.boards],
+      [
+        db.notes,
+        db.connections,
+        db.embeddings,
+        db.trash,
+        db.trashConnections,
+        db.boards,
+      ],
       async () => {
-        const note = await db.notes.get(id);
-        if (!note) return;
-        const incident = await db.connections
-          .where("sourceNoteId")
-          .equals(id)
-          .or("targetNoteId")
-          .equals(id)
-          .toArray();
-        const board =
-          note.boardId === null ? undefined : await db.boards.get(note.boardId);
-        await db.trash.put({
-          id,
-          note,
-          boardName: board?.name ?? null,
-          deletedAt: Date.now(),
-        });
-        await db.trashConnections.bulkPut(incident);
-        await db.connections.bulkDelete(incident.map((c) => c.id));
-        await db.embeddings.delete(id);
-        await db.notes.delete(id);
+        for (const id of ids) {
+          const note = await db.notes.get(id);
+          if (!note) continue;
+          const incident = await db.connections
+            .where("sourceNoteId")
+            .equals(id)
+            .or("targetNoteId")
+            .equals(id)
+            .toArray();
+          const board =
+            note.boardId === null
+              ? undefined
+              : await db.boards.get(note.boardId);
+          await db.trash.put({
+            id,
+            note,
+            boardName: board?.name ?? null,
+            deletedAt: Date.now(),
+          });
+          await db.trashConnections.bulkPut(incident);
+          await db.connections.bulkDelete(incident.map((c) => c.id));
+          await db.embeddings.delete(id);
+          await db.notes.delete(id);
+        }
       },
     );
   },
@@ -315,7 +319,9 @@ export const useStorage = create<StorageState>((set, get) => ({
           .equals(id)
           .toArray();
         const others = await db.notes.bulkGet(
-          parked.map((c) => (c.sourceNoteId === id ? c.targetNoteId : c.sourceNoteId)),
+          parked.map((c) =>
+            c.sourceNoteId === id ? c.targetNoteId : c.sourceNoteId,
+          ),
         );
         const back = parked.filter((_, i) => others[i]);
         await db.connections.bulkPut(back);
@@ -356,7 +362,7 @@ export const useStorage = create<StorageState>((set, get) => ({
         try {
           await deleteBlob(ref);
         } catch {
-          /* OPFS 삭제 실패는 무시 — 다음 GC에서 재시도 가능 */
+          /* ponytail: OPFS 삭제 실패는 무시 — blob은 고아로 남고 자동 재시도는 없다. */
         }
       }),
     );
@@ -460,7 +466,7 @@ export const useStorage = create<StorageState>((set, get) => ({
       try {
         await deleteBlob(n.attachmentRef);
       } catch {
-        /* OPFS 삭제 실패는 무시 — 다음 GC에서 재시도 가능 */
+        /* ponytail: OPFS 삭제 실패는 무시 — blob은 고아로 남고 자동 재시도는 없다. */
       }
     }
   },
@@ -500,4 +506,12 @@ export const useStorage = create<StorageState>((set, get) => ({
   },
 }));
 
-export type { Note, Board, Connection, Settings, EmbeddingCacheEntry, TrashEntry, QuotaInfo };
+export type {
+  Note,
+  Board,
+  Connection,
+  Settings,
+  EmbeddingCacheEntry,
+  TrashEntry,
+  QuotaInfo,
+};

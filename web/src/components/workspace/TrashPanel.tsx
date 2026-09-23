@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useWorkspace } from "@/state/workspace";
 import { useStorage } from "@/state/storage";
 import type { TrashEntry } from "@/state/db/schema";
@@ -13,6 +13,11 @@ const PANEL_MAX_HEIGHT_RATIO = 0.6;
 /** 독(bottomMargin 20 + height 56) 위 여백 12px. */
 const DOCK_CLEARANCE_PX = 88;
 const SNIPPET_LEN = 40;
+/** 행마다 Intl 포맷터를 새로 만들지 않게 하나만 둔다. */
+const DATE_FMT = new Intl.DateTimeFormat(undefined, {
+  dateStyle: "short",
+  timeStyle: "short",
+});
 
 /** 제목이 있으면 제목, 없으면 본문 첫 줄 40자. */
 function entryLabel(entry: TrashEntry): string {
@@ -23,7 +28,13 @@ function entryLabel(entry: TrashEntry): string {
 
 function RestoreIcon() {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
       <path
         d="M9 14 4 9l5-5"
         stroke="currentColor"
@@ -44,7 +55,13 @@ function RestoreIcon() {
 
 function PurgeIcon() {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
       <path
         d="M6 6l12 12M18 6 6 18"
         stroke="currentColor"
@@ -68,6 +85,12 @@ export function TrashPanel() {
   const refreshTrashCount = useWorkspace((s) => s.refreshTrashCount);
   const [entries, setEntries] = useState<TrashEntry[]>([]);
   const panelRef = useRef<HTMLDivElement | null>(null);
+  // 본문 파싱은 목록이 바뀔 때만 — 렌더마다 1,000행을 다시 파싱하지 않게.
+  // ponytail: 가상화 없음. 휴지통이 수천 건으로 늘면 useVirtualizedCards 패턴으로.
+  const labels = useMemo(
+    () => new Map(entries.map((e) => [e.id, entryLabel(e)])),
+    [entries],
+  );
 
   const reload = useCallback(async () => {
     const storage = useStorage.getState();
@@ -165,14 +188,14 @@ export function TrashPanel() {
             >
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm text-text">
-                  {entryLabel(entry) || "—"}
+                  {labels.get(entry.id) || "—"}
                 </div>
                 <div className="truncate text-[11px] text-text-muted">
                   {entry.note.boardId === null
                     ? t("workspace.boardPicker.system")
-                    : (entry.boardName ?? t("workspace.trash.deletedBoard"))}{" "}
-                  ·{" "}
-                  {new Date(entry.deletedAt).toLocaleString()}
+                    : (entry.boardName ??
+                      t("workspace.trash.deletedBoard"))}{" "}
+                  · {DATE_FMT.format(entry.deletedAt)}
                 </div>
               </div>
               <button

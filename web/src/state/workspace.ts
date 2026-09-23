@@ -1831,7 +1831,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     // 함이 아닌 일반 메모는 휴지통으로(AC-2). frameIds는 위에서 deleteFrame이 이미
     // 처리했으므로 여기서 다시 지우지 않는다.
     const generalIds = remainingIds.filter((id) => !funnelIdSet.has(id));
-    void Promise.all(generalIds.map((id) => storage.trashNote(id))).then(() =>
+    void storage.trashNotes(generalIds).then(() =>
       get().refreshTrashCount(),
     );
     // 함 카드는 cascade + 5초 undo.

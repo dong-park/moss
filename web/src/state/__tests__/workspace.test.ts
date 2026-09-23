@@ -746,8 +746,8 @@ describe("FEAT-trash · 삭제 경로와 복구", () => {
     expect(trashSpy).toHaveBeenCalledWith(id);
   });
 
-  it("removeSelected — 선택된 메모 전부 trashNote로 간다", async () => {
-    const trashSpy = vi.spyOn(useStorage.getState(), "trashNote");
+  it("removeSelected — 선택된 메모 전부 한 번의 trashNotes로 간다", async () => {
+    const trashSpy = vi.spyOn(useStorage.getState(), "trashNotes");
     const a = useWorkspace.getState().addCardAt("text", 0, 0);
     const b = useWorkspace.getState().addCardAt("text", 10, 10);
     await new Promise((r) => setTimeout(r, 10));
@@ -755,8 +755,8 @@ describe("FEAT-trash · 삭제 경로와 복구", () => {
     useWorkspace.getState().selectMany([a, b]);
     useWorkspace.getState().removeSelected();
 
-    expect(trashSpy).toHaveBeenCalledWith(a);
-    expect(trashSpy).toHaveBeenCalledWith(b);
+    expect(trashSpy).toHaveBeenCalledTimes(1);
+    expect(trashSpy).toHaveBeenCalledWith([a, b]);
   });
 
   it("remove — 함 카드는 cascade로 가고 trashNote를 타지 않는다 (AC-2)", async () => {
