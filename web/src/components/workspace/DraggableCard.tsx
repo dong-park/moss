@@ -424,140 +424,40 @@ export function DraggableCard({ card }: { card: Card }) {
     };
 
     /**
-     * 함 위에서 놓았을 때 — 카드를 함 중심으로 빨아들이는 흡수 모션 후 이동.
-     * WAAPI(element.animate) 미지원 환경(jsdom 등)이면 애니메이션 없이 즉시 이동.
-     * lift 상태는 흡수 애니메이션이 그대로 이어받고, 카드는 이동으로 언마운트되므로
-     * 여기서 setDragging(null)을 미리 부르지 않는다(이동 완료 후 정리).
-     * 흡수 240ms 동안 같은 카드를 다시 잡는 경우는 지원하지 않는다 — 옛 완료 콜백이
-     * 새 드래그의 lift·기울기를 푼다(FEAT-drag-tilt 이전부터 같은 제약).
+     * 카드를 대상 요소 중심으로 빨아들인 뒤 commit을 실행한다 — 함 흡수·크럼 꺼내기·
+     * 휴지통 드롭이 공유하는 모션. WAAPI 미지원(jsdom 등)·요소 없음이면 모션 없이 즉시.
+     * lift 상태는 모션이 그대로 이어받고, 카드는 commit으로 언마운트되므로 여기서
+     * setDragging(null)을 미리 부르지 않는다. 240ms 동안 같은 카드를 다시 잡는 경우는
+     * 지원하지 않는다 — 옛 완료 콜백이 새 드래그의 lift·기울기를 푼다(FEAT-drag-tilt 이전부터).
      */
-    const runAbsorb = (funnelId: string) => {
+    const flyInto = (
+      targetEl: HTMLElement | null,
+      bumpScale: number,
+      commit: () => Promise<unknown> | void,
+      after?: () => void,
+    ) => {
       const cardEl = containerRef.current;
-      const funnelEl = document.querySelector<HTMLElement>(
-        `[data-card-id="${funnelId}"]`,
-      );
-      // WAAPI 미지원(jsdom 등)·요소 없음 → 애니메이션 없이 즉시 이동.
-      if (!cardEl || typeof cardEl.animate !== "function" || !funnelEl) {
-        void moveCardToSubcanvas(card.id, funnelId).finally(() => {
-          releaseLift();
-        });
-        return;
-      }
-      const cr = cardEl.getBoundingClientRect();
-      const fr = funnelEl.getBoundingClientRect();
-      const s = getScale();
-      // 화면 좌표 중심차 → 카드 로컬 transform(부모 world layer scale 보정).
-      const dx = (fr.left + fr.width / 2 - (cr.left + cr.width / 2)) / s;
-      const dy = (fr.top + fr.height / 2 - (cr.top + cr.height / 2)) / s;
-      // 함이 콕 받아내는 bump.
-      funnelEl.animate(
-        [{ transform: "scale(1)" }, { transform: "scale(1.08)" }, { transform: "scale(1)" }],
-        { duration: 260, easing: "ease-out" },
-      );
-      // FEAT-drag-tilt AC-5: 흡수는 카드 중심 기준으로 날아간다(origin 기본값 중앙).
-      // 첫 프레임 각도는 놓기 직전 실제 각도다.
-      const anim = cardEl.animate(
-        [
-          { transform: liftKeyframe(), opacity: 1 },
-          { transform: `translate(${dx}px, ${dy}px) scale(0.12)`, opacity: 0 },
-        ],
-        { duration: 240, easing: "cubic-bezier(0.4, 0, 0.6, 1)", fill: "forwards" },
-      );
-      anim.onfinish = () => {
-        void moveCardToSubcanvas(card.id, funnelId).finally(() => {
-          // 이동이 거부되면(사이클 가드 등) 카드가 state에 남는다 — fill:forwards로
-          // 투명 고정된 흡수를 취소해 되돌려야 "사라진 것처럼" 보이지 않는다.
-          if (useWorkspace.getState().cards.some((c) => c.id === card.id)) {
-            anim.cancel();
-          }
-          // 이동이 거부돼 카드가 남았을 때 기울기 상태도 되돌린다(이동됐으면 언마운트라 무해).
-          releaseLift();
-        });
-      };
-    };
-
-    /**
-     * FEAT-eject: 브레드크럼 조각 위에서 놓았을 때 — runAbsorb의 정확한 역모션.
-     * 카드를 조각 중심으로 날려보내며 fade + 조각 bump → moveCardToBoard로 상위 보드 이동.
-     * WAAPI(element.animate) 미지원 환경(jsdom 등)·요소 없음이면 애니메이션 없이 즉시 이동.
-     */
-    const runEject = (crumbBoardId: string) => {
-      const cardEl = containerRef.current;
-      const crumbEl = document.querySelector<HTMLElement>(
-        `[data-crumb-board-id="${crumbBoardId}"]`,
-      );
-      if (!cardEl || typeof cardEl.animate !== "function" || !crumbEl) {
-        void moveCardToBoard(card.id, crumbBoardId).finally(() => {
-          releaseLift();
-          setDropTargetCrumb(null);
-        });
-        return;
-      }
-      const cr = cardEl.getBoundingClientRect();
-      const br = crumbEl.getBoundingClientRect();
-      const s = getScale();
-      // 화면 좌표 중심차 → 카드 로컬 transform(부모 world layer scale 보정).
-      const dx = (br.left + br.width / 2 - (cr.left + cr.width / 2)) / s;
-      const dy = (br.top + br.height / 2 - (cr.top + cr.height / 2)) / s;
-      // 조각이 콕 받아내는 bump.
-      crumbEl.animate(
-        [{ transform: "scale(1)" }, { transform: "scale(1.12)" }, { transform: "scale(1)" }],
-        { duration: 260, easing: "ease-out" },
-      );
-      // FEAT-drag-tilt AC-5: 꺼내기도 카드 중심 기준 + 놓기 직전 각도.
-      const anim = cardEl.animate(
-        [
-          { transform: liftKeyframe(), opacity: 1 },
-          { transform: `translate(${dx}px, ${dy}px) scale(0.12)`, opacity: 0 },
-        ],
-        { duration: 240, easing: "cubic-bezier(0.4, 0, 0.6, 1)", fill: "forwards" },
-      );
-      anim.onfinish = () => {
-        void moveCardToBoard(card.id, crumbBoardId).finally(() => {
-          // 이동이 거부되면 카드가 남는다 — fill:forwards 투명 고정을 취소해 되돌린다.
-          if (useWorkspace.getState().cards.some((c) => c.id === card.id)) {
-            anim.cancel();
-          }
-          // 이동이 거부돼 카드가 남았을 때 기울기 상태도 되돌린다(이동됐으면 언마운트라 무해).
-          releaseLift();
-          setDropTargetCrumb(null);
-        });
-      };
-    };
-
-    /**
-     * FEAT-trash-drag: 휴지통 버튼 위에서 놓았을 때 — runAbsorb의 대상만 휴지통으로
-     * 바꾼 모션. 카드를 버튼 중심으로 빨아들인 뒤 삭제한다. 다중 선택이면 잡은 카드
-     * 1장만 날아가고 나머지는 삭제 시점에 함께 사라진다(removeSelected). WAAPI 미지원
-     * (jsdom 등)이면 모션 없이 즉시 삭제.
-     */
-    const runTrash = (multi: boolean) => {
-      const cardEl = containerRef.current;
-      const trashEl = document.querySelector<HTMLElement>('[data-dock-id="trash"]');
-      // 삭제 실행 — 모션 유무와 무관하게 같은 액션을 부른다. 잡은 카드가 다중
-      // 선택의 일부면 선택 전부, 아니면 이 카드만.
-      const commit = () => {
-        const ws = useWorkspace.getState();
-        if (multi) ws.removeSelected();
-        else ws.remove(card.id);
-      };
-      if (!cardEl || typeof cardEl.animate !== "function" || !trashEl) {
-        commit();
+      const done = () => {
         releaseLift();
+        after?.();
+      };
+      if (!cardEl || typeof cardEl.animate !== "function" || !targetEl) {
+        void Promise.resolve(commit()).finally(done);
         return;
       }
       const cr = cardEl.getBoundingClientRect();
-      const tr = trashEl.getBoundingClientRect();
+      const tr = targetEl.getBoundingClientRect();
       const s = getScale();
       // 화면 좌표 중심차 → 카드 로컬 transform(부모 world layer scale 보정).
       const dx = (tr.left + tr.width / 2 - (cr.left + cr.width / 2)) / s;
       const dy = (tr.top + tr.height / 2 - (cr.top + cr.height / 2)) / s;
-      // 휴지통이 콕 받아내는 bump.
-      trashEl.animate(
-        [{ transform: "scale(1)" }, { transform: "scale(1.08)" }, { transform: "scale(1)" }],
+      // 대상이 콕 받아내는 bump.
+      targetEl.animate(
+        [{ transform: "scale(1)" }, { transform: `scale(${bumpScale})` }, { transform: "scale(1)" }],
         { duration: 260, easing: "ease-out" },
       );
-      // FEAT-drag-tilt AC-5: 흡수와 같이 카드 중심 기준 + 놓기 직전 각도.
+      // FEAT-drag-tilt AC-5: 카드 중심 기준(origin 기본값)으로 날아가고, 첫 프레임은
+      // 놓기 직전 실제 각도다.
       const anim = cardEl.animate(
         [
           { transform: liftKeyframe(), opacity: 1 },
@@ -566,14 +466,51 @@ export function DraggableCard({ card }: { card: Card }) {
         { duration: 240, easing: "cubic-bezier(0.4, 0, 0.6, 1)", fill: "forwards" },
       );
       anim.onfinish = () => {
-        commit();
-        // 삭제가 거부되면 카드가 state에 남는다 — fill:forwards 투명 고정을 취소해
-        // 되돌린다(함 흡수와 같은 규칙).
-        if (useWorkspace.getState().cards.some((c) => c.id === card.id)) {
-          anim.cancel();
-        }
-        releaseLift();
+        void Promise.resolve(commit()).finally(() => {
+          // 이동·삭제가 거부되면(사이클 가드 등) 카드가 state에 남는다 — fill:forwards로
+          // 투명 고정된 모션을 취소해 되돌려야 "사라진 것처럼" 보이지 않는다.
+          if (useWorkspace.getState().cards.some((c) => c.id === card.id)) {
+            anim.cancel();
+          }
+          done();
+        });
       };
+    };
+
+    // 함 위에서 놓았을 때 — 흡수 후 그 서브 캔버스로 이동.
+    const runAbsorb = (funnelId: string) =>
+      flyInto(
+        document.querySelector<HTMLElement>(`[data-card-id="${funnelId}"]`),
+        1.08,
+        () => moveCardToSubcanvas(card.id, funnelId),
+      );
+
+    // FEAT-eject: 브레드크럼 조각 위에서 놓았을 때 — 흡수의 역모션 후 상위 보드로.
+    const runEject = (crumbBoardId: string) =>
+      flyInto(
+        document.querySelector<HTMLElement>(`[data-crumb-board-id="${crumbBoardId}"]`),
+        1.12,
+        () => moveCardToBoard(card.id, crumbBoardId),
+        () => setDropTargetCrumb(null),
+      );
+
+    /**
+     * FEAT-trash-drag: 휴지통 버튼 위에서 놓았을 때 — 흡수 후 Delete와 같은 삭제.
+     * 다중이면 놓은 순간의 선택을 고정해 둔다. 240ms 모션 사이에 다른 카드를 누르면
+     * 선택이 바뀌어, 그대로 removeSelected를 부르면 엉뚱한 카드를 지운다.
+     */
+    const runTrash = (multi: boolean) => {
+      const ids = multi ? useWorkspace.getState().selectedIds : [card.id];
+      flyInto(
+        document.querySelector<HTMLElement>('[data-dock-id="trash"]'),
+        1.08,
+        () => {
+          const ws = useWorkspace.getState();
+          if (!multi) return ws.remove(card.id);
+          ws.selectMany(ids);
+          ws.removeSelected();
+        },
+      );
     };
 
     const onUp = () => {

@@ -131,13 +131,13 @@ export function TrashPanel() {
   if (!open) return null;
 
   const handleRestore = async (id: string) => {
+    // 목록 재조회는 trashCount 변화를 받은 effect가 한 번만 한다.
     await restoreFromTrash(id);
-    await reload();
   };
 
   const handlePurge = async (id: string) => {
     await useStorage.getState().purgeTrash([id]);
-    await reload();
+    await refreshTrashCount();
   };
 
   const handleEmpty = async () => {
@@ -148,7 +148,7 @@ export function TrashPanel() {
     if (!ok) return;
     // 확인한 N개만 지운다 — 패널을 연 뒤 새로 들어온 메모까지 지우지 않게.
     await useStorage.getState().purgeTrash(entries.map((e) => e.id));
-    await reload();
+    await refreshTrashCount();
   };
 
   return (

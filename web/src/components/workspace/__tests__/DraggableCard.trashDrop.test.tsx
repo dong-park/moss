@@ -153,6 +153,42 @@ describe("FEAT-trash-drag · DraggableCard", () => {
     expect(removeSpy).not.toHaveBeenCalled();
   });
 
+  it("AC-4: 모션 도중 선택이 바뀌어도 놓은 순간의 선택만 지운다", () => {
+    const dragged = card({ id: "m1" });
+    seed([dragged, card({ id: "m2" }), card({ id: "x" })], ["m1", "m2"]);
+    const removedWith: string[][] = [];
+    useWorkspace.setState({
+      removeSelected: () => removedWith.push(useWorkspace.getState().selectedIds),
+    });
+    // WAAPI 흉내 — onfinish를 손으로 부른다.
+    const anims: { onfinish: (() => void) | null; cancel: () => void }[] = [];
+    const proto = HTMLElement.prototype as unknown as { animate?: unknown };
+    proto.animate = () => {
+      const a = { onfinish: null, cancel: () => {} };
+      anims.push(a);
+      return a;
+    };
+    const trash = trashEl();
+    document.body.appendChild(trash);
+    try {
+      const { container } = wrap(<DraggableCard card={dragged} />);
+      under([trash]);
+      const el = root(container, "m1");
+      fireEvent.mouseDown(el, { button: 0, clientX: 0, clientY: 0 });
+      fireEvent.mouseMove(window, { clientX: 20, clientY: 0 });
+      fireEvent.mouseUp(window, { clientX: 20, clientY: 0 });
+
+      // 240ms 모션 사이 다른 카드를 누른다.
+      useWorkspace.setState({ selectedIds: ["x"] });
+      anims.at(-1)!.onfinish!();
+
+      expect(removedWith).toEqual([["m1", "m2"]]);
+    } finally {
+      delete proto.animate;
+      trash.remove();
+    }
+  });
+
   it("AC-6: 휴지통 위로 오면 크럼 강조를 버리고 휴지통 강조만 켠다", () => {
     const c = card({ id: "c1" });
     const removeSpy = vi.fn();
