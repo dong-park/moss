@@ -297,17 +297,17 @@ describe("workspace mutations → storage 영속 (AC-4)", () => {
     expect(restored?.mediaType).toBe("image/png");
   });
 
-  it("resizeCard — width/height 업데이트 및 코너에서 x/y 동시 이동", async () => {
+  it("resizeCard — 메모는 width/height 정사각 강제 + 코너에서 x/y 동시 이동", async () => {
     await useStorage.getState().init();
     await useWorkspace.getState().loadFromStorage();
     const id = useWorkspace.getState().addCardAt("text", 100, 200);
     await new Promise((r) => setTimeout(r, 10));
 
-    // SE 핸들: width/height만 변경
+    // SE 핸들: height는 width로 강제(정사각)
     useWorkspace.getState().resizeCard(id, { width: 300, height: 400 });
     let card = useWorkspace.getState().cards.find((c) => c.id === id);
     expect(card?.width).toBe(300);
-    expect(card?.height).toBe(400);
+    expect(card?.height).toBe(300);
     expect(card?.x).toBe(100);
     expect(card?.y).toBe(200);
 
@@ -320,12 +320,12 @@ describe("workspace mutations → storage 영속 (AC-4)", () => {
     });
     card = useWorkspace.getState().cards.find((c) => c.id === id);
     expect(card?.width).toBe(250);
-    expect(card?.height).toBe(300);
+    expect(card?.height).toBe(250);
     expect(card?.x).toBe(150);
     expect(card?.y).toBe(250);
   });
 
-  it("resizeCard — min/max 클램프", async () => {
+  it("resizeCard — min/max 클램프 (메모는 정사각)", async () => {
     await useStorage.getState().init();
     await useWorkspace.getState().loadFromStorage();
     const id = useWorkspace.getState().addCardAt("text", 0, 0);
@@ -334,16 +334,16 @@ describe("workspace mutations → storage 영속 (AC-4)", () => {
     useWorkspace.getState().resizeCard(id, { width: 10, height: 5 });
     let card = useWorkspace.getState().cards.find((c) => c.id === id);
     expect(card?.width).toBe(120); // CARD_MIN_WIDTH
-    expect(card?.height).toBe(60); // CARD_MIN_HEIGHT
+    expect(card?.height).toBe(120); // 정사각 강제
 
     // max 초과로 확대 시도
     useWorkspace.getState().resizeCard(id, { width: 9999, height: 9999 });
     card = useWorkspace.getState().cards.find((c) => c.id === id);
     expect(card?.width).toBe(1200); // CARD_MAX_WIDTH
-    expect(card?.height).toBe(1200); // CARD_MAX_HEIGHT
+    expect(card?.height).toBe(1200); // 정사각 강제
   });
 
-  it("resizeCard — height 영속 (새로고침 후 복원)", async () => {
+  it("resizeCard — 정사각 크기 영속 (새로고침 후 복원)", async () => {
     await useStorage.getState().init();
     await useWorkspace.getState().loadFromStorage();
     const id = useWorkspace.getState().addCardAt("text", 50, 60);
@@ -363,7 +363,7 @@ describe("workspace mutations → storage 영속 (AC-4)", () => {
     await useWorkspace.getState().loadFromStorage();
     const restored = useWorkspace.getState().cards.find((c) => c.id === id);
     expect(restored?.width).toBe(400);
-    expect(restored?.height).toBe(500);
+    expect(restored?.height).toBe(400);
   });
 });
 

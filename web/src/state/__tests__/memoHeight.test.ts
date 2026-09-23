@@ -18,8 +18,8 @@ describe("납작 메모 차단", () => {
     expect(card.height).toBeCloseTo(280 / aspectForKind("text"));
   });
 
-  it("저장된 높이는 그대로 둔다", () => {
-    expect(decodeNoteToCard(note({ height: 123 })).height).toBe(123);
+  it("직사각으로 저장된 메모도 정사각형으로 불러온다", () => {
+    expect(decodeNoteToCard(note({ height: 123 })).height).toBe(280);
   });
 
   it("메모가 아닌 카드는 건드리지 않는다", () => {

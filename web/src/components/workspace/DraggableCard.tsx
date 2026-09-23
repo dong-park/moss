@@ -156,12 +156,15 @@ export function DraggableCard({ card }: { card: Card }) {
    */
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [measuredHeight, setMeasuredHeight] = useState(100);
+  // 메모(text)는 정사각형 아이덴티티 — 저장된 height와 무관하게 렌더 높이 = width.
+  // (옛 IndexedDB의 직사각 메모까지 이 한 곳에서 덮는다.)
+  const cardHeight = card.kind === "text" ? card.width : card.height;
   useLayoutEffect(() => {
-    if (card.height !== undefined) return; // 명시 높이 있으면 측정 불필요
+    if (cardHeight !== undefined) return; // 명시 높이 있으면 측정 불필요
     const el = containerRef.current;
     if (!el) return;
     setMeasuredHeight(el.offsetHeight);
-  }, [card.height, card.content, card.kind]);
+  }, [cardHeight, card.content, card.kind]);
 
   const dragRef = useRef<{
     startX: number;
@@ -650,7 +653,7 @@ export function DraggableCard({ card }: { card: Card }) {
         left: card.x,
         top: card.y,
         width: card.width,
-        height: card.height,
+        height: cardHeight,
         // FEAT-sticky-redesign 2단계 리뷰 P1: 메모판은 선택돼도 항상 메모보다
         // 아래층이어야 한다(이전엔 selected일 때 20이 돼 위층 메모를 가렸다).
         // 선택 표시는 outline으로만 한다.
@@ -684,8 +687,8 @@ export function DraggableCard({ card }: { card: Card }) {
         willChange: lifted || tiltActive ? "transform" : undefined,
         // height 지정 시 자식 콘텐츠가 카드를 가득 채우도록 flex column.
         // 각 CardContent 루트 div는 h-full을 가져 부모 높이를 상속받는다.
-        display: card.height !== undefined ? "flex" : undefined,
-        flexDirection: card.height !== undefined ? "column" : undefined,
+        display: cardHeight !== undefined ? "flex" : undefined,
+        flexDirection: cardHeight !== undefined ? "column" : undefined,
         // n10 브라우저 결함3: 이전엔 card.height가 있을 때만 overflow:hidden이었다
         // — height가 없는(auto-grow) 카드는 크롭이 아예 꺼져, 고정폭 720px 블록
         // 막대(MEMO_CONTENT_WIDTH)가 카드의 실제 폭(width는 항상 지정돼 있다)

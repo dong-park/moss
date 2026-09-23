@@ -62,7 +62,7 @@ describe("dispatchOp", () => {
     expect({ x: cards[1]!.x, y: cards[1]!.y }).toEqual({ x: 40, y: 40 });
   });
 
-  it("notes.create width/height → 카드 크기 반영", async () => {
+  it("notes.create width/height → 폭만 반영, height는 정사각으로 강제", async () => {
     const r = (await dispatchOp("notes.create", {
       content: "긴 메모",
       width: 700,
@@ -70,7 +70,7 @@ describe("dispatchOp", () => {
     })) as { id: string };
     const card = useWorkspace.getState().cards.find((c) => c.id === r.id)!;
     expect(card.width).toBe(700);
-    expect(card.height).toBe(200);
+    expect(card.height).toBe(700);
     expect(card.content).toBe("긴 메모");
   });
 

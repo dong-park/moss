@@ -85,7 +85,9 @@ export function ResizeHandles({
     e.stopPropagation();
     e.preventDefault();
 
-    const startH = card.height ?? measuredHeight;
+    // 메모(text)는 정사각 — 시작 높이는 실측이 아니라 폭. 그 외는 명시 높이/실측.
+    const startH =
+      card.kind === "text" ? card.width : (card.height ?? measuredHeight);
 
     const ratio = aspectForKind(card.kind);
     // 비율 유지 조건에서 width의 유효 범위 — 두 축 min/max 모두를 만족시키도록 좁힌다.

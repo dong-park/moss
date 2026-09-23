@@ -290,24 +290,19 @@ export async function dispatchOp(
       // 메모 본문은 고정 폭(MEMO_CONTENT_WIDTH=720) 컬럼이라, 카드가 그보다 좁으면
       // 우측이 잘린다. 블록이 있으면 width 미지정이어도 720을 기본으로 넓힌다.
       const width = typeof params.width === "number" ? params.width : undefined;
-      const height = typeof params.height === "number" ? params.height : undefined;
       const blocks = Array.isArray(params.blocks) ? params.blocks : [];
       // 블록을 먼저 전부 처리한다 — 하나라도 실패하면 throw로 빠져 카드를 만들지 않는다.
       const finalContent = await embedInlineBlocks(raw, blocks);
       const effWidth = width !== undefined ? width : blocks.length > 0 ? 720 : undefined;
+      // 메모는 항상 정사각형 — 브리지가 넘긴 height는 무시하고 폭에 맞춘다.
+      const square = effWidth;
       const { storageId, isCurrent } = resolveBoard(params.boardId);
       if (isCurrent) {
         const id = ws.addCardAt("text", x, y);
-        if (effWidth !== undefined || height !== undefined) {
+        if (square !== undefined) {
           useWorkspace.setState((s) => ({
             cards: s.cards.map((c) =>
-              c.id === id
-                ? {
-                    ...c,
-                    ...(effWidth !== undefined ? { width: effWidth } : {}),
-                    ...(height !== undefined ? { height } : {}),
-                  }
-                : c,
+              c.id === id ? { ...c, width: square, height: square } : c,
             ),
           }));
         }
@@ -324,8 +319,7 @@ export async function dispatchOp(
         kind: "text",
         x,
         y,
-        ...(effWidth !== undefined ? { width: effWidth } : {}),
-        ...(height !== undefined ? { height } : {}),
+        ...(square !== undefined ? { width: square, height: square } : {}),
         content: finalContent,
         aiOptOut: false,
         rotation: 0,

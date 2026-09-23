@@ -213,7 +213,8 @@ export { PEN_MIN_WIDTH, PEN_MAX_WIDTH, PEN_DEFAULT_WIDTH };
 
 /** 카드 PNG (/cards/v2/{kind}.png)의 trim된 종이 가로/세로 비율. resize는 이 비율을 강제한다. */
 const CARD_ASPECT_BY_KIND: Record<CardKind, number> = {
-  text: 957 / 1021,
+  // 메모(text)는 정사각형이 아이덴티티 — 리사이즈·생성이 항상 정사각을 유지한다.
+  text: 1,
   checklist: 836 / 1169,
   code: 1114 / 811,
   file: 1062 / 1064,
@@ -699,6 +700,7 @@ const SEED_CARDS: Card[] = [
     x: 320,
     y: 140,
     width: 460,
+    height: 460,
     content: "- [ ] 첫구매 전환",
   },
   {
@@ -708,6 +710,7 @@ const SEED_CARDS: Card[] = [
     x: 320,
     y: 500,
     width: 130,
+    height: 130,
     content: "",
   },
   {
@@ -716,6 +719,7 @@ const SEED_CARDS: Card[] = [
     x: 380,
     y: 620,
     width: 280,
+    height: 280,
     content: "",
   },
 ];
@@ -812,7 +816,9 @@ function decodeNoteToCard(note: Note): Card {
     x: note.x,
     y: note.y,
     width: note.width,
-    height: memoHeight(kind, note.width, note.height),
+    // 메모(text)는 항상 정사각형 — 옛 데이터의 직사각 height와 높이 없는 행(납작 메모)을
+    // width로 정규화한다.
+    height: kind === "text" ? note.width : note.height,
     content,
     attachmentRef: note.attachmentRef,
     mediaType: note.mediaType,
@@ -1433,7 +1439,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       cards: s.cards.map((c) => {
         if (c.id !== id) return c;
         const w = clamp(next.width, CARD_MIN_WIDTH, CARD_MAX_WIDTH);
-        const h = clamp(next.height, CARD_MIN_HEIGHT, CARD_MAX_HEIGHT);
+        const clamped = clamp(next.height, CARD_MIN_HEIGHT, CARD_MAX_HEIGHT);
+        // 메모(text)는 정사각형 아이덴티티 — 어떤 경로로 리사이즈돼도 height = width.
+        const h = c.kind === "text" ? w : clamped;
         updated = {
           ...c,
           width: w,
