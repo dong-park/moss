@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { I18nProvider } from "@/i18n/Provider";
 import { TrashPanel } from "@/components/workspace/TrashPanel";
 import { useWorkspace, SYSTEM_BOARD_ID } from "@/state/workspace";
@@ -129,5 +129,24 @@ describe("FEAT-trash · TrashPanel", () => {
     await screen.findByText("휴지통이 비어 있어요");
     fireEvent.keyDown(window, { key: "Escape" });
     expect(useWorkspace.getState().trashOpen).toBe(false);
+  });
+
+  it("열린 채 trashCount가 바뀌면 목록을 다시 조회한다 (FEAT-trash-drag)", async () => {
+    const listSpy = vi.spyOn(useStorage.getState(), "listTrash");
+    renderPanel();
+    await screen.findByText("휴지통이 비어 있어요");
+    const before = listSpy.mock.calls.length;
+
+    // 드롭으로 새 메모가 휴지통에 들어온 상황 — 삭제 뒤 refreshTrashCount가 돈다.
+    await useStorage.getState().saveNote({ id: "n9", content: "드롭한 메모" });
+    await useStorage.getState().trashNote("n9");
+    await act(async () => {
+      await useWorkspace.getState().refreshTrashCount();
+    });
+
+    await waitFor(() =>
+      expect(listSpy.mock.calls.length).toBeGreaterThan(before),
+    );
+    expect(await screen.findByText("드롭한 메모")).toBeTruthy();
   });
 });

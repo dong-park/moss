@@ -83,6 +83,9 @@ export function TrashPanel() {
   const setTrashOpen = useWorkspace((s) => s.setTrashOpen);
   const restoreFromTrash = useWorkspace((s) => s.restoreFromTrash);
   const refreshTrashCount = useWorkspace((s) => s.refreshTrashCount);
+  // FEAT-trash-drag: 패널이 열린 채로 드롭해도 목록이 맞게 — 삭제가 일어나면 이 값이
+  // 바뀌고 아래 effect가 재조회한다.
+  const trashCount = useWorkspace((s) => s.trashCount);
   const [entries, setEntries] = useState<TrashEntry[]>([]);
   const panelRef = useRef<HTMLDivElement | null>(null);
   // 본문 파싱은 목록이 바뀔 때만 — 렌더마다 1,000행을 다시 파싱하지 않게.
@@ -101,9 +104,10 @@ export function TrashPanel() {
 
   useEffect(() => {
     // 패널이 열리는 외부 신호 → DB 재조회. effect 안 setState가 정당한 use case.
+    // FEAT-trash-drag: 열린 채 드롭으로 trashCount가 바뀌어도 재조회한다.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (open) void reload();
-  }, [open, reload]);
+  }, [open, trashCount, reload]);
 
   // Esc·바깥 클릭으로 닫기(spec §7).
   useEffect(() => {

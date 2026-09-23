@@ -202,7 +202,7 @@ cd web && npx vitest run && npx tsc --noEmit
 - summary: findTrashUnder·runTrash, dropTargetTrash store 4곳, Dock 휴지통 dropTarget 강조(연두+1.08). trashDrop/Dock/workspace 테스트 추가.
 <!-- /STEP -->
 
-<!-- STEP:1:panel-refresh:pending -->
+<!-- STEP:1:panel-refresh:completed -->
 ### T-1: TrashPanel이 trashCount 변화에 재조회
 
 #### 읽을 파일
@@ -219,5 +219,5 @@ cd web && npx vitest run src/components/workspace/__tests__/TrashPanel.test.tsx
 #### 금지사항
 - 폴링을 넣지 마라. 이유: trashCount가 이미 변화 신호다.
 
-- summary:
+- summary: 열림 effect 의존성에 trashCount 추가. TrashPanel.test에 재조회 케이스 추가.
 <!-- /STEP -->
