@@ -506,9 +506,8 @@ export function DraggableCard({ card }: { card: Card }) {
         1.08,
         () => {
           const ws = useWorkspace.getState();
-          if (!multi) return ws.remove(card.id);
-          ws.selectMany(ids);
-          ws.removeSelected();
+          if (multi) ws.removeSelected(ids);
+          else ws.remove(card.id);
         },
       );
     };

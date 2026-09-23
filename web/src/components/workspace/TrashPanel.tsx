@@ -82,7 +82,6 @@ export function TrashPanel() {
   const open = useWorkspace((s) => s.trashOpen);
   const setTrashOpen = useWorkspace((s) => s.setTrashOpen);
   const restoreFromTrash = useWorkspace((s) => s.restoreFromTrash);
-  const refreshTrashCount = useWorkspace((s) => s.refreshTrashCount);
   // FEAT-trash-drag: 패널이 열린 채로 드롭해도 목록이 맞게 — 삭제가 일어나면 이 값이
   // 바뀌고 아래 effect가 재조회한다.
   const trashCount = useWorkspace((s) => s.trashCount);
@@ -98,16 +97,24 @@ export function TrashPanel() {
   const reload = useCallback(async () => {
     const storage = useStorage.getState();
     if (!storage.initialized) await storage.init();
-    setEntries(await storage.listTrash());
-    await refreshTrashCount();
-  }, [refreshTrashCount]);
+    const list = await storage.listTrash();
+    setEntries(list);
+    // 목록 길이가 곧 개수 — count 조회를 따로 하지 않는다.
+    useWorkspace.setState({ trashCount: list.length });
+  }, []);
 
   useEffect(() => {
     // 패널이 열리는 외부 신호 → DB 재조회. effect 안 setState가 정당한 use case.
-    // FEAT-trash-drag: 열린 채 드롭으로 trashCount가 바뀌어도 재조회한다.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (open) void reload();
-  }, [open, trashCount, reload]);
+  }, [open, reload]);
+
+  // FEAT-trash-drag: 열린 채 캔버스에서 드롭하면 trashCount만 바뀐다 — 목록과
+  // 어긋날 때만 다시 읽는다. 패널 안 조작은 reload가 개수까지 맞춰 여기서 멈춘다.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (open && trashCount !== entries.length) void reload();
+  }, [open, trashCount, entries.length, reload]);
 
   // Esc·바깥 클릭으로 닫기(spec §7).
   useEffect(() => {
@@ -131,13 +138,13 @@ export function TrashPanel() {
   if (!open) return null;
 
   const handleRestore = async (id: string) => {
-    // 목록 재조회는 trashCount 변화를 받은 effect가 한 번만 한다.
     await restoreFromTrash(id);
+    await reload();
   };
 
   const handlePurge = async (id: string) => {
     await useStorage.getState().purgeTrash([id]);
-    await refreshTrashCount();
+    await reload();
   };
 
   const handleEmpty = async () => {
@@ -148,7 +155,7 @@ export function TrashPanel() {
     if (!ok) return;
     // 확인한 N개만 지운다 — 패널을 연 뒤 새로 들어온 메모까지 지우지 않게.
     await useStorage.getState().purgeTrash(entries.map((e) => e.id));
-    await refreshTrashCount();
+    await reload();
   };
 
   return (

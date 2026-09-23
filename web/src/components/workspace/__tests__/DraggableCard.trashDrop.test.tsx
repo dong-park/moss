@@ -156,10 +156,6 @@ describe("FEAT-trash-drag · DraggableCard", () => {
   it("AC-4: 모션 도중 선택이 바뀌어도 놓은 순간의 선택만 지운다", () => {
     const dragged = card({ id: "m1" });
     seed([dragged, card({ id: "m2" }), card({ id: "x" })], ["m1", "m2"]);
-    const removedWith: string[][] = [];
-    useWorkspace.setState({
-      removeSelected: () => removedWith.push(useWorkspace.getState().selectedIds),
-    });
     // WAAPI 흉내 — onfinish를 손으로 부른다.
     const anims: { onfinish: (() => void) | null; cancel: () => void }[] = [];
     const proto = HTMLElement.prototype as unknown as { animate?: unknown };
@@ -182,7 +178,9 @@ describe("FEAT-trash-drag · DraggableCard", () => {
       useWorkspace.setState({ selectedIds: ["x"] });
       anims.at(-1)!.onfinish!();
 
-      expect(removedWith).toEqual([["m1", "m2"]]);
+      // 놓은 순간 고른 m1·m2만 지워지고, 새로 고른 x는 남고 선택도 유지된다.
+      expect(useWorkspace.getState().cards.map((c) => c.id)).toEqual(["x"]);
+      expect(useWorkspace.getState().selectedIds).toEqual(["x"]);
     } finally {
       delete proto.animate;
       trash.remove();

@@ -398,7 +398,8 @@ interface WorkspaceState {
   penClear: () => void;
 
   remove: (id: string) => void;
-  removeSelected: () => void;
+  /** ids를 주면 그 카드들을, 생략하면 지금 선택을 지운다. */
+  removeSelected: (ids?: string[]) => void;
 
   /* ─────────── FEAT-trash: 휴지통 ─────────── */
   /** 휴지통 패널 열림 상태. */
@@ -1805,8 +1806,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     }
   },
 
-  removeSelected: () => {
-    const ids = get().selectedIds;
+  removeSelected: (ids = get().selectedIds) => {
     if (ids.length === 0) return;
     // FEAT-sticky-redesign: 선택 중 판은 별도 경로(메모는 제자리, frameId만 해제)로
     // 먼저 처리하고, 나머지 선택에서 제외해 아래 일반 삭제 경로로 removeNote 되지 않게 한다.
@@ -1825,7 +1825,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const boardAtDeletion = get().currentBoardId;
     set((s) => ({
       cards: s.cards.filter((c) => !idSet.has(c.id)),
-      selectedIds: [],
+      selectedIds: s.selectedIds.filter((x) => !ids.includes(x)),
       editingId: s.editingId && idSet.has(s.editingId) ? null : s.editingId,
       expandedCardId:
         s.expandedCardId && idSet.has(s.expandedCardId)
