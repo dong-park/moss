@@ -63,5 +63,6 @@ export function isFocusInSameCard(
   if (!target || typeof (target as Node).nodeType !== "number") return false;
   const node = target as Node;
   const el = node.nodeType === 1 ? (node as Element) : node.parentElement;
-  return !!el?.closest(`[data-card-id="${cardId}"]`);
+  // 버블 툴바는 body로 portal돼 DOM상 카드 밖이지만, 편집 중인 카드의 것이다.
+  return !!el?.closest(`[data-card-id="${cardId}"], [data-bubble-toolbar]`);
 }

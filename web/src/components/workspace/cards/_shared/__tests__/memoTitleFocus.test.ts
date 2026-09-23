@@ -27,6 +27,14 @@ describe("isFocusInSameCard — blur 가드 판정 (AC-3)", () => {
     expect(isFocusInSameCard(input, "c1")).toBe(false);
   });
 
+  it("body로 portal된 버블 툴바면 true", () => {
+    const bar = document.createElement("div");
+    bar.setAttribute("data-bubble-toolbar", "");
+    const btn = document.createElement("button");
+    bar.appendChild(btn);
+    expect(isFocusInSameCard(btn, "c1")).toBe(true);
+  });
+
   it("포커스 소실(null)이면 false", () => {
     expect(isFocusInSameCard(null, "c1")).toBe(false);
   });
