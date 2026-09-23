@@ -61,7 +61,7 @@ const DOCK_ITEMS: DockItem[] = [
   { toolId: "board", icon: "/icons/dock/filebox.png", labelKey: "workspace.tool.board", draggable: true },
   { toolId: "pen", icon: "/icons/sidebar/draw-v2.png", labelKey: "workspace.tool.pen", draggable: false },
   { toolId: "signals", icon: "/icons/sidebar/signals-v2.png", labelKey: "signals.sidebar.label", draggable: false },
-  // FEAT-trash: 독 맨 끝 휴지통 — 클릭 전용(드래그해서 버리기는 다음 iteration).
+  // FEAT-trash: 독 맨 끝 휴지통 — 클릭 전용(카드를 끌어 위에 놓으면 버린다, FEAT-trash-drag).
   { toolId: "trash", icon: "/icons/sidebar/trash-v2.png", labelKey: "workspace.tool.trash", draggable: false },
 ];
 
@@ -104,6 +104,8 @@ export function Dock({
   const setDockDrag = useWorkspace((s) => s.setDockDrag);
   const setTrashOpen = useWorkspace((s) => s.setTrashOpen);
   const trashCount = useWorkspace((s) => s.trashCount);
+  // FEAT-trash-drag: 카드가 이 독의 휴지통 위에 있을 때 강조.
+  const dropTargetTrash = useWorkspace((s) => s.dropTargetTrash);
   const addCardAt = useWorkspace((s) => s.addCardAt);
   const addCardAtViewportCenter = useWorkspace((s) => s.addCardAtViewportCenter);
   const addFrameAt = useWorkspace((s) => s.addFrameAt);
@@ -409,6 +411,7 @@ export function Dock({
         showLabel={hoveredId === "trash"}
         reducedMotion={reducedMotion}
         badge={trashCount > 0}
+        dropTarget={dropTargetTrash}
         onClick={() => setTrashOpen(true)}
       />
 
@@ -455,6 +458,7 @@ function DockButton({
   reducedMotion,
   pressed,
   badge,
+  dropTarget,
   onDragStart,
   onDragMove,
   onDragEnd,
@@ -473,6 +477,8 @@ function DockButton({
   pressed?: boolean;
   /** FEAT-trash: 점 배지 — 휴지통에 메모가 있을 때. */
   badge?: boolean;
+  /** FEAT-trash-drag: 카드 드래그가 이 버튼 위에 있으면 연두 강조 + 1.08배. */
+  dropTarget?: boolean;
   onDragStart?: (screenX: number, screenY: number) => void;
   onDragMove?: (screenX: number, screenY: number) => void;
   onDragEnd?: () => void;
@@ -564,7 +570,11 @@ function DockButton({
       onClick={handleClick}
       aria-label={label}
       aria-pressed={pressed}
-      className="group relative flex flex-col items-center justify-center outline-none"
+      className={[
+        "group relative flex flex-col items-center justify-center outline-none",
+        // FEAT-trash-drag: 드롭 대상 강조 — 연두 배경(브레드크럼 드롭 강조와 같은 색).
+        dropTarget ? "rounded-full bg-accent-lime/30" : "",
+      ].join(" ")}
       style={{
         // 2단계 리뷰 P1-1: 슬롯을 hover 크기(72px)로 고정하지 않는다 — 평상시
         // iconBase(40px)이고 hover 확대만큼만 늘어나야(맥 독처럼) 독 실제 폭이
@@ -573,6 +583,10 @@ function DockButton({
         // motion이 rAF 한 번에 DOM style을 쓴다.
         width: size,
         height: size,
+        // FEAT-trash-drag: dropTarget이면 hover 확대 크기에 1.08을 곱해 키운다(AC-5).
+        // transform은 레이아웃 폭에 영향이 없어 독 가운데 정렬을 흔들지 않는다.
+        transform: dropTarget ? "scale(1.08)" : undefined,
+        transition: "transform 120ms ease-out",
       }}
     >
       <motion.span

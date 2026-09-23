@@ -470,6 +470,12 @@ interface WorkspaceState {
    */
   dropTargetCrumbId: string | null;
   setDropTargetCrumb: (id: string | null) => void;
+  /**
+   * FEAT-trash-drag: 카드 드래그 중 커서가 독의 휴지통 버튼 위에 있는가 — 드롭
+   * 하이라이트용. transient. dropTargetFunnelId·dropTargetCrumbId와 같은 성격이다.
+   */
+  dropTargetTrash: boolean;
+  setDropTargetTrash: (v: boolean) => void;
   /** 현재 보드의 함 카드들에 대한 카드 수를 다시 집계해 subcanvasCounts 갱신. */
   refreshSubcanvasCounts: () => Promise<void>;
   /**
@@ -1076,6 +1082,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   subcanvasCounts: {},
   dropTargetFunnelId: null,
   dropTargetCrumbId: null,
+  dropTargetTrash: false,
   pendingSubcanvasUndo: null,
   draggingId: null,
   draggingMulti: false,
@@ -1988,6 +1995,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   setDropTargetFunnel: (id) => set({ dropTargetFunnelId: id }),
   setDropTargetCrumb: (id) => set({ dropTargetCrumbId: id }),
+  setDropTargetTrash: (v) => set({ dropTargetTrash: v }),
 
   refreshSubcanvasCounts: async () => {
     const refs = get()
@@ -2106,6 +2114,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       selectedIds: s.selectedIds.filter((x) => x !== cardId),
       editingId: s.editingId === cardId ? null : s.editingId,
       dropTargetFunnelId: null,
+      dropTargetTrash: false,
       subcanvasCounts: {
         ...s.subcanvasCounts,
         [targetBoardId]: (s.subcanvasCounts[targetBoardId] ?? 0) + 1,
@@ -2165,6 +2174,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         selectedIds: s.selectedIds.filter((x) => x !== cardId),
         editingId: s.editingId === cardId ? null : s.editingId,
         dropTargetCrumbId: null,
+        dropTargetTrash: false,
         subcanvasCounts: counts,
       };
     });

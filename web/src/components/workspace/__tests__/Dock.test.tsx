@@ -117,6 +117,7 @@ afterEach(async () => {
     dockDrag: null,
     trashOpen: false,
     trashCount: 0,
+    dropTargetTrash: false,
     viewport: { x: 0, y: 0, scale: 1 },
   });
   document.body.innerHTML = "";
@@ -149,6 +150,21 @@ describe("AC-1: 독 버튼 (펜·시그널스 임시 숨김 + 휴지통)", () =>
     renderDock();
     const trashBtn = screen.getByLabelText("휴지통");
     expect(trashBtn.querySelector("[data-dock-badge]")).not.toBeNull();
+  });
+
+  it("FEAT-trash-drag: dropTargetTrash면 휴지통 버튼에 강조 클래스와 1.08배가 붙는다", () => {
+    useWorkspace.setState({ dropTargetTrash: true });
+    renderDock();
+    const trashBtn = screen.getByLabelText("휴지통");
+    expect(trashBtn.className).toContain("bg-accent-lime");
+    expect(trashBtn.style.transform).toContain("scale(1.08)");
+  });
+
+  it("FEAT-trash-drag: dropTargetTrash가 false면 강조가 없다", () => {
+    renderDock();
+    const trashBtn = screen.getByLabelText("휴지통");
+    expect(trashBtn.className).not.toContain("bg-accent-lime");
+    expect(trashBtn.style.transform).not.toContain("scale(1.08)");
   });
 
   it("사이드바 DOM이 없다", () => {

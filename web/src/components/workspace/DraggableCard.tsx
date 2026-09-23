@@ -68,6 +68,8 @@ export function DraggableCard({ card }: { card: Card }) {
   // FEAT-eject: 함 밖(상위/조상 보드)으로 카드를 꺼내는 역방향 — 브레드크럼 드롭 + 우클릭.
   const moveCardToBoard = useWorkspace((s) => s.moveCardToBoard);
   const setDropTargetCrumb = useWorkspace((s) => s.setDropTargetCrumb);
+  // FEAT-trash-drag: 독의 휴지통 위로 카드를 끌어 버리기 — 드롭 하이라이트 플래그.
+  const setDropTargetTrash = useWorkspace((s) => s.setDropTargetTrash);
   const boards = useWorkspace((s) => s.boards);
   const currentBoardId = useWorkspace((s) => s.currentBoardId);
   // 드래그 grab/drop 손맛: 들어올린 카드에 lift 시각효과(scale/shadow/z).
@@ -238,6 +240,17 @@ export function DraggableCard({ card }: { card: Card }) {
       return null;
     };
 
+    // FEAT-trash-drag: 커서 아래 독 휴지통 버튼이 있는지. findCrumbUnder와 같은 모양이며
+    // 단일·다중·판 단독 세 드래그 모드 전부에서 돈다.
+    let hoveredTrash = false;
+    const findTrashUnder = (clientX: number, clientY: number): boolean => {
+      const els = document.elementsFromPoint(clientX, clientY);
+      for (const el of els) {
+        if ((el as HTMLElement).closest?.('[data-dock-id="trash"]')) return true;
+      }
+      return false;
+    };
+
     // FEAT-drag-tilt: 안착 중 다시 잡으면 옛 스프링을 멈추고 기울기 상태를 비운다.
     // 안 비우면 단순 클릭(드래그 없음)일 때 카드가 흔들리던 각도 그대로 굳는다.
     if (settleAnimRef.current) {
@@ -360,6 +373,23 @@ export function DraggableCard({ card }: { card: Card }) {
       // FEAT-drag-tilt: 커서만 기록한다. 각도 계산은 tiltTick(rAF) 한 곳에서.
       latestX = ev.clientX;
       const s = getScale();
+      // FEAT-trash-drag: 휴지통 탐지는 세 드래그 모드 공통으로 분기 앞에서 돈다.
+      // 휴지통 위면 함·크럼 강조를 끄고 휴지통 강조만 켠다(AC-6).
+      const trash = findTrashUnder(ev.clientX, ev.clientY);
+      if (trash !== hoveredTrash) {
+        hoveredTrash = trash;
+        setDropTargetTrash(trash);
+      }
+      if (trash) {
+        if (hoveredCrumbId !== null) {
+          hoveredCrumbId = null;
+          setDropTargetCrumb(null);
+        }
+        if (hoveredFunnelId !== null) {
+          hoveredFunnelId = null;
+          setDropTargetFunnel(null);
+        }
+      }
       if (d.multi) {
         const targetX = d.originX + dx / s;
         const targetY = d.originY + dy / s;
@@ -377,16 +407,18 @@ export function DraggableCard({ card }: { card: Card }) {
       } else {
         moveCard(card.id, d.originX + dx / s, d.originY + dy / s);
         // crumb(밖으로)와 funnel(안으로)을 동시에 추적하되, 둘 다 hover면 crumb 우선
-        // — 조각 위에서는 함 하이라이트를 끈다.
-        const crumb = findCrumbUnder(ev.clientX, ev.clientY);
-        if (crumb !== hoveredCrumbId) {
-          hoveredCrumbId = crumb;
-          setDropTargetCrumb(crumb);
-        }
-        const funnel = crumb ? null : findFunnelUnder(ev.clientX, ev.clientY);
-        if (funnel !== hoveredFunnelId) {
-          hoveredFunnelId = funnel;
-          setDropTargetFunnel(funnel);
+        // — 조각 위에서는 함 하이라이트를 끈다. 휴지통 위일 땐 둘 다 추적하지 않는다.
+        if (!trash) {
+          const crumb = findCrumbUnder(ev.clientX, ev.clientY);
+          if (crumb !== hoveredCrumbId) {
+            hoveredCrumbId = crumb;
+            setDropTargetCrumb(crumb);
+          }
+          const funnel = crumb ? null : findFunnelUnder(ev.clientX, ev.clientY);
+          if (funnel !== hoveredFunnelId) {
+            hoveredFunnelId = funnel;
+            setDropTargetFunnel(funnel);
+          }
         }
       }
     };
@@ -493,6 +525,57 @@ export function DraggableCard({ card }: { card: Card }) {
       };
     };
 
+    /**
+     * FEAT-trash-drag: 휴지통 버튼 위에서 놓았을 때 — runAbsorb의 대상만 휴지통으로
+     * 바꾼 모션. 카드를 버튼 중심으로 빨아들인 뒤 삭제한다. 다중 선택이면 잡은 카드
+     * 1장만 날아가고 나머지는 삭제 시점에 함께 사라진다(removeSelected). WAAPI 미지원
+     * (jsdom 등)이면 모션 없이 즉시 삭제.
+     */
+    const runTrash = (multi: boolean) => {
+      const cardEl = containerRef.current;
+      const trashEl = document.querySelector<HTMLElement>('[data-dock-id="trash"]');
+      // 삭제 실행 — 모션 유무와 무관하게 같은 액션을 부른다. 잡은 카드가 다중
+      // 선택의 일부면 선택 전부, 아니면 이 카드만.
+      const commit = () => {
+        const ws = useWorkspace.getState();
+        if (multi) ws.removeSelected();
+        else ws.remove(card.id);
+      };
+      if (!cardEl || typeof cardEl.animate !== "function" || !trashEl) {
+        commit();
+        releaseLift();
+        return;
+      }
+      const cr = cardEl.getBoundingClientRect();
+      const tr = trashEl.getBoundingClientRect();
+      const s = getScale();
+      // 화면 좌표 중심차 → 카드 로컬 transform(부모 world layer scale 보정).
+      const dx = (tr.left + tr.width / 2 - (cr.left + cr.width / 2)) / s;
+      const dy = (tr.top + tr.height / 2 - (cr.top + cr.height / 2)) / s;
+      // 휴지통이 콕 받아내는 bump.
+      trashEl.animate(
+        [{ transform: "scale(1)" }, { transform: "scale(1.08)" }, { transform: "scale(1)" }],
+        { duration: 260, easing: "ease-out" },
+      );
+      // FEAT-drag-tilt AC-5: 흡수와 같이 카드 중심 기준 + 놓기 직전 각도.
+      const anim = cardEl.animate(
+        [
+          { transform: liftKeyframe(), opacity: 1 },
+          { transform: `translate(${dx}px, ${dy}px) scale(0.12)`, opacity: 0 },
+        ],
+        { duration: 240, easing: "cubic-bezier(0.4, 0, 0.6, 1)", fill: "forwards" },
+      );
+      anim.onfinish = () => {
+        commit();
+        // 삭제가 거부되면 카드가 state에 남는다 — fill:forwards 투명 고정을 취소해
+        // 되돌린다(함 흡수와 같은 규칙).
+        if (useWorkspace.getState().cards.some((c) => c.id === card.id)) {
+          anim.cancel();
+        }
+        releaseLift();
+      };
+    };
+
     const onUp = () => {
       const d = dragRef.current;
       dragRef.current = null;
@@ -512,8 +595,21 @@ export function DraggableCard({ card }: { card: Card }) {
       if (!d || !d.moved) {
         setDropTargetFunnel(null);
         setDropTargetCrumb(null);
+        setDropTargetTrash(false);
         // 한 번 누르기는 선택까지다(2026-09-22 사용자 결정). 선택한 채로 글자를
         // 치면 제목 편집으로 들어간다 — useCardFlowShortcuts가 맡는다.
+        return;
+      }
+      // FEAT-trash-drag: 휴지통 위에서 놓았으면 흡수 모션 후 삭제(다중 선택 포함).
+      // 잡은 카드가 다중 선택의 일부면 removeSelected, 아니면 remove(단일).
+      if (hoveredTrash) {
+        hoveredTrash = false;
+        hoveredCrumbId = null;
+        hoveredFunnelId = null;
+        setDropTargetFunnel(null);
+        setDropTargetCrumb(null);
+        setDropTargetTrash(false);
+        runTrash(d.multi);
         return;
       }
       // FEAT-eject: 브레드크럼 조각 위에서 놓았으면 역모션 후 상위 보드로 내보낸다(crumb 우선).
@@ -522,12 +618,14 @@ export function DraggableCard({ card }: { card: Card }) {
         hoveredCrumbId = null;
         hoveredFunnelId = null;
         setDropTargetFunnel(null);
+        setDropTargetTrash(false);
         return;
       }
       // FEAT-subcanvas: 함 위에서 놓았으면 흡수 모션 후 그 서브 캔버스로 이동.
       if (!d.multi && hoveredFunnelId) {
         runAbsorb(hoveredFunnelId);
         hoveredFunnelId = null;
+        setDropTargetTrash(false);
         return;
       }
       // 일반 드롭 — lift 해제(스프링 안착).
@@ -536,6 +634,7 @@ export function DraggableCard({ card }: { card: Card }) {
       if (willTilt) settleTilt();
       setDropTargetFunnel(null);
       setDropTargetCrumb(null);
+      setDropTargetTrash(false);
       hoveredFunnelId = null;
       hoveredCrumbId = null;
 

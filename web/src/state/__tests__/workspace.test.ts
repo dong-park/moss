@@ -11,7 +11,7 @@ import {
   type CaptureToolId,
 } from "@/state/workspace";
 import { useStorage } from "@/state/storage";
-import { getDB, resetDB } from "@/state/db/schema";
+import { getDB, resetDB, type Board } from "@/state/db/schema";
 import type { Translator } from "@/i18n";
 
 let originalStorage: PropertyDescriptor | undefined;
@@ -801,5 +801,35 @@ describe("FEAT-trash · 삭제 경로와 복구", () => {
     expect(
       (await useStorage.getState().loadCards("b1")).map((n) => n.id),
     ).toEqual(["other"]);
+  });
+});
+
+describe("FEAT-trash-drag: dropTargetTrash", () => {
+  it("setDropTargetTrash가 boolean을 세팅한다", () => {
+    expect(useWorkspace.getState().dropTargetTrash).toBe(false);
+    useWorkspace.getState().setDropTargetTrash(true);
+    expect(useWorkspace.getState().dropTargetTrash).toBe(true);
+    useWorkspace.getState().setDropTargetTrash(false);
+    expect(useWorkspace.getState().dropTargetTrash).toBe(false);
+  });
+
+  it("카드를 서브캔버스로 옮기면 dropTargetTrash가 초기화된다", async () => {
+    await useStorage.getState().init();
+    useWorkspace.setState({
+      currentBoardId: "P",
+      boards: [
+        { id: "P", name: "부모", parentBoardId: null },
+        { id: "C", name: "자식", parentBoardId: "P" },
+      ] as Board[],
+      cards: [
+        { id: "H", kind: "board", x: 0, y: 0, width: 200, content: "", boardRef: "C" },
+        { id: "m1", kind: "text", x: 0, y: 0, width: 200, content: "hi" },
+      ] as Card[],
+      dropTargetTrash: true,
+    });
+
+    await useWorkspace.getState().moveCardToSubcanvas("m1", "H");
+
+    expect(useWorkspace.getState().dropTargetTrash).toBe(false);
   });
 });
