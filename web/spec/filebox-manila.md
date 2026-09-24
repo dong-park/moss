@@ -175,7 +175,7 @@ npx vitest run src/components/workspace/cards/__tests__/CardContent.board.test.t
 - summary: 이름을 앞판 가운데 15px 기준 두 줄 말줄임으로 옮기고, 탭에는 짧은 개수(100 이상 99+)를 표시한다. 빈 이름은 흐린 안내 문구로 보이며 관련 테스트·타입 검사·i18n 검사가 통과했다.
 <!-- /STEP -->
 
-<!-- STEP:2:verify-capture:pending -->
+<!-- STEP:2:verify-capture:completed -->
 ### T-2: 게이트와 실화면 캡처
 
 #### 읽을 파일
@@ -194,5 +194,13 @@ npx tsc --noEmit && bun scripts/check-i18n.mjs && npx vitest run 2>&1 | grep -E 
 #### 금지사항
 - ExportModal.tsx 린트 오류와 Canvas.virtualization 테스트를 이 작업에서 고치지 마라. 이유: HEAD에서도 동일한 기존 결함, 범위 밖.
 
-- summary:
+- summary: 100% 실화면에서 빈/2개/5개 폴더·독·드롭 중 앞판을 캡처하고, 독 드래그 미리보기까지 남겼다. 타입·i18n·파일함 테스트가 통과했다. 전체 스위트는 907 통과·1 기존 실패·3 스킵으로 허용치 이내다.
 <!-- /STEP -->
+
+## WORK 검증 결과 (2026-09-24)
+
+- 이름: 기본 200px 카드에서 실측 15px. 한글 8자 표본 폭 104px < 이름 영역 160px. 빈 이름은 같은 자리에서 흐린 색으로 표시. 긴 이름은 두 줄 말줄임과 `title` 원문 유지.
+- 종이: `papers-check.png`와 실화면 `impl-empty.png`·`impl-low.png`·`impl-high.png`에서 0/1~3/4+가 구분됨. 0장에는 종이 레이어가 없고, 두 단계는 탭 오른쪽 뒤판 윗선 위로 나옴. `MEMO_TINTS`를 곱한 노랑 계열이며 탭 라벨은 가리지 않음.
+- 개수·동작: 탭에 `0개`·`2개`·`5개`, 100 이상은 `99+`. 앞판에 개수 없음. 드롭 중 앞판에 `translateY(2.5%)`와 150ms 복귀 전환이 적용됨. 독 40px 아이콘과 닫힌 폴더 드래그 미리보기 확인.
+- 캡처: `spec/filebox-photo/impl-empty.png`, `impl-low.png`, `impl-high.png`, `impl-drop-open.png`, `impl-dock.png`, `impl-multiple.png`, `impl-preview.png`.
+- 게이트: `npx tsc --noEmit`, `bun scripts/check-i18n.mjs`, 파일함 관련 17/17 통과. 전체 Vitest 907 통과·1 실패·3 스킵(911개). 유일한 실패 `Canvas.virtualization.test.tsx`는 기존 결함. 브리지 테스트에서 종료 후 `DatabaseClosedError` 2건 기록. 커버리지 제공 패키지가 없어 미측정.
