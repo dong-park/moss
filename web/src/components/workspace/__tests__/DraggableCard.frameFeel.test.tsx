@@ -420,6 +420,46 @@ describe("FEAT-frame-feel T4 · 따라 흔들림", () => {
     fireEvent.mouseUp(window, { clientX: 70, clientY: 0 });
     vi.useRealTimers();
   });
+
+  it("판에 속하지 않은 메모는 흔들림 상태가 비어 있어도 흔들림 transform을 쓰지 않는다", () => {
+    // frameId가 null로 들어온 메모(IndexedDB 행 등)가 wobbleFrameId=null과 같다고
+    // 판정되면 늘 흔들림 transform에 갇힌다 — null끼리는 일치로 치지 않는다.
+    const loose = memo({ id: "m9", frameId: null as unknown as string });
+    seed([loose]);
+    const { container } = wrap(<DraggableCard card={loose} />);
+    expect(root(container, "m9").style.transform).not.toContain("var(--tilt");
+  });
+
+  it("안착 중인 판의 스프링이 끝나도 다른 판의 흔들림 상태를 끄지 않는다", async () => {
+    vi.useFakeTimers();
+    const f1 = frame({ id: "f1" });
+    const f2 = frame({ id: "f2", x: 1000 });
+    const m1 = memo({ id: "m1", x: 40, y: 40, frameId: "f1" });
+    seed([f1, f2, m1]);
+    const { container } = wrap(
+      <>
+        <DraggableCard card={f1} />
+        <DraggableCard card={f2} />
+        <DraggableCard card={m1} />
+      </>,
+    );
+    // f1을 끌었다 놓아 멤버 안착 스프링을 건다.
+    fireEvent.mouseDown(root(container, "f1"), { button: 0, clientX: 0, clientY: 0 });
+    fireEvent.mouseMove(window, { clientX: 12, clientY: 0 });
+    fireEvent.mouseMove(window, { clientX: 120, clientY: 0 });
+    frames(1);
+    // 스프링은 실제 시간으로 돌아야 끝난다(AC-9 테스트와 같은 이유).
+    vi.useRealTimers();
+    fireEvent.mouseUp(window, { clientX: 120, clientY: 0 });
+    // 안착이 끝나기 전에 f2를 잡는다 — 흔들림 상태는 이제 f2 것이다.
+    fireEvent.mouseDown(root(container, "f2"), { button: 0, clientX: 0, clientY: 0 });
+    fireEvent.mouseMove(window, { clientX: 12, clientY: 0 });
+    expect(useWorkspace.getState().wobbleFrameId).toBe("f2");
+    // f1의 스프링이 끝까지 돌 시간을 준다 — 그래도 f2의 흔들림은 살아 있어야 한다.
+    await new Promise((r) => setTimeout(r, 1500));
+    expect(useWorkspace.getState().wobbleFrameId).toBe("f2");
+    fireEvent.mouseUp(window, { clientX: 12, clientY: 0 });
+  });
 });
 
 describe("FEAT-frame-feel T5 · reduced-motion", () => {

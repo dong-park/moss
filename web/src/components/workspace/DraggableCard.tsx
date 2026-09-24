@@ -156,7 +156,10 @@ export function DraggableCard({ card }: { card: Card }) {
   // FEAT-frame-feel T4: 멤버가 흔들리는 중인가 — 자기 판이 드래그되는 동안 transform을
   // tiltTransform으로 바꾼다. 각도 값 자체는 판 핸들러가 CSS 변수로 직접 쓴다.
   const wobbling = useWorkspace(
-    (s) => card.kind !== "frame" && s.wobbleFrameId === card.frameId,
+    (s) =>
+      card.kind !== "frame" &&
+      s.wobbleFrameId !== null &&
+      s.wobbleFrameId === card.frameId,
   );
   // FEAT-memo-variety: 메모 고유 각도·색조는 id 해시로 정해진다. 비메모는 무변화.
   const baseTransform = memoBaseTransform(card, penMode);
@@ -176,11 +179,32 @@ export function DraggableCard({ card }: { card: Card }) {
   // FEAT-frame-feel T4: 판 드래그 종료 시 멤버들에 걸어 둔 안착 스프링들. 다시 잡으면
   // 옛 스프링을 멈춘다(FEAT-drag-tilt과 같은 규율).
   const wobbleSettleRef = useRef<{ stop: () => void } | null>(null);
+  /**
+   * FEAT-frame-feel T4: 이 판(card.id) 멤버들의 흔들림 변수를 지우고, 흔들림 상태가
+   * 아직 이 판 것이면 내린다. 다른 판이 그새 흔들림을 가져갔으면 그 상태는 건드리지
+   * 않는다 — 안착 스프링이 끝나는 순간 다른 판 드래그의 흔들림을 끄지 않게.
+   */
+  const clearWobble = () => {
+    const st = useWorkspace.getState();
+    for (const c of st.cards) {
+      if (c.frameId !== card.id) continue;
+      const el = document.querySelector<HTMLElement>(`[data-card-id="${c.id}"]`);
+      if (el) for (const v of TILT_VARS) el.style.removeProperty(v);
+    }
+    if (st.wobbleFrameId === card.id) st.setWobbleFrame(null);
+  };
   useEffect(
     () => () => {
       settleAnimRef.current?.stop();
-      wobbleSettleRef.current?.stop();
+      // 안착 스프링 도중 판이 사라지면(삭제·보드 이동) 멤버가 기운 채 굳지 않게 치운다.
+      if (wobbleSettleRef.current) {
+        wobbleSettleRef.current.stop();
+        wobbleSettleRef.current = null;
+        clearWobble();
+      }
     },
+    // clearWobble은 card.id만 읽는다 — 마운트 동안 id는 바뀌지 않는다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
 
@@ -334,17 +358,7 @@ export function DraggableCard({ card }: { card: Card }) {
     if (wobbleSettleRef.current) {
       wobbleSettleRef.current.stop();
       wobbleSettleRef.current = null;
-      const wf = useWorkspace.getState().wobbleFrameId;
-      if (wf) {
-        for (const c of useWorkspace.getState().cards) {
-          if (c.frameId !== wf) continue;
-          const el = document.querySelector<HTMLElement>(
-            `[data-card-id="${c.id}"]`,
-          );
-          if (el) for (const v of TILT_VARS) el.style.removeProperty(v);
-        }
-        setWobbleFrame(null);
-      }
+      clearWobble();
     }
 
     /**
@@ -519,7 +533,8 @@ export function DraggableCard({ card }: { card: Card }) {
       for (const el of wobbleTargets)
         for (const v of TILT_VARS) el.style.removeProperty(v);
       wobbleTargets = [];
-      setWobbleFrame(null);
+      // 그새 다른 판이 흔들림을 가져갔으면 그 판의 상태는 끄지 않는다.
+      if (useWorkspace.getState().wobbleFrameId === card.id) setWobbleFrame(null);
     };
 
     /** 놓으면 멤버들이 스프링으로 2~3회 흔들리다 고유 각도에 선다(AC-9). */
@@ -860,6 +875,11 @@ export function DraggableCard({ card }: { card: Card }) {
           after?.frameId &&
           after.frameId !== beforeFrameId
         ) {
+          // "착"이 안착 흔들림을 대신한다. WAAPI(320ms)가 끝난 뒤에도 기울기 스프링이
+          // 남아 있으면 그 각도로 한 번 튀므로, 스프링과 기울기 변수를 먼저 거둔다.
+          settleAnimRef.current?.stop();
+          settleAnimRef.current = null;
+          if (willTilt) endTilt();
           snapMemo(card.id);
         }
       }
