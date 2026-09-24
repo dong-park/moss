@@ -37,10 +37,13 @@ export function FrameCardContent({ card }: { card: Card }) {
 
   return (
     <div
-      className="relative h-full w-full rounded-[12px]"
+      className="relative h-full w-full"
       style={{
-        border: "2px dashed var(--color-accent-lime)",
-        background: "rgba(154, 205, 50, 0.06)",
+        // 화이트보드 한 장을 9-slice로 늘린다 — 알루미늄 모서리 캡·아래 트레이는 제 크기로 남고
+        // 변·판 면만 늘어난다. 원본 800×563, 모서리 캡까지 50px를 잘라 화면에서는 18px로 그린다.
+        borderStyle: "solid",
+        borderWidth: 18,
+        borderImage: 'url("/cards/v2/whiteboard.png") 50 fill / 18px stretch',
       }}
     >
       <div
