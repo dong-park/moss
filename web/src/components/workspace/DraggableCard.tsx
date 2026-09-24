@@ -196,12 +196,15 @@ export function DraggableCard({ card }: { card: Card }) {
   useEffect(
     () => () => {
       settleAnimRef.current?.stop();
-      // 안착 스프링 도중 판이 사라지면(삭제·보드 이동) 멤버가 기운 채 굳지 않게 치운다.
-      if (wobbleSettleRef.current) {
-        wobbleSettleRef.current.stop();
+      // 끄는 중이거나 안착 스프링 도중 판이 사라지면(삭제·보드 이동) 멤버가 기운 채
+      // 굳거나 흔들림 상태가 남지 않게 치운다. 자기 판 일일 때만 돈다 — 가상화로
+      // 카드가 대량 언마운트될 때 카드마다 전체 순회하지 않게.
+      const settling = wobbleSettleRef.current;
+      if (settling) {
+        settling.stop();
         wobbleSettleRef.current = null;
-        clearWobble();
       }
+      if (settling || useWorkspace.getState().wobbleFrameId === card.id) clearWobble();
     },
     // clearWobble은 card.id만 읽는다 — 마운트 동안 id는 바뀌지 않는다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
