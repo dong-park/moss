@@ -665,7 +665,9 @@ export function DraggableCard({ card }: { card: Card }) {
         // 컨텍스트를 새로 만들지 않고, 이름표의 z-index가 world-layer 레벨에서
         // 메모(10/20/40)와 직접 비교된다 — 그리고 z-index:auto인 frame 자신은
         // 항상 양수 z-index를 가진 메모보다 아래로 그려진다(§7 요구 그대로 유지).
-        zIndex: lifted ? 40 : card.kind === "frame" ? undefined : selected ? 20 : 10,
+        // 들어올림(40)도 frame엔 주지 않는다 — 판 배경이 불투명(화이트보드 이미지)이라
+        // 끄는 동안 판이 멤버 메모(10) 위로 올라오면 메모가 통째로 가려진다.
+        zIndex: card.kind === "frame" ? undefined : lifted ? 40 : selected ? 20 : 10,
         outline: selected ? "2px solid rgba(79, 124, 243, 0.45)" : "none",
         outlineOffset: 2,
         borderRadius: 8,
