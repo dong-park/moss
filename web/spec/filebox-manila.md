@@ -151,7 +151,7 @@ papers-check.png에서 0/1~3/4+가 설명 없이 구분되고, 종이가 탭 라
 - summary: 원본 사진 종이 질감을 메모 노랑 색조로 입혀 2장/5장 레이어를 재생성했다. 200px 비교 이미지에서 빈/적음/많음이 구분되고 탭 왼쪽 라벨을 가리지 않는다.
 <!-- /STEP -->
 
-<!-- STEP:1:name-count-layout:pending -->
+<!-- STEP:1:name-count-layout:completed -->
 ### T-1: 이름은 앞판 가운데, 개수는 탭 라벨로
 
 #### 읽을 파일
@@ -172,7 +172,7 @@ npx vitest run src/components/workspace/cards/__tests__/CardContent.board.test.t
 - 카드 박스 비율(정사각형)과 리사이즈 규칙을 바꾸지 마라. 이유: 사용자 확정, 기존 카드 데이터 이전이 생긴다.
 - 앞판에 이름 편집 입력을 넣지 마라. 이유: 비목표.
 
-- summary:
+- summary: 이름을 앞판 가운데 15px 기준 두 줄 말줄임으로 옮기고, 탭에는 짧은 개수(100 이상 99+)를 표시한다. 빈 이름은 흐린 안내 문구로 보이며 관련 테스트·타입 검사·i18n 검사가 통과했다.
 <!-- /STEP -->
 
 <!-- STEP:2:verify-capture:pending -->

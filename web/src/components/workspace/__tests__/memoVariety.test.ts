@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  BOARD_ROTATION_MAX_DEG,
   MEMO_ROTATION_MAX_DEG,
   MEMO_TINT_COUNT,
   MEMO_TINTS,
+  cardRotationDeg,
   formatDeg,
   memoBaseTransform,
   memoLiftedTransform,
@@ -62,6 +64,20 @@ describe("FEAT-memo-variety · 각도", () => {
     const frame = { id: "f1", kind: "frame" };
     expect(memoBaseTransform(frame, false)).toBeUndefined();
     expect(memoLiftedTransform(frame, false)).toBe("scale(1.03) rotate(-1.5deg)");
+  });
+
+  it("파일함(board)은 메모보다 작은 상한(±1도) 안에서 기울고 펜 모드에서는 0이다", () => {
+    for (const id of randomIds(1000)) {
+      const deg = cardRotationDeg(id, "board");
+      expect(deg).toBeGreaterThanOrEqual(-BOARD_ROTATION_MAX_DEG);
+      expect(deg).toBeLessThanOrEqual(BOARD_ROTATION_MAX_DEG);
+    }
+    const b = { id: "b1", kind: "board" };
+    expect(memoBaseTransform(b, false)).toBe(
+      `rotate(${formatDeg(cardRotationDeg("b1", "board"))}deg)`,
+    );
+    expect(memoBaseTransform(b, true)).toBe("rotate(0deg)");
+    expect(memoLiftedTransform(b, true)).toBe("scale(1.03) rotate(-1.5deg)");
   });
 
   it("formatDeg: 소수 둘째 자리로 반올림하고 꼬리 0을 뗀다", () => {
