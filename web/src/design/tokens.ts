@@ -168,6 +168,8 @@ export const shadow = {
   none: "none",
   card: "0 1px 2px rgba(42, 39, 34, 0.04), 0 2px 6px rgba(42, 39, 34, 0.06)",
   cardLift: "0 4px 12px rgba(42, 39, 34, 0.08), 0 8px 24px rgba(42, 39, 34, 0.06)",
+  // FEAT-frame-feel D5: 메모판 전용 — 기존 들기보다 깊은 무게.
+  frameLift: "0 6px 14px rgba(42, 39, 34, 0.14), 0 20px 52px rgba(42, 39, 34, 0.18)",
   modal: "0 12px 40px rgba(42, 39, 34, 0.16)",
 } as const;
 
