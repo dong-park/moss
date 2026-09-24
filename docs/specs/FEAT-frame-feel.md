@@ -2,7 +2,7 @@
 
 > 메모판은 무겁게 들리고, 메모를 넣으면 "착" 붙고, 판을 끌면 붙은 메모들이 자석에 매달린 채 흔들린다.
 
-**Status**: 명세 — 구현 전
+**Status**: 구현 완료 — 전체 스위트 통과(Canvas.virtualization 1건은 기존 실패)
 **Owner**: dong-park
 **Estimated**: M
 **Started**: 2026-09-24
@@ -87,3 +87,14 @@
 - 멤버가 자기 안착 스프링을 돌리는 중 판이 다시 잡히면 FEAT-drag-tilt처럼 옛 스프링을 멈춘다.
 - 외부 사례: tldraw·Miro·FigJam은 판을 기울이거나 키우지 않는다. 노트를 넣을 때 대상 판 강조가 표준이다. tldraw는 `setHintingShapes`를 쓴다. 튐은 제스처가 빠를 때만 준다는 Apple WWDC18 원칙을 참고했다.
 - 브라우저 확인은 dev 서버 `localhost:3100`과 pharos 인앱 브라우저 pane `471fa7b8`로 한다. 그 pane에서 eval은 응답하지 않았다.
+
+## 7. 진행 (2026-09-24)
+
+- T1~T5 구현·테스트 완료. 커밋 전 상태였던 z-index 수정·화이트보드 border-image는 앞선 커밋에 포함돼 있다.
+- `web/src/components/workspace/DraggableCard.tsx` — 판 lift transform 제거·전용 그림자(T1), 드롭 대상 판 강조 링(T2), "착" 모션(T3), 판 드래그 멤버 흔들림(T4), reduced-motion 분기(T5).
+- `web/src/state/workspace.ts` — `dropTargetFrameId`·`wobbleFrameId` 휘발 상태와 setter, `findOwningFrame`·`cardCenter` export.
+- `web/src/components/workspace/memoVariety.ts` — `memoLiftedTransform`이 frame이면 undefined.
+- `web/src/app/globals.css`·`web/src/design/tokens.ts` — `--shadow-frame-lift`.
+- 테스트: `__tests__/DraggableCard.frameFeel.test.tsx` 신규(AC-1~11·13), `DraggableCard.memoVariety.test.tsx`·`memoVariety.test.ts` AC-5 갱신.
+- **급소 실험(프레임 시간, 멤버 20장 5초 드래그): 미증명.** pharos 인앱 pane eval 미응답으로 브라우저 실측을 못 했다.
+

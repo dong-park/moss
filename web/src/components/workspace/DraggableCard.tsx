@@ -7,6 +7,8 @@ import {
   useWorkspace,
   computeBreadcrumb,
   SYSTEM_BOARD_ID,
+  cardCenter,
+  findOwningFrame,
   type Card,
 } from "@/state/workspace";
 import { CardContent } from "./cards/CardContent";
@@ -48,6 +50,48 @@ function tiltTransform(baseDeg: number): string {
 }
 const TILT_VARS = ["--tilt", "--px", "--py", "--lift-scale"] as const;
 
+/**
+ * FEAT-frame-feel T4/D4: 따라 흔들림을 주는 멤버 상한. 판 하나에 31장 이상이면
+ * 판 윗변에 가까운 순으로 30장까지만 흔든다(AC-13). 화면 밖(가상화로 미마운트된)
+ * 멤버는 DOM에서 못 찾아 자연히 빠진다.
+ */
+const WOBBLE_MAX_MEMBERS = 30;
+
+/**
+ * FEAT-frame-feel T2: 메모 한 장을 놓으면 속하게 될 판 id — 소속 판정과 같은
+ * [[findOwningFrame]]·[[cardCenter]]를 쓴다(AC-3: 강조 결과 = 드롭 뒤 frameId).
+ * 판이 겹치면 findOwningFrame의 배열 뒤 우선 규칙이 그대로 적용된다.
+ */
+function computeDropTargetFrameId(cardId: string): string | null {
+  const st = useWorkspace.getState();
+  const dragged = st.cards.find((c) => c.id === cardId);
+  if (!dragged) return null;
+  const frames = st.cards.filter((c) => c.kind === "frame");
+  return findOwningFrame(frames, cardCenter(dragged))?.id ?? null;
+}
+
+/** FEAT-frame-feel D7: 넣기 강조 — 판 안쪽 3px 링. 브라우저에서 보고 조정하는 가결정 색. */
+export const FRAME_HIGHLIGHT_RING = "inset 0 0 0 3px rgba(154, 205, 50, 0.6)";
+
+/**
+ * FEAT-frame-feel T3/AC-6: 놓아서 이 판에 새로 속한 메모의 "착" 모션 — 살짝
+ * 눌렸다가 튀어나온다. 400ms 안에 끝나고, 끝나면 WAAPI가 사라져 메모의 원래
+ * transform(고유 각도)이 그대로 드러난다.
+ */
+function playSnap(el: HTMLElement, baseDeg: number) {
+  if (typeof el.animate !== "function") return;
+  const t = `rotate(${formatDeg(baseDeg)}deg)`;
+  el.animate(
+    [
+      { transform: `${t} scale(1)` },
+      { transform: `${t} scale(0.93)`, offset: 0.35 },
+      { transform: `${t} scale(1.04)`, offset: 0.7 },
+      { transform: `${t} scale(1)` },
+    ],
+    { duration: 320, easing: "ease-out" },
+  );
+}
+
 export function DraggableCard({ card }: { card: Card }) {
   const t = useT();
   const moveCard = useWorkspace((s) => s.moveCard);
@@ -70,6 +114,9 @@ export function DraggableCard({ card }: { card: Card }) {
   const setDropTargetCrumb = useWorkspace((s) => s.setDropTargetCrumb);
   // FEAT-trash-drag: 독의 휴지통 위로 카드를 끌어 버리기 — 드롭 하이라이트 플래그.
   const setDropTargetTrash = useWorkspace((s) => s.setDropTargetTrash);
+  // FEAT-frame-feel T2/T4: 넣기 강조 대상 판과, 흔들리는 판 — 휘발 상태.
+  const setDropTargetFrame = useWorkspace((s) => s.setDropTargetFrame);
+  const setWobbleFrame = useWorkspace((s) => s.setWobbleFrame);
   const boards = useWorkspace((s) => s.boards);
   const currentBoardId = useWorkspace((s) => s.currentBoardId);
   // 드래그 grab/drop 손맛: 들어올린 카드에 lift 시각효과(scale/shadow/z).
@@ -102,6 +149,15 @@ export function DraggableCard({ card }: { card: Card }) {
       s.draggingId === card.id ||
       (s.draggingMulti && s.selectedIds.includes(card.id)),
   );
+  // FEAT-frame-feel T2: 놓으면 속하게 될 판 — 이 판에 강조 링을 켠다(boolean으로 좁혀 구독).
+  const frameHighlighted = useWorkspace(
+    (s) => card.kind === "frame" && s.dropTargetFrameId === card.id,
+  );
+  // FEAT-frame-feel T4: 멤버가 흔들리는 중인가 — 자기 판이 드래그되는 동안 transform을
+  // tiltTransform으로 바꾼다. 각도 값 자체는 판 핸들러가 CSS 변수로 직접 쓴다.
+  const wobbling = useWorkspace(
+    (s) => card.kind !== "frame" && s.wobbleFrameId === card.frameId,
+  );
   // FEAT-memo-variety: 메모 고유 각도·색조는 id 해시로 정해진다. 비메모는 무변화.
   const baseTransform = memoBaseTransform(card, penMode);
   const liftedTransform = memoLiftedTransform(card, penMode);
@@ -117,7 +173,16 @@ export function DraggableCard({ card }: { card: Card }) {
   const [tiltActive, setTiltActive] = useState(false);
   // 안착 스프링. 안착 중 다시 잡으면 멈춰야 옛 스프링과 새 드래그가 같은 변수에 쓰지 않는다.
   const settleAnimRef = useRef<{ stop: () => void } | null>(null);
-  useEffect(() => () => settleAnimRef.current?.stop(), []);
+  // FEAT-frame-feel T4: 판 드래그 종료 시 멤버들에 걸어 둔 안착 스프링들. 다시 잡으면
+  // 옛 스프링을 멈춘다(FEAT-drag-tilt과 같은 규율).
+  const wobbleSettleRef = useRef<{ stop: () => void } | null>(null);
+  useEffect(
+    () => () => {
+      settleAnimRef.current?.stop();
+      wobbleSettleRef.current?.stop();
+    },
+    [],
+  );
 
   const endTilt = () => {
     const el = containerRef.current;
@@ -214,6 +279,9 @@ export function DraggableCard({ card }: { card: Card }) {
     // FEAT-subcanvas: 단일 카드 드래그 중 커서 아래의 함 카드(자기 제외)를 추적.
     // elementsFromPoint는 위→아래 순서라, 끌고 있는 카드를 건너뛰고 그 아래 카드를 본다.
     let hoveredFunnelId: string | null = null;
+    // FEAT-frame-feel T2: 메모 한 장 드래그 중 놓으면 속하게 될 판 id(휘발). store 상태를
+    // 매 이동 읽지 않도록 여기 로컬에 최신값을 들고 강조 함수로만 내보낸다.
+    let hoveredFrameId: string | null = null;
     const findFunnelUnder = (clientX: number, clientY: number): string | null => {
       const els = document.elementsFromPoint(clientX, clientY);
       for (const el of els) {
@@ -261,6 +329,23 @@ export function DraggableCard({ card }: { card: Card }) {
       settleAnimRef.current = null;
       endTilt();
     }
+    // FEAT-frame-feel T4: 멤버 안착 스프링 중 판을 다시 잡으면 옛 스프링을 멈추고,
+    // 남은 흔들림 변수·상태를 즉시 비운다 — 안 비우면 단순 클릭 시 멤버가 기운 채 굳는다.
+    if (wobbleSettleRef.current) {
+      wobbleSettleRef.current.stop();
+      wobbleSettleRef.current = null;
+      const wf = useWorkspace.getState().wobbleFrameId;
+      if (wf) {
+        for (const c of useWorkspace.getState().cards) {
+          if (c.frameId !== wf) continue;
+          const el = document.querySelector<HTMLElement>(
+            `[data-card-id="${c.id}"]`,
+          );
+          if (el) for (const v of TILT_VARS) el.style.removeProperty(v);
+        }
+        setWobbleFrame(null);
+      }
+    }
 
     /**
      * FEAT-drag-tilt: 단일 메모(묶음·메모판 아님)를 끄는 동안 종이처럼 흔들린다.
@@ -271,6 +356,8 @@ export function DraggableCard({ card }: { card: Card }) {
     const reducedMotion =
       window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
     const willTilt = !wasInMulti && card.kind !== "frame" && !reducedMotion;
+    // FEAT-frame-feel T4: 판 단독 드래그면 멤버들이 따라 흔들린다(reduced-motion 제외).
+    const willWobble = !wasInMulti && card.kind === "frame" && !reducedMotion;
     let tiltAngle = 0;
     let lastTiltX = e.clientX;
     let lastTiltT = 0;
@@ -319,7 +406,7 @@ export function DraggableCard({ card }: { card: Card }) {
     const liftKeyframe = () =>
       willTilt
         ? `scale(1.03) rotate(${formatDeg(baseDeg + tiltAngle)}deg)`
-        : memoLiftedTransform(card, penMode);
+        : (memoLiftedTransform(card, penMode) ?? "none");
 
     /**
      * FEAT-drag-tilt T3: 놓으면 스프링으로 현재 각도에서 0도로 간다(2~3회 흔들림).
@@ -361,6 +448,113 @@ export function DraggableCard({ card }: { card: Card }) {
       }
     };
 
+    /**
+     * FEAT-frame-feel T4: 판을 끄는 동안 멤버들이 판 윗변 가운데를 축으로 끄는 반대쪽으로
+     * 처진다. 각도는 판 핸들러가 계산해 멤버 DOM의 CSS 변수에 직접 쓴다(AC-10: 흔들림
+     * 갱신은 스토어 카드 배열을 바꾸지 않는다). 멤버의 transform 문자열은 wobbleFrameId
+     * 휘발 상태가 바꾸고, 그것도 드래그 시작·끝에 한 번씩만 쓴다.
+     */
+    let wobbleAngle = 0;
+    let lastWobbleX = e.clientX;
+    let lastWobbleT = 0;
+    let wobbleRaf = 0;
+    let wobbleTargets: HTMLElement[] = [];
+
+    /** 흔들 대상 — 화면에 마운트된 멤버 중 판 윗변에 가까운 순으로 최대 30장(AC-13). */
+    const collectWobbleTargets = (): HTMLElement[] => {
+      const st = useWorkspace.getState();
+      const frame = st.cards.find((c) => c.id === card.id);
+      if (!frame) return [];
+      const members = st.cards
+        .filter((c) => c.frameId === card.id && c.kind !== "frame")
+        .sort((a, b) => a.y - b.y || a.x - b.x);
+      const els: HTMLElement[] = [];
+      for (const m of members) {
+        const el = document.querySelector<HTMLElement>(
+          `[data-card-id="${m.id}"]`,
+        );
+        if (el) els.push(el);
+        if (els.length >= WOBBLE_MAX_MEMBERS) break;
+      }
+      return els;
+    };
+
+    const wobbleTick = (now: number) => {
+      if (!dragRef.current) {
+        wobbleRaf = 0;
+        return;
+      }
+      // 단일 메모 기울기와 같은 계산(AC-7) — 오른쪽으로 끌면 시계 반대(음수)로 처진다.
+      wobbleAngle = nextTiltAngle(
+        wobbleAngle,
+        latestX - lastWobbleX,
+        lastWobbleT ? now - lastWobbleT : 16,
+      );
+      lastWobbleX = latestX;
+      lastWobbleT = now;
+      for (const el of wobbleTargets) {
+        el.style.setProperty("--tilt", `${wobbleAngle}deg`);
+      }
+      wobbleRaf = requestAnimationFrame(wobbleTick);
+    };
+
+    const startWobble = () => {
+      wobbleTargets = collectWobbleTargets();
+      const s = getScale() || 1;
+      for (const el of wobbleTargets) {
+        // 축 = 각자 윗변 가운데(AC-8). transform-origin(중심) 기준 오프셋이라
+        // --px=0, --py=-높이/2. 높이는 누르는 순간 rect에서 한 번 잰다.
+        const h = el.getBoundingClientRect().height / s;
+        el.style.setProperty("--px", "0px");
+        el.style.setProperty("--py", `${-h / 2}px`);
+        el.style.setProperty("--tilt", "0deg");
+        el.style.setProperty("--lift-scale", "1");
+      }
+      // 멤버가 하나도 화면에 없어도 상태는 켠다 — React가 transform 문자열을 바꿔 둔다.
+      setWobbleFrame(card.id);
+      wobbleRaf = requestAnimationFrame(wobbleTick);
+    };
+
+    const endWobble = () => {
+      for (const el of wobbleTargets)
+        for (const v of TILT_VARS) el.style.removeProperty(v);
+      wobbleTargets = [];
+      setWobbleFrame(null);
+    };
+
+    /** 놓으면 멤버들이 스프링으로 2~3회 흔들리다 고유 각도에 선다(AC-9). */
+    const settleWobble = () => {
+      if (wobbleTargets.length === 0) {
+        endWobble();
+        return;
+      }
+      const from = wobbleAngle;
+      let remaining = wobbleTargets.length;
+      let stale = false;
+      const controls = wobbleTargets.map((el) =>
+        animate(from, 0, {
+          ...TILT_SPRING,
+          type: "spring",
+          onUpdate: (v) => el.style.setProperty("--tilt", `${v}deg`),
+          onComplete: () => {
+            if (stale) return;
+            if (--remaining === 0) {
+              wobbleSettleRef.current = null;
+              endWobble();
+            }
+          },
+        }),
+      );
+      if (remaining > 0) {
+        wobbleSettleRef.current = {
+          stop: () => {
+            stale = true;
+            for (const c of controls) c.stop();
+          },
+        };
+      }
+    };
+
     const onMove = (ev: MouseEvent) => {
       const d = dragRef.current;
       if (!d) return;
@@ -371,6 +565,7 @@ export function DraggableCard({ card }: { card: Card }) {
         // 임계를 넘는 순간 카드가 떠오른다(lift). 묶음이면 선택 전체.
         setDragging(card.id, d.multi);
         if (willTilt) startTilt();
+        if (willWobble) startWobble();
       }
       if (!d.moved) return;
       // FEAT-drag-tilt: 커서만 기록한다. 각도 계산은 tiltTick(rAF) 한 곳에서.
@@ -391,6 +586,10 @@ export function DraggableCard({ card }: { card: Card }) {
         if (hoveredFunnelId !== null) {
           hoveredFunnelId = null;
           setDropTargetFunnel(null);
+        }
+        if (hoveredFrameId !== null) {
+          hoveredFrameId = null;
+          setDropTargetFrame(null);
         }
       }
       if (d.multi) {
@@ -422,6 +621,14 @@ export function DraggableCard({ card }: { card: Card }) {
             hoveredFunnelId = funnel;
             setDropTargetFunnel(funnel);
           }
+        }
+        // FEAT-frame-feel T2(AC-3·4): 놓으면 속하게 될 판을 매 이동 계산한다(소속 판정과
+        // 같은 함수). 휴지통·브레드크럼·함 위면 강조를 끈다. D2: 메모 한 장만.
+        const overOther = trash || hoveredCrumbId !== null || hoveredFunnelId !== null;
+        const nextFrameId = overOther ? null : computeDropTargetFrameId(card.id);
+        if (nextFrameId !== hoveredFrameId) {
+          hoveredFrameId = nextFrameId;
+          setDropTargetFrame(nextFrameId);
         }
       }
     };
@@ -515,12 +722,29 @@ export function DraggableCard({ card }: { card: Card }) {
       );
     };
 
+    /** FEAT-frame-feel T3: 소속이 새로 이 판으로 바뀐 메모에 "착" 모션. reduced-motion 제외. */
+    const snapMemo = (id: string) => {
+      const target = useWorkspace.getState().cards.find((c) => c.id === id);
+      if (!target) return;
+      const el =
+        id === card.id
+          ? containerRef.current
+          : document.querySelector<HTMLElement>(`[data-card-id="${id}"]`);
+      if (!el) return;
+      const deg = target.kind === "text" && !penMode ? memoRotationDeg(id) : 0;
+      playSnap(el, deg);
+    };
+
     const onUp = () => {
       const d = dragRef.current;
       dragRef.current = null;
       if (tiltRaf) {
         cancelAnimationFrame(tiltRaf);
         tiltRaf = 0;
+      }
+      if (wobbleRaf) {
+        cancelAnimationFrame(wobbleRaf);
+        wobbleRaf = 0;
       }
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
@@ -535,6 +759,7 @@ export function DraggableCard({ card }: { card: Card }) {
         setDropTargetFunnel(null);
         setDropTargetCrumb(null);
         setDropTargetTrash(false);
+        setDropTargetFrame(null);
         // 한 번 누르기는 선택까지다(2026-09-22 사용자 결정). 선택한 채로 글자를
         // 치면 제목 편집으로 들어간다 — useCardFlowShortcuts가 맡는다.
         return;
@@ -548,6 +773,8 @@ export function DraggableCard({ card }: { card: Card }) {
         setDropTargetFunnel(null);
         setDropTargetCrumb(null);
         setDropTargetTrash(false);
+        setDropTargetFrame(null);
+        if (willWobble) endWobble();
         runTrash(d.multi);
         return;
       }
@@ -558,6 +785,7 @@ export function DraggableCard({ card }: { card: Card }) {
         hoveredFunnelId = null;
         setDropTargetFunnel(null);
         setDropTargetTrash(false);
+        setDropTargetFrame(null);
         return;
       }
       // FEAT-subcanvas: 함 위에서 놓았으면 흡수 모션 후 그 서브 캔버스로 이동.
@@ -565,17 +793,22 @@ export function DraggableCard({ card }: { card: Card }) {
         runAbsorb(hoveredFunnelId);
         hoveredFunnelId = null;
         setDropTargetTrash(false);
+        setDropTargetFrame(null);
         return;
       }
       // 일반 드롭 — lift 해제(스프링 안착).
       // FEAT-drag-tilt T3: 동적 기울기 중이었으면 현재 각도에서 스프링으로 0도 안착.
+      // FEAT-frame-feel T4: 판이었으면 멤버들이 스프링으로 흔들리다 선다.
       setDragging(null);
       if (willTilt) settleTilt();
+      if (willWobble) settleWobble();
       setDropTargetFunnel(null);
       setDropTargetCrumb(null);
       setDropTargetTrash(false);
+      setDropTargetFrame(null);
       hoveredFunnelId = null;
       hoveredCrumbId = null;
+      hoveredFrameId = null;
 
       // FEAT-sticky-redesign §4: 드롭 종료 시점에만 소속을 다시 정한다.
       if (d.multi) {
@@ -596,14 +829,39 @@ export function DraggableCard({ card }: { card: Card }) {
           resolveMembership(selectedIds);
         }
       } else if (card.kind === "frame") {
-        // 판이 옮겨지면 새로 안에 들어온 메모도 속하게 된다 — 전체를 재판정.
-        const ids = useWorkspace
-          .getState()
-          .cards.filter((c) => c.kind !== "frame")
-          .map((c) => c.id);
-        resolveMembership(ids);
+        // 판이 옮겨지면 새로 안에 들어온 메모도 속하게 된다 — 전체를 재판정(AC-3).
+        // 그 뒤 새로 이 판에 속한 메모에 "착" 모션을 준다(AC-5, 판 드래그 경로).
+        const before = new Map(
+          useWorkspace
+            .getState()
+            .cards.filter((c) => c.kind !== "frame")
+            .map((c) => [c.id, c.frameId] as const),
+        );
+        resolveMembership([...before.keys()]);
+        if (!reducedMotion) {
+          for (const c of useWorkspace.getState().cards) {
+            if (c.frameId === card.id && before.get(c.id) !== card.id) {
+              snapMemo(c.id);
+            }
+          }
+        }
       } else {
+        // 놓기 직전 소속을 저장해 두고, 재판정 뒤 값과 비교한다(AC-5). D3에 따라
+        // 다른 판에서 옮겨 온 메모도 대상이다 — 비었거나 다른 값에서 이 판으로 바뀐 경우만.
+        const beforeFrameId = useWorkspace
+          .getState()
+          .cards.find((c) => c.id === card.id)?.frameId;
         resolveMembership([card.id]);
+        const after = useWorkspace
+          .getState()
+          .cards.find((c) => c.id === card.id);
+        if (
+          !reducedMotion &&
+          after?.frameId &&
+          after.frameId !== beforeFrameId
+        ) {
+          snapMemo(card.id);
+        }
       }
     };
 
@@ -676,17 +934,27 @@ export function DraggableCard({ card }: { card: Card }) {
         // left/top은 transition 목록에서 제외해 드래그 중 커서를 즉시 추종한다.
         //
         // FEAT-drag-tilt: 동적 기울기 중(tiltActive)엔 메모 고유 각도 위에 흔들림을 얹는다.
-        // 묶음·메모판·reduced-motion(AC-6·7)은 FEAT-memo-variety의 고정 lift 그대로.
-        transform: tiltActive
-          ? tiltTransform(baseDeg)
-          : lifted
-            ? liftedTransform
-            : baseTransform,
-        boxShadow: lifted ? "var(--shadow-card-lift)" : undefined,
+        // FEAT-frame-feel T4: 판에 매달린 멤버(wobbling)도 같은 transform을 공유한다 —
+        // 각도는 판 핸들러가 --tilt로 직접 쓴다. AC-1: 메모판은 들려도 transform이 없다.
+        // 묶음·reduced-motion(AC-6·7·11)은 FEAT-memo-variety의 고정 lift 그대로.
+        transform:
+          card.kind === "frame"
+            ? undefined
+            : tiltActive || wobbling
+              ? tiltTransform(baseDeg)
+              : lifted
+                ? liftedTransform
+                : baseTransform,
+        // FEAT-frame-feel T1/D5: 메모판은 기울기·확대 대신 그림자로만 무게를 보여 준다.
+        boxShadow: lifted
+          ? card.kind === "frame"
+            ? "var(--shadow-frame-lift)"
+            : "var(--shadow-card-lift)"
+          : undefined,
         transition: tiltActive
           ? "box-shadow 170ms ease-out"
           : "transform 170ms cubic-bezier(0.22, 0.9, 0.3, 1.25), box-shadow 170ms ease-out",
-        willChange: lifted || tiltActive ? "transform" : undefined,
+        willChange: lifted || tiltActive || wobbling ? "transform" : undefined,
         // height 지정 시 자식 콘텐츠가 카드를 가득 채우도록 flex column.
         // 각 CardContent 루트 div는 h-full을 가져 부모 높이를 상속받는다.
         display: cardHeight !== undefined ? "flex" : undefined,
@@ -705,6 +973,20 @@ export function DraggableCard({ card }: { card: Card }) {
         onChange={(content) => setContent(card.id, content)}
         onCommitEdit={() => setEditing(null)}
       />
+
+      {/*
+       * FEAT-frame-feel T2/D7: 넣기 강조 — 메모 한 장이 놓이면 속하게 될 판에 켜지는
+       * 안쪽 3px 라임 링. border-image와 겹치지 않게 inset box-shadow로 그린다.
+       * pointer-events-none이라 드롭·리사이즈를 가로막지 않는다.
+       */}
+      {frameHighlighted && (
+        <div
+          aria-hidden="true"
+          data-frame-highlight="true"
+          className="pointer-events-none absolute inset-0 z-[29] rounded-[8px]"
+          style={{ boxShadow: FRAME_HIGHLIGHT_RING }}
+        />
+      )}
 
       {/*
        * FEAT-pen-mode-ux B2 (AC-2): 메모 카드 "그릴 수 있음" 하이라이트.
