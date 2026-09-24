@@ -2,7 +2,7 @@
 
 > 메모판은 무겁게 들리고, 메모를 넣으면 "착" 붙고, 판을 끌면 붙은 메모들이 자석에 매달린 채 흔들린다.
 
-**Status**: 구현 완료 — 전체 스위트 통과(Canvas.virtualization 1건은 기존 실패)
+**Status**: 구현·리뷰 완료 — 실브라우저 손맛 확인 대기
 **Owner**: dong-park
 **Estimated**: M
 **Started**: 2026-09-24
@@ -97,4 +97,7 @@
 - `web/src/app/globals.css`·`web/src/design/tokens.ts` — `--shadow-frame-lift`.
 - 테스트: `__tests__/DraggableCard.frameFeel.test.tsx` 신규(AC-1~11·13), `DraggableCard.memoVariety.test.tsx`·`memoVariety.test.ts` AC-5 갱신.
 - **급소 실험(프레임 시간, 멤버 20장 5초 드래그): 미증명.** pharos 인앱 pane eval 미응답으로 브라우저 실측을 못 했다.
+- **가정: AC-10은 "스토어 카드 배열 불변"으로 해석했다.** 흔들림 상태(`wobbleFrameId`)를 드래그 시작·끝에 한 번씩 더 쓴다. 매 프레임 쓰기는 없다. 횟수까지 같게 하려면 DOM 이벤트 신호로 바꿔야 한다.
+- 리뷰 반영: 흔들림 상태는 자기 판일 때만 내린다. 안착 스프링이 끝나며 다른 판 드래그의 흔들림을 끄던 경쟁이 있었다. 소속 없는 메모(`frameId` null)는 흔들림 대상이 아니다.
+- 드롭한 메모가 "착"하면 기울기 안착 스프링은 멈춘다. 둘을 같이 돌리면 "착"이 끝난 뒤 남은 각도로 한 번 튄다.
 
