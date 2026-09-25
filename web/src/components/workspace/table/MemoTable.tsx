@@ -82,6 +82,8 @@ export function MemoTable() {
 
   useEffect(() => {
     void ensureLoaded();
+    // 표 언마운트 시 liveSync 구독·디바운스 타이머 해제(P1-5).
+    return () => useMemoTable.getState().dispose();
   }, [ensureLoaded]);
 
   // 기본 행(notes·boards 파생)은 여기에만 메모 — 검색 키 입력마다 5,000행을

@@ -104,16 +104,18 @@ export function subscribeNoteChanges(cb: () => void): () => void {
   };
 }
 
-async function notifyNoteChanges(): Promise<void> {
-  await Promise.all(
-    [...noteChangeListeners].map(async (cb) => {
-      try {
-        await cb();
-      } catch {
-        /* 구독자 오류는 동기화 자체를 막지 않는다. */
-      }
-    }),
-  );
+/**
+ * 구독자에게 알린다. await 하지 않는다 — 표 재조회가 수신 처리를 막으면
+ * 안 되고(P1-5), 구독자가 자체 디바운스로 병합한다.
+ */
+function notifyNoteChanges(): void {
+  for (const cb of [...noteChangeListeners]) {
+    try {
+      cb();
+    } catch {
+      /* 구독자 오류는 동기화 자체를 막지 않는다. */
+    }
+  }
 }
 
 /** 충돌 상태 구독(useSyncExternalStore용). 변경 시 cb 호출. */
@@ -262,7 +264,7 @@ function noteToCard(note: Note): Card {
   };
 }
 
-function replaceCard(note: Note): void {
+function replaceCard(note: Note): boolean {
   const card = noteToCard(note);
   const cards = useWorkspace.getState().cards;
   const exists = cards.some((c) => c.id === card.id);
@@ -271,63 +273,66 @@ function replaceCard(note: Note): void {
       ? cards.map((c) => (c.id === card.id ? card : c))
       : [...cards, card],
   });
+  return true;
 }
 
-function removeCard(id: string): void {
+function removeCard(id: string): boolean {
   const cards = useWorkspace.getState().cards;
-  if (!cards.some((c) => c.id === id)) return;
+  if (!cards.some((c) => c.id === id)) return false;
   useWorkspace.setState({ cards: cards.filter((c) => c.id !== id) });
+  return true;
 }
 
 /**
  * 다른 탭에서 온 메시지를 처리한다. 자기 발신·stale은 무시, 편집 중이면 보호.
  * 채널 수신뿐 아니라 단위 테스트에서도 직접 호출한다.
+ *
+ * 실제로 store/DB 상태가 반영됐을 때만 구독자에게 알린다(P1-5) — 자기 발신·stale·
+ * 편집 보호(배너만)는 재조회를 유발하지 않는다.
  */
 export async function handleIncoming(msg: CardSyncMsg): Promise<void> {
+  let reflected = false;
   try {
-    await handleIncomingInner(msg);
+    reflected = await handleIncomingInner(msg);
   } finally {
-    // AC-8: 표 뷰가 열려 있으면(구독자 있음) 최신 DB 상태를 다시 읽는다.
-    await notifyNoteChanges();
+    if (reflected) notifyNoteChanges();
   }
 }
 
-async function handleIncomingInner(msg: CardSyncMsg): Promise<void> {
-  if (!msg || msg.origin === tabId) return; // 자기 발신
+async function handleIncomingInner(msg: CardSyncMsg): Promise<boolean> {
+  if (!msg || msg.origin === tabId) return false; // 자기 발신
   const seen = lastSeen.get(msg.id) ?? 0;
-  if (msg.updatedAt <= seen) return; // stale
+  if (msg.updatedAt <= seen) return false; // stale
   bumpSeen(msg.id, msg.updatedAt);
 
   if (msg.type === "card-delete") {
     if (isEditing(msg.id)) {
       setConflict(msg.id);
-      return;
+      return false;
     }
-    removeCard(msg.id);
     clearConflictInternal(msg.id);
-    return;
+    return removeCard(msg.id);
   }
 
   // card-upsert — 최신 노트를 DB(커밋 완료된 상태)에서 읽는다.
   const note = await getDB().notes.get(msg.id);
-  if (!note) return; // 경쟁 상태로 사라짐
+  if (!note) return false; // 경쟁 상태로 사라짐
   const onCurrentBoard = note.boardId === currentStorageBoardId();
   if (!onCurrentBoard) {
     // 다른 보드로 이동/생성 — 현재 뷰에 있으면 제거(이동), 없으면 무시.
-    if (!isEditing(msg.id)) {
-      removeCard(msg.id);
-      clearConflictInternal(msg.id);
-    } else {
+    if (isEditing(msg.id)) {
       setConflict(msg.id);
+      return false;
     }
-    return;
+    clearConflictInternal(msg.id);
+    return removeCard(msg.id);
   }
   if (isEditing(msg.id)) {
     setConflict(msg.id); // 편집 중 — 덮어쓰기 금지, 배너만
-    return;
+    return false;
   }
-  replaceCard(note);
   clearConflictInternal(msg.id);
+  return replaceCard(note);
 }
 
 /* ── Dexie 훅: notes 쓰기 → 커밋 완료 시 방송 ────────────────────── */

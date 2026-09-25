@@ -19,7 +19,12 @@ import * as memoSearch from "@/state/memoSearch";
 import { useStorage } from "@/state/storage";
 import { useWorkspace, SYSTEM_BOARD_ID } from "@/state/workspace";
 import { getDB, resetDB, type Board, type Note } from "@/state/db/schema";
-import { handleIncoming, __resetLiveSyncForTest } from "@/state/db/liveSync";
+import {
+  handleIncoming,
+  broadcastCardChange,
+  __resetLiveSyncForTest,
+  __getTabId,
+} from "@/state/db/liveSync";
 
 let originalStorage: PropertyDescriptor | undefined;
 
@@ -439,6 +444,56 @@ describe("memoTable store — 로드·편집·휴지통·실시간", () => {
       origin: "other-tab",
     });
 
-    expect(useMemoTable.getState().notes.some((n) => n.id === "n2")).toBe(true);
+    // 반영은 디바운스 후 비동기 reload로 이뤄진다(P1-5).
+    await vi.waitFor(() => {
+      expect(useMemoTable.getState().notes.some((n) => n.id === "n2")).toBe(true);
+    });
+  });
+
+  it("P1-5: 자기 발신·stale은 표 재조회를 유발하지 않는다", async () => {
+    const s = await setup();
+    await s.saveNote({ id: "n1", boardId: null, content: "메모" });
+    await useMemoTable.getState().ensureLoaded();
+
+    // n1의 최신 관측 updatedAt을 5000으로 세워 둔다(발신 훅이 하는 일과 동일).
+    broadcastCardChange({
+      type: "card-upsert",
+      id: "n1",
+      boardId: null,
+      updatedAt: 5000,
+    });
+
+    const loadSpy = vi.spyOn(useStorage.getState(), "loadAllNotes");
+    // 자기 탭 발신 — origin이 이 탭.
+    await handleIncoming({
+      type: "card-upsert",
+      id: "n1",
+      boardId: null,
+      updatedAt: 6000,
+      origin: __getTabId(),
+    });
+    // stale — 이미 본 updatedAt 이하.
+    await handleIncoming({
+      type: "card-upsert",
+      id: "n1",
+      boardId: null,
+      updatedAt: 4000,
+      origin: "other-tab",
+    });
+    await new Promise((r) => setTimeout(r, 300));
+    expect(loadSpy).not.toHaveBeenCalled();
+
+    // 실제 반영되는 메시지는 재조회를 유발한다.
+    await handleIncoming({
+      type: "card-upsert",
+      id: "n1",
+      boardId: null,
+      updatedAt: 7000,
+      origin: "other-tab",
+    });
+    await vi.waitFor(() => {
+      expect(loadSpy).toHaveBeenCalled();
+    });
+    loadSpy.mockRestore();
   });
 });

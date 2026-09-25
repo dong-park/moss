@@ -374,6 +374,10 @@ interface MemoTableStore {
   ensureLoaded: () => Promise<void>;
   /** 모든 노트·보드를 다시 읽는다(AC-8 실시간 반영). */
   reload: () => Promise<void>;
+  /** 노트 변경 알림 → 200ms 디바운스 후 reload(연속 변경 병합). */
+  scheduleReload: () => void;
+  /** 표 언마운트 시 liveSync 구독·대기 타이머 해제(P1-5). */
+  dispose: () => void;
 
   setSort: (key: MemoSortKey) => void;
   setBoardFilter: (filter: "all" | string[]) => void;
@@ -401,7 +405,11 @@ interface MemoTableStore {
   openMemo: (id: string) => Promise<void>;
 }
 
-let unsubscribed = false;
+let noteUnsub: (() => void) | null = null;
+let reloadTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** 표 liveSync 반영 디바운스 — 연속 변경을 한 번의 재조회로 병합(P1-5). */
+export const RELOAD_DEBOUNCE_MS = 200;
 
 export const useMemoTable = create<MemoTableStore>((set, get) => ({
   notes: [],
@@ -431,11 +439,29 @@ export const useMemoTable = create<MemoTableStore>((set, get) => ({
       storage.loadBoards(),
     ]);
     set({ notes, boards, loaded: true, loading: false });
-    if (!unsubscribed) {
-      unsubscribed = true;
-      // AC-8: 다른 탭(liveSync)의 변경을 표에 반영한다. 반드시 Promise를
-      // 돌려줘야 handleIncoming이 reload 완료까지 기다린다(테스트 결정성).
-      subscribeNoteChanges(() => get().reload());
+    if (!noteUnsub) {
+      // AC-8: 다른 탭(liveSync)의 실제 반영만 표에 알린다. 구독자는 디바운스로
+      // reload하며, 수신 처리는 재조회를 기다리지 않는다(P1-5).
+      noteUnsub = subscribeNoteChanges(() => get().scheduleReload());
+    }
+  },
+
+  scheduleReload: () => {
+    if (reloadTimer !== null) clearTimeout(reloadTimer);
+    reloadTimer = setTimeout(() => {
+      reloadTimer = null;
+      void get().reload();
+    }, RELOAD_DEBOUNCE_MS);
+  },
+
+  dispose: () => {
+    if (reloadTimer !== null) {
+      clearTimeout(reloadTimer);
+      reloadTimer = null;
+    }
+    if (noteUnsub) {
+      noteUnsub();
+      noteUnsub = null;
     }
   },
 
@@ -595,7 +621,14 @@ export const useMemoTable = create<MemoTableStore>((set, get) => ({
 
 /** 테스트 격리 — 구독 플래그·상태 초기화. */
 export function __resetMemoTableForTest(): void {
-  unsubscribed = false;
+  if (reloadTimer !== null) {
+    clearTimeout(reloadTimer);
+    reloadTimer = null;
+  }
+  if (noteUnsub) {
+    noteUnsub();
+    noteUnsub = null;
+  }
   useMemoTable.setState({
     notes: [],
     boards: [],
