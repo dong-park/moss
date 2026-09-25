@@ -91,7 +91,8 @@ describe("clientToWorld", () => {
 
 describe("CONNECTABLE_KINDS", () => {
   it("메모(text)와 함(board)만 연결 대상", () => {
-    expect(CONNECTABLE_KINDS).toEqual(["text", "board"]);
+    expect(CONNECTABLE_KINDS).toEqual(["text", "board", "textbox"]);
+    expect(isConnectableCard({ kind: "textbox" } as never)).toBe(true);
     expect(isConnectableCard({ kind: "text" } as never)).toBe(true);
     expect(isConnectableCard({ kind: "board" } as never)).toBe(true);
     expect(isConnectableCard({ kind: "frame" } as never)).toBe(false);

@@ -2,11 +2,10 @@ import type { ConnectionSide } from "@/state/db/schema";
 import type { Card, CardKind, Viewport } from "@/state/workspace";
 
 /**
- * FEAT-connectors: 연결점을 띄울 카드 종류. 한 곳에 모아 둔다 — [[FEAT-text-tool]]이
- * "textbox" kind를 이 브랜치에 들여오면 이 배열에 한 줄만 추가하면 된다.
+ * FEAT-connectors: 연결점을 띄울 카드 종류. 한 곳에 모아 둔다 — 메모·함·텍스트([[FEAT-text-tool]]).
  * 메모판(frame)은 제외(판 테두리 hover가 안쪽 핸들과 다툰다, spec §0).
  */
-export const CONNECTABLE_KINDS: readonly CardKind[] = ["text", "board"];
+export const CONNECTABLE_KINDS: readonly CardKind[] = ["text", "board", "textbox"];
 
 export function isConnectableCard(card: Card): boolean {
   return CONNECTABLE_KINDS.includes(card.kind);
