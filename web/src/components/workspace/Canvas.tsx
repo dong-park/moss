@@ -308,6 +308,9 @@ export function Canvas() {
     };
 
     const onDown = (e: KeyboardEvent) => {
+      // FEAT-connectors: 연결 드래그 중이면 이 핸들러가 Escape를 먼저 잡아 부모 보드로
+      // 튕기는 일이 없도록 모든 캔버스 단축키를 양보한다(dragSession이 취소를 처리).
+      if (useWorkspace.getState().connectionDraft) return;
       if (e.code === "Space" && !isTyping()) {
         e.preventDefault();
         setSpaceDown(true);

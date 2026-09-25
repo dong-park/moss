@@ -88,12 +88,15 @@ export function beginConnectionDrag(
   const cleanup = () => {
     window.removeEventListener("mousemove", onMove);
     window.removeEventListener("mouseup", onUp);
-    window.removeEventListener("keydown", onKey);
+    window.removeEventListener("keydown", onKey, { capture: true });
   };
 
   const onKey = (ev: KeyboardEvent) => {
     if (ev.key !== "Escape") return;
+    // capture 단계에서 즉시 소비해, 캔버스의 window keydown(부모 보드 이동)이 이 Esc를
+    // 보지 못하게 한다.
     ev.preventDefault();
+    ev.stopImmediatePropagation();
     useWorkspace.getState().setConnectionDraft(null);
     cleanup();
   };
@@ -125,5 +128,5 @@ export function beginConnectionDrag(
 
   window.addEventListener("mousemove", onMove);
   window.addEventListener("mouseup", onUp);
-  window.addEventListener("keydown", onKey);
+  window.addEventListener("keydown", onKey, { capture: true });
 }
