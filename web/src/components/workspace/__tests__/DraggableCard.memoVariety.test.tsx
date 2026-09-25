@@ -104,7 +104,7 @@ describe("DraggableCard · memo variety", () => {
     expect(root(container, "c1").style.transform).toBe("rotate(0deg)");
   });
 
-  it("AC-5: 메모판(frame)은 들지 않으면 무변화, 들면 기존과 같다", () => {
+  it("FEAT-frame-feel AC-1: 메모판(frame)은 들지 않든 들든 transform이 없다", () => {
     const f = card({ id: "f1", kind: "frame", content: "" });
     seed([f]);
     const { container } = wrap(<DraggableCard card={f} />);
@@ -114,6 +114,7 @@ describe("DraggableCard · memo variety", () => {
 
     fireEvent.mouseDown(el, { button: 0, clientX: 0, clientY: 0 });
     fireEvent.mouseMove(window, { clientX: 20, clientY: 0 });
-    expect(el.style.transform).toBe("scale(1.03) rotate(-1.5deg)");
+    expect(el.style.transform).toBe("");
+    expect(el.style.boxShadow).toBe("var(--shadow-frame-lift)");
   });
 });

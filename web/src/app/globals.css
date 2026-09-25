@@ -116,6 +116,12 @@
     0 10px 30px rgba(42, 39, 34, 0.1),
     inset 0 1px 0 rgba(255, 255, 255, 0.9);
 
+  /* FEAT-frame-feel D5: 메모판 전용 깊은 그림자 — 기울기·확대 없이 무게만 보여 준다.
+     기존 들기 그림자(--shadow-card-lift)보다 넓고 진하다. */
+  --shadow-frame-lift:
+    0 6px 14px rgba(42, 39, 34, 0.14),
+    0 20px 52px rgba(42, 39, 34, 0.18);
+
   --shadow-modal: 0 8px 32px rgba(42, 39, 34, 0.16);
 
   /* 카드 표면 그라데이션 (살짝 종이 결) */
@@ -169,6 +175,7 @@
   /* shadow */
   --shadow-card: var(--shadow-card);
   --shadow-card-lift: var(--shadow-card-lift);
+  --shadow-frame-lift: var(--shadow-frame-lift);
   --shadow-icon-box: var(--shadow-icon-box);
   --shadow-icon-soft: var(--shadow-icon-soft);
   --shadow-icon-active: var(--shadow-icon-active);

@@ -488,6 +488,20 @@ interface WorkspaceState {
    */
   dropTargetTrash: boolean;
   setDropTargetTrash: (v: boolean) => void;
+  /**
+   * FEAT-frame-feel T2: 메모 한 장 드래그 중 "놓으면 속하게 될 판" id — 판 테두리
+   * 강조용. transient. 소속 판정과 같은 [[findOwningFrame]]·[[cardCenter]]로 계산한다.
+   * 묶음·판 드래그에서는 켜지 않는다(D2).
+   */
+  dropTargetFrameId: string | null;
+  setDropTargetFrame: (id: string | null) => void;
+  /**
+   * FEAT-frame-feel T4: 판 단독 드래그 중인 판 id — 그 판 멤버들이 흔들림용
+   * transform(`--tilt` 기반)을 쓸지 정한다. transient. 드래그 시작·끝에 한 번씩만
+   * 쓰고, 각도 갱신은 멤버 DOM의 CSS 변수에 직접 쓴다(스토어 카드 배열 불변, AC-10).
+   */
+  wobbleFrameId: string | null;
+  setWobbleFrame: (id: string | null) => void;
   /** 현재 보드의 함 카드들에 대한 카드 수를 다시 집계해 subcanvasCounts 갱신. */
   refreshSubcanvasCounts: () => Promise<void>;
   /**
@@ -844,7 +858,7 @@ function storageBoardId(currentBoardId: CurrentBoardId): string | null {
 const FRAME_MEMBERSHIP_DEFAULT_HEIGHT = 160;
 
 /** 카드의 중심점(world 좌표). height 미지정이면 보수적 기본값으로 근사. */
-function cardCenter(card: Card): { x: number; y: number } {
+export function cardCenter(card: Card): { x: number; y: number } {
   const h = card.height ?? FRAME_MEMBERSHIP_DEFAULT_HEIGHT;
   return { x: card.x + card.width / 2, y: card.y + h / 2 };
 }
@@ -869,7 +883,7 @@ function frameContainsPoint(
  * 만든 판 — loadCards가 createdAt 오름차순 정렬을 보장하고, addFrameAt은 배열
  * 끝에 append하므로 순서가 곧 생성 순서다) 판이 이긴다.
  */
-function findOwningFrame(
+export function findOwningFrame(
   frames: Card[],
   pt: { x: number; y: number },
 ): Card | undefined {
@@ -1100,6 +1114,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   dropTargetFunnelId: null,
   dropTargetCrumbId: null,
   dropTargetTrash: false,
+  dropTargetFrameId: null,
+  wobbleFrameId: null,
   pendingSubcanvasUndo: null,
   draggingId: null,
   draggingMulti: false,
@@ -2018,6 +2034,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   setDropTargetFunnel: (id) => set({ dropTargetFunnelId: id }),
   setDropTargetCrumb: (id) => set({ dropTargetCrumbId: id }),
   setDropTargetTrash: (v) => set({ dropTargetTrash: v }),
+  setDropTargetFrame: (id) => set({ dropTargetFrameId: id }),
+  setWobbleFrame: (id) => set({ wobbleFrameId: id }),
 
   refreshSubcanvasCounts: async () => {
     const refs = get()

@@ -96,11 +96,15 @@ export function memoBaseTransform(
 /**
  * 집어 든 상태의 transform — 원래 각도에서 -1.5도 더 기운다.
  * 기울일 수 없는 kind는 지금과 같은 `scale(1.03) rotate(-1.5deg)`.
+ *
+ * FEAT-frame-feel T1: 메모판(frame)은 기울이지도 키우지도 않는다 — 들면 그림자만
+ * 깊어진다(AC-1). transform을 주지 않아(undefined) 무게는 그림자가 낸다.
  */
 export function memoLiftedTransform(
   card: { id: string; kind: string },
   penMode: boolean,
-): string {
+): string | undefined {
+  if (card.kind === "frame") return undefined;
   const deg =
     (rotationOff(card.kind, penMode) ? 0 : cardRotationDeg(card.id, card.kind)) -
     CARD_LIFT_DEG;

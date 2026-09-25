@@ -56,7 +56,7 @@ type DockItem = {
 };
 
 const DOCK_ITEMS: DockItem[] = [
-  { toolId: "frame", icon: "/icons/dock/memoboard.png", labelKey: "workspace.tool.frame", draggable: true },
+  { toolId: "frame", icon: "/icons/dock/whiteboard.png", labelKey: "workspace.tool.frame", draggable: true },
   { toolId: "text", icon: "/icons/dock/memo.png", labelKey: "capture.tool.text", draggable: true },
   { toolId: "board", icon: "/icons/dock/filebox-folder.png", labelKey: "workspace.tool.board", draggable: true },
   { toolId: "pen", icon: "/icons/sidebar/draw-v2.png", labelKey: "workspace.tool.pen", draggable: false },

@@ -62,9 +62,16 @@ describe("FEAT-memo-variety · 각도", () => {
   });
 
   it("AC-5: 비메모는 들지 않으면 무변화, 들면 기존과 같은 값이다", () => {
+    // 파일함(board)은 FEAT-filebox-manila부터 기울어진다 — 기울지 않는 비메모는 image 등.
+    const image = { id: "i1", kind: "image" };
+    expect(memoBaseTransform(image, false)).toBeUndefined();
+    expect(memoLiftedTransform(image, false)).toBe("scale(1.03) rotate(-1.5deg)");
+  });
+
+  it("FEAT-frame-feel AC-1: 메모판은 들지 않든 들든 transform이 없다(무거운 들기)", () => {
     const frame = { id: "f1", kind: "frame" };
     expect(memoBaseTransform(frame, false)).toBeUndefined();
-    expect(memoLiftedTransform(frame, false)).toBe("scale(1.03) rotate(-1.5deg)");
+    expect(memoLiftedTransform(frame, false)).toBeUndefined();
   });
 
   it("파일함(board)은 메모보다 작은 상한(±1도) 안에서 기울고 펜 모드에서는 0이다", () => {
