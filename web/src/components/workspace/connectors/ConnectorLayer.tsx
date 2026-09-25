@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { cardCenter, useWorkspace } from "@/state/workspace";
 import { useT } from "@/i18n/Provider";
 import { ConnectorDraft } from "./ConnectorDraft";
@@ -19,6 +19,8 @@ export function ConnectorLayer() {
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [labelValue, setLabelValue] = useState("");
+  // Esc로 편집을 취소할 때, 언마운트 blur가 commitLabel을 불러 저장되는 걸 막는다.
+  const cancelRef = useRef(false);
 
   const byId = useMemo(() => new Map(cards.map((c) => [c.id, c])), [cards]);
 
@@ -101,6 +103,7 @@ export function ConnectorLayer() {
               }}
               onDoubleClick={(e) => {
                 e.stopPropagation();
+                cancelRef.current = false;
                 setLabelValue(c.label ?? "");
                 setEditingId(c.id);
               }}
@@ -136,9 +139,19 @@ export function ConnectorLayer() {
                   onKeyDown={(e) => {
                     e.stopPropagation();
                     if (e.key === "Enter") commitLabel(c.id);
-                    else if (e.key === "Escape") setEditingId(null);
+                    else if (e.key === "Escape") {
+                      cancelRef.current = true;
+                      setEditingId(null);
+                    }
                   }}
-                  onBlur={() => commitLabel(c.id)}
+                  onBlur={() => {
+                    if (cancelRef.current) {
+                      cancelRef.current = false;
+                      setEditingId(null);
+                      return;
+                    }
+                    commitLabel(c.id);
+                  }}
                   className="h-full w-full rounded-full border border-border bg-bg px-2 text-center text-xs text-text outline-none"
                 />
               </foreignObject>
