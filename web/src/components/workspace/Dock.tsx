@@ -58,7 +58,7 @@ type DockItem = {
 const DOCK_ITEMS: DockItem[] = [
   { toolId: "frame", icon: "/icons/dock/whiteboard.png", labelKey: "workspace.tool.frame", draggable: true },
   { toolId: "text", icon: "/icons/dock/memo.png", labelKey: "capture.tool.text", draggable: true },
-  { toolId: "board", icon: "/icons/dock/filebox.png", labelKey: "workspace.tool.board", draggable: true },
+  { toolId: "board", icon: "/icons/dock/filebox-folder.png", labelKey: "workspace.tool.board", draggable: true },
   { toolId: "pen", icon: "/icons/sidebar/draw-v2.png", labelKey: "workspace.tool.pen", draggable: false },
   { toolId: "signals", icon: "/icons/sidebar/signals-v2.png", labelKey: "signals.sidebar.label", draggable: false },
   // FEAT-trash: 독 맨 끝 휴지통 — 클릭 전용(카드를 끌어 위에 놓으면 버린다, FEAT-trash-drag).

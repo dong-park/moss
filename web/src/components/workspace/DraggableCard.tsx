@@ -15,10 +15,10 @@ import { CardContent } from "./cards/CardContent";
 import { isExpandable } from "./cards/_shared/expandable";
 import { ResizeHandles } from "./ResizeHandles";
 import {
+  cardRotationDeg,
   formatDeg,
   memoBaseTransform,
   memoLiftedTransform,
-  memoRotationDeg,
 } from "./memoVariety"; // FEAT-memo-variety
 import { AIOptOutBadge } from "@/components/privacy/AIOptOutBadge";
 import { ExpandIcon, LockIcon } from "@/components/icons";
@@ -164,8 +164,8 @@ export function DraggableCard({ card }: { card: Card }) {
   // FEAT-memo-variety: 메모 고유 각도·색조는 id 해시로 정해진다. 비메모는 무변화.
   const baseTransform = memoBaseTransform(card, penMode);
   const liftedTransform = memoLiftedTransform(card, penMode);
-  // FEAT-drag-tilt: 흔들림이 얹힐 메모 고유 각도. memoBaseTransform과 같은 규칙.
-  const baseDeg = card.kind === "text" && !penMode ? memoRotationDeg(card.id) : 0;
+  // FEAT-drag-tilt: 흔들림이 얹힐 고유 각도. memoBaseTransform과 같은 규칙(메모·함).
+  const baseDeg = penMode ? 0 : cardRotationDeg(card.id, card.kind);
   const getScale = () => useWorkspace.getState().viewport.scale;
 
   /**
@@ -749,7 +749,7 @@ export function DraggableCard({ card }: { card: Card }) {
           ? containerRef.current
           : document.querySelector<HTMLElement>(`[data-card-id="${id}"]`);
       if (!el) return;
-      const deg = target.kind === "text" && !penMode ? memoRotationDeg(id) : 0;
+      const deg = penMode ? 0 : cardRotationDeg(id, target.kind);
       playSnap(el, deg);
     };
 

@@ -26,6 +26,12 @@ export const MEMO_TINT_COUNT = MEMO_TINTS.length;
 /** 각도 상한(도) — tokens.card.rotation. 현재 1.5. */
 export const MEMO_ROTATION_MAX_DEG = layout.card.rotation;
 
+/**
+ * 파일함(board) 각도 상한(도) — 메모보다 작다. 폴더는 각진 사물이라 많이 기울면
+ * 어색하므로 살짝만. 2026-09-23 마닐라 폴더 개선.
+ */
+export const BOARD_ROTATION_MAX_DEG = 1.0;
+
 /** 집어 들 때 원래 각도에서 더 기우는 양(도). 모든 카드 공통, 각도 상한과는 별개 값이다. */
 export const CARD_LIFT_DEG = 1.5;
 
@@ -44,10 +50,22 @@ export function formatDeg(deg: number): string {
   return Number(deg.toFixed(2)).toString();
 }
 
+/** kind별 각도 상한(도). 기울일 수 없는 kind는 0. */
+export function rotationMaxForKind(kind: string): number {
+  if (kind === "text") return MEMO_ROTATION_MAX_DEG;
+  if (kind === "board") return BOARD_ROTATION_MAX_DEG;
+  return 0;
+}
+
+/** id 해시로 정한 고유 각도 — kind의 상한 안에서 [-max, max]. */
+export function cardRotationDeg(id: string, kind: string): number {
+  const unit = (hashMemoId(id) % 3001) / 3000; // [0, 1]
+  return (unit * 2 - 1) * rotationMaxForKind(kind);
+}
+
 /** 메모 고유 각도 — [-1.5, 1.5]도. */
 export function memoRotationDeg(id: string): number {
-  const unit = (hashMemoId(id) % 3001) / 3000; // [0, 1]
-  return (unit * 2 - 1) * MEMO_ROTATION_MAX_DEG;
+  return cardRotationDeg(id, "text");
 }
 
 /** 색조 — 노랑 6단계 중 하나. */
@@ -55,28 +73,29 @@ export function memoTint(id: string): string {
   return MEMO_TINTS[hashMemoId(`${id}#tint`) % MEMO_TINT_COUNT];
 }
 
-function isText(kind: string): boolean {
-  return kind === "text";
+/** 기울일 수 있는 kind — 메모(text)와 파일함(board). */
+function rotatable(kind: string): boolean {
+  return kind === "text" || kind === "board";
 }
 
-/** 각도 0으로 세워야 하는 상황(비메모 또는 펜 모드). */
+/** 각도 0으로 세워야 하는 상황(기울일 수 없는 kind 또는 펜 모드). */
 function rotationOff(kind: string, penMode: boolean): boolean {
-  return !isText(kind) || penMode;
+  return !rotatable(kind) || penMode;
 }
 
-/** 들지 않은 상태의 transform. 비메모는 지금처럼 undefined(무변화). */
+/** 들지 않은 상태의 transform. 기울일 수 없는 kind(메모판 등)는 undefined(무변화). */
 export function memoBaseTransform(
   card: { id: string; kind: string },
   penMode: boolean,
 ): string | undefined {
-  if (!isText(card.kind)) return undefined;
-  const deg = penMode ? 0 : memoRotationDeg(card.id);
+  if (!rotatable(card.kind)) return undefined;
+  const deg = penMode ? 0 : cardRotationDeg(card.id, card.kind);
   return `rotate(${formatDeg(deg)}deg)`;
 }
 
 /**
  * 집어 든 상태의 transform — 원래 각도에서 -1.5도 더 기운다.
- * 비메모는 지금과 같은 `scale(1.03) rotate(-1.5deg)`.
+ * 기울일 수 없는 kind는 지금과 같은 `scale(1.03) rotate(-1.5deg)`.
  *
  * FEAT-frame-feel T1: 메모판(frame)은 기울이지도 키우지도 않는다 — 들면 그림자만
  * 깊어진다(AC-1). transform을 주지 않아(undefined) 무게는 그림자가 낸다.
@@ -86,6 +105,8 @@ export function memoLiftedTransform(
   penMode: boolean,
 ): string | undefined {
   if (card.kind === "frame") return undefined;
-  const deg = (rotationOff(card.kind, penMode) ? 0 : memoRotationDeg(card.id)) - CARD_LIFT_DEG;
+  const deg =
+    (rotationOff(card.kind, penMode) ? 0 : cardRotationDeg(card.id, card.kind)) -
+    CARD_LIFT_DEG;
   return `scale(1.03) rotate(${formatDeg(deg)}deg)`;
 }
