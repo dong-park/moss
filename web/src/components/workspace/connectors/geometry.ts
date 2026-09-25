@@ -75,8 +75,49 @@ export function nearestSide(rect: RectLike, point: Point): ConnectionSide {
 }
 
 /**
- * 두 카드의 지정 변을 잇는 베지어 곡선 path. 제어점은 각 끝에서 변 법선 방향으로
+ * 두 카드의 지정 변을 잇는 베지어 곡선의 네 제어점. path 문자열과 달리 좌표를 그대로
+ * 들고 있어, 라벨 위치 계산이 문자열을 정규식으로 재파싱하지 않아도 된다(지수 표기 안전).
+ */
+export interface ConnectorGeometry {
+  p0: Point;
+  c1: Point;
+  c2: Point;
+  p1: Point;
+}
+
+/**
+ * 두 카드의 지정 변을 잇는 베지어 곡선 제어점. 제어점은 각 끝에서 변 법선 방향으로
  * clamp(두 앵커 거리/2, 40, 160)만큼 뻗는다(spec §6).
+ */
+export function connectorGeometry(
+  a: RectLike,
+  aSide: ConnectionSide,
+  b: RectLike,
+  bSide: ConnectionSide,
+): ConnectorGeometry {
+  const p0 = anchorPoint(a, aSide);
+  const p1 = anchorPoint(b, bSide);
+  const d = clamp(Math.hypot(p1.x - p0.x, p1.y - p0.y) / 2, MIN_CONTROL, MAX_CONTROL);
+  const na = SIDE_NORMALS[aSide];
+  const nb = SIDE_NORMALS[bSide];
+  return {
+    p0,
+    c1: { x: p0.x + na.x * d, y: p0.y + na.y * d },
+    c2: { x: p1.x + nb.x * d, y: p1.y + nb.y * d },
+    p1,
+  };
+}
+
+/**
+ * 곡선 제어점을 SVG path 문자열로. connectorPath와 같은 포맷.
+ */
+export function geometryPath(g: ConnectorGeometry): string {
+  const { p0, c1, c2, p1 } = g;
+  return `M ${p0.x} ${p0.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${p1.x} ${p1.y}`;
+}
+
+/**
+ * 두 카드의 지정 변을 잇는 베지어 곡선 path. 제어점은 connectorGeometry와 동일하다.
  */
 export function connectorPath(
   a: RectLike,
@@ -84,14 +125,7 @@ export function connectorPath(
   b: RectLike,
   bSide: ConnectionSide,
 ): string {
-  const pa = anchorPoint(a, aSide);
-  const pb = anchorPoint(b, bSide);
-  const d = clamp(Math.hypot(pb.x - pa.x, pb.y - pa.y) / 2, MIN_CONTROL, MAX_CONTROL);
-  const na = SIDE_NORMALS[aSide];
-  const nb = SIDE_NORMALS[bSide];
-  const c1 = { x: pa.x + na.x * d, y: pa.y + na.y * d };
-  const c2 = { x: pb.x + nb.x * d, y: pb.y + nb.y * d };
-  return `M ${pa.x} ${pa.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${pb.x} ${pb.y}`;
+  return geometryPath(connectorGeometry(a, aSide, b, bSide));
 }
 
 /**
@@ -111,16 +145,18 @@ export function connectorPathToPoint(
 }
 
 /**
- * path 문자열("M x0 y0 C x1 y1, x2 y2, x3 y3")의 중간점(베지어 t=0.5).
- * 라벨 위치 계산용. 숫자를 못 찾으면 원점.
+ * 베지어 곡선(t=0.5)의 중간점. 라벨 위치 계산용. path 문자열 재파싱 대신 제어점을
+ * 직접 받아 지수 표기 등에 영향받지 않는다.
  */
-export function midpoint(path: string): Point {
-  const nums = path.match(/-?\d+(?:\.\d+)?/g)?.map(Number) ?? [];
-  if (nums.length < 8) return { x: 0, y: 0 };
-  const [x0, y0, x1, y1, x2, y2, x3, y3] = nums;
+export function bezierMidpoint(
+  p0: Point,
+  c1: Point,
+  c2: Point,
+  p1: Point,
+): Point {
   return {
-    x: 0.125 * x0 + 0.375 * x1 + 0.375 * x2 + 0.125 * x3,
-    y: 0.125 * y0 + 0.375 * y1 + 0.375 * y2 + 0.125 * y3,
+    x: 0.125 * p0.x + 0.375 * c1.x + 0.375 * c2.x + 0.125 * p1.x,
+    y: 0.125 * p0.y + 0.375 * c1.y + 0.375 * c2.y + 0.125 * p1.y,
   };
 }
 

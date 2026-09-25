@@ -4,7 +4,7 @@ import { useMemo, useRef, useState } from "react";
 import { cardCenter, useWorkspace } from "@/state/workspace";
 import { useT } from "@/i18n/Provider";
 import { ConnectorDraft } from "./ConnectorDraft";
-import { connectorPath, midpoint, nearestSide } from "./geometry";
+import { bezierMidpoint, connectorGeometry, geometryPath, nearestSide } from "./geometry";
 
 const LABEL_MAX = 40;
 
@@ -82,9 +82,10 @@ export function ConnectorLayer() {
           c.sourceSide ?? nearestSide(source, cardCenter(target));
         const targetSide =
           c.targetSide ?? nearestSide(target, cardCenter(source));
-        const d = connectorPath(source, sourceSide, target, targetSide);
+        const geo = connectorGeometry(source, sourceSide, target, targetSide);
+        const d = geometryPath(geo);
         const selected = c.id === selectedConnectionId;
-        const m = midpoint(d);
+        const m = bezierMidpoint(geo.p0, geo.c1, geo.c2, geo.p1);
         const editing = editingId === c.id;
 
         return (

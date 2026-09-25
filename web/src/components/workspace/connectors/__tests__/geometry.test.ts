@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   anchorPoint,
+  bezierMidpoint,
   clientToWorld,
+  connectorGeometry,
   connectorPath,
   isConnectableCard,
-  midpoint,
   nearestSide,
   CONNECTABLE_KINDS,
 } from "@/components/workspace/connectors/geometry";
@@ -56,16 +57,28 @@ describe("connectorPath", () => {
   });
 });
 
-describe("midpoint", () => {
-  it("베지어 t=0.5 지점", () => {
-    const path = connectorPath(rect, "right", { x: 500, y: 550, width: 100, height: 100 }, "left");
-    const m = midpoint(path);
+describe("connectorGeometry", () => {
+  it("앵커·법선 제어점을 좌표로 직접 돌려준다", () => {
+    const other = { x: 500, y: 550, width: 100, height: 100 };
+    const g = connectorGeometry(rect, "right", other, "left");
+    expect(g.p0).toEqual({ x: 300, y: 250 });
+    expect(g.p1).toEqual({ x: 500, y: 600 });
+    expect(g.c1).toEqual({ x: 460, y: 250 });
+    expect(g.c2).toEqual({ x: 340, y: 600 });
+  });
+});
+
+describe("bezierMidpoint", () => {
+  it("베지어 t=0.5 지점을 좌표로 직접 계산한다", () => {
+    const g = connectorGeometry(
+      rect,
+      "right",
+      { x: 500, y: 550, width: 100, height: 100 },
+      "left",
+    );
+    const m = bezierMidpoint(g.p0, g.c1, g.c2, g.p1);
     expect(m.x).toBeCloseTo(400, 5);
     expect(m.y).toBeCloseTo(425, 5);
-  });
-
-  it("숫자가 모자라면 원점", () => {
-    expect(midpoint("M 1 2")).toEqual({ x: 0, y: 0 });
   });
 });
 
