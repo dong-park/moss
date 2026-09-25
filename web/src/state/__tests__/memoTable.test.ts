@@ -366,7 +366,7 @@ describe("memoTable store — 로드·편집·휴지통·실시간", () => {
   });
 
   it("P1-2: 무변경 확정은 updatedAt을 건드리지 않는다", async () => {
-    const s = await setup();
+    await setup();
     await getDB().notes.put(
       mkNote({ id: "n1", title: "제목", content: "본문", updatedAt: 1000 }),
     );
@@ -382,7 +382,7 @@ describe("memoTable store — 로드·편집·휴지통·실시간", () => {
   });
 
   it("P1-2: Esc는 원값만 복원하고 영속하지 않는다", async () => {
-    const s = await setup();
+    await setup();
     await getDB().notes.put(
       mkNote({ id: "n1", title: "원래", content: "본문", updatedAt: 1000 }),
     );

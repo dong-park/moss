@@ -2,7 +2,7 @@
 
 > 캔버스를 뒤지지 않고 모든 보드의 메모를 노션 데이터베이스 표처럼 한 번에 보고, 찾고, 정리한다.
 
-**Status**: 구현 완료 (WORK — 리뷰 대기)
+**Status**: 구현 완료 (리뷰 지적 P1·P2 수정 반영)
 **Owner**:
 **Estimated**: M
 **Blueprint**: (신규)
@@ -165,3 +165,13 @@ interface MemoTableState {
 - AC-7의 "되돌리기 토스트"는 캔버스 삭제 경로에는 없고 **표에만** 둔다(D2) —
   `storage.trashNotes`가 연결선을 스냅샷하고, 복구는 같은 `storage.restoreNote`로
   연결선까지 되돌린다. 표 밖(휴지통 패널) 복구 동선은 그대로다.
+
+### 리뷰 지적 수정 (2026-09-25)
+
+- P1-1/P1-2 제목 확정은 draft 인자로, 무변경·Esc는 DB/`updatedAt` 무변경
+  (`storage.updateNoteTitle` — 없는 노트 no-op).
+- P1-4/P1-5 같은 탭 변경은 메모창 닫힘에 재조회, liveSync는 실제 반영에만
+  알리고 200ms 디바운스, 구독은 언마운트 시 해제.
+- P1-6 기본 행 메모이즈 + 검색 150ms 디바운스 + 이중 평문 파싱 제거.
+- P2-1 표 휴지통 `cancelPersist`, P2-2 선택 교집합·범위 리셋, P2-3 방향키
+  스크롤, P2-4 최초 fit 플래그를 스토어로 옮겨 `panToCard`와 경쟁 제거.
