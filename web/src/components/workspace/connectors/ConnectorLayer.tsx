@@ -1,12 +1,139 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
-import { cardCenter, useWorkspace } from "@/state/workspace";
+import { memo, useCallback, useMemo, useRef, useState } from "react";
+import type { Connection } from "@/state/db/schema";
+import { cardCenter, useWorkspace, type Card } from "@/state/workspace";
 import { useT } from "@/i18n/Provider";
 import { ConnectorDraft } from "./ConnectorDraft";
-import { bezierMidpoint, connectorGeometry, geometryPath, nearestSide } from "./geometry";
+import {
+  bezierMidpoint,
+  connectorGeometry,
+  geometryPath,
+  nearestSide,
+} from "./geometry";
 
 const LABEL_MAX = 40;
+
+interface ConnectionItemProps {
+  connection: Connection;
+  source: Card;
+  target: Card;
+  selected: boolean;
+  editing: boolean;
+  labelValue: string;
+  placeholder: string;
+  onSelect: (id: string) => void;
+  onStartEdit: (id: string, label: string | undefined) => void;
+  onCancel: () => void;
+  onCommit: (id: string, value: string) => void;
+  onBlur: (id: string, value: string) => void;
+  onLabelChange: (value: string) => void;
+}
+
+/**
+ * FEAT-connectors: 선 하나. React.memo로 감싸 양 끝 카드 객체가 그대로면 다시 그리지
+ * 않는다 — 카드 하나를 드래그할 때 그 카드에 닿은 선만 재렌더된다(spec §8).
+ */
+const ConnectionItem = memo(function ConnectionItem({
+  connection,
+  source,
+  target,
+  selected,
+  editing,
+  labelValue,
+  placeholder,
+  onSelect,
+  onStartEdit,
+  onCancel,
+  onCommit,
+  onBlur,
+  onLabelChange,
+}: ConnectionItemProps) {
+  const sourceSide =
+    connection.sourceSide ?? nearestSide(source, cardCenter(target));
+  const targetSide =
+    connection.targetSide ?? nearestSide(target, cardCenter(source));
+  const geo = connectorGeometry(source, sourceSide, target, targetSide);
+  const d = geometryPath(geo);
+  const m = bezierMidpoint(geo.p0, geo.c1, geo.c2, geo.p1);
+
+  return (
+    <g data-connection-id={connection.id}>
+      {/* 히트 영역 — 투명하지만 stroke 폭 12px로 클릭을 받는다(AC-5). */}
+      <path
+        d={d}
+        fill="none"
+        stroke="transparent"
+        strokeWidth={12}
+        style={{ pointerEvents: "stroke", cursor: "pointer" }}
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation();
+          onSelect(connection.id);
+        }}
+        onDoubleClick={(e) => {
+          e.stopPropagation();
+          onStartEdit(connection.id, connection.label);
+        }}
+      />
+      <path
+        d={d}
+        fill="none"
+        stroke={selected ? "var(--color-accent-blue)" : "var(--color-text-soft)"}
+        strokeWidth={selected ? 3 : 2}
+        markerEnd={
+          selected ? "url(#connector-arrow-sel)" : "url(#connector-arrow)"
+        }
+        style={{ pointerEvents: "none" }}
+      />
+
+      {editing ? (
+        <foreignObject
+          x={m.x - 70}
+          y={m.y - 14}
+          width={140}
+          height={28}
+          style={{ pointerEvents: "auto" }}
+        >
+          <input
+            autoFocus
+            value={labelValue}
+            placeholder={placeholder}
+            onChange={(e) => onLabelChange(e.target.value)}
+            onMouseDown={(e) => e.stopPropagation()}
+            onDoubleClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+              if (e.key === "Enter") onCommit(connection.id, labelValue);
+              else if (e.key === "Escape") onCancel();
+            }}
+            onBlur={() => onBlur(connection.id, labelValue)}
+            className="h-full w-full rounded-full border border-border bg-bg px-2 text-center text-xs text-text outline-none"
+          />
+        </foreignObject>
+      ) : connection.label ? (
+        <text
+          x={m.x}
+          y={m.y}
+          textAnchor="middle"
+          dominantBaseline="central"
+          fontSize={12}
+          fill="var(--color-text)"
+          style={{
+            pointerEvents: "none",
+            paintOrder: "stroke",
+            stroke: "var(--color-bg)",
+            strokeWidth: 5,
+          }}
+        >
+          {connection.label.length > LABEL_MAX
+            ? `${connection.label.slice(0, LABEL_MAX)}…`
+            : connection.label}
+        </text>
+      ) : null}
+    </g>
+  );
+});
 
 /** FEAT-connectors: 연결선 SVG 레이어 — 카드 아래 z-index, 월드 좌표. */
 export function ConnectorLayer() {
@@ -23,11 +150,41 @@ export function ConnectorLayer() {
   const cancelRef = useRef(false);
 
   const byId = useMemo(() => new Map(cards.map((c) => [c.id, c])), [cards]);
+  const placeholder = t("workspace.connectors.label.placeholder");
 
-  const commitLabel = (id: string) => {
-    setConnectionLabel(id, labelValue);
+  const handleSelect = useCallback(
+    (id: string) => selectConnection(id),
+    [selectConnection],
+  );
+  const handleStartEdit = useCallback((id: string, label: string | undefined) => {
+    cancelRef.current = false;
+    setLabelValue(label ?? "");
+    setEditingId(id);
+  }, []);
+  const handleCancel = useCallback(() => {
+    cancelRef.current = true;
     setEditingId(null);
-  };
+  }, []);
+  const handleCommit = useCallback(
+    (id: string, value: string) => {
+      setConnectionLabel(id, value);
+      setEditingId(null);
+    },
+    [setConnectionLabel],
+  );
+  const handleBlur = useCallback(
+    (id: string, value: string) => {
+      if (cancelRef.current) {
+        cancelRef.current = false;
+        setEditingId(null);
+        return;
+      }
+      setConnectionLabel(id, value);
+      setEditingId(null);
+    },
+    [setConnectionLabel],
+  );
+  const handleLabelChange = useCallback((value: string) => setLabelValue(value), []);
 
   return (
     <svg
@@ -78,105 +235,25 @@ export function ConnectorLayer() {
         const target = byId.get(c.targetNoteId);
         // 양 끝이 현재 보드 카드일 때만 그린다(가상화 밖 카드도 반대쪽이 화면 안이면 그린다).
         if (!source || !target) return null;
-        const sourceSide =
-          c.sourceSide ?? nearestSide(source, cardCenter(target));
-        const targetSide =
-          c.targetSide ?? nearestSide(target, cardCenter(source));
-        const geo = connectorGeometry(source, sourceSide, target, targetSide);
-        const d = geometryPath(geo);
-        const selected = c.id === selectedConnectionId;
-        const m = bezierMidpoint(geo.p0, geo.c1, geo.c2, geo.p1);
         const editing = editingId === c.id;
 
         return (
-          <g key={c.id} data-connection-id={c.id}>
-            {/* 히트 영역 — 투명하지만 stroke 폭 12px로 클릭을 받는다(AC-5). */}
-            <path
-              d={d}
-              fill="none"
-              stroke="transparent"
-              strokeWidth={12}
-              style={{ pointerEvents: "stroke", cursor: "pointer" }}
-              onMouseDown={(e) => e.stopPropagation()}
-              onClick={(e) => {
-                e.stopPropagation();
-                selectConnection(c.id);
-              }}
-              onDoubleClick={(e) => {
-                e.stopPropagation();
-                cancelRef.current = false;
-                setLabelValue(c.label ?? "");
-                setEditingId(c.id);
-              }}
-            />
-            <path
-              d={d}
-              fill="none"
-              stroke={selected ? "var(--color-accent-blue)" : "var(--color-text-soft)"}
-              strokeWidth={selected ? 3 : 2}
-              markerEnd={
-                selected
-                  ? "url(#connector-arrow-sel)"
-                  : "url(#connector-arrow)"
-              }
-              style={{ pointerEvents: "none" }}
-            />
-
-            {editing ? (
-              <foreignObject
-                x={m.x - 70}
-                y={m.y - 14}
-                width={140}
-                height={28}
-                style={{ pointerEvents: "auto" }}
-              >
-                <input
-                  autoFocus
-                  value={labelValue}
-                  placeholder={t("workspace.connectors.label.placeholder")}
-                  onChange={(e) => setLabelValue(e.target.value)}
-                  onMouseDown={(e) => e.stopPropagation()}
-                  onDoubleClick={(e) => e.stopPropagation()}
-                  onKeyDown={(e) => {
-                    e.stopPropagation();
-                    if (e.key === "Enter") commitLabel(c.id);
-                    else if (e.key === "Escape") {
-                      cancelRef.current = true;
-                      setEditingId(null);
-                    }
-                  }}
-                  onBlur={() => {
-                    if (cancelRef.current) {
-                      cancelRef.current = false;
-                      setEditingId(null);
-                      return;
-                    }
-                    commitLabel(c.id);
-                  }}
-                  className="h-full w-full rounded-full border border-border bg-bg px-2 text-center text-xs text-text outline-none"
-                />
-              </foreignObject>
-            ) : c.label ? (
-              <text
-                x={m.x}
-                y={m.y}
-                textAnchor="middle"
-                dominantBaseline="central"
-                fontSize={12}
-                fill="var(--color-text)"
-                style={{
-                  pointerEvents: "none",
-                  paintOrder: "stroke",
-                  stroke: "var(--color-bg)",
-                  strokeWidth: 5,
-                }}
-              >
-                {c.label.length > LABEL_MAX
-                  ? `${c.label.slice(0, LABEL_MAX)}…`
-                  : c.label}
-              </text>
-            ) : null}
-          </g>
+          <ConnectionItem
+            key={c.id}
+            connection={c}
+            source={source}
+            target={target}
+            selected={c.id === selectedConnectionId}
+            editing={editing}
+            labelValue={editing ? labelValue : ""}
+            placeholder={placeholder}
+            onSelect={handleSelect}
+            onStartEdit={handleStartEdit}
+            onCancel={handleCancel}
+            onCommit={handleCommit}
+            onBlur={handleBlur}
+            onLabelChange={handleLabelChange}
+          />
         );
       })}
 
