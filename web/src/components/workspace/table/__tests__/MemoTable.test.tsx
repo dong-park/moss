@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { I18nProvider } from "@/i18n/Provider";
 import { MemoTable } from "@/components/workspace/table/MemoTable";
 import { ViewToggle } from "@/components/workspace/table/ViewToggle";
-import { __resetMemoTableForTest } from "@/state/memoTable";
+import { __resetMemoTableForTest, useMemoTable } from "@/state/memoTable";
 import { useWorkspace, SYSTEM_BOARD_ID } from "@/state/workspace";
 import { useStorage } from "@/state/storage";
 import { getDB, resetDB } from "@/state/db/schema";
@@ -108,6 +108,34 @@ describe("MemoTable — 표 렌더·검색·인라인 편집", () => {
     });
     await waitFor(() => {
       expect(screen.getByText("검색 결과가 없어요")).toBeTruthy();
+    });
+  });
+
+  it("P1-4: 메모창을 닫으면 같은 탭 변경이 표에 반영된다", async () => {
+    await useStorage.getState().init();
+    await useStorage
+      .getState()
+      .saveNote({ id: "n1", boardId: null, content: "본문", title: "원래" });
+
+    renderTable();
+    await waitFor(() => {
+      expect(screen.getAllByTestId("memo-table-row")).toHaveLength(1);
+    });
+
+    // 메모창을 연다(행 클릭과 동일한 스토어 경로).
+    act(() => useWorkspace.getState().setExpandedCard("n1"));
+    // 같은 탭에서 캔버스·메모창 쪽 제목을 바꿔 DB에 반영.
+    await useStorage.getState().updateNoteTitle("n1", "바뀜");
+    expect(
+      useMemoTable.getState().notes.find((n) => n.id === "n1")?.title,
+    ).toBe("원래");
+
+    // 메모창을 닫으면 재조회되어 새 값이 보인다.
+    act(() => useWorkspace.getState().setExpandedCard(null));
+    await waitFor(() => {
+      expect(
+        useMemoTable.getState().notes.find((n) => n.id === "n1")?.title,
+      ).toBe("바뀜");
     });
   });
 });

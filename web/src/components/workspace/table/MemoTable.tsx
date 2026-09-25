@@ -79,12 +79,24 @@ export function MemoTable() {
   const trashSelected = useMemoTable((s) => s.trashSelected);
   const openMemo = useMemoTable((s) => s.openMemo);
   const openCardOnCanvas = useWorkspace((s) => s.openCardOnCanvas);
+  const expandedCardId = useWorkspace((s) => s.expandedCardId);
 
   useEffect(() => {
     void ensureLoaded();
     // 표 언마운트 시 liveSync 구독·디바운스 타이머 해제(P1-5).
     return () => useMemoTable.getState().dispose();
   }, [ensureLoaded]);
+
+  // 메모창이 닫힐 때 같은 탭(캔버스·메모창) 편집을 표에 재반영한다(P1-4).
+  // 같은 탭 변경은 BroadcastChannel 자기 발신 무시 때문에 표에 알림이 안 온다.
+  const prevExpandedRef = useRef<string | null>(expandedCardId);
+  useEffect(() => {
+    const prev = prevExpandedRef.current;
+    prevExpandedRef.current = expandedCardId;
+    if (prev !== null && expandedCardId === null) {
+      void useMemoTable.getState().reload();
+    }
+  }, [expandedCardId]);
 
   // 기본 행(notes·boards 파생)은 여기에만 메모 — 검색 키 입력마다 5,000행을
   // 재생성하지 않는다(P1-6). 필터·검색·정렬은 그 위에서 파생한다.
