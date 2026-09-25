@@ -375,12 +375,21 @@ class AutocompleteController {
     if (!item) return this.close();
     let insert: string;
     if (item.kind === "create") {
-      // 새 메모 생성(AC-3): 현재 뷰포트 중앙에 글 카드를 만들고 질의를 제목으로 채운다.
+      // 새 메모 생성(AC-3): 현재 뷰포트 중앙에 글 카드를 만들고 질의를 **제목**으로
+      // 넣는다. 본문 저장(setContent) 대신 제목 저장 경로를 타야 정규화(80자·trim)와
+      // 즉시 영속이 캔버스 제목 입력과 같아진다(기술 결정 §"새 메모는 제목 저장 경로").
+      const ws = useWorkspace.getState();
       const newId = this.view.editable
-        ? useWorkspace.getState().addCardAtViewportCenter("text")
+        ? ws.addCardAtViewportCenter("text")
         : "";
-      if (newId) useWorkspace.getState().setContent(newId, item.query);
-      insert = newId ? `[[${newId}|${item.query}]]` : `[[${item.query}]]`;
+      let label = item.query;
+      if (newId) {
+        ws.setTitle(newId, item.query);
+        ws.commitTitle(newId);
+        // 확정된 제목을 다시 읽어 삽입 라벨과 80자 정규화를 맞춘다.
+        label = useWorkspace.getState().cards.find((c) => c.id === newId)?.title ?? item.query;
+      }
+      insert = newId ? `[[${newId}|${label}]]` : `[[${item.query}]]`;
     } else {
       insert = `[[${item.card.id}|${cardTitle(item.card)}]]`;
     }

@@ -95,6 +95,34 @@ describe("setTitle / commitTitle — 저장 경로 (AC-1·AC-7)", () => {
     const card = useWorkspace.getState().cards.find((c) => c.id === id);
     expect(card?.title).toBeUndefined();
   });
+
+  // 위키링크 자동완성 "새 메모" 확정이 타는 경로(setTitle → commitTitle)를
+  // 스토어 수준에서 고정한다 — 본문은 비고 제목만 남아야 한다(성공 기준 12·13).
+  it("새 메모 제목 경로 — 제목만 저장·새로고침 뒤에도 유지, 본문은 빈 문자열", async () => {
+    const id = useWorkspace.getState().addCardAt("text", 0, 0);
+    useWorkspace.getState().setTitle(id, "  기획안  ");
+    useWorkspace.getState().commitTitle(id);
+    await new Promise((r) => setTimeout(r, 20));
+
+    const card = useWorkspace.getState().cards.find((c) => c.id === id);
+    expect(card?.title).toBe("기획안");
+    expect(card?.content).toBe("");
+
+    useStorage.setState({ initialized: false, settings: null, quota: null });
+    useWorkspace.setState({ cards: [], selectedIds: [], editingId: null });
+    await useStorage.getState().init();
+    await useWorkspace.getState().loadFromStorage();
+    const restored = useWorkspace.getState().cards.find((c) => c.id === id);
+    expect(restored?.title).toBe("기획안");
+  });
+
+  it("80자를 넘는 질의는 정규화 규칙대로 잘린 제목이 된다", () => {
+    const id = useWorkspace.getState().addCardAt("text", 0, 0);
+    useWorkspace.getState().setTitle(id, "가".repeat(90));
+    useWorkspace.getState().commitTitle(id);
+    const card = useWorkspace.getState().cards.find((c) => c.id === id);
+    expect(card?.title).toBe("가".repeat(MEMO_TITLE_MAX_LENGTH));
+  });
 });
 
 describe("임베딩 입력 — 제목 포함 (AC-9)", () => {
