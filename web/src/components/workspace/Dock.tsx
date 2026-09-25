@@ -61,7 +61,7 @@ const DOCK_ITEMS: DockItem[] = [
   { toolId: "text", icon: "/icons/dock/memo.png", labelKey: "capture.tool.text", draggable: true },
   // FEAT-text-tool §2/§7: 캔버스 평문 텍스트 — "T" 글리프 아이콘. 끌어놓기 생성.
   { toolId: "textbox", icon: TEXT_GLYPH_ICON, labelKey: "workspace.tool.textbox", draggable: true },
-  { toolId: "board", icon: "/icons/dock/filebox.png", labelKey: "workspace.tool.board", draggable: true },
+  { toolId: "board", icon: "/icons/dock/filebox-folder.png", labelKey: "workspace.tool.board", draggable: true },
   { toolId: "pen", icon: "/icons/sidebar/draw-v2.png", labelKey: "workspace.tool.pen", draggable: false },
   { toolId: "signals", icon: "/icons/sidebar/signals-v2.png", labelKey: "signals.sidebar.label", draggable: false },
   // FEAT-trash: 독 맨 끝 휴지통 — 클릭 전용(카드를 끌어 위에 놓으면 버린다, FEAT-trash-drag).

@@ -310,7 +310,7 @@
     },
     "board": {
       "unnamed": "이름 없는 파일함",
-      "count": "카드 {count}개"
+      "shortCount": "{count}개"
     },
     "body": {
       "empty": "내용 없음"
