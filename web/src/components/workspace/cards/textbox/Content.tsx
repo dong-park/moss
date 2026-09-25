@@ -46,12 +46,27 @@ export function TextboxCardContent({
   useAutoFocusOnEdit(textareaRef, editing);
 
   // 자동 폭 측정 — 한 줄로 그린 숨은 span의 폭 + 좌우 여백이 카드 폭.
+  // 월드 레이어 안이라 getBoundingClientRect는 scale이 곱해진다 → offsetWidth
+  // (레이아웃 px, transform 무관)로 월드 폭을 잰다. 웹폰트 로드 후 한 번 더 재측정.
   useLayoutEffect(() => {
     if (!autoWidth) return;
-    const span = measureRef.current;
-    if (!span) return;
-    const w = Math.ceil(span.getBoundingClientRect().width) + TEXTBOX_PADDING_X * 2;
-    setTextMeasuredWidth(card.id, w);
+    const measure = () => {
+      const span = measureRef.current;
+      if (!span) return;
+      const w = Math.ceil(span.offsetWidth) + TEXTBOX_PADDING_X * 2;
+      setTextMeasuredWidth(card.id, w);
+    };
+    measure();
+    let cancelled = false;
+    const fonts = typeof document !== "undefined" ? document.fonts : undefined;
+    if (fonts?.ready) {
+      void fonts.ready.then(() => {
+        if (!cancelled) measure();
+      });
+    }
+    return () => {
+      cancelled = true;
+    };
   }, [autoWidth, card.content, card.id, sizePx, setTextMeasuredWidth]);
 
   // 편집 중 자동 높이 — 내용 높이에 맞춘다(§5 "height는 저장하지 않음").

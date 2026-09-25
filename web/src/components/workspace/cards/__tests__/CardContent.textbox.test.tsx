@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, screen } from "@testing-library/react";
+import { act, fireEvent, screen } from "@testing-library/react";
 import { useWorkspace, type Card } from "@/state/workspace";
 import { renderCard } from "./setupCard";
 
@@ -76,6 +76,65 @@ describe("FEAT-text-tool · TextboxCardContent", () => {
     fireEvent.blur(screen.getByLabelText("텍스트 입력"));
     expect(onCommit).not.toHaveBeenCalled();
     expect(useWorkspace.getState().cards.find((c) => c.id === "tb")).toBeUndefined();
+  });
+
+  it("자동 폭은 scale 무관 offsetWidth로 재고 폰트 로드 후 재측정 (P1-1)", async () => {
+    let offset = 200;
+    const offsetSpy = vi
+      .spyOn(HTMLElement.prototype, "offsetWidth", "get")
+      .mockImplementation(() => offset);
+    // 월드 레이어 scale이 곱해진 값 — 측정에 쓰이면 안 된다.
+    const rectSpy = vi
+      .spyOn(Element.prototype, "getBoundingClientRect")
+      .mockReturnValue({
+        width: 400,
+        height: 0,
+        left: 0,
+        top: 0,
+        right: 0,
+        bottom: 0,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      } as DOMRect);
+    const fontsDescriptor = Object.getOwnPropertyDescriptor(document, "fonts");
+    let resolveReady: () => void = () => {};
+    const ready = new Promise<void>((r) => {
+      resolveReady = r;
+    });
+    Object.defineProperty(document, "fonts", {
+      value: { ready },
+      configurable: true,
+    });
+
+    try {
+      seed({ id: "tb", content: "안", autoWidth: true, width: 60 });
+      renderCard("textbox", {
+        content: "안",
+        editing: false,
+        card: { id: "tb", autoWidth: true },
+      });
+      await act(async () => {
+        await Promise.resolve();
+      });
+      // 400(scale 곱)이 아니라 offsetWidth 200 + 패딩 8.
+      expect(useWorkspace.getState().cards[0].width).toBe(208);
+
+      offset = 260;
+      await act(async () => {
+        resolveReady();
+        await ready;
+      });
+      expect(useWorkspace.getState().cards[0].width).toBe(268);
+    } finally {
+      offsetSpy.mockRestore();
+      rectSpy.mockRestore();
+      if (fontsDescriptor) {
+        Object.defineProperty(document, "fonts", fontsDescriptor);
+      } else {
+        delete (document as { fonts?: unknown }).fonts;
+      }
+    }
   });
 
   it("선택 시 툴바 — 크기 버튼이 setTextStyle을 부른다 (AC-5)", () => {
