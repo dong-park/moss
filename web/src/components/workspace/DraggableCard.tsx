@@ -274,6 +274,13 @@ export function DraggableCard({ card }: { card: Card }) {
     // 제목 입력 위에서 누르면 글자 선택·커서 이동이라 끌지 않는다. 앞면 본문은
     // 읽기 전용이므로 편집 중이어도 종이 아무 데나 잡아 카드를 끌 수 있다.
     if (editing && (e.target as HTMLElement).closest("[data-memo-title-input]")) return;
+    // FEAT-text-tool: textbox 편집 중 textarea·툴바 위에서는 드래그를 시작하지 않는다.
+    if (
+      editing &&
+      (e.target as HTMLElement).closest("[data-textbox-input], [data-textbox-toolbar]")
+    ) {
+      return;
+    }
     if (e.button !== 0) return; // 좌클릭만
     e.stopPropagation();
 
@@ -372,7 +379,12 @@ export function DraggableCard({ card }: { card: Card }) {
      */
     const reducedMotion =
       window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
-    const willTilt = !wasInMulti && card.kind !== "frame" && !reducedMotion;
+    // FEAT-text-tool: textbox는 회전 0(§2 비목표) — 드래그 중 동적 기울기도 주지 않는다.
+    const willTilt =
+      !wasInMulti &&
+      card.kind !== "frame" &&
+      card.kind !== "textbox" &&
+      !reducedMotion;
     // FEAT-frame-feel T4: 판 단독 드래그면 멤버들이 따라 흔들린다(reduced-motion 제외).
     const willWobble = !wasInMulti && card.kind === "frame" && !reducedMotion;
     let tiltAngle = 0;
@@ -987,7 +999,8 @@ export function DraggableCard({ card }: { card: Card }) {
         // 막대(MEMO_CONTENT_WIDTH)가 카드의 실제 폭(width는 항상 지정돼 있다)
         // 오른쪽 끝을 넘어 그대로 보였다. width는 card.height 유무와 무관하게
         // 항상 크롭돼야 하므로 overflow는 조건 없이 hidden으로 둔다.
-        overflow: "hidden",
+        // FEAT-text-tool: textbox만 예외 — 선택 툴바가 카드 위로 떠야 해서 visible.
+        overflow: card.kind === "textbox" ? "visible" : "hidden",
       }}
     >
       <CardContent

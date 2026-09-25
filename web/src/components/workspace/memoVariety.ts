@@ -86,6 +86,8 @@ export function memoLiftedTransform(
   penMode: boolean,
 ): string | undefined {
   if (card.kind === "frame") return undefined;
+  // FEAT-text-tool: textbox는 회전 0 — 들 때도 기울이지 않고 살짝 뜨기만 한다.
+  if (card.kind === "textbox") return "scale(1.03)";
   const deg = (rotationOff(card.kind, penMode) ? 0 : memoRotationDeg(card.id)) - CARD_LIFT_DEG;
   return `scale(1.03) rotate(${formatDeg(deg)}deg)`;
 }

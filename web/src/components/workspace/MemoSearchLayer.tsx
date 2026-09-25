@@ -79,8 +79,9 @@ export function MemoSearchLayer() {
     return () => cancelAnimationFrame(raf);
   }, [active, cards, query]);
 
+  // FEAT-text-tool P2-3: textbox도 평문 검색 대상이라 강조·결과 목록에 포함한다.
   const textCards = useMemo(
-    () => cards.filter((c) => c.kind === "text"),
+    () => cards.filter((c) => c.kind === "text" || c.kind === "textbox"),
     [cards],
   );
 
@@ -151,7 +152,10 @@ export function MemoSearchLayer() {
                 {matchIds.map((id) => {
                   const card = textCards.find((c) => c.id === id);
                   if (!card) return null;
-                  const snippet = plainText(card.content).slice(0, 48);
+                  // textbox는 마크다운이 아니라 원문을 그대로 보여준다(P2-3).
+                  const snippet = (
+                    card.kind === "textbox" ? card.content : plainText(card.content)
+                  ).slice(0, 48);
                   return (
                     <button
                       key={id}

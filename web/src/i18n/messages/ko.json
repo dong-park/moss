@@ -149,7 +149,30 @@
       "comment": "코멘트",
       "pen": "펜",
       "trash": "휴지통",
-      "frame": "메모판"
+      "frame": "메모판",
+      "textbox": "텍스트"
+    },
+    "textbox": {
+      "toolbar": {
+        "label": "텍스트 서식"
+      },
+      "inputLabel": "텍스트 입력",
+      "size": {
+        "s": "작게",
+        "m": "보통",
+        "l": "크게",
+        "xl": "아주 크게"
+      },
+      "color": {
+        "ink": "기본 색",
+        "slate": "회색",
+        "blue": "파랑",
+        "green": "초록",
+        "amber": "주황",
+        "red": "빨강",
+        "violet": "보라",
+        "pink": "분홍"
+      }
     },
     "trash": {
       "title": "휴지통",

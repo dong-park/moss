@@ -33,6 +33,12 @@ interface StorageState {
   removeNote: (id: string) => Promise<void>;
 
   /**
+   * FEAT-text-tool: 휴지통을 거치지 않고 즉시 영구 삭제한다(연결선·임베딩 포함,
+   * 한 트랜잭션). "빈 텍스트 자동 소멸"처럼 되돌리기 대상이 아닌 행 전용.
+   */
+  hardDeleteNotes: (ids: string[]) => Promise<void>;
+
+  /**
    * FEAT-trash: 메모를 영구 삭제 대신 휴지통으로 보낸다. 한 트랜잭션에서 연결선·보드
    * 이름을 스냅샷해 `trash`에 넣고 notes·connections·embeddings에서 지운다.
    * OPFS 첨부 blob은 지우지 않는다(복구 가능해야 한다).
@@ -229,6 +235,26 @@ export const useStorage = create<StorageState>((set, get) => ({
     // 영구 삭제 = 휴지통에 넣고 바로 비우기. 정리 규칙을 trashNotes 한 곳에 둔다.
     await get().trashNotes([id]);
     await get().purgeTrash([id]);
+  },
+
+  hardDeleteNotes: async (ids) => {
+    if (ids.length === 0) return;
+    const db = getDB();
+    await db.transaction(
+      "rw",
+      [db.notes, db.connections, db.embeddings],
+      async () => {
+        const incident = await db.connections
+          .where("sourceNoteId")
+          .anyOf(ids)
+          .or("targetNoteId")
+          .anyOf(ids)
+          .toArray();
+        await db.connections.bulkDelete(incident.map((c) => c.id));
+        await db.embeddings.bulkDelete(ids);
+        await db.notes.bulkDelete(ids);
+      },
+    );
   },
 
   trashNote: (id) => get().trashNotes([id]),

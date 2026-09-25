@@ -57,7 +57,8 @@ export function buildJsonCanvas(
       });
       continue;
     }
-    if (note.kind === "text" || note.kind === "board") {
+    // FEAT-text-tool AC-7: textbox도 평문 text 노드로 내보낸다(JSON Canvas type:"text").
+    if (note.kind === "text" || note.kind === "board" || note.kind === "textbox") {
       nodes.push({
         id: note.id,
         type: "text",
@@ -65,7 +66,10 @@ export function buildJsonCanvas(
         y: note.y,
         width: note.width,
         height: noteHeight(note),
-        text: note.kind === "board" ? `[board:${note.id}]` : noteTextContent(note),
+        text:
+          note.kind === "board"
+            ? `[board:${note.id}]`
+            : noteTextContent(note),
       });
     }
   }

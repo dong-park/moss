@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render } from "@testing-library/react";
 import { useShortcuts } from "@/components/workspace/useShortcuts";
-import { useWorkspace, CAPTURE_TOOLS } from "@/state/workspace";
+import { useWorkspace, CAPTURE_TOOLS, type Card } from "@/state/workspace";
 import { useStorage } from "@/state/storage";
 import { resetDB } from "@/state/db/schema";
 
@@ -35,6 +35,8 @@ afterEach(async () => {
     editingId: null,
     pendingAIGate: null,
     lastToolId: "text",
+    textPlacementArmed: false,
+    expandedCardId: null,
   });
   if (originalStorage) {
     Object.defineProperty(navigator, "storage", originalStorage);
@@ -151,5 +153,59 @@ describe("FEAT-capture AC-1: 글로벌 단축키", () => {
     fireEvent.keyDown(window, { key: "N", code: "KeyN" });
     await new Promise((r) => setTimeout(r, 5));
     expect(useWorkspace.getState().cards.length).toBe(before);
+  });
+});
+
+describe("FEAT-text-tool AC-2: T 배치 모드 단축키", () => {
+  it("T → 배치 모드 켜짐, Esc → 꺼짐", () => {
+    render(<Mount />);
+    fireEvent.keyDown(window, { key: "t", code: "KeyT" });
+    expect(useWorkspace.getState().textPlacementArmed).toBe(true);
+
+    fireEvent.keyDown(window, { key: "Escape", code: "Escape" });
+    expect(useWorkspace.getState().textPlacementArmed).toBe(false);
+  });
+
+  it("입력 포커스 중 T는 무시 (DOD)", () => {
+    const { container } = render(
+      <>
+        <Mount />
+        <input data-testid="typing" />
+      </>,
+    );
+    (container.querySelector("input") as HTMLInputElement).focus();
+    fireEvent.keyDown(window, { key: "t", code: "KeyT" });
+    expect(useWorkspace.getState().textPlacementArmed).toBe(false);
+  });
+
+  it("펜 모드 중 T는 무시", () => {
+    useWorkspace.setState({ penMode: true });
+    render(<Mount />);
+    fireEvent.keyDown(window, { key: "t", code: "KeyT" });
+    expect(useWorkspace.getState().textPlacementArmed).toBe(false);
+    useWorkspace.setState({ penMode: false });
+  });
+
+  it("선택된 메모가 있으면 T를 제목 편집에 양보한다 (P1-2)", () => {
+    const card: Card = { id: "A", kind: "text", x: 0, y: 0, width: 240, content: "" };
+    useWorkspace.setState({ cards: [card], selectedIds: ["A"], editingId: null });
+    render(<Mount />);
+    fireEvent.keyDown(window, { key: "t", code: "KeyT" });
+    expect(useWorkspace.getState().textPlacementArmed).toBe(false);
+  });
+
+  it("확대 모달이 열려 있으면 T는 무시 (P1-2)", () => {
+    useWorkspace.setState({ expandedCardId: "A" });
+    render(<Mount />);
+    fireEvent.keyDown(window, { key: "t", code: "KeyT" });
+    expect(useWorkspace.getState().textPlacementArmed).toBe(false);
+  });
+
+  it("선택이 textbox면 제목 대상이 아니라 T가 배치 모드를 켠다", () => {
+    const card: Card = { id: "tb", kind: "textbox", x: 0, y: 0, width: 120, content: "" };
+    useWorkspace.setState({ cards: [card], selectedIds: ["tb"], editingId: null });
+    render(<Mount />);
+    fireEvent.keyDown(window, { key: "t", code: "KeyT" });
+    expect(useWorkspace.getState().textPlacementArmed).toBe(true);
   });
 });

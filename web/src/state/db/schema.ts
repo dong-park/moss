@@ -26,7 +26,14 @@ export type NoteKind =
   // FEAT-subcanvas: "함" 카드 — content에 {boardRef}를 담아 서브 보드(캔버스)를 가리킨다.
   | "board"
   // FEAT-sticky-redesign: 메모판 틀. content = JSON.stringify({name}). width/height 필수, rotation 0.
-  | "frame";
+  | "frame"
+  // FEAT-text-tool: 종이·제목 없이 캔버스에 적는 평문 텍스트. content는 평문 그대로.
+  | "textbox";
+
+/**
+ * FEAT-text-tool: textbox 글자 크기 4단. px는 [[TEXT_SIZE_PX]]에 있다.
+ */
+export type TextSize = "s" | "m" | "l" | "xl";
 
 export interface Note {
   id: string;
@@ -59,6 +66,15 @@ export interface Note {
    * 저장되고 비면 undefined다. 비인덱스 optional — Dexie stores() 변경 불필요.
    */
   title?: string;
+  /**
+   * FEAT-text-tool: textbox 글자 크기. 기본 "m". 비인덱스 optional — stores() 변경 불필요.
+   */
+  textSize?: TextSize;
+  /**
+   * FEAT-text-tool: true(기본)면 width는 측정값 캐시, false면 사용자 고정 폭.
+   * 비인덱스 optional — stores() 변경 불필요.
+   */
+  autoWidth?: boolean;
   aiOptOut: boolean;
   createdAt: number;
   updatedAt: number;

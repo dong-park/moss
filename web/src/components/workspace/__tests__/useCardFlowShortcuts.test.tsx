@@ -62,6 +62,8 @@ afterEach(async () => {
     templatePickerOpen: false,
     viewport: { x: 0, y: 0, scale: 1 },
     lastToolId: "text",
+    textPlacementArmed: false,
+    expandedCardId: null,
   });
   if (originalStorage) {
     Object.defineProperty(navigator, "storage", originalStorage);
@@ -108,6 +110,20 @@ describe("FEAT-card-flow · useCardFlowShortcuts", () => {
     fireEvent.keyDown(window, { key: "회" });
     expect(useWorkspace.getState().editingId).toBe("A");
     expect(useWorkspace.getState().cards.find((c) => c.id === "A")?.title).toBe("회");
+  });
+
+  it("P1-2: 선택된 메모에서 T는 배치 모드가 아니라 제목 편집으로 간다", () => {
+    useWorkspace.setState({
+      cards: [makeCard({ id: "A", kind: "text" })],
+      selectedIds: ["A"],
+      editingId: null,
+    });
+    render(<MountBoth />);
+
+    fireEvent.keyDown(window, { key: "t", code: "KeyT" });
+    expect(useWorkspace.getState().textPlacementArmed).toBe(false);
+    expect(useWorkspace.getState().editingId).toBe("A");
+    expect(useWorkspace.getState().cards.find((c) => c.id === "A")?.title).toBe("t");
   });
 
   it("기존 제목은 지우지 않고 뒤에 붙인다", () => {

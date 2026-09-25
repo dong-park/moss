@@ -98,9 +98,14 @@ export function searchMemos(
   const results: { id: string; score: number }[] = [];
   for (const card of cards) {
     // 메모는 글(text) 카드 — 그 외(image/board/comment 등)는 본문 검색 대상 아님.
-    if (card.kind !== "text") continue;
+    // FEAT-text-tool: textbox도 평문이라 검색 대상에 포함한다.
+    if (card.kind !== "text" && card.kind !== "textbox") continue;
     // FEAT-memo-title: 제목도 검색 대상. "제목 + 공백 + 본문 평문"에서 매칭한다(AC-8).
-    const text = cachedPlainText(card.content);
+    // textbox는 마크다운이 아니라 원문 그대로 매칭한다(P2-3).
+    const text =
+      card.kind === "textbox"
+        ? (card.content ?? "").toLowerCase()
+        : cachedPlainText(card.content);
     const haystack =
       card.title && text ? `${card.title} ${text}` : (card.title ?? text);
     if (!haystack) continue;
