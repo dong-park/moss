@@ -111,6 +111,47 @@ describe("MemoTable — 표 렌더·검색·인라인 편집", () => {
     });
   });
 
+  it("P2-2: 필터·검색으로 숨겨진 행은 선택에서 빠진다", async () => {
+    await useStorage.getState().init();
+    const s = useStorage.getState();
+    await s.saveNote({ id: "n1", boardId: null, content: "회고 노트", title: "A" });
+    await s.saveNote({ id: "n2", boardId: null, content: "다른 내용", title: "B" });
+
+    renderTable();
+    await waitFor(() => {
+      expect(screen.getAllByTestId("memo-table-row")).toHaveLength(2);
+    });
+
+    fireEvent.click(screen.getByLabelText("A"));
+    fireEvent.click(screen.getByLabelText("B"));
+    expect(useMemoTable.getState().selectedIds.size).toBe(2);
+
+    fireEvent.change(screen.getByPlaceholderText("제목·본문 검색"), {
+      target: { value: "회고" },
+    });
+    await waitFor(() => {
+      expect(screen.getAllByTestId("memo-table-row")).toHaveLength(1);
+    });
+    await waitFor(() => {
+      expect(useMemoTable.getState().selectedIds.size).toBe(1);
+    });
+    expect(useMemoTable.getState().selectedIds.has("n1")).toBe(true);
+  });
+
+  it("P2-3: 방향키로 포커스를 옮기면 스크롤을 맞춘다", async () => {
+    await useStorage.getState().init();
+    await useStorage.getState().saveNote({ id: "n1", boardId: null, content: "A" });
+    renderTable();
+    await waitFor(() => {
+      expect(screen.getAllByTestId("memo-table-row")).toHaveLength(1);
+    });
+
+    const grid = screen.getByRole("grid");
+    fireEvent.keyDown(grid, { key: "ArrowDown" });
+    // jsdom은 clientHeight 0 — 다음 행이 보이도록 scrollTop이 전진한다.
+    expect(grid.scrollTop).toBeGreaterThan(0);
+  });
+
   it("P1-4: 메모창을 닫으면 같은 탭 변경이 표에 반영된다", async () => {
     await useStorage.getState().init();
     await useStorage

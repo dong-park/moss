@@ -179,16 +179,46 @@ export function MemoTable() {
     lastIndexRef.current = index;
   };
 
+  // 필터·검색·정렬로 보이지 않게 된 행은 선택에서 뺀다(P2-2). 정렬이 바뀌면
+  // Shift 범위 기준 인덱스도 무효라 리셋한다.
+  useEffect(() => {
+    const visible = new Set(rows.map((r) => r.id));
+    const next = new Set([...selectedIds].filter((id) => visible.has(id)));
+    if (next.size !== selectedIds.size) setSelectedIds(next);
+  }, [rows, selectedIds, setSelectedIds]);
+
+  useEffect(() => {
+    lastIndexRef.current = null;
+  }, [sort]);
+
   /* ─ 키보드 탐색(§8) ─ */
   const [focusIndex, setFocusIndex] = useState(-1);
+
+  // 포커스된 행이 가상화 창 밖이면 스크롤해 보이게 한다(P2-3).
+  const ensureRowVisible = (index: number) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const top = index * ROW_H;
+    const bottom = top + ROW_H;
+    if (top < el.scrollTop) {
+      el.scrollTop = top;
+    } else if (bottom > el.scrollTop + el.clientHeight) {
+      el.scrollTop = bottom - el.clientHeight;
+    }
+  };
+
   const onGridKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (editingId) return;
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      setFocusIndex((i) => Math.min(rows.length - 1, i + 1));
+      const next = Math.min(rows.length - 1, focusIndex + 1);
+      setFocusIndex(next);
+      ensureRowVisible(next);
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      setFocusIndex((i) => Math.max(0, i - 1));
+      const next = Math.max(0, focusIndex - 1);
+      setFocusIndex(next);
+      ensureRowVisible(next);
     } else if (e.key === " " && focusIndex >= 0 && focusIndex < rows.length) {
       e.preventDefault();
       toggleSelected(rows[focusIndex].id);
