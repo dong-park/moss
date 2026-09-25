@@ -90,6 +90,32 @@ function clearConflictInternal(id: string): void {
   emitConflicts();
 }
 
+/* ── 노트 변경 알림 (FEAT-memo-table-view AC-8) ─────────────────
+ * 표 뷰(state/memoTable)가 다른 탭의 변경을 반영할 수 있게, 수신 처리 후
+ * 구독자에게 알린다. 이 모듈은 표 스토어를 import 하지 않는다 — 역방향 구독만.
+ */
+const noteChangeListeners = new Set<() => void>();
+
+/** 노트 변경(다른 탭 반영 완료) 구독. 해제 함수를 반환한다. */
+export function subscribeNoteChanges(cb: () => void): () => void {
+  noteChangeListeners.add(cb);
+  return () => {
+    noteChangeListeners.delete(cb);
+  };
+}
+
+async function notifyNoteChanges(): Promise<void> {
+  await Promise.all(
+    [...noteChangeListeners].map(async (cb) => {
+      try {
+        await cb();
+      } catch {
+        /* 구독자 오류는 동기화 자체를 막지 않는다. */
+      }
+    }),
+  );
+}
+
 /** 충돌 상태 구독(useSyncExternalStore용). 변경 시 cb 호출. */
 export function subscribeConflict(cb: () => void): () => void {
   conflictListeners.add(cb);
@@ -258,6 +284,15 @@ function removeCard(id: string): void {
  * 채널 수신뿐 아니라 단위 테스트에서도 직접 호출한다.
  */
 export async function handleIncoming(msg: CardSyncMsg): Promise<void> {
+  try {
+    await handleIncomingInner(msg);
+  } finally {
+    // AC-8: 표 뷰가 열려 있으면(구독자 있음) 최신 DB 상태를 다시 읽는다.
+    await notifyNoteChanges();
+  }
+}
+
+async function handleIncomingInner(msg: CardSyncMsg): Promise<void> {
   if (!msg || msg.origin === tabId) return; // 자기 발신
   const seen = lastSeen.get(msg.id) ?? 0;
   if (msg.updatedAt <= seen) return; // stale
@@ -407,6 +442,7 @@ export function __resetLiveSyncForTest(): void {
   }
   conflicts.clear();
   conflictListeners.clear();
+  noteChangeListeners.clear();
   lastSeen.clear();
   channel = null;
   started = false;

@@ -29,6 +29,12 @@ interface StorageState {
   init: () => Promise<void>;
 
   loadCards: (boardId: string | null) => Promise<Note[]>;
+  /**
+   * FEAT-memo-table-view: 모든 보드의 노트를 한 번에 읽는다. 현재 스토어 `cards`는
+   * 현재 보드만 들고 있으므로 표 뷰는 이 별도 쿼리를 쓴다(spec §4 의존). createdAt
+   * 오름차순으로 안정 정렬해 돌려준다.
+   */
+  loadAllNotes: () => Promise<Note[]>;
   saveNote: (patch: Partial<Note> & { id: string }) => Promise<void>;
   removeNote: (id: string) => Promise<void>;
 
@@ -213,6 +219,13 @@ export const useStorage = create<StorageState>((set, get) => ({
         ? db.notes.filter((n) => n.boardId === null)
         : db.notes.where("boardId").equals(boardId);
     const notes = await coll.toArray();
+    notes.sort((a, b) => a.createdAt - b.createdAt);
+    return notes;
+  },
+
+  loadAllNotes: async () => {
+    const db = getDB();
+    const notes = await db.notes.toArray();
     notes.sort((a, b) => a.createdAt - b.createdAt);
     return notes;
   },

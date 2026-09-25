@@ -47,6 +47,12 @@ export const SYSTEM_BOARD_ID = "system" as const;
 export type CurrentBoardId = string;
 
 /**
+ * FEAT-memo-table-view: 워크스페이스 표시 모드. 캔버스 ↔ 전체 메모 표 전환(spec §5).
+ * 표 모드에서는 Canvas·Dock·캔버스 단축키를 숨긴다(spec §4 영향).
+ */
+export type WorkspaceView = "canvas" | "table";
+
+/**
  * 캔버스 카드 종류.
  * 10종은 [[NoteKind]]와 동일 (FEAT-capture). storage 저장 시 그대로 매핑.
  */
@@ -268,6 +274,8 @@ interface WorkspaceState {
   viewportByBoard: Record<string, Viewport>;
   /** 보드 전환 페이드 (200ms ease-out) 진행 중 표시. UI 레이어가 구독. */
   boardTransitioning: boolean;
+  /** FEAT-memo-table-view: 현재 표시 모드. 기본 캔버스. */
+  view: WorkspaceView;
   /** TemplatePicker 모달 열림 상태 — Cmd+N / "+ 새 보드" 진입점이 공유. */
   templatePickerOpen: boolean;
   /**
@@ -312,6 +320,15 @@ interface WorkspaceState {
   clearBoardUndo: () => void;
   /** 시스템 보드 ↔ 마지막 사용자 보드 토글. 사용자 보드가 없으면 no-op. */
   toggleSystemBoard: () => Promise<void>;
+
+  /* ─────────── FEAT-memo-table-view: 전체 메모 표 ─────────── */
+  /** 캔버스 ↔ 표 전환. */
+  setView: (view: WorkspaceView) => void;
+  /**
+   * 표에서 메모로 점프(AC-6) — 메모가 속한 보드로 전환하고 그 카드를 화면 중앙에
+   * 선택 상태로 놓은 뒤 캔버스 뷰로 돌아간다. 메모가 없으면 no-op.
+   */
+  openCardOnCanvas: (noteId: string) => Promise<void>;
 
   addCardAt: (toolId: ToolId, x: number, y: number) => string;
   /** 화면 중앙의 world 좌표에 카드 생성 (단축키 진입). viewport 크기는 인자로 주입. */
@@ -1105,6 +1122,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   lastNonSystemBoardId: null,
   viewportByBoard: {},
   boardTransitioning: false,
+  view: "canvas",
   templatePickerOpen: false,
   pendingBoardUndo: null,
   deleteDialogBoardId: null,
@@ -1362,6 +1380,18 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     } else {
       await get().setCurrentBoard(SYSTEM_BOARD_ID);
     }
+  },
+
+  setView: (view) => set({ view }),
+
+  openCardOnCanvas: async (noteId) => {
+    // 표에 없는(다른 보드) 메모도 열 수 있어야 한다 — DB에서 소속 보드를 읽는다.
+    const note = await getDB().notes.get(noteId);
+    if (!note) return;
+    const boardId = note.boardId ?? SYSTEM_BOARD_ID;
+    set({ view: "canvas" });
+    await get().setCurrentBoard(boardId);
+    get().panToCard(noteId);
   },
 
   addCardAt: (toolId, x, y) => {
