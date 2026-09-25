@@ -240,6 +240,12 @@ export const TEXT_DEFAULT_SIZE: TextSize = "m";
  */
 export const TEXTBOX_DEFAULT_WIDTH = 60;
 
+/**
+ * textbox 자동 폭의 하한(px) — 한 글자만 있어도 담기는 작은 값. 짧은 라벨을
+ * CARD_MIN_WIDTH(120)로 부풀리지 않기 위해 고정 폭 리사이즈 하한과 분리한다(§0).
+ */
+export const TEXTBOX_MIN_AUTO_WIDTH = 16;
+
 /** textbox 자동 폭 좌우 여백(px) — 측정 글자 폭에 더한다(Content와 동일 값). */
 export const TEXTBOX_PADDING_X = 4;
 
@@ -1832,7 +1838,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   setTextMeasuredWidth: (id, width) => {
     if (!Number.isFinite(width)) return;
-    const next = Math.max(CARD_MIN_WIDTH, Math.round(width));
+    // 고정 폭 하한(CARD_MIN_WIDTH)과 달리 자동 폭은 작은 라벨을 허용한다(§0).
+    const next = Math.max(TEXTBOX_MIN_AUTO_WIDTH, Math.round(width));
     let updated: Card | undefined;
     set((s) => ({
       cards: s.cards.map((c) => {

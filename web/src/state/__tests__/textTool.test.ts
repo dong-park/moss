@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   SYSTEM_BOARD_ID,
   TEXT_DEFAULT_SIZE,
+  TEXTBOX_MIN_AUTO_WIDTH,
   TEXT_SIZE_PX,
   useWorkspace,
 } from "@/state/workspace";
@@ -155,6 +156,15 @@ describe("FEAT-text-tool: textbox 생성·스토어", () => {
     card = useWorkspace.getState().cards.find((c) => c.id === id);
     expect(card?.width).toBe(200);
     expect(card?.autoWidth).toBe(false);
+  });
+
+  it("자동 폭 하한은 작은 값 — 짧은 라벨을 120px로 부풀리지 않는다 (P1-4)", () => {
+    const id = useWorkspace.getState().addCardAt("textbox", 0, 0);
+    useWorkspace.getState().setTextMeasuredWidth(id, 10);
+    const card = useWorkspace.getState().cards.find((c) => c.id === id);
+    expect(card?.autoWidth).toBe(true);
+    expect(card?.width).toBe(TEXTBOX_MIN_AUTO_WIDTH);
+    expect(TEXTBOX_MIN_AUTO_WIDTH).toBeLessThan(120);
   });
 
   it("hardDeleteNote — 행 삭제, 휴지통 개수 그대로 (AC-6)", async () => {
