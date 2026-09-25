@@ -450,6 +450,48 @@ describe("memoTable store — 로드·편집·휴지통·실시간", () => {
     });
   });
 
+  it("D1: 행 열기는 lastOpenedAt을 갱신하지 않고, 메모창 닫힘 시 진입 보드·뷰포트로 복원한다", async () => {
+    const s = await setup();
+    await s.saveBoard({ id: "b1", name: "함1", lastOpenedAt: 111 });
+    await s.saveNote({ id: "n1", boardId: "b1", content: "메모" });
+    useWorkspace.setState({
+      currentBoardId: "b2",
+      view: "canvas",
+      viewport: { x: 5, y: 6, scale: 1 },
+      cards: [],
+    });
+    await useMemoTable.getState().ensureLoaded();
+    useWorkspace.getState().setView("table"); // 진입 시점 보드 b2 기억.
+
+    await useMemoTable.getState().openMemo("n1"); // b1로 전환(맥락 점프).
+    expect(useWorkspace.getState().currentBoardId).toBe("b1");
+    // lastOpenedAt은 그대로 — 행 열기가 "최근 연 보드"를 흔들지 않는다.
+    expect((await getDB().boards.get("b1"))?.lastOpenedAt).toBe(111);
+
+    useWorkspace.getState().setExpandedCard(null); // 메모창 닫힘 → 복원.
+    await vi.waitFor(() => {
+      expect(useWorkspace.getState().currentBoardId).toBe("b2");
+    });
+    expect(useWorkspace.getState().viewport).toEqual({ x: 5, y: 6, scale: 1 });
+  });
+
+  it("D1: 캔버스에서 보기는 의도적 이동이라 복원하지 않는다", async () => {
+    const s = await setup();
+    await s.saveBoard({ id: "b1", name: "함1" });
+    await s.saveNote({ id: "n1", boardId: "b1", content: "메모" });
+    useWorkspace.setState({
+      currentBoardId: "b2",
+      view: "canvas",
+      cards: [],
+    });
+    useWorkspace.getState().setView("table");
+    await useWorkspace.getState().openCardOnCanvas("n1");
+
+    expect(useWorkspace.getState().view).toBe("canvas");
+    expect(useWorkspace.getState().currentBoardId).toBe("b1");
+    expect(useWorkspace.getState().tableReturnBoardId).toBeNull();
+  });
+
   it("P1-5: 자기 발신·stale은 표 재조회를 유발하지 않는다", async () => {
     const s = await setup();
     await s.saveNote({ id: "n1", boardId: null, content: "메모" });

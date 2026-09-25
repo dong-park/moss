@@ -276,6 +276,12 @@ interface WorkspaceState {
   boardTransitioning: boolean;
   /** FEAT-memo-table-view: 현재 표시 모드. 기본 캔버스. */
   view: WorkspaceView;
+  /**
+   * FEAT-memo-table-view D1: 표 진입 시점의 보드. 행 클릭이 보드를 바꾼 뒤
+   * 메모창을 닫거나 캔버스로 돌아갈 때 이 보드로 복원한다(뷰포트는
+   * viewportByBoard가 이미 복원). "캔버스에서 보기"는 의도적 이동이라 비운다.
+   */
+  tableReturnBoardId: CurrentBoardId | null;
   /** TemplatePicker 모달 열림 상태 — Cmd+N / "+ 새 보드" 진입점이 공유. */
   templatePickerOpen: boolean;
   /**
@@ -297,7 +303,14 @@ interface WorkspaceState {
   requestRenameBoard: (boardId: string) => Promise<void>;
   /** BoardPicker가 편집 모드 진입을 확인했음을 알리는 acknowledge. */
   clearRenameRequest: () => void;
-  setCurrentBoard: (id: CurrentBoardId) => Promise<void>;
+  /**
+   * 보드 전환. opts.touchLastOpened=false면 lastOpenedAt을 갱신하지 않는다 —
+   * 표 행 열기처럼 맥락 점프일 때 "최근 연 보드" 순서를 흔들지 않기 위함(D1).
+   */
+  setCurrentBoard: (
+    id: CurrentBoardId,
+    opts?: { touchLastOpened?: boolean },
+  ) => Promise<void>;
   createBoard: (name?: string) => Promise<string>;
   /**
    * FEAT-templates: 새 보드 생성 + 템플릿의 초기 카드 자동 배치 + 그 보드로 전환.
@@ -322,8 +335,10 @@ interface WorkspaceState {
   toggleSystemBoard: () => Promise<void>;
 
   /* ─────────── FEAT-memo-table-view: 전체 메모 표 ─────────── */
-  /** 캔버스 ↔ 표 전환. */
+  /** 캔버스 ↔ 표 전환. 표 진입 시 보드를 기억하고, 캔버스 복귀 시 복원한다(D1). */
   setView: (view: WorkspaceView) => void;
+  /** 표 진입 시점 보드로 복원(메모창 닫힘·캔버스 복귀). 없으면 no-op. */
+  restoreTableReturn: () => Promise<void>;
   /**
    * 표에서 메모로 점프(AC-6) — 메모가 속한 보드로 전환하고 그 카드를 화면 중앙에
    * 선택 상태로 놓은 뒤 캔버스 뷰로 돌아간다. 메모가 없으면 no-op.
@@ -1123,6 +1138,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   viewportByBoard: {},
   boardTransitioning: false,
   view: "canvas",
+  tableReturnBoardId: null,
   templatePickerOpen: false,
   pendingBoardUndo: null,
   deleteDialogBoardId: null,
@@ -1182,7 +1198,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     void get().refreshTrashCount();
   },
 
-  setCurrentBoard: async (id) => {
+  setCurrentBoard: async (id, opts) => {
     const current = get().currentBoardId;
     if (current === id) return;
 
@@ -1217,8 +1233,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       viewport: restored,
     });
 
-    // 5) lastOpenedAt 업데이트 (사용자 보드만)
-    if (id !== SYSTEM_BOARD_ID) {
+    // 5) lastOpenedAt 업데이트 (사용자 보드만). 표 맥락 점프는 opts로 끈다(D1).
+    if (id !== SYSTEM_BOARD_ID && opts?.touchLastOpened !== false) {
       await storage.saveBoard({ id, lastOpenedAt: Date.now() });
       const fresh = await storage.loadBoards();
       set({ boards: fresh });
@@ -1382,14 +1398,38 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     }
   },
 
-  setView: (view) => set({ view }),
+  setView: (view) => {
+    if (view === "table") {
+      // 표 진입 시점의 보드를 기억한다(D1). 이미 표면(=행 클릭으로 보드가 바뀐
+      // 상태) 덮어쓰지 않는다.
+      set((s) =>
+        s.view === "table"
+          ? { view }
+          : { view, tableReturnBoardId: s.currentBoardId },
+      );
+      return;
+    }
+    set({ view });
+    // 캔버스 복귀 — 표 행 클릭으로 보드가 바뀌었으면 진입 시점 보드로 되돌린다(D1).
+    void get().restoreTableReturn();
+  },
+
+  restoreTableReturn: async () => {
+    const ret = get().tableReturnBoardId;
+    set({ tableReturnBoardId: null });
+    if (ret && get().currentBoardId !== ret) {
+      // 맥락 점프 복원이므로 lastOpenedAt은 갱신하지 않는다(D1).
+      await get().setCurrentBoard(ret, { touchLastOpened: false });
+    }
+  },
 
   openCardOnCanvas: async (noteId) => {
     // 표에 없는(다른 보드) 메모도 열 수 있어야 한다 — DB에서 소속 보드를 읽는다.
     const note = await getDB().notes.get(noteId);
     if (!note) return;
     const boardId = note.boardId ?? SYSTEM_BOARD_ID;
-    set({ view: "canvas" });
+    // 의도적 이동 — 표 복귀 대상이 아니다(D1).
+    set({ view: "canvas", tableReturnBoardId: null });
     await get().setCurrentBoard(boardId);
     get().panToCard(noteId);
   },
@@ -1751,8 +1791,12 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   clearSelection: () => set({ selectedIds: [] }),
   setEditing: (id) => set({ editingId: id }),
   // FEAT-memo-expand: 모달 진입 시 inline 편집을 닫아 같은 카드 이중 에디터를 막는다.
-  setExpandedCard: (id) =>
-    set(id ? { expandedCardId: id, editingId: null } : { expandedCardId: null }),
+  setExpandedCard: (id) => {
+    set(id ? { expandedCardId: id, editingId: null } : { expandedCardId: null });
+    // 표에서 행을 열어 보드가 바뀌었던 경우, 메모창을 닫으면 진입 시점 보드로
+    // 복원한다(D1). 캔버스 뷰에서는 no-op(tableReturnBoardId 없음).
+    if (!id && get().view === "table") void get().restoreTableReturn();
+  },
 
   // FEAT-markdown-memo-pen: 펜 모드. 진입 시 열린 편집을 닫아 상호배타 보장.
   setPenMode: (on) =>

@@ -614,7 +614,10 @@ export const useMemoTable = create<MemoTableStore>((set, get) => ({
     const note = get().notes.find((n) => n.id === id);
     if (!note) return;
     const boardId = note.boardId ?? SYSTEM_BOARD_ID;
-    await useWorkspace.getState().setCurrentBoard(boardId);
+    // 행 열기로 인한 보드 전환은 "최근 연 보드"를 흔들지 않는다(D1).
+    await useWorkspace
+      .getState()
+      .setCurrentBoard(boardId, { touchLastOpened: false });
     useWorkspace.getState().setExpandedCard(id);
   },
 }));
