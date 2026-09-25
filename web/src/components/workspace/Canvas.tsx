@@ -438,23 +438,45 @@ export function Canvas() {
       el.removeEventListener("mousedown", onMouseDownCapture, true);
   }, [spaceDown, panBy]);
 
+  /* ─ FEAT-text-tool AC-2: 배치 모드는 capture 단계에서 잡는다 ─
+   * 카드(메모판 포함)의 onMouseDown이 stopPropagation으로 버블을 막아, 판 위 클릭은
+   * 버블 onMouseDown까지 오지 않는다. 배치 모드일 때만 capture에서 먼저 처리한다.
+   * 판(frame)·빈 영역 위 클릭은 클릭 지점에 textbox를 만들고(판이면 frameId 소속),
+   * 메모·함 카드 위 클릭은 모드만 풀고 그 카드 기본 동작에 양보한다(P1-3). */
+  const onMouseDownCapture = (e: React.MouseEvent) => {
+    if (!textPlacementArmed || e.button !== 0 || spaceDown) return;
+    const target = e.target as HTMLElement;
+    if (target.matches?.("input, textarea, [contenteditable='true']")) return;
+    const cardEl = target.closest<HTMLElement>("[data-card-id]");
+    if (cardEl) {
+      const card = useWorkspace
+        .getState()
+        .cards.find((c) => c.id === cardEl.dataset.cardId);
+      if (!card || card.kind !== "frame") {
+        // 메모·함 등 카드 위 — 배치 대신 모드를 풀고 카드 기본 동작 유지.
+        disarmTextPlacement();
+        return;
+      }
+    } else if (target !== e.currentTarget) {
+      // 캔버스 UI(검색·툴바 등) 위 — 배치 대상이 아니다.
+      return;
+    }
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const v = useWorkspace.getState().viewport;
+    const wx = (e.clientX - rect.left - v.x) / v.scale;
+    const wy = (e.clientY - rect.top - v.y) / v.scale;
+    addCardAt("textbox", wx, wy);
+    disarmTextPlacement();
+  };
+
   /* ─ 빈 캔버스 좌클릭 → rubber-band 박스 시작 (modifier 없으면 선택 치환, 있으면 합집합) ─ */
   const onMouseDown = (e: React.MouseEvent) => {
     if (e.button !== 0) return;
     if (spaceDown) return;
     if (e.target !== e.currentTarget) return;
-
-    // FEAT-text-tool AC-2: 배치 모드면 클릭 지점(왼쪽 위)에 textbox를 만들고 1회성으로 푼다.
-    if (textPlacementArmed) {
-      const rect = canvasRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      const v = useWorkspace.getState().viewport;
-      const wx = (e.clientX - rect.left - v.x) / v.scale;
-      const wy = (e.clientY - rect.top - v.y) / v.scale;
-      addCardAt("textbox", wx, wy);
-      disarmTextPlacement();
-      return;
-    }
 
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return;
@@ -545,6 +567,7 @@ export function Canvas() {
     <div
       ref={canvasRef}
       data-canvas-root="true"
+      onMouseDownCapture={onMouseDownCapture}
       onMouseDown={onMouseDown}
       onDragOver={onCanvasDragOver}
       onDrop={onCanvasDrop}

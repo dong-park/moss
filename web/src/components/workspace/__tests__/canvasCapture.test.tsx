@@ -322,6 +322,53 @@ describe("FEAT-sticky-redesign n6 · 캔버스 파일 드롭", () => {
     expect(state.editingId).toBe(card!.id);
   });
 
+  // P1-3: 메모판 위 클릭도 배치로 처리하고 판 소속(frameId)을 붙인다.
+  it("배치 모드 + 메모판 위 클릭 → 판 소속 textbox 생성", async () => {
+    const { container } = mount();
+    let frameId = "";
+    act(() => {
+      frameId = useWorkspace.getState().addFrameAt(0, 0);
+    });
+    await flush();
+
+    const frameEl = container.querySelector(`[data-card-id="${frameId}"]`);
+    expect(frameEl).toBeTruthy();
+
+    act(() => useWorkspace.getState().armTextPlacement());
+    // addFrameAt이 판을 화면 중앙으로 팬하므로 판 안의 월드 좌표를 화면 좌표로 환산한다.
+    const v = useWorkspace.getState().viewport;
+    fireEvent.mouseDown(frameEl!, {
+      clientX: 100 * v.scale + v.x,
+      clientY: 100 * v.scale + v.y,
+      button: 0,
+    });
+    await flush();
+
+    const state = useWorkspace.getState();
+    const card = state.cards.find((c) => c.kind === "textbox");
+    expect(card).toBeDefined();
+    expect(card!.frameId).toBe(frameId);
+    expect(state.textPlacementArmed).toBe(false);
+  });
+
+  // P1-3: 메모·함 카드 위 클릭은 배치하지 않고 모드만 풀며 카드 기본 동작에 양보한다.
+  it("배치 모드 + 메모 위 클릭 → 배치 안 하고 모드 해제", async () => {
+    const { container } = mount();
+    const textId = useWorkspace.getState().addCardAt("text", 200, 200);
+    await flush();
+
+    const cardEl = container.querySelector(`[data-card-id="${textId}"]`);
+    expect(cardEl).toBeTruthy();
+
+    act(() => useWorkspace.getState().armTextPlacement());
+    fireEvent.mouseDown(cardEl!, { clientX: 260, clientY: 260, button: 0 });
+    await flush();
+
+    const state = useWorkspace.getState();
+    expect(state.textPlacementArmed).toBe(false);
+    expect(state.cards.filter((c) => c.kind === "textbox")).toHaveLength(0);
+  });
+
   // 무소속 토스트를 Canvas.tsx에서 주석 처리해 숨김(2026-09-22 사용자 결정).
   // 토스트를 되살릴 때 이 skip도 함께 푼다.
   it.skip("시스템 보드에 드롭하면 새 보드 승격 토스트를 띄운다", async () => {
