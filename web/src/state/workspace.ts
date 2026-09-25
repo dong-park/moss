@@ -415,6 +415,11 @@ interface WorkspaceState {
    */
   setTextWidth: (id: string, width: number | "auto") => void;
   /**
+   * 자동 폭 textbox가 내용 측정값으로 width 캐시를 갱신한다 — autoWidth는 유지한다
+   * (§5 "true면 width는 측정값 캐시"). 사용자 리사이즈([[setTextWidth]])와 구분된다.
+   */
+  setTextMeasuredWidth: (id: string, width: number) => void;
+  /**
    * FEAT-text-tool AC-2: T 키 텍스트 배치 모드. 켜지면 캔버스 커서가 바뀌고
    * 다음 캔버스 클릭에서 textbox를 만든 뒤 한 번만 풀린다(1회성).
    */
@@ -1808,6 +1813,22 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
             width: clamp(width, CARD_MIN_WIDTH, CARD_MAX_WIDTH),
           };
         }
+        return updated;
+      }),
+    }));
+    if (updated) persistCardDebounced(updated, storageBoardId(get().currentBoardId));
+  },
+
+  setTextMeasuredWidth: (id, width) => {
+    if (!Number.isFinite(width)) return;
+    const next = Math.max(CARD_MIN_WIDTH, Math.round(width));
+    let updated: Card | undefined;
+    set((s) => ({
+      cards: s.cards.map((c) => {
+        // autoWidth가 아닌 카드는 측정값을 무시한다(고정 폭 우선).
+        if (c.id !== id || c.kind !== "textbox" || c.autoWidth === false) return c;
+        if (c.width === next) return c;
+        updated = { ...c, width: next };
         return updated;
       }),
     }));

@@ -59,7 +59,15 @@ export function ResizeHandles({
   const resizeCard = useWorkspace((s) => s.resizeCard);
   const resizeFrame = useWorkspace((s) => s.resizeFrame);
   const resolveMembership = useWorkspace((s) => s.resolveMembership);
+  const setTextWidth = useWorkspace((s) => s.setTextWidth);
+  const moveCard = useWorkspace((s) => s.moveCard);
   const isFrame = card.kind === "frame";
+  // FEAT-text-tool §2: textbox는 좌우(e/w) 핸들만 — 끌면 고정 폭 전환(AC-4),
+  // 높이는 항상 내용에 맞춘다(핸들 대상 아님).
+  const isTextbox = card.kind === "textbox";
+  const visibleHandles = isTextbox
+    ? HANDLES.filter((h) => h.dir === "e" || h.dir === "w")
+    : HANDLES;
 
   const dragRef = useRef<{
     dir: HandleDir;
@@ -84,6 +92,44 @@ export function ResizeHandles({
     if (e.button !== 0) return;
     e.stopPropagation();
     e.preventDefault();
+
+    // FEAT-text-tool: textbox 좌우 핸들 — 고정 폭 전환. 높이는 손대지 않는다(내용 높이).
+    if (isTextbox) {
+      const onMove = (ev: MouseEvent) => {
+        const d = dragRef.current;
+        if (!d) return;
+        const scale = useWorkspace.getState().viewport.scale;
+        const dx = (ev.clientX - d.startX) / scale;
+        const raw = d.dir === "e" ? d.originW + dx : d.originW - dx;
+        const w = clamp(raw, CARD_MIN_WIDTH, CARD_MAX_WIDTH);
+        setTextWidth(card.id, w);
+        // 왼쪽 핸들은 오른쪽 가장자리를 고정 — x를 함께 민다.
+        if (d.dir === "w") {
+          moveCard(card.id, d.originCardX + (d.originW - w), d.originCardY);
+        }
+      };
+      const cleanup = () => {
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+      };
+      const onUp = () => {
+        dragRef.current = null;
+        cleanup();
+      };
+      dragRef.current = {
+        dir,
+        startX: e.clientX,
+        startY: e.clientY,
+        originW: card.width,
+        originH: 0,
+        originCardX: card.x,
+        originCardY: card.y,
+        cleanup,
+      };
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
+      return;
+    }
 
     // 메모(text)는 정사각 — 시작 높이는 실측이 아니라 폭. 그 외는 명시 높이/실측.
     const startH =
@@ -177,7 +223,7 @@ export function ResizeHandles({
 
   return (
     <>
-      {HANDLES.map(({ dir, cursor, hitStyle }) => (
+      {visibleHandles.map(({ dir, cursor, hitStyle }) => (
         <span
           key={dir}
           data-resize-handle={dir}
