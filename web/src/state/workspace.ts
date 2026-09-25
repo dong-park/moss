@@ -11,6 +11,7 @@ import {
   type EmbeddingCacheEntry,
   type Note,
   type NoteKind,
+  type TextSize,
 } from "./db/schema";
 import { migratedContent } from "./markdownMigration";
 import { enqueueEmbed as enqueueEmbedRaw } from "./ai/embeddingQueue";
@@ -69,6 +70,8 @@ export type ToolId =
   | "audio"
   | "file"
   | "code"
+  // FEAT-text-tool: 평문 텍스트 도구 — 카드 생성이지만 capture 10종과 별개(독 항목).
+  | "textbox"
   // non-capture (다른 FEAT)
   | "line"
   | "board"
@@ -104,6 +107,18 @@ export interface Card {
   /** 사용자가 리사이즈한 높이. 미정의면 콘텐츠 자동 높이. */
   height?: number;
   content: string;
+  /**
+   * FEAT-text-tool: textbox 사용자 색. 미지정이면 기본 잉크 톤.
+   * 메모(text)는 해시 색조(memoVariety)를 쓰므로 이 칸을 쓰지 않는다.
+   */
+  color?: string;
+  /** FEAT-text-tool: textbox 글자 크기. 없으면 "m". */
+  textSize?: TextSize;
+  /**
+   * FEAT-text-tool: textbox 폭 모드. true(기본)면 width는 측정값 캐시,
+   * false면 사용자 고정 폭. 다른 kind에는 의미 없다.
+   */
+  autoWidth?: boolean;
   attachmentRef?: string;
   mediaType?: string;
   /**
@@ -206,6 +221,29 @@ export const FRAME_DEFAULT_WIDTH = 320;
 export const FRAME_DEFAULT_HEIGHT = 220;
 
 /**
+ * FEAT-text-tool §5: textbox 글자 크기 4단의 px. spec의 14/18/28/44.
+ * Content·TextStyleToolbar·자동 폭 측정이 공유하는 단일 소스.
+ */
+export const TEXT_SIZE_PX: Record<TextSize, number> = {
+  s: 14,
+  m: 18,
+  l: 28,
+  xl: 44,
+};
+
+/** textbox 기본 글자 크기. */
+export const TEXT_DEFAULT_SIZE: TextSize = "m";
+
+/**
+ * FEAT-text-tool: textbox 생성 시 자동 폭의 시작 폭. 내용이 없을 때 커서가 설
+ * 최소 자리 — 편집하며 측정 폭으로 늘어난다. 고정 폭 핸들의 하한은 CARD_MIN_WIDTH.
+ */
+export const TEXTBOX_DEFAULT_WIDTH = 60;
+
+/** textbox 자동 폭 좌우 여백(px) — 측정 글자 폭에 더한다(Content와 동일 값). */
+export const TEXTBOX_PADDING_X = 4;
+
+/**
  * FEAT-pen-drawing-engine: 펜 굵기 한계·기본값. 단일 소스는 [[useDrawing]]
  * (handwriting 카드와 메모 overlay 공통). 기존 import 경로 호환을 위해 재노출한다.
  */
@@ -228,6 +266,8 @@ const CARD_ASPECT_BY_KIND: Record<CardKind, number> = {
   board: 1,
   // FEAT-sticky-redesign: 메모판 틀 — PNG 없음, 정사각 비율로 폴백.
   frame: 1,
+  // FEAT-text-tool: 텍스트는 종이가 없다 — 비율 강제하지 않음(정사각 폴백은 미사용).
+  textbox: 1,
 };
 
 export function aspectForKind(kind: CardKind): number {
@@ -365,6 +405,28 @@ interface WorkspaceState {
   setTitle: (id: string, title: string) => void;
   /** FEAT-memo-title-front-edit AC-7: 편집 종료 시 제목 확정 — 앞뒤 공백을 자르고 즉시 영속. */
   commitTitle: (id: string) => void;
+
+  /* ─────────── FEAT-text-tool: 평문 텍스트(textbox) ─────────── */
+  /** textbox 글자 크기·색 변경. 지정한 항목만 갱신한다(AC-5). */
+  setTextStyle: (id: string, style: { textSize?: TextSize; color?: string }) => void;
+  /**
+   * textbox 폭 변경. number면 autoWidth=false(고정 폭, 줄바꿈), "auto"면 자동 폭.
+   * 고정 폭은 CARD_MIN_WIDTH~CARD_MAX_WIDTH로 클램프한다(AC-4).
+   */
+  setTextWidth: (id: string, width: number | "auto") => void;
+  /**
+   * FEAT-text-tool AC-2: T 키 텍스트 배치 모드. 켜지면 캔버스 커서가 바뀌고
+   * 다음 캔버스 클릭에서 textbox를 만든 뒤 한 번만 풀린다(1회성).
+   */
+  textPlacementArmed: boolean;
+  armTextPlacement: () => void;
+  disarmTextPlacement: () => void;
+  /**
+   * FEAT-text-tool AC-6: 편집 종료 시 비어 있는 textbox를 휴지통 없이 즉시 삭제.
+   * 휴지통·되돌리기를 우회한다(스펙 §2 "되돌리기 대상 아님").
+   */
+  hardDeleteNote: (id: string) => void;
+
   setAttachment: (
     id: string,
     ref: string | undefined,
@@ -603,6 +665,9 @@ export function kindForTool(toolId: ToolId): CardKind {
     case "file":
     case "code":
       return toolId;
+    // FEAT-text-tool: 독 "텍스트" 도구 → textbox.
+    case "textbox":
+      return "textbox";
     // FEAT-subcanvas: board 도구 → 함 카드.
     case "board":
       return "board";
@@ -638,6 +703,9 @@ export function widthForKind(kind: CardKind): number {
     // FEAT-sticky-redesign: 메모판 기본 폭. addFrameAt은 실제로 이 값을 직접 쓴다.
     case "frame":
       return FRAME_DEFAULT_WIDTH;
+    // FEAT-text-tool: 자동 폭 시작 폭 — 내용이 없을 때의 최소 자리.
+    case "textbox":
+      return TEXTBOX_DEFAULT_WIDTH;
     case "text":
     default:
       return 240;
@@ -834,6 +902,10 @@ function decodeNoteToCard(note: Note): Card {
     // width로 정규화한다.
     height: kind === "text" ? note.width : note.height,
     content,
+    // FEAT-text-tool: textbox 색·크기·폭 모드. 다른 kind는 이 칸을 쓰지 않는다.
+    color: note.color,
+    textSize: note.textSize,
+    autoWidth: note.autoWidth,
     attachmentRef: note.attachmentRef,
     mediaType: note.mediaType,
     overlay: note.overlay,
@@ -951,7 +1023,8 @@ function persistCard(card: Card, boardId: string | null): Promise<void> {
   // 비교로 cache hit이면 skip하므로 안전(AC-4).
   // FEAT-subcanvas: 함 카드 content는 boardRef JSON일 뿐이라 임베딩 대상 아님 — skip.
   // FEAT-sticky-redesign: 메모판(frame) content는 {name} JSON이라 역시 skip.
-  if (card.kind !== "board" && card.kind !== "frame") {
+  // FEAT-text-tool: textbox는 AI 파이프라인 대상 아님(spec §2) — enqueue하지 않는다.
+  if (card.kind !== "board" && card.kind !== "frame" && card.kind !== "textbox") {
     // FEAT-memo-title: 임베딩 입력은 "제목 + 빈 줄 + 본문". 해시가 입력 전체로 계산되므로
     // 제목만 바뀌어도 다시 임베딩된다(AC-9). 제목 없으면 본문만.
     const embedInput = card.title ? `${card.title}\n\n${content}` : content;
@@ -966,6 +1039,10 @@ function persistCard(card: Card, boardId: string | null): Promise<void> {
     width: card.width,
     height: memoHeight(card.kind, card.width, card.height),
     content,
+    // FEAT-text-tool: textbox 색·크기·폭 모드 영속.
+    color: card.color,
+    textSize: card.textSize,
+    autoWidth: card.autoWidth,
     attachmentRef: card.attachmentRef,
     mediaType: card.mediaType,
     overlay: card.overlay,
@@ -1367,7 +1444,12 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   addCardAt: (toolId, x, y) => {
     const kind = kindForTool(toolId);
     const width = widthForKind(kind);
-    const height = clamp(width / aspectForKind(kind), CARD_MIN_HEIGHT, CARD_MAX_HEIGHT);
+    const isTextbox = kind === "textbox";
+    // FEAT-text-tool §5: textbox는 높이를 저장하지 않는다(항상 내용 높이). 다른 kind는
+    // 종이 비율로 기본 높이를 채운다.
+    const height = isTextbox
+      ? undefined
+      : clamp(width / aspectForKind(kind), CARD_MIN_HEIGHT, CARD_MAX_HEIGHT);
     const id = nextId();
     const card: Card = {
       id,
@@ -1378,7 +1460,19 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       height,
       content: "",
       lastVisitedAt: Date.now(),
+      // FEAT-text-tool §6: AI 파이프라인 대상 제외(주석이라서) + 자동 폭 + 기본 크기.
+      ...(isTextbox
+        ? { aiOptOut: true, autoWidth: true, textSize: TEXT_DEFAULT_SIZE }
+        : {}),
     };
+    // FEAT-text-tool §0/§10: 메모판 안에 생성하면 소속(frameId)을 바로 잡는다.
+    if (isTextbox) {
+      const owner = findOwningFrame(
+        get().cards.filter((c) => c.kind === "frame"),
+        cardCenter(card),
+      );
+      if (owner) card.frameId = owner.id;
+    }
     const isCapture = isCaptureKind(kind);
     const isCaptureTool = (CAPTURE_TOOLS as readonly ToolId[]).includes(toolId);
     set((s) => ({
@@ -1678,6 +1772,69 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     }
   },
 
+  /* ─────────── FEAT-text-tool: 평문 텍스트(textbox) ─────────── */
+
+  setTextStyle: (id, style) => {
+    let updated: Card | undefined;
+    set((s) => ({
+      cards: s.cards.map((c) => {
+        if (c.id !== id || c.kind !== "textbox") return c;
+        updated = {
+          ...c,
+          textSize: style.textSize ?? c.textSize,
+          color: style.color ?? c.color,
+        };
+        return updated;
+      }),
+    }));
+    // AC-5: 새로고침 후에도 유지 — 디바운스가 아니라 즉시 영속(툴바 클릭은 드묾).
+    if (updated) {
+      cancelPersist(id);
+      void persistCard(updated, storageBoardId(get().currentBoardId));
+    }
+  },
+
+  setTextWidth: (id, width) => {
+    let updated: Card | undefined;
+    set((s) => ({
+      cards: s.cards.map((c) => {
+        if (c.id !== id || c.kind !== "textbox") return c;
+        if (width === "auto") {
+          updated = { ...c, autoWidth: true };
+        } else {
+          updated = {
+            ...c,
+            autoWidth: false,
+            width: clamp(width, CARD_MIN_WIDTH, CARD_MAX_WIDTH),
+          };
+        }
+        return updated;
+      }),
+    }));
+    if (updated) persistCardDebounced(updated, storageBoardId(get().currentBoardId));
+  },
+
+  textPlacementArmed: false,
+  armTextPlacement: () => {
+    // 펜 모드와 상호배타 — 배치 모드 진입 시 펜 모드를 끈다.
+    set({ textPlacementArmed: true, penMode: false, editingId: null });
+  },
+  disarmTextPlacement: () => set({ textPlacementArmed: false }),
+
+  hardDeleteNote: (id) => {
+    // FEAT-text-tool AC-6: 휴지통·되돌리기 우회 삭제. 행이 DB에서 사라진다.
+    set((s) => ({
+      cards: s.cards.filter((c) => c.id !== id),
+      selectedIds: s.selectedIds.filter((x) => x !== id),
+      editingId: s.editingId === id ? null : s.editingId,
+      expandedCardId: s.expandedCardId === id ? null : s.expandedCardId,
+    }));
+    cancelPersist(id);
+    const storage = useStorage.getState();
+    if (!storage.initialized) return;
+    void getDB().notes.delete(id);
+  },
+
   setAttachment: (id, ref, meta) => {
     let updated: Card | undefined;
     set((s) => ({
@@ -1925,7 +2082,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       return null;
     }
     // 캡처 카드가 아니면 next-card 흐름 자체가 의미 없음 — 편집만 종료.
-    if (!isCaptureKind(current.kind)) {
+    // FEAT-text-tool: textbox도 양산 의미가 없어 편집만 종료한다.
+    if (!isCaptureKind(current.kind) || current.kind === "textbox") {
       if (get().editingId === currentCardId) set({ editingId: null });
       return null;
     }

@@ -6,7 +6,12 @@ export interface PartitionImportNotesResult {
   skipped: { kind: string }[];
 }
 
-const ACCEPTED_KINDS: ReadonlySet<NoteKind> = new Set(["text", "board", "frame"]);
+const ACCEPTED_KINDS: ReadonlySet<NoteKind> = new Set([
+  "text",
+  "board",
+  "frame",
+  "textbox",
+]);
 
 function isNoteShape(row: unknown): row is Note {
   if (!row || typeof row !== "object") return false;
