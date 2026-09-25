@@ -7,6 +7,7 @@ import {
   boardPathLabel,
   buildMemoRows,
   defaultFilters,
+  deriveFromBase,
   deriveRows,
   descendantBoardKeys,
   matchInPreview,
@@ -14,6 +15,7 @@ import {
   PREVIEW_LIMIT,
   useMemoTable,
 } from "@/state/memoTable";
+import * as memoSearch from "@/state/memoSearch";
 import { useStorage } from "@/state/storage";
 import { useWorkspace, SYSTEM_BOARD_ID } from "@/state/workspace";
 import { getDB, resetDB, type Board, type Note } from "@/state/db/schema";
@@ -282,6 +284,32 @@ describe("memoTable 파생 — 검색·정렬", () => {
       "머무는 생각",
     );
     expect(out.map((r) => r.id)).toEqual(["b", "a"]);
+  });
+
+  it("P1-6: buildMemoRows는 note당 본문을 한 번만 파싱한다(이중 파싱 제거)", () => {
+    const spy = vi.spyOn(memoSearch, "plainTextRaw");
+    const notes = [
+      mkNote({ id: "a", content: "# 제목\n**본문**" }),
+      mkNote({ id: "b", content: "둘" }),
+    ];
+    buildMemoRows(notes, boards, "머무는 생각");
+    expect(spy).toHaveBeenCalledTimes(2);
+    spy.mockRestore();
+  });
+
+  it("P1-6: deriveFromBase는 미리 만든 행 위에서 파생만 다시 한다", () => {
+    const notes = [
+      mkNote({ id: "a", boardId: "root", content: "회고", updatedAt: 1 }),
+      mkNote({ id: "b", boardId: "root", content: "기타", updatedAt: 2 }),
+    ];
+    const base = buildMemoRows(notes, boards, "머무는 생각");
+    const out = deriveFromBase(
+      base,
+      boards,
+      { ...defaultFilters("root"), query: "회고" },
+      { key: "updatedAt", dir: "desc" },
+    );
+    expect(out.map((r) => r.id)).toEqual(["a"]);
   });
 });
 

@@ -116,13 +116,26 @@ export function boardPathLabel(
   boardId: string | null,
   systemLabel: string,
 ): string {
+  return boardPathLabelFromMap(
+    new Map(boards.map((b) => [b.id, b])),
+    boardId,
+    systemLabel,
+  );
+}
+
+/** boardPathLabel의 Map 조회 버전 — 행마다 boards.find(O(n))를 피한다(P1-6). */
+function boardPathLabelFromMap(
+  map: Map<string, Board>,
+  boardId: string | null,
+  systemLabel: string,
+): string {
   if (boardId === null) return systemLabel;
   const chain: string[] = [];
   const guard = new Set<string>();
   let id: string | null | undefined = boardId;
   while (id && !guard.has(id)) {
     guard.add(id);
-    const board = boards.find((b) => b.id === id);
+    const board = map.get(id);
     if (!board) break;
     chain.unshift(board.name);
     const parent = board.parentBoardId ?? null;
@@ -135,11 +148,15 @@ export function boardPathLabel(
   return chain.length > 0 ? chain.join(" › ") : systemLabel;
 }
 
+/** 본문 평문(전체) → 평문 1줄 미리보기(대소문자 보존). 이중 파싱 방지(P1-6). */
+export function previewFromRaw(raw: string): string {
+  if (raw.length <= PREVIEW_LIMIT) return raw;
+  return `${raw.slice(0, PREVIEW_LIMIT)}…`;
+}
+
 /** 본문 → 평문 1줄 미리보기(대소문자 보존). */
 export function previewOf(content: string): string {
-  const text = plainTextRaw(content);
-  if (text.length <= PREVIEW_LIMIT) return text;
-  return `${text.slice(0, PREVIEW_LIMIT)}…`;
+  return previewFromRaw(plainTextRaw(content));
 }
 
 /** 검색어(또는 첫 토큰)가 미리보기에서 처음 매칭되는 위치. 없으면 null. */
@@ -185,17 +202,19 @@ export function buildMemoRows(
   systemLabel: string,
 ): MemoRow[] {
   const frames = frameNameMap(notes);
+  const boardMap = new Map(boards.map((b) => [b.id, b]));
   const rows: MemoRow[] = [];
   for (const note of notes) {
     if (note.kind !== "text") continue;
-    const searchText = plainTextRaw(note.content);
+    // plainTextRaw를 한 번만 파싱해 preview·searchText에 함께 쓴다(P1-6).
+    const raw = plainTextRaw(note.content);
     rows.push({
       id: note.id,
       title: note.title ?? "",
-      preview: previewOf(note.content),
-      searchText,
+      preview: previewFromRaw(raw),
+      searchText: raw,
       boardId: note.boardId,
-      boardPath: boardPathLabel(boards, note.boardId, systemLabel),
+      boardPath: boardPathLabelFromMap(boardMap, note.boardId, systemLabel),
       frameId: note.frameId,
       frameName: note.frameId ? frames.get(note.frameId) : undefined,
       createdAt: note.createdAt,
@@ -303,8 +322,26 @@ export function deriveRows(
   sort: MemoSort,
   systemLabel: string = t("workspace.boardPicker.system"),
 ): MemoRow[] {
-  const rows = buildMemoRows(notes, boards, systemLabel);
-  const filtered = applyFilters(rows, filters, boards);
+  return deriveFromBase(
+    buildMemoRows(notes, boards, systemLabel),
+    boards,
+    filters,
+    sort,
+  );
+}
+
+/**
+ * 이미 만든 기본 행(notes/boards에만 의존) 위에서 필터·검색·정렬만 다시 적용한다.
+ * 표는 baseRows를 notes·boards 변화에만 메모이즈하고, 검색 키 입력마다 5,000행을
+ * 재생성하지 않는다(P1-6).
+ */
+export function deriveFromBase(
+  baseRows: MemoRow[],
+  boards: Board[],
+  filters: MemoFilters,
+  sort: MemoSort,
+): MemoRow[] {
+  const filtered = applyFilters(baseRows, filters, boards);
   const searched = applySearch(filtered, filters.query);
   return applySort(searched, sort);
 }

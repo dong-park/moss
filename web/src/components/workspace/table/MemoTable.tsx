@@ -12,7 +12,8 @@ import { useT } from "@/i18n/Provider";
 import { useWorkspace } from "@/state/workspace";
 import {
   useMemoTable,
-  deriveRows,
+  buildMemoRows,
+  deriveFromBase,
   type MemoRow,
   type MemoSortKey,
 } from "@/state/memoTable";
@@ -83,15 +84,19 @@ export function MemoTable() {
     void ensureLoaded();
   }, [ensureLoaded]);
 
+  // 기본 행(notes·boards 파생)은 여기에만 메모 — 검색 키 입력마다 5,000행을
+  // 재생성하지 않는다(P1-6). 필터·검색·정렬은 그 위에서 파생한다.
+  const baseRows = useMemo(
+    () => buildMemoRows(notes, boards, t("workspace.boardPicker.system")),
+    [notes, boards, t],
+  );
+  const filters = useMemo(
+    () => ({ boardFilter, includeSubboards, frameFilter, hasAttachment, query }),
+    [boardFilter, includeSubboards, frameFilter, hasAttachment, query],
+  );
   const rows = useMemo(
-    () =>
-      deriveRows(
-        notes,
-        boards,
-        { boardFilter, includeSubboards, frameFilter, hasAttachment, query },
-        sort,
-      ),
-    [notes, boards, boardFilter, includeSubboards, frameFilter, hasAttachment, query, sort],
+    () => deriveFromBase(baseRows, boards, filters, sort),
+    [baseRows, boards, filters, sort],
   );
 
   /* ─ 가상화: 고정 행 높이 윈도. jsdom처럼 높이 0이면 전체 렌더(테스트 친화). ─ */

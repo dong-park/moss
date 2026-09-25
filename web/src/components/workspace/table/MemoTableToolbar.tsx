@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useT } from "@/i18n/Provider";
 import {
   useMemoTable,
@@ -32,6 +32,14 @@ export function MemoTableToolbar() {
   const setHasAttachment = useMemoTable((s) => s.setHasAttachment);
   const setQuery = useMemoTable((s) => s.setQuery);
 
+  // 검색은 150ms 디바운스 — 키 입력마다 파생을 다시 돌리지 않는다(P1-6).
+  const [queryInput, setQueryInput] = useState(query);
+  useEffect(() => {
+    if (queryInput === query) return;
+    const id = window.setTimeout(() => setQuery(queryInput), 150);
+    return () => window.clearTimeout(id);
+  }, [queryInput, query, setQuery]);
+
   const frames = useMemo(() => {
     const names = frameNameMap(notes);
     return [...names.entries()].map(([id, name]) => ({ id, name }));
@@ -51,8 +59,8 @@ export function MemoTableToolbar() {
     <div className="flex flex-wrap items-center gap-2 border-b border-border py-2 pl-3 pr-28">
       <input
         type="search"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
+        value={queryInput}
+        onChange={(e) => setQueryInput(e.target.value)}
         placeholder={t("workspace.table.search.placeholder")}
         aria-label={t("workspace.table.search.placeholder")}
         className="w-56 rounded-md border border-border bg-bg px-2.5 py-1 text-xs text-text outline-none focus:border-accent-blue"
