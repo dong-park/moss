@@ -81,5 +81,5 @@ Started: 2026-09-25
 ## 진행
 
 - STEP 1: 수정. 스크롤 컨테이너 바깥 래퍼를 `<div style={gridStyle}>` → `<div style={{ minWidth: MIN_WIDTH }}>` 로 바꿈. 헤더 행·본문 행 그리드는 유지. 구조 단위 테스트 추가(바깥 래퍼 display≠grid, 헤더 행 display=grid). 브라우저 실측(성공 기준 1~6)은 이 세션에 브라우저 도구가 없어 미증명.
-- STEP 2: 진행 중.
-- STEP 3: 대기.
+- STEP 2: 완료. `cardTitle`이 제목(trim 후) 우선, 없으면 `bodyFirstLine`. `resolveWikilinkTarget` 제목 토큰은 표시 이름 전체 → 본문 첫 줄 순 2단계. `backlinksOf`/`contentLinksTo`도 표시 이름·본문 첫 줄 둘 다 비교. 단위 테스트 5건 추가.
+- STEP 3: 진행 중.
