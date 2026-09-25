@@ -386,7 +386,10 @@ export function DraggableCard({ card }: { card: Card }) {
       card.kind !== "textbox" &&
       !reducedMotion;
     // FEAT-frame-feel T4: 판 단독 드래그면 멤버들이 따라 흔들린다(reduced-motion 제외).
-    const willWobble = !wasInMulti && card.kind === "frame" && !reducedMotion;
+    // 2026-09-25 사용자 결정: 메모판을 끌 때 안의 멤버가 흔들리는 효과(FEAT-frame-feel T4)를 끈다.
+    // 되살리려면 아래 주석을 풀고 `false`를 지운다.
+    // const willWobble = !wasInMulti && card.kind === "frame" && !reducedMotion;
+    const willWobble = false;
     let tiltAngle = 0;
     let lastTiltX = e.clientX;
     let lastTiltT = 0;

@@ -312,7 +312,8 @@ describe("FEAT-frame-feel T3 · '착' 모션", () => {
   });
 });
 
-describe("FEAT-frame-feel T4 · 따라 흔들림", () => {
+// 2026-09-25 사용자 결정으로 흔들림 효과를 껐다(DraggableCard willWobble). 되살리면 skip을 지운다.
+describe.skip("FEAT-frame-feel T4 · 따라 흔들림", () => {
   it("AC-7·8: 오른쪽으로 끌면 멤버가 윗변 축으로 시계 반대(-)로 처진다", () => {
     vi.useFakeTimers();
     const f = frame();
