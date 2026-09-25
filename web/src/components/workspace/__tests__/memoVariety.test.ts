@@ -59,9 +59,15 @@ describe("FEAT-memo-variety · 각도", () => {
   });
 
   it("AC-5: 비메모는 들지 않으면 무변화, 들면 기존과 같은 값이다", () => {
+    const board = { id: "b1", kind: "board" };
+    expect(memoBaseTransform(board, false)).toBeUndefined();
+    expect(memoLiftedTransform(board, false)).toBe("scale(1.03) rotate(-1.5deg)");
+  });
+
+  it("FEAT-frame-feel AC-1: 메모판은 들지 않든 들든 transform이 없다(무거운 들기)", () => {
     const frame = { id: "f1", kind: "frame" };
     expect(memoBaseTransform(frame, false)).toBeUndefined();
-    expect(memoLiftedTransform(frame, false)).toBe("scale(1.03) rotate(-1.5deg)");
+    expect(memoLiftedTransform(frame, false)).toBeUndefined();
   });
 
   it("formatDeg: 소수 둘째 자리로 반올림하고 꼬리 0을 뗀다", () => {
