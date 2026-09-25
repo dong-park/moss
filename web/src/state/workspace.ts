@@ -1054,10 +1054,11 @@ function persistCard(card: Card, boardId: string | null): Promise<void> {
     width: card.width,
     height: memoHeight(card.kind, card.width, card.height),
     content,
-    // FEAT-text-tool: textbox 색·크기·폭 모드 영속.
-    color: card.color,
-    textSize: card.textSize,
-    autoWidth: card.autoWidth,
+    // FEAT-text-tool: textbox 색·크기·폭 모드 영속. undefined를 patch에 실으면
+    // mergeNote 스프레드가 기존 값을 지우므로 정의된 항목만 싣는다.
+    ...(card.color !== undefined ? { color: card.color } : {}),
+    ...(card.textSize !== undefined ? { textSize: card.textSize } : {}),
+    ...(card.autoWidth !== undefined ? { autoWidth: card.autoWidth } : {}),
     attachmentRef: card.attachmentRef,
     mediaType: card.mediaType,
     overlay: card.overlay,
