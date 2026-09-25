@@ -282,6 +282,13 @@ interface WorkspaceState {
    * viewportByBoard가 이미 복원). "캔버스에서 보기"는 의도적 이동이라 비운다.
    */
   tableReturnBoardId: CurrentBoardId | null;
+  /**
+   * FEAT-memo-table-view P2-4: 캔버스가 한 번이라도 자리 잡았는지(최초 fit 또는
+   * programmatic panToCard). 표↔캔버스 재마운트에서 최초 fit이 사용자가 보던/
+   * panToCard가 잡은 뷰포트를 덮지 않게 한다. 기존엔 Canvas 모듈 전역 플래그라
+   * panToCard와 경쟁했다.
+   */
+  canvasHasFitted: boolean;
   /** TemplatePicker 모달 열림 상태 — Cmd+N / "+ 새 보드" 진입점이 공유. */
   templatePickerOpen: boolean;
   /**
@@ -339,6 +346,8 @@ interface WorkspaceState {
   setView: (view: WorkspaceView) => void;
   /** 표 진입 시점 보드로 복원(메모창 닫힘·캔버스 복귀). 없으면 no-op. */
   restoreTableReturn: () => Promise<void>;
+  /** P2-4: 캔버스가 자리 잡았음을 표시 — 재마운트 시 최초 fit을 건너뛰게 한다. */
+  markCanvasFitted: () => void;
   /**
    * 표에서 메모로 점프(AC-6) — 메모가 속한 보드로 전환하고 그 카드를 화면 중앙에
    * 선택 상태로 놓은 뒤 캔버스 뷰로 돌아간다. 메모가 없으면 no-op.
@@ -1139,6 +1148,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   boardTransitioning: false,
   view: "canvas",
   tableReturnBoardId: null,
+  canvasHasFitted: false,
   templatePickerOpen: false,
   pendingBoardUndo: null,
   deleteDialogBoardId: null,
@@ -1433,6 +1443,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     await get().setCurrentBoard(boardId);
     get().panToCard(noteId);
   },
+
+  markCanvasFitted: () => set({ canvasHasFitted: true }),
 
   addCardAt: (toolId, x, y) => {
     const kind = kindForTool(toolId);
@@ -2357,6 +2369,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   panToCard: (id, viewportSize) => {
     const card = get().cards.find((c) => c.id === id);
     if (!card) return;
+    // programmatic 이동도 "자리 잡음"으로 본다 — 재마운트 fit이 이 위치를 덮지 않게(P2-4).
+    set({ canvasHasFitted: true });
     const v = get().viewport;
     // addCardAtViewportCenter와 동일한 화면 크기 폴백 규약(FEAT-sticky-redesign n8:
     // 사이드바가 걷혀 캔버스가 window 전체 폭이라 폭 차감 없음).
@@ -2412,6 +2426,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const cx = (minX + maxX) / 2;
     const cy = (minY + maxY) / 2;
     set({
+      canvasHasFitted: true,
       viewport: {
         x: w / 2 - cx * scale,
         y: h / 2 - cy * scale,

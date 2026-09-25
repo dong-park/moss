@@ -34,6 +34,8 @@ afterEach(async () => {
     selectedIds: [],
     currentBoardId: SYSTEM_BOARD_ID,
     view: "canvas",
+    canvasHasFitted: false,
+    tableReturnBoardId: null,
   });
   if (originalStorage) {
     Object.defineProperty(navigator, "storage", originalStorage);

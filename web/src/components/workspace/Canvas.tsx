@@ -34,13 +34,6 @@ const VIRTUALIZATION_TOAST_THRESHOLD = 200;
 const WHEEL_ZOOM_INTENSITY = 0.0015;
 const MARQUEE_THRESHOLD = 4; // px — 박스로 인식할 최소 드래그 거리
 
-/**
- * FEAT-memo-table-view AC-1: 새로고침 직후 1회만 메모에 맞춰 포커싱한다. 표↔캔버스
- * 전환은 Canvas를 언마운트/재마운트하므로, 모듈 플래그가 없으면 전환마다 재포커싱해
- * 사용자가 보던 줌·위치가 사라진다.
- */
-let hasFittedOnce = false;
-
 /** FEAT-markdown-memo-pen: 펜 모드 커서 — 펜 모양 SVG. hotspot은 펜촉(좌하단). */
 const PEN_CURSOR =
   "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath d='M3 21l3.5-1L17 9.5 14.5 7 4 17.5 3 21z' fill='%23333' stroke='white' stroke-width='1'/%3E%3Cpath d='M15 6.5l2.5 2.5 2-2a1.4 1.4 0 0 0 0-2l-.5-.5a1.4 1.4 0 0 0-2 0l-2 2z' fill='%234f7cf3' stroke='white' stroke-width='1'/%3E%3C/svg%3E\") 2 22, crosshair";
@@ -92,6 +85,9 @@ export function Canvas() {
   const panBy = useWorkspace((s) => s.panBy);
   const zoomAt = useWorkspace((s) => s.zoomAt);
   const fitToCards = useWorkspace((s) => s.fitToCards);
+  // P2-4: 최초 fit 여부를 스토어가 들고 있다 — panToCard(programmatic 이동)와
+  // 경쟁하지 않는다(모듈 전역이던 기존 플래그 제거).
+  const canvasHasFitted = useWorkspace((s) => s.canvasHasFitted);
   // 캔버스 붙여넣기 — clipboard가 URL만일 때 link 위젯을 바로 생성.
   const addCardAtViewportCenter = useWorkspace((s) => s.addCardAtViewportCenter);
   // FEAT-sticky-redesign n6: 파일 드롭 — 놓은 좌표에 블록 든 메모를 만든다.
@@ -155,17 +151,17 @@ export function Canvas() {
   const didFitRef = useRef(false);
   useEffect(() => {
     if (didFitRef.current) return;
-    // 표에서 돌아온 재마운트면 이미 한 번 맞췄다 — 사용자가 보던 뷰포트를 보존한다.
-    if (hasFittedOnce) {
+    // 표에서 돌아온 재마운트·programmatic panToCard 이후면 이미 자리 잡았다 —
+    // 사용자가 보던/지정한 뷰포트를 보존한다(P2-4).
+    if (canvasHasFitted) {
       didFitRef.current = true;
       return;
     }
     if (cards.length === 0) return;
     if (canvasRect.width <= 0 || canvasRect.height <= 0) return;
     didFitRef.current = true;
-    hasFittedOnce = true;
     fitToCards({ width: canvasRect.width, height: canvasRect.height });
-  }, [cards.length, canvasRect.width, canvasRect.height, fitToCards]);
+  }, [cards.length, canvasRect.width, canvasRect.height, fitToCards, canvasHasFitted]);
 
   /* ─ FEAT-canvas AC-3: 200 임계 도달 시 1회 안내 토스트 ─ */
   const toastFiredRef = useRef(false);

@@ -19,7 +19,7 @@ import * as memoSearch from "@/state/memoSearch";
 import * as cardPersist from "@/state/cardPersist";
 import { useStorage } from "@/state/storage";
 import { useToasts } from "@/state/notifications";
-import { useWorkspace, SYSTEM_BOARD_ID } from "@/state/workspace";
+import { useWorkspace, SYSTEM_BOARD_ID, type Card } from "@/state/workspace";
 import { getDB, resetDB, type Board, type Note } from "@/state/db/schema";
 import {
   handleIncoming,
@@ -83,6 +83,8 @@ afterEach(async () => {
     selectedIds: [],
     currentBoardId: SYSTEM_BOARD_ID,
     view: "canvas",
+    canvasHasFitted: false,
+    tableReturnBoardId: null,
   });
   if (originalStorage) {
     Object.defineProperty(navigator, "storage", originalStorage);
@@ -514,6 +516,33 @@ describe("memoTable store — 로드·편집·휴지통·실시간", () => {
       expect(useWorkspace.getState().currentBoardId).toBe("b2");
     });
     expect(useWorkspace.getState().viewport).toEqual({ x: 5, y: 6, scale: 1 });
+  });
+
+  it("P2-4: panToCard·fitToCards는 최초 fit 플래그를 세운다", () => {
+    const card = {
+      id: "n1",
+      kind: "text",
+      x: 0,
+      y: 0,
+      width: 240,
+      height: 100,
+      content: "",
+    } as Card;
+    useWorkspace.setState({
+      cards: [card],
+      currentBoardId: "b1",
+      viewport: { x: 0, y: 0, scale: 1 },
+      canvasHasFitted: false,
+      selectedIds: [],
+    });
+
+    useWorkspace.getState().panToCard("n1");
+    expect(useWorkspace.getState().canvasHasFitted).toBe(true);
+    expect(useWorkspace.getState().selectedIds).toEqual(["n1"]);
+
+    useWorkspace.setState({ canvasHasFitted: false });
+    useWorkspace.getState().fitToCards({ width: 1000, height: 800 });
+    expect(useWorkspace.getState().canvasHasFitted).toBe(true);
   });
 
   it("D1: 캔버스에서 보기는 의도적 이동이라 복원하지 않는다", async () => {
