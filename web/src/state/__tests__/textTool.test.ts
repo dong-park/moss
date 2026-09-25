@@ -143,6 +143,20 @@ describe("FEAT-text-tool: textbox 생성·스토어", () => {
     expect(card?.autoWidth).toBe(true);
   });
 
+  it("setTextMeasuredWidth — 자동 폭 캐시만 갱신, 고정 폭은 무시 (AC-3)", () => {
+    const id = useWorkspace.getState().addCardAt("textbox", 0, 0);
+    useWorkspace.getState().setTextMeasuredWidth(id, 333);
+    let card = useWorkspace.getState().cards.find((c) => c.id === id);
+    expect(card?.width).toBe(333);
+    expect(card?.autoWidth).toBe(true);
+
+    useWorkspace.getState().setTextWidth(id, 200); // 고정 폭 전환
+    useWorkspace.getState().setTextMeasuredWidth(id, 400);
+    card = useWorkspace.getState().cards.find((c) => c.id === id);
+    expect(card?.width).toBe(200);
+    expect(card?.autoWidth).toBe(false);
+  });
+
   it("hardDeleteNote — 행 삭제, 휴지통 개수 그대로 (AC-6)", async () => {
     await useStorage.getState().init();
     await useWorkspace.getState().loadFromStorage();
