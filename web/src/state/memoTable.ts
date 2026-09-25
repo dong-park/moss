@@ -9,6 +9,7 @@ import { normalizeTitle, normalizeTitleTyping } from "./memoTitle";
 import { useWorkspace, SYSTEM_BOARD_ID } from "./workspace";
 import { subscribeNoteChanges } from "./db/liveSync";
 import { cancelPersist } from "./cardPersist";
+import { useToasts } from "./notifications";
 import { t } from "@/i18n";
 
 /* ─────────────────────────────────────────────────────────────
@@ -608,6 +609,27 @@ export const useMemoTable = create<MemoTableStore>((set, get) => ({
     await storage.trashNotes(ids);
     void useWorkspace.getState().refreshTrashCount();
     await get().reload();
+    // D2: 표에서만 되돌리기 토스트. 복구는 기존 storage.restoreNote 경로 재사용 —
+    // 연결선도 양 끝이 살아 있으면 함께 되돌아온다(AC-7).
+    useToasts.getState().push({
+      tone: "calm",
+      title: t("workspace.table.trashToast.message", { count: ids.length }),
+      action: {
+        label: t("workspace.table.trashToast.undo"),
+        onClick: async () => {
+          const st = useStorage.getState();
+          for (const id of ids) {
+            try {
+              await st.restoreNote(id, { boardId: null, x: 0, y: 0 });
+            } catch {
+              /* 이미 복구됐거나 영구 삭제됨 — 다음 id로. */
+            }
+          }
+          void useWorkspace.getState().refreshTrashCount();
+          await get().reload();
+        },
+      },
+    });
   },
 
   openMemo: async (id) => {

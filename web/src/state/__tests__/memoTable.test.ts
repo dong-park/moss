@@ -17,6 +17,7 @@ import {
 } from "@/state/memoTable";
 import * as memoSearch from "@/state/memoSearch";
 import { useStorage } from "@/state/storage";
+import { useToasts } from "@/state/notifications";
 import { useWorkspace, SYSTEM_BOARD_ID } from "@/state/workspace";
 import { getDB, resetDB, type Board, type Note } from "@/state/db/schema";
 import {
@@ -424,6 +425,32 @@ describe("memoTable store — 로드·편집·휴지통·실시간", () => {
     ]);
     expect(useMemoTable.getState().selectedIds.size).toBe(0);
     expect(useMemoTable.getState().notes).toHaveLength(0);
+  });
+
+  it("D2: 휴지통 토스트의 되돌리기로 메모·연결선이 복구된다", async () => {
+    const s = await setup();
+    await s.saveBoard({ id: "b1", name: "B" });
+    await s.saveNote({ id: "n1", boardId: "b1", content: "A" });
+    await s.saveNote({ id: "n2", boardId: "b1", content: "B" });
+    await s.saveConnection({ id: "c1", sourceNoteId: "n1", targetNoteId: "n2" });
+    await useMemoTable.getState().ensureLoaded();
+    useToasts.getState().clear();
+
+    useMemoTable.getState().setSelectedIds(new Set(["n1", "n2"]));
+    await useMemoTable.getState().trashSelected();
+
+    const toast = useToasts.getState().toasts.at(-1);
+    expect(toast?.title).toBe("2개를 휴지통으로 보냈어요");
+    expect(toast?.action?.label).toBe("되돌리기");
+
+    await toast!.action!.onClick();
+
+    expect(await getDB().notes.get("n1")).toBeDefined();
+    expect(await getDB().notes.get("n2")).toBeDefined();
+    expect((await getDB().connections.toArray()).map((c) => c.id)).toEqual([
+      "c1",
+    ]);
+    expect(useMemoTable.getState().notes).toHaveLength(2);
   });
 
   it("AC-8: 다른 탭(liveSync) 변경이 표에 반영된다", async () => {

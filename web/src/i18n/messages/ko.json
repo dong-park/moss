@@ -211,6 +211,10 @@
         "trash": "휴지통으로",
         "clear": "선택 해제"
       },
+      "trashToast": {
+        "message": "{count}개를 휴지통으로 보냈어요",
+        "undo": "되돌리기"
+      },
       "action": {
         "viewOnCanvas": "캔버스에서 보기"
       },
