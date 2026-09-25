@@ -2,7 +2,7 @@
 
 > 종이도 제목도 없이 캔버스에 글자만 적는다 — 구역 제목, 주석, 화살표 옆 메모.
 
-**Status**: spec 작성
+**Status**: 구현 완료 (WORK)
 **Owner**:
 **Estimated**: M
 **Blueprint**: (신규)
@@ -141,6 +141,7 @@ export interface Note {
 
 ## 10. 검증 방법 (DOD)
 
-- [ ] 단위: 빈 텍스트 소멸 · T 배치 모드 1회성 · 입력 포커스 중 T 무시 · export 3종 매핑
-- [ ] 통합: .moss 왕복 후 textSize·color·autoWidth 보존 · 메모판 안 생성 시 frameId
+- [x] 단위: 빈 텍스트 소멸 · T 배치 모드 1회성 · 입력 포커스 중 T 무시 · export 3종 매핑
+- [x] 통합: .moss 왕복 후 textSize·color·autoWidth 보존 · 메모판 안 생성 시 frameId
 - [ ] 수동: AC-1~7, 연결선([[FEAT-connectors]])이 자동 폭 변화에 따라 따라가는지
+  — 러너는 자동 테스트까지 확인. 연결선 따라가기는 FEAT-connectors 착지 후 수동 확인 필요.
