@@ -595,6 +595,9 @@ export const useMemoTable = create<MemoTableStore>((set, get) => ({
     set({ selectedIds: new Set() });
     const storage = useStorage.getState();
     if (!storage.initialized) await storage.init();
+    // 캔버스 removeSelected와 동일하게 대기 중인 디바운스 영속을 먼저 버린다(P2-1).
+    // 안 그러면 타이핑 중이던 제목이 커밋돼 지운 메모를 되살릴 수 있다.
+    for (const id of ids) cancelPersist(id);
     // 캔버스 스토어에서도 제거(현재 보드에 로드돼 있으면) — 일관성 유지.
     useWorkspace.setState((s) => ({
       cards: s.cards.filter((c) => !ids.includes(c.id)),

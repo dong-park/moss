@@ -16,6 +16,7 @@ import {
   useMemoTable,
 } from "@/state/memoTable";
 import * as memoSearch from "@/state/memoSearch";
+import * as cardPersist from "@/state/cardPersist";
 import { useStorage } from "@/state/storage";
 import { useToasts } from "@/state/notifications";
 import { useWorkspace, SYSTEM_BOARD_ID } from "@/state/workspace";
@@ -425,6 +426,19 @@ describe("memoTable store — 로드·편집·휴지통·실시간", () => {
     ]);
     expect(useMemoTable.getState().selectedIds.size).toBe(0);
     expect(useMemoTable.getState().notes).toHaveLength(0);
+  });
+
+  it("P2-1: 표 휴지통은 대기 중인 디바운스 영속을 취소한다", async () => {
+    const s = await setup();
+    await s.saveNote({ id: "n1", boardId: null, content: "A" });
+    await useMemoTable.getState().ensureLoaded();
+    const spy = vi.spyOn(cardPersist, "cancelPersist");
+
+    useMemoTable.getState().setSelectedIds(new Set(["n1"]));
+    await useMemoTable.getState().trashSelected();
+
+    expect(spy).toHaveBeenCalledWith("n1");
+    spy.mockRestore();
   });
 
   it("D2: 휴지통 토스트의 되돌리기로 메모·연결선이 복구된다", async () => {
