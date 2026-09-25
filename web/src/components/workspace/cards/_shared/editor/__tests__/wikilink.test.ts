@@ -101,6 +101,16 @@ describe("backlinksOf (AC-4·AC-5)", () => {
       "c-3",
     ]);
   });
+  it("이름이 겹치면 앞으로 가는 링크가 가리키는 카드에만 백링크가 잡힌다", () => {
+    // [[note]]는 1단계(표시 이름)에서 D로 풀린다. T는 본문 첫 줄이 note여도 백링크가 아니다.
+    const d = card("c-d", "", "text", "note");
+    const t = card("c-t", "note", "text", "회의록");
+    const m = card("c-m", "[[note]]");
+    const cards = [d, t, m];
+    expect(resolveWikilinkTarget({ title: "note" }, cards)?.id).toBe("c-d");
+    expect(backlinksOf(cards, "c-d").map((c) => c.id)).toEqual(["c-m"]);
+    expect(backlinksOf(cards, "c-t")).toEqual([]);
+  });
   it("자기 자신·없는 대상은 제외", () => {
     const target = card("c-1", "[[c-1|자기]]");
     expect(backlinksOf([target], "c-1")).toEqual([]);

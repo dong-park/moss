@@ -108,40 +108,34 @@ export function extractWikilinkTokens(content: string): WikiToken[] {
   return out;
 }
 
-/** content가 targetId(또는 그 표시 이름/본문 첫 줄)를 위키링크로 가리키는가.
- * 제목 링크는 표시 이름과 본문 첫 줄 둘 다와 비교한다(해석과 같은 두 단계 규칙). */
-function contentLinksTo(
-  content: string,
-  targetId: string,
-  targetNamesLower: string[],
-): boolean {
-  for (const token of extractWikilinkTokens(content)) {
-    if ("id" in token) {
-      if (token.id === targetId) return true;
-    } else {
-      const want = token.title.toLowerCase();
-      if (want && targetNamesLower.includes(want)) return true;
-    }
-  }
-  return false;
-}
-
 /**
  * 백링크 셀렉터(AC-4) — cardId를 위키링크로 가리키는 카드들.
  * id 우선 매칭이라 대상 제목이 바뀌어도 역참조가 끊기지 않는다(AC-5).
- * 제목 링크는 표시 이름·본문 첫 줄 둘 다로 비교한다(경계 조건: 제목을 단 뒤에도
- * 옛 본문 첫 줄 링크가 잡힌다).
+ * 제목 링크는 resolveWikilinkTarget과 같은 두 단계 규칙(표시 이름 → 본문 첫 줄)으로
+ * 풀어서 그 결과가 이 카드일 때만 센다. 이름이 겹치면 앞으로 가는 링크가 가리키는
+ * 카드와 백링크 패널이 어긋나지 않게 하기 위해서다.
  * 파생 인덱스: 호출 시점 cards에서 즉시 계산(persist 안 함, spec §5).
  */
 export function backlinksOf(cards: Card[], cardId: string): Card[] {
-  const target = cards.find((c) => c.id === cardId);
-  if (!target) return [];
-  const namesLower = [cardTitle(target).toLowerCase(), bodyFirstLine(target).toLowerCase()].filter(
-    (n) => n.length > 0,
-  );
-  return cards.filter(
-    (c) => c.id !== cardId && contentLinksTo(c.content ?? "", cardId, namesLower),
-  );
+  if (!cards.some((c) => c.id === cardId)) return [];
+  // 해석 규칙을 이름→id 맵으로 한 번만 만든다(각 단계의 첫 매치가 이긴다 = find와 같다).
+  const byName = new Map<string, string>();
+  const byBody = new Map<string, string>();
+  for (const c of cards) {
+    if (!isMemoCard(c)) continue;
+    const name = cardTitle(c).toLowerCase();
+    if (name && !byName.has(name)) byName.set(name, c.id);
+    const body = bodyFirstLine(c).toLowerCase();
+    if (body && !byBody.has(body)) byBody.set(body, c.id);
+  }
+  const linksHere = (content: string) =>
+    extractWikilinkTokens(content).some((token) => {
+      if ("id" in token) return token.id === cardId;
+      const want = token.title.toLowerCase();
+      if (!want) return false;
+      return (byName.get(want) ?? byBody.get(want)) === cardId;
+    });
+  return cards.filter((c) => c.id !== cardId && linksHere(c.content ?? ""));
 }
 
 /**
