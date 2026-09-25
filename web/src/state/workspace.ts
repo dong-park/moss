@@ -1861,7 +1861,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   disarmTextPlacement: () => set({ textPlacementArmed: false }),
 
   hardDeleteNote: (id) => {
-    // FEAT-text-tool AC-6: 휴지통·되돌리기 우회 삭제. 행이 DB에서 사라진다.
+    // FEAT-text-tool AC-6: 휴지통·되돌리기 우회 삭제. 빈 textbox 전용이라
+    // 다른 kind가 이 경로로 들어오면 지우지 않는다(휴지통 경로를 써야 한다).
+    const card = get().cards.find((c) => c.id === id);
+    if (!card || card.kind !== "textbox") return;
     set((s) => ({
       cards: s.cards.filter((c) => c.id !== id),
       selectedIds: s.selectedIds.filter((x) => x !== id),
@@ -1871,7 +1874,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     cancelPersist(id);
     const storage = useStorage.getState();
     if (!storage.initialized) return;
-    void getDB().notes.delete(id);
+    // 연결선·임베딩까지 한 트랜잭션으로 정리한다.
+    void storage.hardDeleteNotes([id]).catch(() => undefined);
   },
 
   setAttachment: (id, ref, meta) => {

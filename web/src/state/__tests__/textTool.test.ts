@@ -181,6 +181,48 @@ describe("FEAT-text-tool: textbox 생성·스토어", () => {
     expect(await getDB().trash.count()).toBe(0);
     expect(useWorkspace.getState().cards.find((c) => c.id === id)).toBeUndefined();
   });
+
+  it("hardDeleteNote — textbox가 아니면 지우지 않는다 (P2-1)", async () => {
+    await useStorage.getState().init();
+    await useWorkspace.getState().loadFromStorage();
+    const id = useWorkspace.getState().addCardAt("text", 0, 0);
+    await new Promise((r) => setTimeout(r, 10));
+
+    useWorkspace.getState().hardDeleteNote(id);
+    await new Promise((r) => setTimeout(r, 20));
+
+    expect(await getDB().notes.get(id)).toBeTruthy();
+    expect(useWorkspace.getState().cards.find((c) => c.id === id)).toBeTruthy();
+  });
+
+  it("hardDeleteNote — 연결선·임베딩도 함께 정리 (P2-1)", async () => {
+    await useStorage.getState().init();
+    await useWorkspace.getState().loadFromStorage();
+    const id = useWorkspace.getState().addCardAt("textbox", 0, 0);
+    await new Promise((r) => setTimeout(r, 10));
+
+    await getDB().connections.put({
+      id: "conn-1",
+      sourceNoteId: id,
+      targetNoteId: "other",
+      source: "manual",
+      status: "active",
+      createdAt: 1,
+    });
+    await getDB().embeddings.put({
+      noteId: id,
+      contentHash: "h",
+      vector: new Float32Array([0]),
+      updatedAt: 1,
+    });
+
+    useWorkspace.getState().hardDeleteNote(id);
+    await new Promise((r) => setTimeout(r, 30));
+
+    expect(await getDB().notes.get(id)).toBeUndefined();
+    expect(await getDB().connections.get("conn-1")).toBeUndefined();
+    expect(await getDB().embeddings.get(id)).toBeUndefined();
+  });
 });
 
 describe("FEAT-text-tool: export 매핑 (AC-7)", () => {
