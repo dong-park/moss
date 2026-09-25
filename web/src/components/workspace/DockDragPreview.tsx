@@ -5,6 +5,7 @@ import {
   CARD_MAX_HEIGHT,
   CARD_MIN_HEIGHT,
   kindForTool,
+  TEXT_GLYPH_ICON,
   useWorkspace,
   widthForKind,
 } from "@/state/workspace";
@@ -36,6 +37,8 @@ const DROP_TOP_OFFSET = 20;
 const PREVIEW_IMAGE_OVERRIDE: Partial<Record<string, string>> = {
   frame: "/icons/dock/memoboard.png",
   board: "/icons/dock/filebox.png",
+  // FEAT-text-tool: 종이가 없으므로 "T" 글리프만 커서에 띄운다.
+  textbox: TEXT_GLYPH_ICON,
 };
 
 export function DockDragPreview() {

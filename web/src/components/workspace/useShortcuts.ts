@@ -21,9 +21,28 @@ export function useShortcuts(): void {
 
     const onDown = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
-      if (!mod) return;
-
       const store = useWorkspace.getState();
+
+      // FEAT-text-tool AC-2: T = 텍스트 배치 모드(1회성). 입력·편집·펜 모드 중엔 무시.
+      // useCardFlowShortcuts의 "글자 키 → 제목 편집"보다 먼저 잡아 stopImmediatePropagation으로
+      // T가 제목 편집으로 새지 않게 한다(이 hook이 ShortcutsBinder에서 먼저 등록된다).
+      if (!mod && !e.altKey && !e.shiftKey && (e.key === "t" || e.key === "T")) {
+        if (isTyping() || store.editingId || store.penMode) return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        store.armTextPlacement();
+        return;
+      }
+      // 배치 모드 취소 — 캔버스의 Esc(선택 해제·상위 이동)보다 먼저 소비한다.
+      if (e.key === "Escape" && store.textPlacementArmed) {
+        if (isTyping()) return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        store.disarmTextPlacement();
+        return;
+      }
+
+      if (!mod) return;
 
       // Cmd+Shift+N — 마지막 도구
       if (e.shiftKey && (e.key === "N" || e.key === "n")) {

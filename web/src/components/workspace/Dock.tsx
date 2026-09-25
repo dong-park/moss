@@ -11,6 +11,7 @@ import {
 } from "motion/react";
 import {
   kindForTool,
+  TEXT_GLYPH_ICON,
   useWorkspace,
   widthForKind,
   type ToolId,
@@ -58,6 +59,8 @@ type DockItem = {
 const DOCK_ITEMS: DockItem[] = [
   { toolId: "frame", icon: "/icons/dock/whiteboard.png", labelKey: "workspace.tool.frame", draggable: true },
   { toolId: "text", icon: "/icons/dock/memo.png", labelKey: "capture.tool.text", draggable: true },
+  // FEAT-text-tool §2/§7: 캔버스 평문 텍스트 — "T" 글리프 아이콘. 끌어놓기 생성.
+  { toolId: "textbox", icon: TEXT_GLYPH_ICON, labelKey: "workspace.tool.textbox", draggable: true },
   { toolId: "board", icon: "/icons/dock/filebox.png", labelKey: "workspace.tool.board", draggable: true },
   { toolId: "pen", icon: "/icons/sidebar/draw-v2.png", labelKey: "workspace.tool.pen", draggable: false },
   { toolId: "signals", icon: "/icons/sidebar/signals-v2.png", labelKey: "signals.sidebar.label", draggable: false },
@@ -323,6 +326,11 @@ export function Dock({
         addCardAtViewportCenter("text");
         return;
       }
+      // FEAT-text-tool: 클릭/Enter로도 화면 가운데에 텍스트 생성(§8 접근성).
+      if (toolId === "textbox") {
+        addCardAtViewportCenter("textbox");
+        return;
+      }
       if (toolId === "frame") {
         addFrameAtViewportCenter();
         return;
@@ -337,6 +345,7 @@ export function Dock({
   const LABELS: Record<string, string> = {
     "workspace.tool.frame": t("workspace.tool.frame"),
     "capture.tool.text": t("capture.tool.text"),
+    "workspace.tool.textbox": t("workspace.tool.textbox"),
     "workspace.tool.board": t("workspace.tool.board"),
     "workspace.tool.pen": t("workspace.tool.pen"),
     "signals.sidebar.label": t("signals.sidebar.label"),
@@ -379,7 +388,7 @@ export function Dock({
         boxShadow: "var(--shadow-card)",
       }}
     >
-      {DOCK_ITEMS.slice(0, 3).map((item) => (
+      {DOCK_ITEMS.filter((item) => item.draggable).map((item) => (
         <DockButton
           key={item.toolId}
           item={item}

@@ -304,6 +304,24 @@ describe("FEAT-sticky-redesign n6 · 캔버스 파일 드롭", () => {
     input.remove();
   });
 
+  // FEAT-text-tool AC-2: T 배치 모드에서 캔버스 클릭 → 클릭 지점(왼쪽 위)에 textbox, 모드 해제.
+  it("배치 모드 + 캔버스 클릭 → 클릭 지점에 textbox 생성·모드 해제", async () => {
+    const { container } = mount();
+    const root = container.querySelector("[data-canvas-root='true']")!;
+
+    act(() => useWorkspace.getState().armTextPlacement());
+    fireEvent.mouseDown(root, { clientX: 200, clientY: 150, button: 0 });
+    await flush();
+
+    const state = useWorkspace.getState();
+    const card = state.cards.find((c) => c.kind === "textbox");
+    expect(card).toBeDefined();
+    expect(card!.x).toBe(200);
+    expect(card!.y).toBe(150);
+    expect(state.textPlacementArmed).toBe(false);
+    expect(state.editingId).toBe(card!.id);
+  });
+
   // 무소속 토스트를 Canvas.tsx에서 주석 처리해 숨김(2026-09-22 사용자 결정).
   // 토스트를 되살릴 때 이 skip도 함께 푼다.
   it.skip("시스템 보드에 드롭하면 새 보드 승격 토스트를 띄운다", async () => {

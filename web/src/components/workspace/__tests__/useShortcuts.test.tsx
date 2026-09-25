@@ -153,3 +153,34 @@ describe("FEAT-capture AC-1: 글로벌 단축키", () => {
     expect(useWorkspace.getState().cards.length).toBe(before);
   });
 });
+
+describe("FEAT-text-tool AC-2: T 배치 모드 단축키", () => {
+  it("T → 배치 모드 켜짐, Esc → 꺼짐", () => {
+    render(<Mount />);
+    fireEvent.keyDown(window, { key: "t", code: "KeyT" });
+    expect(useWorkspace.getState().textPlacementArmed).toBe(true);
+
+    fireEvent.keyDown(window, { key: "Escape", code: "Escape" });
+    expect(useWorkspace.getState().textPlacementArmed).toBe(false);
+  });
+
+  it("입력 포커스 중 T는 무시 (DOD)", () => {
+    const { container } = render(
+      <>
+        <Mount />
+        <input data-testid="typing" />
+      </>,
+    );
+    (container.querySelector("input") as HTMLInputElement).focus();
+    fireEvent.keyDown(window, { key: "t", code: "KeyT" });
+    expect(useWorkspace.getState().textPlacementArmed).toBe(false);
+  });
+
+  it("펜 모드 중 T는 무시", () => {
+    useWorkspace.setState({ penMode: true });
+    render(<Mount />);
+    fireEvent.keyDown(window, { key: "t", code: "KeyT" });
+    expect(useWorkspace.getState().textPlacementArmed).toBe(false);
+    useWorkspace.setState({ penMode: false });
+  });
+});

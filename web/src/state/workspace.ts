@@ -244,6 +244,16 @@ export const TEXTBOX_DEFAULT_WIDTH = 60;
 export const TEXTBOX_PADDING_X = 4;
 
 /**
+ * FEAT-text-tool §7: 독 "텍스트" 아이콘 — "T" 글리프. 별도 PNG 에셋 대신 데이터 URI
+ * SVG를 쓴다(독 Image·드래그 프리뷰 배경 공용). 색은 기본 잉크 톤과 맞춘다.
+ */
+const TEXT_GLYPH_SVG =
+  "<svg xmlns='http://www.w3.org/2000/svg' width='96' height='96' viewBox='0 0 96 96'>" +
+  "<text x='48' y='70' font-family='Pretendard, sans-serif' font-size='64' " +
+  "font-weight='700' text-anchor='middle' fill='#334155'>T</text></svg>";
+export const TEXT_GLYPH_ICON = `data:image/svg+xml,${encodeURIComponent(TEXT_GLYPH_SVG)}`;
+
+/**
  * FEAT-pen-drawing-engine: 펜 굵기 한계·기본값. 단일 소스는 [[useDrawing]]
  * (handwriting 카드와 메모 overlay 공통). 기존 import 경로 호환을 위해 재노출한다.
  */

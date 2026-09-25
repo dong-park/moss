@@ -134,7 +134,8 @@ describe("AC-1: 독 버튼 (펜·시그널스 임시 숨김 + 휴지통)", () =>
     expect(toolbar).toBeTruthy();
     const buttons = screen.getAllByRole("button");
     const labels = buttons.map((b) => b.getAttribute("aria-label"));
-    expect(labels).toEqual(["메모판", "메모", "파일함", "휴지통"]);
+    // FEAT-text-tool: 메모 다음에 텍스트(T) 도구가 추가됐다.
+    expect(labels).toEqual(["메모판", "메모", "텍스트", "파일함", "휴지통"]);
     // 구분선 — 펜·시그널스와 함께 숨김.
     expect(toolbar.querySelector("[aria-hidden]")).toBeNull();
   });
@@ -297,6 +298,27 @@ describe("AC-3: 독에서 끌어 만들기", () => {
     const after = useWorkspace.getState().cards;
     expect(after.length).toBe(before + 1);
     expect(after[after.length - 1].kind).toBe("text");
+  });
+
+  it("텍스트 아이콘을 끌어 놓으면 textbox가 생기고 편집 상태 (AC-1)", async () => {
+    await useStorage.getState().init();
+    await useWorkspace.getState().loadFromStorage();
+    mountCanvasStub();
+    vi.spyOn(document, "elementFromPoint").mockReturnValue(
+      document.querySelector("[data-canvas-root]"),
+    );
+    renderDock();
+    const btn = screen.getByLabelText("텍스트");
+
+    fireEvent.mouseDown(btn, { clientX: 100, clientY: 700, button: 0 });
+    fireEvent.mouseMove(document, { clientX: 100, clientY: 600 });
+    fireEvent.mouseUp(document, { clientX: 300, clientY: 400 });
+    await new Promise((r) => setTimeout(r, 10));
+
+    const state = useWorkspace.getState();
+    const card = state.cards.find((c) => c.kind === "textbox");
+    expect(card).toBeDefined();
+    expect(state.editingId).toBe(card!.id);
   });
 
   it("메모판 아이콘을 끌어 놓으면 이름이 '새 메모판'인 틀이 생긴다", async () => {

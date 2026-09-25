@@ -93,6 +93,9 @@ export function Canvas() {
   // const promoteCardToNewBoard = useWorkspace((s) => s.promoteCardToNewBoard);
   const setContent = useWorkspace((s) => s.setContent);
   const setEditing = useWorkspace((s) => s.setEditing);
+  // FEAT-text-tool AC-2: T 배치 모드 — 캔버스 클릭 지점에 textbox를 만든다.
+  const textPlacementArmed = useWorkspace((s) => s.textPlacementArmed);
+  const disarmTextPlacement = useWorkspace((s) => s.disarmTextPlacement);
   // FEAT-markdown-memo-pen: 펜 모드 — 전역 커서 변경 + E/[/]/Esc 키.
   const penMode = useWorkspace((s) => s.penMode);
   const setPenMode = useWorkspace((s) => s.setPenMode);
@@ -441,6 +444,18 @@ export function Canvas() {
     if (spaceDown) return;
     if (e.target !== e.currentTarget) return;
 
+    // FEAT-text-tool AC-2: 배치 모드면 클릭 지점(왼쪽 위)에 textbox를 만들고 1회성으로 푼다.
+    if (textPlacementArmed) {
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const v = useWorkspace.getState().viewport;
+      const wx = (e.clientX - rect.left - v.x) / v.scale;
+      const wy = (e.clientY - rect.top - v.y) / v.scale;
+      addCardAt("textbox", wx, wy);
+      disarmTextPlacement();
+      return;
+    }
+
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return;
     const sx = e.clientX - rect.left;
@@ -522,7 +537,9 @@ export function Canvas() {
     ? "cursor-grabbing"
     : spaceDown
       ? "cursor-grab"
-      : "cursor-default";
+      : textPlacementArmed
+        ? "cursor-text"
+        : "cursor-default";
 
   return (
     <div
