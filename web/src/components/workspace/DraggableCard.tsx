@@ -918,6 +918,14 @@ export function DraggableCard({ card }: { card: Card }) {
       ref={containerRef}
       onMouseDown={onMouseDown}
       onDoubleClick={onDoubleClick}
+      // FEAT-connectors: 연결 가능 카드 hover 시에만 연결점을 띄운다(AC-1).
+      onMouseEnter={() => {
+        if (!penMode) useWorkspace.getState().setHoveredCard(card.id);
+      }}
+      onMouseLeave={() => {
+        const ws = useWorkspace.getState();
+        if (ws.hoveredCardId === card.id) ws.setHoveredCard(null);
+      }}
       data-card-id={card.id}
       className={[
         "group absolute select-none",
