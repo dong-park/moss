@@ -83,6 +83,7 @@ def main() -> None:
     save_card(high, "board-papers-high.png")
 
     # 독 드래그 프리뷰 — 독에서 끌어 만든 파일함은 비어 있으므로 빈 폴더. 작게 보이니 절반 크기.
+    # board.png는 main에 배포된 적 없는 이름이라 이번엔 덮어써도 캐시 문제가 없다 — 다음부터는 이름을 바꾼다.
     preview = empty.crop(CROP).resize((WIDTH // 2, HEIGHT // 2), Image.Resampling.LANCZOS)
     preview.save(CARDS / "board.png", optimize=True)
 

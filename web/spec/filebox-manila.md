@@ -87,6 +87,10 @@ Started: 2026-09-24
 ## 구현 메모
 
 - 브랜치 feat/filebox-manila(main 531612d 기반). 이전 에이전트들의 미커밋 구현이 작업 트리에 있다 — 이것을 이어받아 원자 커밋으로 정리한다. spec/filebox-photo의 원본 레이어(folder-*.png, make-layers.py)는 재생성 스크립트 입력이라 커밋한다. codex.log 같은 로그와 spec/*-brief.md는 커밋하지 않는다.
+- 독 아이콘은 filebox-folder.png로 새 이름을 쓴다(public/sw.js가 /icons/·/cards/를 stale-while-revalidate로 내줘, 같은 이름으로 내용만 바꾸면 재방문 첫 화면에 옛 이미지가 보인다). 원본 파란 상자는 main의 public/icons/dock/filebox.png와 git 이력에 있으니 orig/ 보존본은 두지 않는다.
+- 뒤집힌 결정: spec/filebox-photo의 생성 이미지·캡처(15MB)를 커밋했다가 리뷰 지적으로 원본 folder-full-1.png와 make-layers.py만 남겼다. 나머지는 스크립트로 재생성한다.
+- 뒤집힌 결정: 독 드래그 프리뷰를 종이 든 폴더 사진으로 했다가, 독에서 만든 함은 비어 있으므로 빈 폴더 절반 크기로 바꿨다.
+- 남은 P2(보류): 레이어 PNG 합계 ~832KB. WebP로 바꾸면 크게 준다 — 사진 질감 확인이 필요해 별도 작업.
 - 이전 claude 어댑터 에이전트 2회가 프로바이더 응답 타임아웃(300s)으로 죽었다 — 도구 호출·출력을 작게 나눈다.
 - 기존 결함(HEAD에서도 동일, 범위 밖): Canvas.virtualization.test.tsx 실패, ExportModal.tsx eslint 오류 1건.
 
