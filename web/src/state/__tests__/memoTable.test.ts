@@ -301,13 +301,72 @@ describe("memoTable store — 로드·편집·휴지통·실시간", () => {
     useWorkspace.setState({ currentBoardId: SYSTEM_BOARD_ID, cards: [] });
     await useMemoTable.getState().ensureLoaded();
 
+    useMemoTable.getState().beginTitleEdit("n1", "");
     useMemoTable.getState().setTitle("n1", "  새 제목  ");
-    await useMemoTable.getState().commitTitle("n1");
+    await useMemoTable.getState().commitTitle("n1", "  새 제목  ");
 
     expect((await getDB().notes.get("n1"))?.title).toBe("새 제목");
     expect(useMemoTable.getState().notes.find((n) => n.id === "n1")?.title).toBe(
       "새 제목",
     );
+  });
+
+  it("P1-1: 편집 중 reload가 타이핑 입력을 덮지 않고, draft로 확정한다", async () => {
+    const s = await setup();
+    await s.saveNote({ id: "n1", boardId: null, title: "원래", content: "본문" });
+    await useMemoTable.getState().ensureLoaded();
+
+    useMemoTable.getState().beginTitleEdit("n1", "원래");
+    useMemoTable.getState().setTitle("n1", "편집중");
+    // 다른 탭 변경처럼 reload가 DB값(원래)을 다시 읽어도 편집 입력은 보존된다.
+    await useMemoTable.getState().reload();
+    expect(useMemoTable.getState().notes.find((n) => n.id === "n1")?.title).toBe(
+      "편집중",
+    );
+
+    await useMemoTable.getState().commitTitle("n1", "편집중");
+    expect((await getDB().notes.get("n1"))?.title).toBe("편집중");
+  });
+
+  it("P1-2: 무변경 확정은 updatedAt을 건드리지 않는다", async () => {
+    const s = await setup();
+    await getDB().notes.put(
+      mkNote({ id: "n1", title: "제목", content: "본문", updatedAt: 1000 }),
+    );
+    await useMemoTable.getState().ensureLoaded();
+
+    useMemoTable.getState().beginTitleEdit("n1", "제목");
+    useMemoTable.getState().setTitle("n1", "제목  ");
+    await useMemoTable.getState().commitTitle("n1", "제목  ");
+
+    const stored = await getDB().notes.get("n1");
+    expect(stored?.title).toBe("제목");
+    expect(stored?.updatedAt).toBe(1000);
+  });
+
+  it("P1-2: Esc는 원값만 복원하고 영속하지 않는다", async () => {
+    const s = await setup();
+    await getDB().notes.put(
+      mkNote({ id: "n1", title: "원래", content: "본문", updatedAt: 1000 }),
+    );
+    await useMemoTable.getState().ensureLoaded();
+
+    useMemoTable.getState().beginTitleEdit("n1", "원래");
+    useMemoTable.getState().setTitle("n1", "바뀜");
+    useMemoTable.getState().cancelTitleEdit("n1");
+
+    expect(useMemoTable.getState().notes.find((n) => n.id === "n1")?.title).toBe(
+      "원래",
+    );
+    const stored = await getDB().notes.get("n1");
+    expect(stored?.title).toBe("원래");
+    expect(stored?.updatedAt).toBe(1000);
+  });
+
+  it("P1-2: 없는 노트 제목 쓰기는 새 노트를 만들지 않는다", async () => {
+    const s = await setup();
+    await s.updateNoteTitle("ghost", "새 제목");
+    expect(await getDB().notes.get("ghost")).toBeUndefined();
   });
 
   it("AC-7: 선택 행 휴지통 + 연결선 스냅샷", async () => {

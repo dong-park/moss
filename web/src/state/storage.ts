@@ -36,6 +36,12 @@ interface StorageState {
    */
   loadAllNotes: () => Promise<Note[]>;
   saveNote: (patch: Partial<Note> & { id: string }) => Promise<void>;
+  /**
+   * FEAT-memo-table-view P1-2: 표 인라인 제목 확정 전용. 없는 노트는 만들지 않고
+   * (`db.notes.update` — 없으면 no-op), 값이 같으면 updatedAt도 건드리지 않는다.
+   * saveNote의 mergeNote가 무변경/없는 노트도 새로 만들며 updatedAt을 올리는 문제 회피.
+   */
+  updateNoteTitle: (id: string, title: string | undefined) => Promise<void>;
   removeNote: (id: string) => Promise<void>;
 
   /**
@@ -236,6 +242,15 @@ export const useStorage = create<StorageState>((set, get) => ({
     const next = mergeNote(prev, patch);
     await db.notes.put(next);
     // 빈번한 saveNote 후마다 quota 호출은 비싸므로 호출자가 refreshQuota를 명시적으로 부른다.
+  },
+
+  updateNoteTitle: async (id, title) => {
+    const db = getDB();
+    const prev = await db.notes.get(id);
+    if (!prev) return; // 없는 노트는 새로 만들지 않는다(P1-2).
+    const next = title || undefined;
+    if ((prev.title ?? "") === (next ?? "")) return; // 무변경 — updatedAt 무갱신.
+    await db.notes.update(id, { title: next, updatedAt: Date.now() });
   },
 
   removeNote: async (id) => {

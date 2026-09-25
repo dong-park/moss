@@ -8,6 +8,7 @@ import { plainTextRaw, searchMemos } from "./memoSearch";
 import { normalizeTitle, normalizeTitleTyping } from "./memoTitle";
 import { useWorkspace, SYSTEM_BOARD_ID } from "./workspace";
 import { subscribeNoteChanges } from "./db/liveSync";
+import { cancelPersist } from "./cardPersist";
 import { t } from "@/i18n";
 
 /* ─────────────────────────────────────────────────────────────
@@ -325,6 +326,12 @@ interface MemoTableStore {
   hasAttachment: boolean | null;
   query: string;
   selectedIds: Set<string>;
+  /**
+   * 인라인 제목 편집 중인 노트와 편집 시작 시점의 원값(P1-1·P1-2). reload가
+   * notes를 DB값으로 덮어도 이 id의 입력은 보존하고, commit 시 draft(인자)를
+   * 확정한다. 값이 같으면 DB·updatedAt을 건드리지 않는다.
+   */
+  titleEdit: { id: string; original: string } | null;
 
   /** 표 진입 시 1회 로드 + 기본 보드 필터(현재 보드) 설정 + 변경 구독. */
   ensureLoaded: () => Promise<void>;
@@ -342,10 +349,14 @@ interface MemoTableStore {
   setSelectedIds: (ids: Set<string>) => void;
   clearSelection: () => void;
 
-  /** 인라인 제목 편집 — 타이핑(로컬 반영, 앞뒤 공백 보존). */
+  /** 인라인 제목 편집 시작 — 원값을 기억한다(취소·무변경 판정용). */
+  beginTitleEdit: (id: string, original: string) => void;
+  /** 타이핑(로컬 반영, 앞뒤 공백 보존). */
   setTitle: (id: string, title: string) => void;
-  /** 편집 종료 — normalizeTitle 규칙으로 확정·영속(AC-5). */
-  commitTitle: (id: string) => Promise<void>;
+  /** 편집 종료 — draft를 normalizeTitle 규칙으로 확정·영속(AC-5). 무변경이면 no-op. */
+  commitTitle: (id: string, draft: string) => Promise<void>;
+  /** 편집 취소 — 원값 복원만(영속 없음). */
+  cancelTitleEdit: (id: string) => void;
 
   /** 선택 행을 휴지통으로(AC-7). 기존 [[workspace.removeSelected]] 경로 재사용. */
   trashSelected: () => Promise<void>;
@@ -368,6 +379,7 @@ export const useMemoTable = create<MemoTableStore>((set, get) => ({
   hasAttachment: null,
   query: "",
   selectedIds: new Set<string>(),
+  titleEdit: null,
 
   ensureLoaded: async () => {
     if (get().loading) return;
@@ -402,7 +414,14 @@ export const useMemoTable = create<MemoTableStore>((set, get) => ({
       const selectedIds = new Set(
         [...s.selectedIds].filter((id) => alive.has(id)),
       );
-      return { notes, boards, loaded: true, selectedIds };
+      // 편집 중인 제목은 DB값으로 덮지 않는다(P1-1) — 타이핑 입력 유실 방지.
+      const editingId = s.titleEdit?.id;
+      const existing = s.notes.find((n) => n.id === editingId);
+      const merged =
+        editingId && existing
+          ? notes.map((n) => (n.id === editingId ? existing : n))
+          : notes;
+      return { notes: merged, boards, loaded: true, selectedIds };
     });
   },
 
@@ -430,6 +449,8 @@ export const useMemoTable = create<MemoTableStore>((set, get) => ({
   setSelectedIds: (selectedIds) => set({ selectedIds }),
   clearSelection: () => set({ selectedIds: new Set() }),
 
+  beginTitleEdit: (id, original) => set({ titleEdit: { id, original } }),
+
   setTitle: (id, title) => {
     const typed = normalizeTitleTyping(title);
     set((s) => ({
@@ -443,22 +464,59 @@ export const useMemoTable = create<MemoTableStore>((set, get) => ({
     // 다른 보드 메모는 편집 확정 시에만 영속한다(타이핑마다 DB 쓰기 방지).
   },
 
-  commitTitle: async (id) => {
+  commitTitle: async (id, draft) => {
+    const edit = get().titleEdit;
     const note = get().notes.find((n) => n.id === id);
-    if (!note) return;
-    const normalized = normalizeTitle(note.title ?? "");
+    if (!note) {
+      set({ titleEdit: null });
+      return;
+    }
+    // 확정값은 인자 draft에서 계산한다 — reload가 store title을 DB값으로 덮어도
+    // 편집 입력이 유실되지 않는다(P1-1).
+    const normalized = normalizeTitle(draft);
+    const original =
+      edit && edit.id === id ? edit.original : (note.title ?? "");
+    if (normalized === original) {
+      // 무변경 — Esc와 같다. 원값 복원만, DB·updatedAt 무변경(P1-2).
+      get().cancelTitleEdit(id);
+      return;
+    }
+    // 타이핑 중 예약된 영속이 있으면 버리고 확정값으로 대체한다.
+    cancelPersist(id);
     set((s) => ({
+      titleEdit: null,
       notes: s.notes.map((n) =>
         n.id === id ? { ...n, title: normalized || undefined } : n,
       ),
     }));
-    const ws = useWorkspace.getState();
-    if (ws.cards.some((c) => c.id === id)) {
-      ws.commitTitle(id);
-    } else {
-      // 다른 보드 메모 — 확정 시점에 한 번 영속한다.
-      await useStorage.getState().saveNote({ id, title: normalized || undefined });
+    useWorkspace.setState((s) => ({
+      cards: s.cards.map((c) =>
+        c.id === id ? { ...c, title: normalized || undefined } : c,
+      ),
+    }));
+    // 현재 보드 카드든 다른 보드 메모든 DB에 직접 쓴다(P1-2). 없는 노트는 no-op.
+    await useStorage.getState().updateNoteTitle(id, normalized || undefined);
+  },
+
+  cancelTitleEdit: (id) => {
+    const edit = get().titleEdit;
+    if (!edit || edit.id !== id) {
+      set({ titleEdit: null });
+      return;
     }
+    cancelPersist(id); // 타이핑 중 예약된 영속 취소 — 원값이 DB에 남는다.
+    const original = edit.original;
+    set((s) => ({
+      titleEdit: null,
+      notes: s.notes.map((n) =>
+        n.id === id ? { ...n, title: original || undefined } : n,
+      ),
+    }));
+    useWorkspace.setState((s) => ({
+      cards: s.cards.map((c) =>
+        c.id === id ? { ...c, title: original || undefined } : c,
+      ),
+    }));
   },
 
   trashSelected: async () => {
@@ -513,5 +571,6 @@ export function __resetMemoTableForTest(): void {
     hasAttachment: null,
     query: "",
     selectedIds: new Set<string>(),
+    titleEdit: null,
   });
 }

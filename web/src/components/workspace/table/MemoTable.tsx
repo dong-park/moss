@@ -72,7 +72,9 @@ export function MemoTable() {
   const setSelectedIds = useMemoTable((s) => s.setSelectedIds);
   const clearSelection = useMemoTable((s) => s.clearSelection);
   const setTitle = useMemoTable((s) => s.setTitle);
+  const beginTitleEdit = useMemoTable((s) => s.beginTitleEdit);
   const commitTitle = useMemoTable((s) => s.commitTitle);
+  const cancelTitleEdit = useMemoTable((s) => s.cancelTitleEdit);
   const trashSelected = useMemoTable((s) => s.trashSelected);
   const openMemo = useMemoTable((s) => s.openMemo);
   const openCardOnCanvas = useWorkspace((s) => s.openCardOnCanvas);
@@ -121,23 +123,26 @@ export function MemoTable() {
   /* ─ 인라인 제목 편집 ─ */
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
-  const originalRef = useRef("");
+  const draftRef = useRef("");
 
   const beginEdit = (row: MemoRow) => {
     setEditingId(row.id);
     setDraft(row.title);
-    originalRef.current = row.title;
+    draftRef.current = row.title;
+    // 스토어가 원값을 기억해야 reload가 DB값으로 덮어도 입력이 보존된다(P1-1).
+    beginTitleEdit(row.id, row.title);
   };
   const finishEdit = () => {
-    if (editingId) void commitTitle(editingId);
+    const id = editingId;
     setEditingId(null);
+    // draft를 인자로 넘겨 확정 — 스토어 title을 다시 읽지 않는다(P1-1).
+    if (id) void commitTitle(id, draftRef.current);
   };
   const cancelEdit = () => {
-    if (editingId) {
-      setTitle(editingId, originalRef.current);
-      void commitTitle(editingId);
-    }
+    const id = editingId;
     setEditingId(null);
+    // Esc는 원값 복원만 — 영속하지 않는다(P1-2).
+    if (id) cancelTitleEdit(id);
   };
 
   /* ─ 선택: Shift 범위 ─ */
@@ -322,6 +327,7 @@ export function MemoTable() {
                           onClick={(e) => e.stopPropagation()}
                           onChange={(e) => {
                             setDraft(e.target.value);
+                            draftRef.current = e.target.value;
                             setTitle(row.id, e.target.value);
                           }}
                           onKeyDown={(e) => {
