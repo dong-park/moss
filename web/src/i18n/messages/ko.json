@@ -127,6 +127,14 @@
         "toastBody": "화면 밖 메모는 잠시 숨겨 부드럽게 보여드려요."
       }
     },
+    "connectors": {
+      "handle": {
+        "aria": "{side} 연결점"
+      },
+      "label": {
+        "placeholder": "이유를 한 줄로"
+      }
+    },
     "pen": {
       "hud": {
         "label": "펜 모드",

@@ -13,6 +13,8 @@ import { PenToolbar } from "./PenToolbar";
 import { MemoSearchLayer } from "./MemoSearchLayer";
 import { TrashPanel } from "./TrashPanel";
 import { useVirtualizedCards } from "./useVirtualizedCards";
+import { ConnectorLayer } from "./connectors/ConnectorLayer";
+import { ConnectionHandlesLayer } from "./connectors/ConnectionHandles";
 import { fetchLinkPreview, isUrlOnly } from "@/state/cardContent";
 import { serializeBlock } from "@/state/blocks";
 import {
@@ -309,6 +311,9 @@ export function Canvas() {
     };
 
     const onDown = (e: KeyboardEvent) => {
+      // FEAT-connectors: 연결 드래그 중이면 이 핸들러가 Escape를 먼저 잡아 부모 보드로
+      // 튕기는 일이 없도록 모든 캔버스 단축키를 양보한다(dragSession이 취소를 처리).
+      if (useWorkspace.getState().connectionDraft) return;
       if (e.code === "Space" && !isTyping()) {
         e.preventDefault();
         setSpaceDown(true);
@@ -343,6 +348,18 @@ export function Canvas() {
       }
       if (editingId) return;
       if (isTyping()) return;
+      // FEAT-connectors: 선 선택 중엔 Delete로 삭제, Esc로 선택 해제 (AC-5).
+      const selectedConnectionId = useWorkspace.getState().selectedConnectionId;
+      if (selectedConnectionId) {
+        if (e.key === "Delete" || e.key === "Backspace") {
+          e.preventDefault();
+          useWorkspace.getState().removeConnection(selectedConnectionId);
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          useWorkspace.getState().selectConnection(null);
+        }
+        return;
+      }
       if (selectedIds.length === 0) {
         // FEAT-subcanvas: 선택이 없으면 Esc로 부모 캔버스로 올라간다(루트면 no-op).
         // 단, 모달(펼치기·템플릿·삭제 다이얼로그)이 열려 있으면 그쪽 Esc에 양보한다.
@@ -590,6 +607,9 @@ export function Canvas() {
         {visibleCards.map((card) => (
           <DraggableCard key={card.id} card={card} />
         ))}
+        {/* FEAT-connectors: 연결선(카드 아래) + hover/드래그 연결점(카드 위 오버레이). */}
+        <ConnectorLayer />
+        <ConnectionHandlesLayer cards={cards} />
       </div>
 
       {/* 빈 안내 — 시스템 보드 + 카드가 한 장도 없을 때만. 작업물이 있으면 안내가 가리지 않는다. */}

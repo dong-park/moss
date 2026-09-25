@@ -1,5 +1,5 @@
 import JSZip from "jszip";
-import type { Board, Connection, Note } from "../db/schema";
+import type { Board, Connection, ConnectionSide, Note } from "../db/schema";
 import { decodeFrameContent } from "../frameContent";
 
 /** Obsidian JSON Canvas — https://jsoncanvas.org */
@@ -19,6 +19,8 @@ export interface JsonCanvasEdge {
   id: string;
   fromNode: string;
   toNode: string;
+  fromSide?: ConnectionSide;
+  toSide?: ConnectionSide;
   label?: string;
 }
 
@@ -82,6 +84,9 @@ export function buildJsonCanvas(
       id: c.id,
       fromNode: c.sourceNoteId,
       toNode: c.targetNoteId,
+      // FEAT-connectors: JSON Canvas 스펙과 동일한 필드명으로 붙는 변을 내보낸다.
+      ...(c.sourceSide ? { fromSide: c.sourceSide } : {}),
+      ...(c.targetSide ? { toSide: c.targetSide } : {}),
       ...(c.label ? { label: c.label } : {}),
     }));
 

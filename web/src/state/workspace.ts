@@ -8,6 +8,7 @@ import {
   makeFrameNote,
   type Board,
   type Connection,
+  type ConnectionSide,
   type EmbeddingCacheEntry,
   type Note,
   type NoteKind,
@@ -39,6 +40,10 @@ import {
   PEN_MAX_WIDTH,
   PEN_DEFAULT_WIDTH,
 } from "@/components/workspace/cards/_shared/useDrawing";
+import {
+  anchorPoint,
+  nearestSide,
+} from "@/components/workspace/connectors/geometry";
 
 /**
  * 시스템 보드 "머무는 생각"의 가상 id. DB에는 row를 두지 않고
@@ -162,6 +167,20 @@ export interface Viewport {
   x: number;
   y: number;
   scale: number;
+}
+
+/**
+ * FEAT-connectors: 연결점에서 끌어 선을 잇는 동안의 휘발 상태.
+ * pointer는 월드 좌표 — 미리보기 곡선이 포인터를 따라간다.
+ */
+export interface ConnectionDraft {
+  sourceId: string;
+  sourceSide: ConnectionSide;
+  pointer: { x: number; y: number };
+  /** 포인터 아래 연결 대상 카드(자기 자신 제외). */
+  targetId: string | null;
+  /** 대상 위에 놓이면 강조할 변. */
+  targetSide: ConnectionSide | null;
 }
 
 /**
@@ -309,6 +328,20 @@ interface WorkspaceState {
    * inline 편집(editingId)과 상호배타 — 모달 진입 시 editingId를 닫는다.
    */
   expandedCardId: string | null;
+  /**
+   * FEAT-connectors: 현재 보드 카드에 닿은 active 연결선. 보드 로드 시
+   * `storage.loadConnections(cardIds)`로 채운다.
+   */
+  connections: Connection[];
+  /**
+   * FEAT-connectors: 선택된 연결선 id. 카드 선택(selectedIds)과 상호 배타 —
+   * 한쪽을 고르면 다른 쪽은 비운다.
+   */
+  selectedConnectionId: string | null;
+  /** FEAT-connectors: hover 중인 연결 가능 카드 — 연결점을 띄울 대상. transient. */
+  hoveredCardId: string | null;
+  /** FEAT-connectors: 연결 드래그 세션 중 미리보기 상태. null이면 드래그 아님. */
+  connectionDraft: ConnectionDraft | null;
   viewport: Viewport;
   pendingAIGate: PendingAIGate | null;
   /** FEAT-capture T-6: Cmd+Shift+N에서 사용할 마지막 도구. addCardAt마다 갱신. */
@@ -460,6 +493,31 @@ interface WorkspaceState {
   setEditing: (id: string | null) => void;
   /** FEAT-memo-expand: 펼치기 모달을 연다(id) / 닫는다(null). */
   setExpandedCard: (id: string | null) => void;
+
+  /* ─────────── FEAT-connectors: 카드 연결선 ─────────── */
+  /** 연결선 새로 만들기. 같은 방향 중복이면 이미 있는 id를 반환하고 그 선을 선택. */
+  connectCards: (
+    sourceId: string,
+    sourceSide: ConnectionSide,
+    targetId: string,
+    targetSide: ConnectionSide,
+  ) => string | null;
+  /** 빈 곳 드롭 — (x,y) 중심에 새 메모를 만들고 sourceSide↔마주보는 변으로 잇는다. */
+  connectToNewMemo: (
+    sourceId: string,
+    sourceSide: ConnectionSide,
+    x: number,
+    y: number,
+  ) => string;
+  removeConnection: (id: string) => void;
+  /** 라벨 갱신. trim 후 빈 문자열이면 label 제거. */
+  setConnectionLabel: (id: string, label: string) => void;
+  /** 선 선택. 카드 선택은 해제한다. null이면 선택 해제. */
+  selectConnection: (id: string | null) => void;
+  /** 연결점 노출 대상 카드 hover 갱신(카드 본체·연결점 공용). */
+  setHoveredCard: (id: string | null) => void;
+  /** 연결 드래그 세션 갱신/종료(null). */
+  setConnectionDraft: (draft: ConnectionDraft | null) => void;
 
   /**
    * FEAT-markdown-memo-pen: 펜 모드 — 사이드바 펜 도구로 켜는 전역 그리기 모드.
@@ -829,6 +887,7 @@ const SEED_CARDS: Card[] = [
 
 let counter = 1;
 const nextId = () => `c-${Date.now().toString(36)}-${counter++}`;
+let connCounter = 1;
 
 const clamp = (n: number, lo: number, hi: number) =>
   Math.max(lo, Math.min(hi, n));
@@ -1167,6 +1226,19 @@ async function cascadeDeleteFunnels(
     const fnote = await db.notes.get(fc.id);
     if (fnote) funnelNotes.push(fnote);
     await db.notes.delete(fc.id);
+    // FEAT-connectors: 함 카드에 닿은 선(현재 보드)은 고아로 남기지 않고 지운다.
+    // 5초 undo는 서브 보드 안쪽 연결만 복원한다 — 함 카드 자체의 선은 복원 대상 아님.
+    const incident = await db.connections
+      .where("sourceNoteId")
+      .equals(fc.id)
+      .or("targetNoteId")
+      .equals(fc.id)
+      .toArray();
+    if (incident.length > 0) {
+      await db.connections.bulkDelete(incident.map((c) => c.id));
+      // undo 스냅샷에도 넣어야 5초 undo 시 선이 영구 유실되지 않는다.
+      connections.push(...incident);
+    }
     const snap = await storage.removeBoardCascade(fc.boardRef);
     boards.push(...snap.boards);
     notes.push(...snap.notes);
@@ -1205,11 +1277,34 @@ async function cascadeDeleteFunnels(
   }, BOARD_UNDO_MS);
 }
 
+/**
+ * FEAT-connectors: 현재 보드 카드에 닿은 active 연결만 골라 온다. loadConnections는
+ * 한쪽 끝만 닿아도 돌려주므로, 보드 밖 카드가 낀 연결은 화면에 못 그린다 —
+ * 양 끝이 모두 현재 카드일 때만 남긴다.
+ */
+async function loadBoardConnections(cardIds: string[]): Promise<Connection[]> {
+  const storage = useStorage.getState();
+  if (!storage.initialized) return [];
+  const ids = new Set(cardIds);
+  if (ids.size === 0) return [];
+  const all = await storage.loadConnections(cardIds);
+  return all.filter(
+    (c) =>
+      c.status === "active" &&
+      ids.has(c.sourceNoteId) &&
+      ids.has(c.targetNoteId),
+  );
+}
+
 export const useWorkspace = create<WorkspaceState>((set, get) => ({
   cards: [],
   selectedIds: [],
   editingId: null,
   expandedCardId: null,
+  connections: [],
+  selectedConnectionId: null,
+  hoveredCardId: null,
+  connectionDraft: null,
   penMode: false,
   penTool: "pen",
   penWidth: PEN_DEFAULT_WIDTH,
@@ -1273,7 +1368,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       }));
       await Promise.all(seeds.map((card) => persistCard(card, null)));
       await storage.updateSettings({ installPromptShown: true });
-      set({ cards: seeds, boards });
+      set({ cards: seeds, boards, connections: [] });
       return;
     }
 
@@ -1281,7 +1376,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     if (pruned.removedIds.length > 0) {
       await storage.hardDeleteNotes(pruned.removedIds);
     }
-    set({ cards: pruned.cards, boards });
+    const cards = pruned.cards;
+    const connections = await loadBoardConnections(cards.map((c) => c.id));
+    set({ cards, boards, connections, selectedConnectionId: null });
     void get().refreshSubcanvasCounts();
     void get().refreshTrashCount();
   },
@@ -1306,6 +1403,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       await storage.hardDeleteNotes(pruned.removedIds);
     }
     const cards = pruned.cards;
+    const connections = await loadBoardConnections(cards.map((c) => c.id));
 
     // 4) state 교체 — viewport 복원 (없으면 reset). AC-5: 저장된 scale이 한계 밖일 수
     // 있으므로 복원 시점에 범위로 자른다.
@@ -1317,7 +1415,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const lastNonSystem = id === SYSTEM_BOARD_ID ? get().lastNonSystemBoardId : id;
     set({
       cards,
+      connections,
       selectedIds: [],
+      selectedConnectionId: null,
       editingId: null,
       expandedCardId: null,
       currentBoardId: id,
@@ -1922,11 +2022,12 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     if (updated) void persistCard(updated, storageBoardId(get().currentBoardId));
   },
 
-  selectOne: (id) => set({ selectedIds: id ? [id] : [] }),
+  selectOne: (id) => set({ selectedIds: id ? [id] : [], selectedConnectionId: null }),
   toggleSelect: (id) =>
     set((s) => {
       const has = s.selectedIds.includes(id);
       return {
+        selectedConnectionId: null,
         selectedIds: has
           ? s.selectedIds.filter((x) => x !== id)
           : [...s.selectedIds, id],
@@ -1934,7 +2035,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     }),
   selectMany: (ids, additive = false) =>
     set((s) => {
-      if (!additive) return { selectedIds: ids };
+      if (!additive) return { selectedIds: ids, selectedConnectionId: null };
       const seen = new Set(s.selectedIds);
       const merged = [...s.selectedIds];
       for (const id of ids) {
@@ -1943,13 +2044,103 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
           merged.push(id);
         }
       }
-      return { selectedIds: merged };
+      return { selectedIds: merged, selectedConnectionId: null };
     }),
-  clearSelection: () => set({ selectedIds: [] }),
+  clearSelection: () => set({ selectedIds: [], selectedConnectionId: null }),
   setEditing: (id) => set({ editingId: id }),
   // FEAT-memo-expand: 모달 진입 시 inline 편집을 닫아 같은 카드 이중 에디터를 막는다.
   setExpandedCard: (id) =>
     set(id ? { expandedCardId: id, editingId: null } : { expandedCardId: null }),
+
+  /* ─────────── FEAT-connectors: 카드 연결선 ─────────── */
+  connectCards: (sourceId, sourceSide, targetId, targetSide) => {
+    if (sourceId === targetId) return null;
+    const existing = get().connections.find(
+      (c) =>
+        c.sourceNoteId === sourceId &&
+        c.targetNoteId === targetId &&
+        c.status === "active",
+    );
+    if (existing) {
+      // AC-8: 같은 방향 중복은 새 행 없이 기존 선을 선택.
+      set({ selectedConnectionId: existing.id, selectedIds: [] });
+      return existing.id;
+    }
+    const connection: Connection = {
+      id: `conn-${Date.now().toString(36)}-${connCounter++}`,
+      sourceNoteId: sourceId,
+      targetNoteId: targetId,
+      source: "manual",
+      status: "active",
+      sourceSide,
+      targetSide,
+      createdAt: Date.now(),
+    };
+    set((s) => ({
+      connections: [...s.connections, connection],
+      selectedConnectionId: connection.id,
+      selectedIds: [],
+    }));
+    const storage = useStorage.getState();
+    if (storage.initialized) void storage.saveConnection(connection);
+    return connection.id;
+  },
+
+  connectToNewMemo: (sourceId, sourceSide, x, y) => {
+    const source = get().cards.find((c) => c.id === sourceId);
+    const w = widthForKind("text");
+    // 놓은 지점이 새 메모 중심이 되도록 좌상단을 되돌린다.
+    const id = get().addCardAt("text", x - w / 2, y - w / 2);
+    const card = get().cards.find((c) => c.id === id);
+    const targetSide: ConnectionSide =
+      source && card
+        ? nearestSide(card, anchorPoint(source, sourceSide))
+        : "top";
+    get().connectCards(sourceId, sourceSide, id, targetSide);
+    // connectCards가 선택을 비우므로 새 메모 선택·편집 진입(addCardAt이 켠 editingId)을
+    // 유지하도록 카드 선택을 되돌린다(AC-3: 제목 입력 포커스).
+    set({ selectedIds: [id], selectedConnectionId: null });
+    return id;
+  },
+
+  removeConnection: (id) => {
+    set((s) => ({
+      connections: s.connections.filter((c) => c.id !== id),
+      selectedConnectionId:
+        s.selectedConnectionId === id ? null : s.selectedConnectionId,
+    }));
+    const storage = useStorage.getState();
+    if (storage.initialized) void storage.removeConnection(id);
+  },
+
+  setConnectionLabel: (id, label) => {
+    const trimmed = label.trim();
+    let updated: Connection | undefined;
+    set((s) => ({
+      connections: s.connections.map((c) => {
+        if (c.id !== id) return c;
+        const next = { ...c };
+        if (trimmed) next.label = trimmed;
+        else delete next.label;
+        updated = next;
+        return next;
+      }),
+    }));
+    if (!updated) return;
+    const storage = useStorage.getState();
+    if (storage.initialized)
+      // label 없는 객체를 patch로 보내면 mergeConnection이 옛 값을 남긴다 —
+      // undefined를 명시해 지운다(AC-6: 빈 문자열이면 label 제거).
+      void storage.saveConnection(trimmed ? updated : { ...updated, label: undefined });
+  },
+
+  selectConnection: (id) => set({ selectedConnectionId: id, selectedIds: [] }),
+
+  setHoveredCard: (id) => {
+    if (id === get().hoveredCardId) return;
+    set({ hoveredCardId: id });
+  },
+  setConnectionDraft: (draft) => set({ connectionDraft: draft }),
 
   // FEAT-markdown-memo-pen: 펜 모드. 진입 시 열린 편집을 닫아 상호배타 보장.
   setPenMode: (on) =>
@@ -2059,6 +2250,17 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       selectedIds: s.selectedIds.filter((x) => x !== id),
       editingId: s.editingId === id ? null : s.editingId,
       expandedCardId: s.expandedCardId === id ? null : s.expandedCardId,
+      // AC-7: 카드를 지우면 닿은 선도 화면에서 사라진다(DB는 trashConnections로 이동).
+      connections: s.connections.filter(
+        (c) => c.sourceNoteId !== id && c.targetNoteId !== id,
+      ),
+      selectedConnectionId: s.connections.some(
+        (c) =>
+          c.id === s.selectedConnectionId &&
+          (c.sourceNoteId === id || c.targetNoteId === id),
+      )
+        ? null
+        : s.selectedConnectionId,
     }));
     cancelPersist(id);
     const storage = useStorage.getState();
@@ -2096,6 +2298,17 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         s.expandedCardId && idSet.has(s.expandedCardId)
           ? null
           : s.expandedCardId,
+      // AC-7: 지운 카드에 닿은 선도 화면에서 사라진다.
+      connections: s.connections.filter(
+        (c) => !idSet.has(c.sourceNoteId) && !idSet.has(c.targetNoteId),
+      ),
+      selectedConnectionId: s.connections.some(
+        (c) =>
+          c.id === s.selectedConnectionId &&
+          (idSet.has(c.sourceNoteId) || idSet.has(c.targetNoteId)),
+      )
+        ? null
+        : s.selectedConnectionId,
     }));
     for (const id of remainingIds) cancelPersist(id);
     const storage = useStorage.getState();
@@ -2141,6 +2354,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     if (note.boardId === boardId) {
       set((s) => ({ cards: [...s.cards, decodeNoteToCard(note)] }));
     }
+    // AC-7: 복원으로 양 끝이 다시 살아난 선(trashConnections → connections)을 화면에 반영.
+    set({ connections: await loadBoardConnections(get().cards.map((c) => c.id)) });
     void get().refreshTrashCount();
   },
 
@@ -2478,6 +2693,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     if (get().currentBoardId === pending.boardAtDeletion) {
       set((s) => ({ cards: [...s.cards, ...pending.funnelCards] }));
     }
+    // DB에서 되돌린 선(서브 보드 안쪽 + 함 카드에 닿은 incident)을 스토어에 다시 싣는다.
+    set({ connections: await loadBoardConnections(get().cards.map((c) => c.id)) });
     await get().refreshSubcanvasCounts();
   },
 
