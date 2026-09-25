@@ -267,7 +267,7 @@ export function MemoTable() {
         aria-rowcount={rows.length}
         tabIndex={0}
       >
-        <div style={gridStyle}>
+        <div style={{ minWidth: MIN_WIDTH }}>
           <div
             role="row"
             className="sticky top-0 z-20 border-b border-border bg-bg"

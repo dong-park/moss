@@ -183,6 +183,22 @@ describe("MemoTable — 표 렌더·검색·인라인 편집", () => {
   });
 });
 
+describe("MemoTable — 헤더 겹침 회귀(STEP1)", () => {
+  it("스크롤 컨테이너의 바깥 래퍼는 grid가 아니고, 헤더 행만 grid다", async () => {
+    await useStorage.getState().init();
+    await useStorage.getState().saveNote({ id: "n1", boardId: null, content: "본문" });
+    renderTable();
+
+    const grid = await screen.findByRole("grid");
+    const wrapper = grid.firstElementChild as HTMLElement;
+    // 바깥 래퍼가 grid면 헤더와 행이 같은 그리드 줄에 나란히 놓여 첫 행이 가려진다.
+    expect(wrapper.style.display).not.toBe("grid");
+    expect(wrapper.style.minWidth).toBe("1080px");
+    const header = wrapper.querySelector('[role="row"]') as HTMLElement;
+    expect(header.style.display).toBe("grid");
+  });
+});
+
 describe("ViewToggle — 캔버스 ↔ 표(AC-1)", () => {
   it("'표'를 누르면 view가 table로 바뀐다", () => {
     render(
