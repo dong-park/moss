@@ -17,6 +17,14 @@ import type { Card } from "./workspace";
  *  - 공백 정규화 + 소문자화 → 대소문자·기호 무시 매칭(AC-1).
  */
 export function plainText(markdown: string): string {
+  return plainTextRaw(markdown).toLowerCase();
+}
+
+/**
+ * markdown(또는 블록 JSON) → 검색·미리보기용 평문. 대소문자는 보존한다
+ * ([[plainText]]는 검색용으로 소문자화한 결과를 돌려준다).
+ */
+export function plainTextRaw(markdown: string): string {
   const md = blocksToMarkdown(markdown ?? "");
   if (!md) return "";
   let s = md;
@@ -36,8 +44,8 @@ export function plainText(markdown: string): string {
   s = s.replace(/^[ \t]*(?:[-*+]|\d+\.)[ \t]+/gm, "");
   // 강조·취소선 마커 제거
   s = s.replace(/[*_~]/g, "");
-  // 공백 정규화 + 소문자화
-  return s.replace(/\s+/g, " ").trim().toLowerCase();
+  // 공백 정규화(대소문자 보존)
+  return s.replace(/\s+/g, " ").trim();
 }
 
 /**

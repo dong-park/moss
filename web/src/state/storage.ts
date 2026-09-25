@@ -29,7 +29,19 @@ interface StorageState {
   init: () => Promise<void>;
 
   loadCards: (boardId: string | null) => Promise<Note[]>;
+  /**
+   * FEAT-memo-table-view: 모든 보드의 노트를 한 번에 읽는다. 현재 스토어 `cards`는
+   * 현재 보드만 들고 있으므로 표 뷰는 이 별도 쿼리를 쓴다(spec §4 의존). createdAt
+   * 오름차순으로 안정 정렬해 돌려준다.
+   */
+  loadAllNotes: () => Promise<Note[]>;
   saveNote: (patch: Partial<Note> & { id: string }) => Promise<void>;
+  /**
+   * FEAT-memo-table-view P1-2: 표 인라인 제목 확정 전용. 없는 노트는 만들지 않고
+   * (`db.notes.update` — 없으면 no-op), 값이 같으면 updatedAt도 건드리지 않는다.
+   * saveNote의 mergeNote가 무변경/없는 노트도 새로 만들며 updatedAt을 올리는 문제 회피.
+   */
+  updateNoteTitle: (id: string, title: string | undefined) => Promise<void>;
   removeNote: (id: string) => Promise<void>;
 
   /**
@@ -223,12 +235,28 @@ export const useStorage = create<StorageState>((set, get) => ({
     return notes;
   },
 
+  loadAllNotes: async () => {
+    const db = getDB();
+    const notes = await db.notes.toArray();
+    notes.sort((a, b) => a.createdAt - b.createdAt);
+    return notes;
+  },
+
   saveNote: async (patch) => {
     const db = getDB();
     const prev = await db.notes.get(patch.id);
     const next = mergeNote(prev, patch);
     await db.notes.put(next);
     // 빈번한 saveNote 후마다 quota 호출은 비싸므로 호출자가 refreshQuota를 명시적으로 부른다.
+  },
+
+  updateNoteTitle: async (id, title) => {
+    const db = getDB();
+    const prev = await db.notes.get(id);
+    if (!prev) return; // 없는 노트는 새로 만들지 않는다(P1-2).
+    const next = title || undefined;
+    if ((prev.title ?? "") === (next ?? "")) return; // 무변경 — updatedAt 무갱신.
+    await db.notes.update(id, { title: next, updatedAt: Date.now() });
   },
 
   removeNote: async (id) => {

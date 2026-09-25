@@ -194,6 +194,63 @@
     "dock": {
       "label": "독"
     },
+    "table": {
+      "aria": {
+        "grid": "전체 메모 표"
+      },
+      "viewToggle": {
+        "label": "보기 전환"
+      },
+      "view": {
+        "canvas": "캔버스",
+        "table": "표"
+      },
+      "search": {
+        "placeholder": "제목·본문 검색"
+      },
+      "filter": {
+        "board": "보드",
+        "allBoards": "모든 보드",
+        "includeSubboards": "하위 함 포함",
+        "frame": "메모판",
+        "allFrames": "모든 메모판",
+        "attachment": "첨부",
+        "attachmentAll": "전체",
+        "attachmentHas": "있음",
+        "attachmentNone": "없음"
+      },
+      "column": {
+        "select": "선택",
+        "title": "제목",
+        "preview": "본문",
+        "board": "보드",
+        "frame": "메모판",
+        "attachments": "첨부",
+        "createdAt": "만든 날",
+        "updatedAt": "고친 날"
+      },
+      "empty": {
+        "title": "이 필터에 맞는 메모가 없어요",
+        "body": "필터나 보드를 바꿔보세요."
+      },
+      "emptySearch": {
+        "title": "검색 결과가 없어요",
+        "body": "다른 검색어로 찾아보세요."
+      },
+      "selection": {
+        "count": "{count}개 선택",
+        "trash": "휴지통으로",
+        "clear": "선택 해제"
+      },
+      "trashToast": {
+        "message": "{count}개를 휴지통으로 보냈어요",
+        "undo": "되돌리기"
+      },
+      "action": {
+        "viewOnCanvas": "캔버스에서 보기"
+      },
+      "untitled": "제목 없음"
+    },
     "subcanvas": {
       "breadcrumb": {
         "label": "캔버스 경로"

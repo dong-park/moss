@@ -87,6 +87,9 @@ export function Canvas() {
   const panBy = useWorkspace((s) => s.panBy);
   const zoomAt = useWorkspace((s) => s.zoomAt);
   const fitToCards = useWorkspace((s) => s.fitToCards);
+  // P2-4: 최초 fit 여부를 스토어가 들고 있다 — panToCard(programmatic 이동)와
+  // 경쟁하지 않는다(모듈 전역이던 기존 플래그 제거).
+  const canvasHasFitted = useWorkspace((s) => s.canvasHasFitted);
   // 캔버스 붙여넣기 — clipboard가 URL만일 때 link 위젯을 바로 생성.
   const addCardAtViewportCenter = useWorkspace((s) => s.addCardAtViewportCenter);
   // FEAT-sticky-redesign n6: 파일 드롭 — 놓은 좌표에 블록 든 메모를 만든다.
@@ -153,11 +156,17 @@ export function Canvas() {
   const didFitRef = useRef(false);
   useEffect(() => {
     if (didFitRef.current) return;
+    // 표에서 돌아온 재마운트·programmatic panToCard 이후면 이미 자리 잡았다 —
+    // 사용자가 보던/지정한 뷰포트를 보존한다(P2-4).
+    if (canvasHasFitted) {
+      didFitRef.current = true;
+      return;
+    }
     if (cards.length === 0) return;
     if (canvasRect.width <= 0 || canvasRect.height <= 0) return;
     didFitRef.current = true;
     fitToCards({ width: canvasRect.width, height: canvasRect.height });
-  }, [cards.length, canvasRect.width, canvasRect.height, fitToCards]);
+  }, [cards.length, canvasRect.width, canvasRect.height, fitToCards, canvasHasFitted]);
 
   /* ─ FEAT-canvas AC-3: 200 임계 도달 시 1회 안내 토스트 ─ */
   const toastFiredRef = useRef(false);
