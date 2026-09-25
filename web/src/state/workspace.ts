@@ -1115,8 +1115,11 @@ async function cascadeDeleteFunnels(
       .or("targetNoteId")
       .equals(fc.id)
       .toArray();
-    if (incident.length > 0)
+    if (incident.length > 0) {
       await db.connections.bulkDelete(incident.map((c) => c.id));
+      // undo 스냅샷에도 넣어야 5초 undo 시 선이 영구 유실되지 않는다.
+      connections.push(...incident);
+    }
     const snap = await storage.removeBoardCascade(fc.boardRef);
     boards.push(...snap.boards);
     notes.push(...snap.notes);
@@ -2461,6 +2464,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     if (get().currentBoardId === pending.boardAtDeletion) {
       set((s) => ({ cards: [...s.cards, ...pending.funnelCards] }));
     }
+    // DB에서 되돌린 선(서브 보드 안쪽 + 함 카드에 닿은 incident)을 스토어에 다시 싣는다.
+    set({ connections: await loadBoardConnections(get().cards.map((c) => c.id)) });
     await get().refreshSubcanvasCounts();
   },
 
