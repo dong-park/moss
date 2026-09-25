@@ -2675,6 +2675,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
     const storage = useStorage.getState();
     if (!storage.initialized) await storage.init();
+    // 회귀 수정: 드래그 중 moveCard가 예약한 300ms 디바운스 저장이 남아 있으면
+    // 아래 saveNote 직후 옛 boardId(바깥 보드)로 덮어써 새로고침 시 카드가 되돌아온다.
+    // cancel이 아니라 flush — 디바운스 창 안의 마지막 본문·좌표 편집을 보존한다.
+    await flushCard(cardId);
     // FEAT-sticky-redesign §4: 파일함(다른 캔버스)으로 이동하면 판 소속은 풀린다.
     await storage.saveNote({ id: cardId, boardId: targetBoardId, frameId: undefined });
 
@@ -2720,6 +2724,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
     const storage = useStorage.getState();
     if (!storage.initialized) await storage.init();
+    // 회귀 수정: moveCardToSubcanvas와 같은 디바운스 경쟁 — flush로 막는다.
+    await flushCard(cardId);
     // 시스템 보드 대상이면 boardId=null로 저장(시스템 카드 규약).
     // FEAT-sticky-redesign §4: 다른 캔버스로 나가면 판 소속은 풀린다.
     await storage.saveNote({
