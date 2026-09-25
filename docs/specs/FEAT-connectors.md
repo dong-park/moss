@@ -2,7 +2,7 @@
 
 > 카드에 마우스를 올리면 상·하·좌·우에 연결점이 뜨고, 끌어서 다른 카드(또는 빈 곳의 새 메모)로 화살표를 잇는다 — 생각 사이의 관계를 손으로 긋는다.
 
-**Status**: spec 작성
+**Status**: 구현 완료 (WORK — 정적 게이트 그린, 수동 AC는 미검증)
 **Owner**:
 **Estimated**: M
 **Blueprint**: `docs/moss.blueprint.json#features[id="FEAT-canvas"]` (연결선 보류 항목 승계)
@@ -161,6 +161,6 @@ export interface Connection {
 
 ## 10. 검증 방법 (DOD)
 
-- [ ] 단위: `geometry.ts` (anchorPoint·nearestSide·connectorPath) · 스토어 `connectCards` 중복 방지 · label 빈 문자열 제거
-- [ ] 통합: 휴지통 보내기/복원 시 side 보존 · JSON Canvas export에 fromSide/toSide
+- [x] 단위: `geometry.ts` (anchorPoint·nearestSide·connectorPath) · 스토어 `connectCards` 중복 방지 · label 빈 문자열 제거
+- [x] 통합: 휴지통 보내기/복원 시 side 보존 · JSON Canvas export에 fromSide/toSide
 - [ ] 수동: AC-1~8 시나리오, 메모판 안 메모끼리 연결, 펜 모드 진입 시 연결점 숨김
