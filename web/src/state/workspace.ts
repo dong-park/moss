@@ -950,6 +950,26 @@ function storageBoardId(currentBoardId: CurrentBoardId): string | null {
  */
 const FRAME_MEMBERSHIP_DEFAULT_HEIGHT = 160;
 
+/**
+ * FEAT-text-tool P2-2: 보드 로드 시 빈(trim) textbox 행을 걷어낸다. 생성 즉시
+ * persist되고 빈 삭제가 onBlur에만 있어 새로고침·탭 닫기에서 빈 행이 남는 문제를 막는다.
+ * 제거 대상 id는 호출자가 DB에서 영구 삭제(hardDeleteNotes)한다.
+ */
+export function pruneEmptyTextboxes(cards: Card[]): {
+  cards: Card[];
+  removedIds: string[];
+} {
+  const removedIds: string[] = [];
+  const kept = cards.filter((c) => {
+    if (c.kind === "textbox" && c.content.trim() === "") {
+      removedIds.push(c.id);
+      return false;
+    }
+    return true;
+  });
+  return { cards: kept, removedIds };
+}
+
 /** 카드의 중심점(world 좌표). height 미지정이면 보수적 기본값으로 근사. */
 export function cardCenter(card: Card): { x: number; y: number } {
   const h = card.height ?? FRAME_MEMBERSHIP_DEFAULT_HEIGHT;
@@ -1257,8 +1277,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       return;
     }
 
-    const cards = notes.map(decodeNoteToCard);
-    set({ cards, boards });
+    const pruned = pruneEmptyTextboxes(notes.map(decodeNoteToCard));
+    if (pruned.removedIds.length > 0) {
+      await storage.hardDeleteNotes(pruned.removedIds);
+    }
+    set({ cards: pruned.cards, boards });
     void get().refreshSubcanvasCounts();
     void get().refreshTrashCount();
   },
@@ -1278,7 +1301,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const storage = useStorage.getState();
     if (!storage.initialized) await storage.init();
     const notes = await storage.loadCards(storageBoardId(id));
-    const cards = notes.map(decodeNoteToCard);
+    const pruned = pruneEmptyTextboxes(notes.map(decodeNoteToCard));
+    if (pruned.removedIds.length > 0) {
+      await storage.hardDeleteNotes(pruned.removedIds);
+    }
+    const cards = pruned.cards;
 
     // 4) state 교체 — viewport 복원 (없으면 reset). AC-5: 저장된 scale이 한계 밖일 수
     // 있으므로 복원 시점에 범위로 자른다.

@@ -113,6 +113,8 @@ describe("FEAT-text-tool: textbox 생성·스토어", () => {
     await useWorkspace.getState().loadFromStorage();
     const id = useWorkspace.getState().addCardAt("textbox", 0, 0);
     await new Promise((r) => setTimeout(r, 10));
+    // 빈 textbox는 로드 시 정리되므로(P2-2) 내용을 채워 영속 대상으로 만든다.
+    useWorkspace.getState().setContent(id, "본문");
 
     useWorkspace.getState().setTextStyle(id, { textSize: "xl", color: "#b91c1c" });
     await new Promise((r) => setTimeout(r, 10));
@@ -180,6 +182,23 @@ describe("FEAT-text-tool: textbox 생성·스토어", () => {
     expect(await getDB().notes.get(id)).toBeUndefined();
     expect(await getDB().trash.count()).toBe(0);
     expect(useWorkspace.getState().cards.find((c) => c.id === id)).toBeUndefined();
+  });
+
+  it("보드 로드 시 빈 textbox 행을 정리한다 (P2-2)", async () => {
+    await useStorage.getState().init();
+    await useWorkspace.getState().loadFromStorage();
+    const id = useWorkspace.getState().addCardAt("textbox", 0, 0);
+    await new Promise((r) => setTimeout(r, 10));
+    expect(await getDB().notes.get(id)).toBeTruthy();
+
+    // 새로고침 흉내 — 스토어·storage 초기화 후 다시 로드.
+    useStorage.setState({ initialized: false, settings: null, quota: null });
+    useWorkspace.setState({ cards: [], selectedIds: [], editingId: null });
+    await useStorage.getState().init();
+    await useWorkspace.getState().loadFromStorage();
+
+    expect(useWorkspace.getState().cards.find((c) => c.id === id)).toBeUndefined();
+    expect(await getDB().notes.get(id)).toBeUndefined();
   });
 
   it("hardDeleteNote — textbox가 아니면 지우지 않는다 (P2-1)", async () => {
