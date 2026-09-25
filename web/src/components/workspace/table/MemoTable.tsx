@@ -1,0 +1,486 @@
+"use client";
+
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent,
+} from "react";
+import { useT } from "@/i18n/Provider";
+import { useWorkspace } from "@/state/workspace";
+import {
+  useMemoTable,
+  deriveRows,
+  type MemoRow,
+  type MemoSortKey,
+} from "@/state/memoTable";
+import { memoTint } from "../memoVariety";
+import { MemoTableToolbar } from "./MemoTableToolbar";
+
+/* ─────────────────────────────────────────────────────────────
+ * FEAT-memo-table-view — 전체 메모 표 본체(spec §6·§7·§8).
+ *
+ *  - 컬럼: 선택·색·제목·본문 미리보기·보드(경로)·메모판·첨부 배지·만든 날·고친 날
+ *  - 행 높이 36px, 헤더 고정, 1,000행 대비 고정높이 윈도 가상화(§6·§7)
+ *  - 제목 셀 인라인 편집(setTitle/commitTitle 재사용, AC-5)
+ *  - 행 클릭 → 메모창(openMemo) · hover "캔버스에서 보기"(openCardOnCanvas, AC-6)
+ *  - 다중 선택 + Shift 범위 → 휴지통으로(AC-7)
+ *  - 접근성: role="grid", 방향키 이동, Space 선택, Enter 메모창(§8)
+ * ───────────────────────────────────────────────────────────── */
+
+const ROW_H = 36;
+const OVERSCAN = 8;
+const MIN_WIDTH = 1080;
+const COLS =
+  "36px 32px minmax(160px,1.4fr) minmax(220px,2fr) 170px 130px 96px 110px 110px";
+
+const gridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: COLS,
+  minWidth: MIN_WIDTH,
+};
+
+const BADGE_ORDER: { key: keyof MemoRow["badgeCounts"]; icon: string }[] = [
+  { key: "image", icon: "🖼️" },
+  { key: "link", icon: "🔗" },
+  { key: "audio", icon: "🎙️" },
+  { key: "file", icon: "📎" },
+];
+
+function fmtDate(ts: number): string {
+  const d = new Date(ts);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}.${p(d.getMonth() + 1)}.${p(d.getDate())}`;
+}
+
+export function MemoTable() {
+  const t = useT();
+  const notes = useMemoTable((s) => s.notes);
+  const boards = useMemoTable((s) => s.boards);
+  const sort = useMemoTable((s) => s.sort);
+  const boardFilter = useMemoTable((s) => s.boardFilter);
+  const includeSubboards = useMemoTable((s) => s.includeSubboards);
+  const frameFilter = useMemoTable((s) => s.frameFilter);
+  const hasAttachment = useMemoTable((s) => s.hasAttachment);
+  const query = useMemoTable((s) => s.query);
+  const selectedIds = useMemoTable((s) => s.selectedIds);
+  const ensureLoaded = useMemoTable((s) => s.ensureLoaded);
+  const setSort = useMemoTable((s) => s.setSort);
+  const toggleSelected = useMemoTable((s) => s.toggleSelected);
+  const setSelectedIds = useMemoTable((s) => s.setSelectedIds);
+  const clearSelection = useMemoTable((s) => s.clearSelection);
+  const setTitle = useMemoTable((s) => s.setTitle);
+  const commitTitle = useMemoTable((s) => s.commitTitle);
+  const trashSelected = useMemoTable((s) => s.trashSelected);
+  const openMemo = useMemoTable((s) => s.openMemo);
+  const openCardOnCanvas = useWorkspace((s) => s.openCardOnCanvas);
+
+  useEffect(() => {
+    void ensureLoaded();
+  }, [ensureLoaded]);
+
+  const rows = useMemo(
+    () =>
+      deriveRows(
+        notes,
+        boards,
+        { boardFilter, includeSubboards, frameFilter, hasAttachment, query },
+        sort,
+      ),
+    [notes, boards, boardFilter, includeSubboards, frameFilter, hasAttachment, query, sort],
+  );
+
+  /* ─ 가상화: 고정 행 높이 윈도. jsdom처럼 높이 0이면 전체 렌더(테스트 친화). ─ */
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [viewportH, setViewportH] = useState(0);
+  const [scrollTop, setScrollTop] = useState(0);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const update = () => setViewportH(el.clientHeight);
+    update();
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", update);
+      return () => window.removeEventListener("resize", update);
+    }
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const renderAll = viewportH <= 0;
+  const start = renderAll ? 0 : Math.max(0, Math.floor(scrollTop / ROW_H) - OVERSCAN);
+  const count = renderAll
+    ? rows.length
+    : Math.ceil(viewportH / ROW_H) + OVERSCAN * 2;
+  const end = Math.min(rows.length, start + count);
+  const visible = rows.slice(start, end);
+
+  /* ─ 인라인 제목 편집 ─ */
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draft, setDraft] = useState("");
+  const originalRef = useRef("");
+
+  const beginEdit = (row: MemoRow) => {
+    setEditingId(row.id);
+    setDraft(row.title);
+    originalRef.current = row.title;
+  };
+  const finishEdit = () => {
+    if (editingId) void commitTitle(editingId);
+    setEditingId(null);
+  };
+  const cancelEdit = () => {
+    if (editingId) {
+      setTitle(editingId, originalRef.current);
+      void commitTitle(editingId);
+    }
+    setEditingId(null);
+  };
+
+  /* ─ 선택: Shift 범위 ─ */
+  const lastIndexRef = useRef<number | null>(null);
+  const handleToggle = (index: number, rowId: string, shift: boolean) => {
+    if (shift && lastIndexRef.current !== null) {
+      const a = Math.min(lastIndexRef.current, index);
+      const b = Math.max(lastIndexRef.current, index);
+      const next = new Set(selectedIds);
+      for (let i = a; i <= b; i++) next.add(rows[i].id);
+      setSelectedIds(next);
+    } else {
+      toggleSelected(rowId);
+    }
+    lastIndexRef.current = index;
+  };
+
+  /* ─ 키보드 탐색(§8) ─ */
+  const [focusIndex, setFocusIndex] = useState(-1);
+  const onGridKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (editingId) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setFocusIndex((i) => Math.min(rows.length - 1, i + 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setFocusIndex((i) => Math.max(0, i - 1));
+    } else if (e.key === " " && focusIndex >= 0 && focusIndex < rows.length) {
+      e.preventDefault();
+      toggleSelected(rows[focusIndex].id);
+    } else if (e.key === "Enter" && focusIndex >= 0 && focusIndex < rows.length) {
+      e.preventDefault();
+      void openMemo(rows[focusIndex].id);
+    }
+  };
+
+  const isEmpty = rows.length === 0;
+  const emptySearch = isEmpty && query.trim() !== "";
+
+  return (
+    <div className="flex h-full flex-col bg-bg">
+      <MemoTableToolbar />
+
+      {selectedIds.size > 0 && (
+        <div className="flex items-center gap-3 border-b border-border bg-accent-lime/10 px-3 py-1.5 text-xs text-text">
+          <span className="font-medium">
+            {t("workspace.table.selection.count", { count: selectedIds.size })}
+          </span>
+          <button
+            type="button"
+            onClick={() => void trashSelected()}
+            className="cursor-pointer rounded-md border border-border px-2 py-0.5 hover:bg-panel"
+          >
+            {t("workspace.table.selection.trash")}
+          </button>
+          <button
+            type="button"
+            onClick={clearSelection}
+            className="cursor-pointer rounded-md px-2 py-0.5 text-text-soft hover:bg-panel"
+          >
+            {t("workspace.table.selection.clear")}
+          </button>
+        </div>
+      )}
+
+      <div
+        ref={scrollRef}
+        className="flex-1 overflow-auto"
+        onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
+        onKeyDown={onGridKeyDown}
+        role="grid"
+        aria-label={t("workspace.table.aria.grid")}
+        aria-rowcount={rows.length}
+        tabIndex={0}
+      >
+        <div style={gridStyle}>
+          <div
+            role="row"
+            className="sticky top-0 z-20 border-b border-border bg-bg"
+            style={gridStyle}
+          >
+            <HeaderCell className="justify-center">
+              <span className="sr-only">{t("workspace.table.column.select")}</span>
+            </HeaderCell>
+            <HeaderCell />
+            <SortHeader
+              label={t("workspace.table.column.title")}
+              sortKey="title"
+              sort={sort}
+              onSort={setSort}
+            />
+            <HeaderCell>{t("workspace.table.column.preview")}</HeaderCell>
+            <HeaderCell>{t("workspace.table.column.board")}</HeaderCell>
+            <HeaderCell>{t("workspace.table.column.frame")}</HeaderCell>
+            <HeaderCell>{t("workspace.table.column.attachments")}</HeaderCell>
+            <SortHeader
+              label={t("workspace.table.column.createdAt")}
+              sortKey="createdAt"
+              sort={sort}
+              onSort={setSort}
+            />
+            <SortHeader
+              label={t("workspace.table.column.updatedAt")}
+              sortKey="updatedAt"
+              sort={sort}
+              onSort={setSort}
+            />
+          </div>
+
+          {!isEmpty && (
+            <div
+              className="relative"
+              style={{ height: rows.length * ROW_H }}
+              role="rowgroup"
+            >
+              {visible.map((row, i) => {
+                const index = start + i;
+                const selected = selectedIds.has(row.id);
+                const focused = focusIndex === index;
+                return (
+                  <div
+                    key={row.id}
+                    role="row"
+                    aria-selected={selected}
+                    data-testid="memo-table-row"
+                    onClick={() => void openMemo(row.id)}
+                    className={[
+                      "group absolute left-0 w-full cursor-pointer items-center border-b border-border/60 text-xs text-text",
+                      selected ? "bg-accent-lime/10" : "hover:bg-panel",
+                      focused ? "ring-1 ring-inset ring-accent-blue" : "",
+                    ].join(" ")}
+                    style={{
+                      ...gridStyle,
+                      top: index * ROW_H,
+                      height: ROW_H,
+                    }}
+                  >
+                    {/* 선택 */}
+                    <div
+                      role="gridcell"
+                      className="flex items-center justify-center"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selected}
+                        aria-label={
+                          row.title || t("workspace.table.untitled")
+                        }
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleToggle(index, row.id, e.shiftKey);
+                        }}
+                        onChange={() => {
+                          /* 클릭 이벤트에서 처리(Shift 범위) — 여기선 no-op */
+                        }}
+                      />
+                    </div>
+
+                    {/* 색 스와치(읽기 전용) */}
+                    <div role="gridcell" className="flex items-center justify-center">
+                      <span
+                        className="h-3 w-3 rounded-full border border-border"
+                        style={{ background: memoTint(row.id) }}
+                        aria-hidden
+                      />
+                    </div>
+
+                    {/* 제목 — 인라인 편집 */}
+                    <div
+                      role="gridcell"
+                      className="flex items-center px-2"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        beginEdit(row);
+                      }}
+                    >
+                      {editingId === row.id ? (
+                        <input
+                          autoFocus
+                          value={draft}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => {
+                            setDraft(e.target.value);
+                            setTitle(row.id, e.target.value);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              finishEdit();
+                            } else if (e.key === "Escape") {
+                              e.preventDefault();
+                              cancelEdit();
+                            }
+                          }}
+                          onBlur={finishEdit}
+                          aria-label={t("workspace.memo.title.label")}
+                          className="w-full rounded border border-accent-blue bg-bg px-1 py-0.5 text-xs outline-none"
+                        />
+                      ) : row.title ? (
+                        <span className="truncate">{row.title}</span>
+                      ) : (
+                        <span className="truncate text-text-muted">
+                          {t("workspace.table.untitled")}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* 본문 미리보기 */}
+                    <div
+                      role="gridcell"
+                      className="flex items-center truncate px-2 text-text-soft"
+                    >
+                      <Preview row={row} />
+                    </div>
+
+                    {/* 보드 경로 */}
+                    <div role="gridcell" className="flex items-center truncate px-2 text-text-soft">
+                      {row.boardPath}
+                    </div>
+
+                    {/* 메모판 이름 */}
+                    <div role="gridcell" className="flex items-center truncate px-2 text-text-soft">
+                      {row.frameName ?? ""}
+                    </div>
+
+                    {/* 첨부 배지 */}
+                    <div role="gridcell" className="flex items-center gap-1 px-2">
+                      {BADGE_ORDER.filter((b) => row.badgeCounts[b.key] > 0).map(
+                        (b) => (
+                          <span key={b.key} className="text-[11px] text-text-soft">
+                            <span aria-hidden>{b.icon}</span>
+                            {row.badgeCounts[b.key]}
+                          </span>
+                        ),
+                      )}
+                    </div>
+
+                    {/* 만든 날 / 고친 날 */}
+                    <div role="gridcell" className="flex items-center px-2 text-text-soft">
+                      {fmtDate(row.createdAt)}
+                    </div>
+                    <div role="gridcell" className="flex items-center px-2 text-text-soft">
+                      {fmtDate(row.updatedAt)}
+                    </div>
+
+                    {/* 캔버스에서 보기 — hover 시 노출 */}
+                    <div className="pointer-events-none absolute inset-y-0 right-1 flex items-center">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void openCardOnCanvas(row.id);
+                        }}
+                        className="pointer-events-auto rounded-md border border-border bg-bg px-2 py-0.5 text-[11px] text-text-soft opacity-0 shadow-card transition-opacity hover:text-text group-hover:opacity-100"
+                      >
+                        {t("workspace.table.action.viewOnCanvas")}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {isEmpty && (
+            <div className="flex flex-col items-center justify-center gap-1 py-20 text-center">
+              <p className="text-sm font-medium text-text">
+                {emptySearch
+                  ? t("workspace.table.emptySearch.title")
+                  : t("workspace.table.empty.title")}
+              </p>
+              <p className="text-xs text-text-muted">
+                {emptySearch
+                  ? t("workspace.table.emptySearch.body")
+                  : t("workspace.table.empty.body")}
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function HeaderCell({
+  children,
+  className = "",
+}: {
+  children?: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      role="columnheader"
+      className={`flex items-center px-2 py-1.5 text-[11px] font-medium text-text-soft ${className}`}
+    >
+      {children}
+    </div>
+  );
+}
+
+function SortHeader({
+  label,
+  sortKey,
+  sort,
+  onSort,
+}: {
+  label: string;
+  sortKey: MemoSortKey;
+  sort: { key: MemoSortKey; dir: "asc" | "desc" };
+  onSort: (key: MemoSortKey) => void;
+}) {
+  const active = sort.key === sortKey;
+  return (
+    <button
+      type="button"
+      role="columnheader"
+      aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}
+      onClick={() => onSort(sortKey)}
+      className="flex cursor-pointer items-center gap-1 px-2 py-1.5 text-left text-[11px] font-medium text-text-soft hover:text-text"
+    >
+      {label}
+      <span aria-hidden className={active ? "text-text" : "text-text-muted"}>
+        {active ? (sort.dir === "asc" ? "▲" : "▼") : "↕"}
+      </span>
+    </button>
+  );
+}
+
+function Preview({ row }: { row: MemoRow }) {
+  if (!row.preview) {
+    return <span className="text-text-muted">—</span>;
+  }
+  const m = row.match;
+  if (!m) return <span className="truncate">{row.preview}</span>;
+  return (
+    <span className="truncate">
+      {row.preview.slice(0, m.start)}
+      <mark className="rounded bg-accent-lime/50 text-text">
+        {row.preview.slice(m.start, m.start + m.length)}
+      </mark>
+      {row.preview.slice(m.start + m.length)}
+    </span>
+  );
+}
