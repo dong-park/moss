@@ -111,6 +111,9 @@ export interface Board {
   lastOpenedAt: number;
 }
 
+/** FEAT-connectors: 선이 카드의 어느 변에 붙는가. */
+export type ConnectionSide = "top" | "right" | "bottom" | "left";
+
 export interface Connection {
   id: string;
   sourceNoteId: string;
@@ -118,6 +121,12 @@ export interface Connection {
   source: "manual" | "ai-suggested";
   status: "active" | "rejected" | "pending";
   label?: string;
+  /**
+   * FEAT-connectors: 선이 붙는 변(source→target). 없으면(AI 추천·레거시) 두 카드의
+   * 가장 가까운 변을 매 렌더 계산한다. 비인덱스 optional — Dexie stores() 변경 불필요.
+   */
+  sourceSide?: ConnectionSide;
+  targetSide?: ConnectionSide;
   createdAt: number;
 }
 
