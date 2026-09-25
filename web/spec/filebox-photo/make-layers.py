@@ -15,7 +15,7 @@ def clean_alpha(im):
     return rgba
 
 
-for variant in range(1, 4):
+for variant in (1,):
     path = ROOT / f"folder-full-{variant}.png"
     clean_alpha(Image.open(path).convert("RGBA")).save(path)
 source = Image.open(ROOT / "folder-full-1.png").convert("RGBA")

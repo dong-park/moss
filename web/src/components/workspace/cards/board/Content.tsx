@@ -50,6 +50,8 @@ export function BoardCardContent({ card }: { card: Card }) {
       className="relative h-full w-full"
       style={{ isolation: "isolate" }}
     >
+      {/* 640/514는 scripts/gen-filebox-assets.py의 WIDTH×HEIGHT(CROP 비율)와 같아야 한다 —
+        * CROP을 바꾸면 여기도 고친다. 다르면 레이어 png가 늘어나 이름·종이 위치가 어긋난다. */}
       <div className="absolute left-0 top-1/2 w-full -translate-y-1/2" style={{ aspectRatio: "640 / 514", containerType: "inline-size" }}>
       {/* 뒷판+탭 — 맨 아래 레이어. 접지 그림자 포함. */}
       <div

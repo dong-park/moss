@@ -4,6 +4,7 @@ import {
   MEMO_ROTATION_MAX_DEG,
   MEMO_TINT_COUNT,
   MEMO_TINTS,
+  CARD_LIFT_DEG,
   cardRotationDeg,
   formatDeg,
   memoBaseTransform,
@@ -78,6 +79,10 @@ describe("FEAT-memo-variety · 각도", () => {
     );
     expect(memoBaseTransform(b, true)).toBe("rotate(0deg)");
     expect(memoLiftedTransform(b, true)).toBe("scale(1.03) rotate(-1.5deg)");
+    // 들면 고유 각도에서 CARD_LIFT_DEG만큼 더 기운다(메모와 같은 규칙).
+    expect(memoLiftedTransform(b, false)).toBe(
+      `scale(1.03) rotate(${formatDeg(cardRotationDeg("b1", "board") - CARD_LIFT_DEG)}deg)`,
+    );
   });
 
   it("formatDeg: 소수 둘째 자리로 반올림하고 꼬리 0을 뗀다", () => {

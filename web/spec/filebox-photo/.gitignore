@@ -1,0 +1,7 @@
+# 커밋하는 원본은 folder-full-1.png 하나. 나머지는 make-layers.py·gen-filebox-assets.py 산출물이거나
+# 리뷰용 스냅샷이라 저장소에 넣지 않는다(15MB → 1MB).
+*.png
+!folder-full-1.png
+*.html
+*.md
+*.log

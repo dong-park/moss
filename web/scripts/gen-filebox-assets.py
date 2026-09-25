@@ -2,6 +2,10 @@
 """Build aligned web assets from the selected folder photo. Run from web/.
 
 Requires Pillow and numpy. The source layers are in spec/filebox-photo/.
+Run spec/filebox-photo/make-layers.py first: only folder-full-1.png is committed;
+back/front/empty/dock-filebox are derived from it.
+Output file names must change when their content changes — public/sw.js serves
+/cards/ and /icons/ stale-while-revalidate, so an overwritten name shows the old image once.
 """
 
 from pathlib import Path
@@ -73,18 +77,21 @@ def main() -> None:
     low = paper_stack(full, 2)
     high = paper_stack(full, 5)
 
-    save_card(full, "board.png")
     save_card(back, "board-back.png")
     save_card(front, "board-front.png")
     save_card(low, "board-papers-low.png")
     save_card(high, "board-papers-high.png")
+
+    # 독 드래그 프리뷰 — 독에서 끌어 만든 파일함은 비어 있으므로 빈 폴더. 작게 보이니 절반 크기.
+    preview = empty.crop(CROP).resize((WIDTH // 2, HEIGHT // 2), Image.Resampling.LANCZOS)
+    preview.save(CARDS / "board.png", optimize=True)
 
     icon = photo("dock-filebox.png")
     icon = icon.crop(icon.getbbox())
     icon.thumbnail((74, 66), Image.Resampling.LANCZOS)
     tile = Image.new("RGBA", (88, 88))
     tile.alpha_composite(icon, ((88 - icon.width) // 2, (88 - icon.height) // 2))
-    tile.save(DOCK / "filebox.png", optimize=True)
+    tile.save(DOCK / "filebox-folder.png", optimize=True)
 
 
 if __name__ == "__main__":

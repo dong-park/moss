@@ -95,6 +95,9 @@ describe("BoardCardContent · 마닐라 폴더", () => {
     };
     expect(renderWithCount(0)).toBeNull();
     expect(renderWithCount(2)?.getAttribute("data-board-papers")).toBe("low");
+    // 경계: 3장까지 low, 4장부터 high.
+    expect(renderWithCount(3)?.getAttribute("data-board-papers")).toBe("low");
+    expect(renderWithCount(4)?.getAttribute("data-board-papers")).toBe("high");
     expect(renderWithCount(7)?.getAttribute("data-board-papers")).toBe("high");
   });
 
