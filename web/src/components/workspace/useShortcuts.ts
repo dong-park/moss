@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { CAPTURE_TOOLS, useWorkspace } from "@/state/workspace";
+import { isExpandable } from "./cards/_shared/expandable";
 
 /**
  * 글로벌 단축키 — FEAT-capture AC-1.
@@ -12,6 +13,24 @@ import { CAPTURE_TOOLS, useWorkspace } from "@/state/workspace";
  * 텍스트 입력 중에는 발동하지 않는다 (예외: Cmd+Shift+N은 작성 흐름을 끊지 않게 항상 작동).
  * Cmd+1~0은 입력 중에 비활성 — 사용자가 숫자 입력하는 동안 카드가 튀어나오면 안 됨.
  */
+/** 단일 선택된 카드가 제목 편집 대상(확장 가능)이면 T를 양보한다(P1-2). */
+function hasTitleEditTarget(
+  store: ReturnType<typeof useWorkspace.getState>,
+): boolean {
+  if (store.selectedIds.length !== 1) return false;
+  const card = store.cards.find((c) => c.id === store.selectedIds[0]);
+  return !!card && isExpandable(card);
+}
+
+/** 펼치기 모달·템플릿 피커·삭제 다이얼로그가 열려 있으면 배치 모드를 켜지 않는다(P1-2). */
+function isModalOpen(store: ReturnType<typeof useWorkspace.getState>): boolean {
+  return (
+    store.expandedCardId !== null ||
+    store.templatePickerOpen ||
+    store.deleteDialogBoardId !== null
+  );
+}
+
 export function useShortcuts(): void {
   useEffect(() => {
     const isTyping = () => {
@@ -24,10 +43,13 @@ export function useShortcuts(): void {
       const store = useWorkspace.getState();
 
       // FEAT-text-tool AC-2: T = 텍스트 배치 모드(1회성). 입력·편집·펜 모드 중엔 무시.
-      // useCardFlowShortcuts의 "글자 키 → 제목 편집"보다 먼저 잡아 stopImmediatePropagation으로
-      // T가 제목 편집으로 새지 않게 한다(이 hook이 ShortcutsBinder에서 먼저 등록된다).
+      // 선택된 제목 편집 대상(메모)이 있으면 T를 양보한다 — useCardFlowShortcuts의
+      // "글자 키 → 제목 편집"이 이 키를 가져가야 하기 때문. 확대 모달·다이얼로그가
+      // 열려 있을 때도 캔버스 배치 모드로 새지 않게 무시한다.
       if (!mod && !e.altKey && !e.shiftKey && (e.key === "t" || e.key === "T")) {
         if (isTyping() || store.editingId || store.penMode) return;
+        if (hasTitleEditTarget(store)) return;
+        if (isModalOpen(store)) return;
         e.preventDefault();
         e.stopImmediatePropagation();
         store.armTextPlacement();

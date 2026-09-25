@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render } from "@testing-library/react";
 import { useShortcuts } from "@/components/workspace/useShortcuts";
-import { useWorkspace, CAPTURE_TOOLS } from "@/state/workspace";
+import { useWorkspace, CAPTURE_TOOLS, type Card } from "@/state/workspace";
 import { useStorage } from "@/state/storage";
 import { resetDB } from "@/state/db/schema";
 
@@ -35,6 +35,8 @@ afterEach(async () => {
     editingId: null,
     pendingAIGate: null,
     lastToolId: "text",
+    textPlacementArmed: false,
+    expandedCardId: null,
   });
   if (originalStorage) {
     Object.defineProperty(navigator, "storage", originalStorage);
@@ -182,5 +184,28 @@ describe("FEAT-text-tool AC-2: T 배치 모드 단축키", () => {
     fireEvent.keyDown(window, { key: "t", code: "KeyT" });
     expect(useWorkspace.getState().textPlacementArmed).toBe(false);
     useWorkspace.setState({ penMode: false });
+  });
+
+  it("선택된 메모가 있으면 T를 제목 편집에 양보한다 (P1-2)", () => {
+    const card: Card = { id: "A", kind: "text", x: 0, y: 0, width: 240, content: "" };
+    useWorkspace.setState({ cards: [card], selectedIds: ["A"], editingId: null });
+    render(<Mount />);
+    fireEvent.keyDown(window, { key: "t", code: "KeyT" });
+    expect(useWorkspace.getState().textPlacementArmed).toBe(false);
+  });
+
+  it("확대 모달이 열려 있으면 T는 무시 (P1-2)", () => {
+    useWorkspace.setState({ expandedCardId: "A" });
+    render(<Mount />);
+    fireEvent.keyDown(window, { key: "t", code: "KeyT" });
+    expect(useWorkspace.getState().textPlacementArmed).toBe(false);
+  });
+
+  it("선택이 textbox면 제목 대상이 아니라 T가 배치 모드를 켠다", () => {
+    const card: Card = { id: "tb", kind: "textbox", x: 0, y: 0, width: 120, content: "" };
+    useWorkspace.setState({ cards: [card], selectedIds: ["tb"], editingId: null });
+    render(<Mount />);
+    fireEvent.keyDown(window, { key: "t", code: "KeyT" });
+    expect(useWorkspace.getState().textPlacementArmed).toBe(true);
   });
 });
