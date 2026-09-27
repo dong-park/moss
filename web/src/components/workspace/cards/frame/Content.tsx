@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useWorkspace } from "@/state/workspace";
 import type { Card } from "@/state/workspace";
 import { decodeFrameConfig } from "@/state/frameContent";
@@ -15,7 +15,8 @@ import { ColumnsSkin } from "./skins/ColumnsSkin";
 
 export function FrameCardContent({ card }: { card: Card }) {
   const renameFrame = useWorkspace((s) => s.renameFrame);
-  const config = decodeFrameConfig(card.content);
+  // 드래그 중에도 판은 다시 렌더된다 — content가 같으면 파싱·칸 배경을 다시 하지 않는다.
+  const config = useMemo(() => decodeFrameConfig(card.content), [card.content]);
   const name = config.name;
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(name);

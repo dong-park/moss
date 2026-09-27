@@ -34,7 +34,6 @@ import {
   encodeFrameContent,
   FRAME_COLUMN_COUNT_MAX,
   FRAME_COLUMN_COUNT_MIN,
-  FRAME_COLUMN_WIDTH,
   newFrameColumnId,
   normalizeFrameColumns,
   readFrameContent,
@@ -495,7 +494,11 @@ interface WorkspaceState {
   /** 판 리사이즈. [[FRAME_MIN_WIDTH]]~[[CARD_MAX_WIDTH]], [[FRAME_MIN_HEIGHT]]~[[CARD_MAX_HEIGHT]]로 클램프. */
   resizeFrame: (
     id: string,
-    next: { width: number; height: number; x?: number; y?: number },
+    /**
+     * baseWidth: 자유 판 상한 계산에 쓸 기준 폭. 핸들 드래그는 시작 폭을 넘긴다 —
+     * 드래그 중 바뀌는 현재 폭을 쓰면 좁혔다 넓힐 때 상한이 내려가 반대편 모서리가 튄다.
+     */
+    next: { width: number; height: number; x?: number; y?: number; baseWidth?: number },
   ) => void;
   /** 판 이름 변경. 1~40자, trim 후 빈 문자열이면 "새 메모판"으로 되돌린다. */
   renameFrame: (id: string, name: string) => void;
@@ -1927,7 +1930,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         if (c.id !== id || c.kind !== "frame") return c;
         // FEAT-frame-skins: 폭 한계는 스킨이 정한다(AC-9·AC-10). 자유 판 상한은
         // "지금 폭까지" — 세로 칸(1920)을 자유로 바꿔도 튀지 않고 더 넓히지 못한다.
-        const w = clampFrameWidth(readFrameContent(c.content), c.width, next.width);
+        const w = clampFrameWidth(readFrameContent(c.content), next.baseWidth ?? c.width, next.width);
         const h = clamp(next.height, FRAME_MIN_HEIGHT, CARD_MAX_HEIGHT);
         updated = {
           ...c,
@@ -1970,13 +1973,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
             : skin === "columns"
               ? defaultFrameColumns()
               : undefined;
-        let width = c.width;
-        if (skin === "columns") {
-          // AC-4: 폭이 칸 수 × 240보다 좁으면 그만큼 오른쪽으로 넓힌다. 왼쪽 위 모서리는 그대로.
-          width = Math.max(width, FRAME_COLUMN_WIDTH * normalizeFrameColumns(columns).length);
-        }
         const nextCfg: FrameContentJson = { ...cfg, skin };
         if (columns !== undefined) nextCfg.columns = columns;
+        // AC-4: 폭이 칸 수 × 240보다 좁으면 그만큼 오른쪽으로 넓힌다. 왼쪽 위 모서리는 그대로.
+        // 자유로 바꿀 때는 지금 폭이 상한이 되므로 폭이 그대로다(AC-10).
+        const width = clampFrameWidth(nextCfg, c.width, c.width);
         updated = { ...c, width, content: encodeFrameContent(nextCfg) };
         return updated;
       }),
@@ -2004,7 +2005,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         if (cols.length >= FRAME_COLUMN_COUNT_MAX) return c;
         const next = [...cols, { id: newFrameColumnId(), name: "" }];
         // AC-6: 폭이 (N+1) × 240보다 좁으면 그만큼 오른쪽으로 넓어진다. 메모는 움직이지 않는다.
-        const width = Math.max(c.width, FRAME_COLUMN_WIDTH * next.length);
+        const width = clampFrameWidth({ ...cfg, columns: next }, c.width, c.width);
         widened = widened || width > c.width;
         updated = { ...c, width, content: encodeFrameContent({ ...cfg, columns: next }) };
         return updated;

@@ -219,6 +219,20 @@ describe("스킨별 폭 하한·상한 (AC-9·AC-10)", () => {
     useWorkspace.getState().resizeFrame(id, { width: 2500, height: 400 });
     expect(card(id).width).toBe(1200);
   });
+
+  it("AC-10: 핸들 드래그 한 번에 좁혔다 넓혀도 시작 폭까지 돌아온다(baseWidth)", async () => {
+    await init();
+    const id = useWorkspace.getState().addFrameAt(0, 0);
+    useWorkspace.getState().setFrameSkin(id, "columns");
+    useWorkspace.getState().resizeFrame(id, { width: 1920, height: 400 });
+    useWorkspace.getState().setFrameSkin(id, "free");
+
+    // 드래그 중 onMove가 매번 시작 폭 1920을 기준으로 넘긴다.
+    useWorkspace.getState().resizeFrame(id, { width: 1300, height: 400, baseWidth: 1920 });
+    expect(card(id).width).toBe(1300);
+    useWorkspace.getState().resizeFrame(id, { width: 1600, height: 400, baseWidth: 1920 });
+    expect(card(id).width).toBe(1600);
+  });
 });
 
 describe("AC-11 판 이름 바꾸기가 스킨을 지우지 않음", () => {

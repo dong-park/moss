@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { useWorkspace } from "@/state/workspace";
 import {
   FRAME_COLUMN_COUNT_MAX,
@@ -21,7 +21,7 @@ import { useT } from "@/i18n/Provider";
 const LABEL_SCREEN_MIN_PX = 11;
 const LABEL_FONT = `max(${LABEL_SCREEN_MIN_PX}px, calc(${LABEL_SCREEN_MIN_PX}px / var(--frame-zoom, 1)))`;
 
-export function ColumnsSkin({
+export const ColumnsSkin = memo(function ColumnsSkin({
   frameId,
   columns,
 }: {
@@ -160,4 +160,4 @@ export function ColumnsSkin({
       </div>
     </div>
   );
-}
+});
