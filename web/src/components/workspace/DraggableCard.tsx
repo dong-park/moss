@@ -14,6 +14,7 @@ import {
 import { CardContent } from "./cards/CardContent";
 import { isExpandable } from "./cards/_shared/expandable";
 import { ResizeHandles } from "./ResizeHandles";
+import { decodeFrameConfig, type FrameSkinId } from "@/state/frameContent";
 import {
   cardRotationDeg,
   formatDeg,
@@ -26,6 +27,12 @@ import { useT } from "@/i18n/Provider";
 import { nextTiltAngle } from "./dragTilt";
 
 const DRAG_THRESHOLD = 3; // px — 이 거리 넘으면 드래그로 인식
+
+/** FEAT-frame-skins §7: 판 우클릭 "판 모양" 하위 메뉴 항목. */
+const FRAME_SKIN_MENU = [
+  { id: "free", labelKey: "workspace.frameSkin.free" },
+  { id: "columns", labelKey: "workspace.frameSkin.columns" },
+] as const satisfies readonly { id: FrameSkinId; labelKey: string }[];
 
 /**
  * FEAT-drag-tilt: 놓은 뒤 0도로 돌아오는 스프링. 2~3회 흔들리다 선다.
@@ -117,6 +124,8 @@ export function DraggableCard({ card }: { card: Card }) {
   // FEAT-frame-feel T2/T4: 넣기 강조 대상 판과, 흔들리는 판 — 휘발 상태.
   const setDropTargetFrame = useWorkspace((s) => s.setDropTargetFrame);
   const setWobbleFrame = useWorkspace((s) => s.setWobbleFrame);
+  // FEAT-frame-skins: 판 우클릭 → 판 모양 전환.
+  const setFrameSkin = useWorkspace((s) => s.setFrameSkin);
   const boards = useWorkspace((s) => s.boards);
   const currentBoardId = useWorkspace((s) => s.currentBoardId);
   // 드래그 grab/drop 손맛: 들어올린 카드에 lift 시각효과(scale/shadow/z).
@@ -1107,8 +1116,10 @@ export function DraggableCard({ card }: { card: Card }) {
   );
 
   // FEAT-eject: 서브캔버스 밖(루트/시스템)이면 우클릭 메뉴 없이 카드만 렌더.
+  // FEAT-frame-skins: 판은 서브캔버스 밖에서도 "판 모양" 메뉴가 필요하다.
   // 편집/펜 모드에선 트리거를 비활성화해 브라우저 기본 메뉴(복사·붙여넣기 등)를 살린다.
-  if (ancestors.length === 0) return cardNode;
+  const isFrame = card.kind === "frame";
+  if (ancestors.length === 0 && !isFrame) return cardNode;
 
   const parent = ancestors[ancestors.length - 1];
   const crumbLabel = (id: string, name: string) =>
@@ -1117,6 +1128,7 @@ export function DraggableCard({ card }: { card: Card }) {
       : name.trim() === ""
         ? t("cards.board.unnamed")
         : name;
+  const currentSkin = isFrame ? decodeFrameConfig(card.content).skin : "free";
 
   return (
     <ContextMenu.Root>
@@ -1125,28 +1137,63 @@ export function DraggableCard({ card }: { card: Card }) {
       </ContextMenu.Trigger>
       <ContextMenu.Portal>
         <ContextMenu.Content className="z-[var(--z-panel)] min-w-44 rounded-lg border border-border bg-bg p-1 shadow-card-lift">
-          <ContextMenu.Item
-            className="cursor-pointer rounded-md px-3 py-1.5 text-sm text-text outline-none transition-colors data-[highlighted]:bg-panel"
-            onSelect={() => void moveCardToBoard(card.id, parent.id)}
-          >
-            {t("workspace.subcanvas.eject.toParent")}
-          </ContextMenu.Item>
-          {/* 조상이 여러 단계면 각 조상으로 보내는 하위 항목 — 즉시 부모가 위 기본 항목. */}
-          {ancestors.length > 1 && (
+          {ancestors.length > 0 && (
+            <>
+              <ContextMenu.Item
+                className="cursor-pointer rounded-md px-3 py-1.5 text-sm text-text outline-none transition-colors data-[highlighted]:bg-panel"
+                onSelect={() => void moveCardToBoard(card.id, parent.id)}
+              >
+                {t("workspace.subcanvas.eject.toParent")}
+              </ContextMenu.Item>
+              {/* 조상이 여러 단계면 각 조상으로 보내는 하위 항목 — 즉시 부모가 위 기본 항목. */}
+              {ancestors.length > 1 && (
+                <ContextMenu.Sub>
+                  <ContextMenu.SubTrigger className="flex cursor-pointer items-center justify-between rounded-md px-3 py-1.5 text-sm text-text outline-none transition-colors data-[highlighted]:bg-panel data-[state=open]:bg-panel">
+                    <span>{t("workspace.subcanvas.eject.toAncestor")}</span>
+                    <span className="text-text-soft">›</span>
+                  </ContextMenu.SubTrigger>
+                  <ContextMenu.Portal>
+                    <ContextMenu.SubContent className="z-[var(--z-panel)] min-w-44 rounded-lg border border-border bg-bg p-1 shadow-card-lift">
+                      {ancestors.map((a) => (
+                        <ContextMenu.Item
+                          key={a.id}
+                          className="cursor-pointer rounded-md px-3 py-1.5 text-sm text-text outline-none transition-colors data-[highlighted]:bg-panel"
+                          onSelect={() => void moveCardToBoard(card.id, a.id)}
+                        >
+                          {crumbLabel(a.id, a.name)}
+                        </ContextMenu.Item>
+                      ))}
+                    </ContextMenu.SubContent>
+                  </ContextMenu.Portal>
+                </ContextMenu.Sub>
+              )}
+            </>
+          )}
+          {/* FEAT-frame-skins §7: 판 모양 하위 메뉴 — 지금 스킨에 체크. */}
+          {isFrame && (
             <ContextMenu.Sub>
-              <ContextMenu.SubTrigger className="flex cursor-pointer items-center justify-between rounded-md px-3 py-1.5 text-sm text-text outline-none transition-colors data-[highlighted]:bg-panel data-[state=open]:bg-panel">
-                <span>{t("workspace.subcanvas.eject.toAncestor")}</span>
+              <ContextMenu.SubTrigger
+                data-frame-skin-menu="true"
+                className="flex cursor-pointer items-center justify-between rounded-md px-3 py-1.5 text-sm text-text outline-none transition-colors data-[highlighted]:bg-panel data-[state=open]:bg-panel"
+              >
+                <span>{t("workspace.frameSkin.menu")}</span>
                 <span className="text-text-soft">›</span>
               </ContextMenu.SubTrigger>
               <ContextMenu.Portal>
                 <ContextMenu.SubContent className="z-[var(--z-panel)] min-w-44 rounded-lg border border-border bg-bg p-1 shadow-card-lift">
-                  {ancestors.map((a) => (
+                  {FRAME_SKIN_MENU.map((item) => (
                     <ContextMenu.Item
-                      key={a.id}
-                      className="cursor-pointer rounded-md px-3 py-1.5 text-sm text-text outline-none transition-colors data-[highlighted]:bg-panel"
-                      onSelect={() => void moveCardToBoard(card.id, a.id)}
+                      key={item.id}
+                      data-frame-skin-item={item.id}
+                      className="flex cursor-pointer items-center justify-between rounded-md px-3 py-1.5 text-sm text-text outline-none transition-colors data-[highlighted]:bg-panel"
+                      onSelect={() => setFrameSkin(card.id, item.id)}
                     >
-                      {crumbLabel(a.id, a.name)}
+                      <span>{t(item.labelKey)}</span>
+                      {currentSkin === item.id && (
+                        <span aria-hidden="true" className="text-text-soft">
+                          ✓
+                        </span>
+                      )}
                     </ContextMenu.Item>
                   ))}
                 </ContextMenu.SubContent>

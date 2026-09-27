@@ -29,7 +29,18 @@ import {
   serializeBlocks,
   type CardBlock,
 } from "./cardContent";
-import { encodeFrameContent } from "./frameContent";
+import {
+  defaultFrameColumns,
+  encodeFrameContent,
+  FRAME_COLUMN_COUNT_MAX,
+  FRAME_COLUMN_COUNT_MIN,
+  newFrameColumnId,
+  normalizeFrameColumns,
+  readFrameContent,
+  type FrameContentJson,
+  type FrameSkinId,
+} from "./frameContent";
+import { clampFrameWidth } from "./frameSkins";
 // FEAT-memo-fulltext-search (W4): 본문 평문 검색 — 셀렉터/액션이 위임.
 import { searchMemos as searchMemosImpl } from "./memoSearch";
 import { normalizeTitle, normalizeTitleTyping } from "./memoTitle";
@@ -480,13 +491,30 @@ interface WorkspaceState {
    * DB 반영은 판+멤버를 한 Dexie 트랜잭션으로 쓰는 그룹 쓰기를 각 카드 키로 디바운스 예약한다(동시성 §: 일부만 저장 금지).
    */
   moveFrame: (frameId: string, dx: number, dy: number) => void;
-  /** 판 리사이즈. [[FRAME_MIN_WIDTH]]~[[CARD_MAX_WIDTH]], [[FRAME_MIN_HEIGHT]]~[[CARD_MAX_HEIGHT]]로 클램프. */
+  /** 판 리사이즈. 폭은 스킨 규칙([[clampFrameWidth]]), 높이는 [[FRAME_MIN_HEIGHT]]~[[CARD_MAX_HEIGHT]]로 클램프. */
   resizeFrame: (
     id: string,
-    next: { width: number; height: number; x?: number; y?: number },
+    /**
+     * baseWidth: 자유 판 상한 계산에 쓸 기준 폭. 핸들 드래그는 시작 폭을 넘긴다 —
+     * 드래그 중 바뀌는 현재 폭을 쓰면 좁혔다 넓힐 때 상한이 내려가 반대편 모서리가 튄다.
+     */
+    next: { width: number; height: number; x?: number; y?: number; baseWidth?: number },
   ) => void;
   /** 판 이름 변경. 1~40자, trim 후 빈 문자열이면 "새 메모판"으로 되돌린다. */
   renameFrame: (id: string, name: string) => void;
+  /* ─────────── FEAT-frame-skins: 스킨·세로 칸 ─────────── */
+  /**
+   * 판 스킨을 바꾼다. 세로 칸으로 바뀌면 칸 목록이 없을 때 기본 3칸을 만들고,
+   * 폭이 칸 수 × 240보다 좁으면 그만큼 오른쪽으로 넓힌 뒤 소속 판을 다시 판정한다(AC-4).
+   * 자유로 바꿔도 칸 목록은 지우지 않는다(AC-3).
+   */
+  setFrameSkin: (id: string, skin: FrameSkinId) => void;
+  /** 오른쪽 끝에 이름 빈 칸을 더한다. 최대 8개. 폭이 좁으면 (N+1)×240까지 넓힌다(AC-6). */
+  addFrameColumn: (id: string) => void;
+  /** 칸 이름을 바꾼다. trim 후 최대 20자, 빈 이름 허용(AC-7). */
+  renameFrameColumn: (id: string, columnId: string, name: string) => void;
+  /** 칸을 지운다. 최소 2개. 판 폭·메모 좌표·소속은 그대로다(AC-8). */
+  removeFrameColumn: (id: string, columnId: string) => void;
   /** 판을 지운다. 속한 메모는 제자리에 남고 frameId만 해제한다(메모 자체는 안 지운다). */
   deleteFrame: (id: string) => void;
 
@@ -1900,7 +1928,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     set((s) => ({
       cards: s.cards.map((c) => {
         if (c.id !== id || c.kind !== "frame") return c;
-        const w = clamp(next.width, FRAME_MIN_WIDTH, CARD_MAX_WIDTH);
+        // FEAT-frame-skins: 폭 한계는 스킨이 정한다(AC-9·AC-10). 자유 판 상한은
+        // "지금 폭까지" — 세로 칸(1920)을 자유로 바꿔도 튀지 않고 더 넓히지 못한다.
+        const w = clampFrameWidth(readFrameContent(c.content), next.baseWidth ?? c.width, next.width);
         const h = clamp(next.height, FRAME_MIN_HEIGHT, CARD_MAX_HEIGHT);
         updated = {
           ...c,
@@ -1916,12 +1946,112 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   renameFrame: (id, name) => {
-    // "새 메모판" 기본값·trim·40자 규약은 frameContent.ts(encodeFrameContent) 단일 소스.
+    // AC-11: renameFrame이 내용을 통째로 덮어쓰면 스킨·칸이 사라진다 — 원래 설정을
+    // 읽어 이름만 갈아 끼운다. "새 메모판" 기본값·trim·40자 규약은 frameContent.ts 단일 소스.
     let updated: Card | undefined;
     set((s) => ({
       cards: s.cards.map((c) => {
         if (c.id !== id || c.kind !== "frame") return c;
-        updated = { ...c, content: encodeFrameContent(name) };
+        const cfg = readFrameContent(c.content);
+        updated = { ...c, content: encodeFrameContent({ ...cfg, name }) };
+        return updated;
+      }),
+    }));
+    if (updated) persistCardDebounced(updated, storageBoardId(get().currentBoardId));
+  },
+
+  setFrameSkin: (id, skin) => {
+    let updated: Card | undefined;
+    set((s) => ({
+      cards: s.cards.map((c) => {
+        if (c.id !== id || c.kind !== "frame") return c;
+        const cfg = readFrameContent(c.content);
+        // 칸 목록이 있으면 스킨과 무관하게 보관한다. 세로 칸으로 처음 바뀔 때만 기본 3칸.
+        const columns =
+          cfg.columns !== undefined
+            ? normalizeFrameColumns(cfg.columns)
+            : skin === "columns"
+              ? defaultFrameColumns()
+              : undefined;
+        const nextCfg: FrameContentJson = { ...cfg, skin };
+        if (columns !== undefined) nextCfg.columns = columns;
+        // AC-4: 폭이 칸 수 × 240보다 좁으면 그만큼 오른쪽으로 넓힌다. 왼쪽 위 모서리는 그대로.
+        // 자유로 바꿀 때는 지금 폭이 상한이 되므로 폭이 그대로다(AC-10).
+        const width = clampFrameWidth(nextCfg, c.width, c.width);
+        updated = { ...c, width, content: encodeFrameContent(nextCfg) };
+        return updated;
+      }),
+    }));
+    if (!updated) return;
+    persistCardDebounced(updated, storageBoardId(get().currentBoardId));
+    if (skin === "columns") {
+      // AC-4: 넓힌 뒤 소속 판을 다시 판정한다. 결과는 손으로 같은 크기로 늘렸을 때와 같다.
+      get().resolveMembership(
+        get()
+          .cards.filter((c) => c.kind !== "frame")
+          .map((c) => c.id),
+      );
+    }
+  },
+
+  addFrameColumn: (id) => {
+    let updated: Card | undefined;
+    let widened = false;
+    set((s) => ({
+      cards: s.cards.map((c) => {
+        if (c.id !== id || c.kind !== "frame") return c;
+        const cfg = readFrameContent(c.content);
+        const cols = normalizeFrameColumns(cfg.columns);
+        if (cols.length >= FRAME_COLUMN_COUNT_MAX) return c;
+        const next = [...cols, { id: newFrameColumnId(), name: "" }];
+        // AC-6: 폭이 (N+1) × 240보다 좁으면 그만큼 오른쪽으로 넓어진다. 메모는 움직이지 않는다.
+        const width = clampFrameWidth({ ...cfg, columns: next }, c.width, c.width);
+        widened = widened || width > c.width;
+        updated = { ...c, width, content: encodeFrameContent({ ...cfg, columns: next }) };
+        return updated;
+      }),
+    }));
+    if (!updated) return;
+    persistCardDebounced(updated, storageBoardId(get().currentBoardId));
+    if (widened) {
+      get().resolveMembership(
+        get()
+          .cards.filter((c) => c.kind !== "frame")
+          .map((c) => c.id),
+      );
+    }
+  },
+
+  renameFrameColumn: (id, columnId, name) => {
+    let updated: Card | undefined;
+    set((s) => ({
+      cards: s.cards.map((c) => {
+        if (c.id !== id || c.kind !== "frame") return c;
+        const cfg = readFrameContent(c.content);
+        const cols = normalizeFrameColumns(cfg.columns);
+        if (!cols.some((col) => col.id === columnId)) return c;
+        const next = normalizeFrameColumns(
+          cols.map((col) => (col.id === columnId ? { ...col, name } : col)),
+        );
+        updated = { ...c, content: encodeFrameContent({ ...cfg, columns: next }) };
+        return updated;
+      }),
+    }));
+    if (updated) persistCardDebounced(updated, storageBoardId(get().currentBoardId));
+  },
+
+  removeFrameColumn: (id, columnId) => {
+    let updated: Card | undefined;
+    set((s) => ({
+      cards: s.cards.map((c) => {
+        if (c.id !== id || c.kind !== "frame") return c;
+        const cfg = readFrameContent(c.content);
+        const cols = normalizeFrameColumns(cfg.columns);
+        if (cols.length <= FRAME_COLUMN_COUNT_MIN) return c;
+        if (!cols.some((col) => col.id === columnId)) return c;
+        // AC-8: 칸만 줄고 판 폭은 그대로다. 메모 좌표·소속도 건드리지 않는다.
+        const next = cols.filter((col) => col.id !== columnId);
+        updated = { ...c, content: encodeFrameContent({ ...cfg, columns: next }) };
         return updated;
       }),
     }));

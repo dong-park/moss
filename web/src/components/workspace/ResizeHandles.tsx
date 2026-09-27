@@ -7,11 +7,12 @@ import {
   CARD_MIN_HEIGHT,
   CARD_MIN_WIDTH,
   FRAME_MIN_HEIGHT,
-  FRAME_MIN_WIDTH,
   aspectForKind,
   useWorkspace,
   type Card,
 } from "@/state/workspace";
+import { readFrameContent } from "@/state/frameContent";
+import { clampFrameWidth } from "@/state/frameSkins";
 
 type HandleDir = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
 
@@ -135,6 +136,7 @@ export function ResizeHandles({
     const startH =
       card.kind === "text" ? card.width : (card.height ?? measuredHeight);
 
+    const frameCfg = isFrame ? readFrameContent(card.content) : undefined;
     const ratio = aspectForKind(card.kind);
     // 비율 유지 조건에서 width의 유효 범위 — 두 축 min/max 모두를 만족시키도록 좁힌다.
     const minW = Math.max(CARD_MIN_WIDTH, CARD_MIN_HEIGHT * ratio);
@@ -156,13 +158,15 @@ export function ResizeHandles({
         if (d.dir.includes("w")) w = d.originW - dx;
         if (d.dir.includes("s")) h = d.originH + dy;
         if (d.dir.includes("n")) h = d.originH - dy;
-        w = clamp(w, FRAME_MIN_WIDTH, CARD_MAX_WIDTH);
+        // FEAT-frame-skins: 폭 한계는 스킨이 정한다(AC-9·AC-10). 핸들을 잡는 순간
+        // 시작 폭이 자유 판 상한이 되어 튀지 않는다. 설정은 mousedown에 한 번만 읽는다.
+        w = clampFrameWidth(frameCfg!, d.originW, w);
         h = clamp(h, FRAME_MIN_HEIGHT, CARD_MAX_HEIGHT);
         let x = d.originCardX;
         let y = d.originCardY;
         if (d.dir.includes("w")) x = d.originCardX + (d.originW - w);
         if (d.dir.includes("n")) y = d.originCardY + (d.originH - h);
-        resizeFrame(card.id, { width: w, height: h, x, y });
+        resizeFrame(card.id, { width: w, height: h, x, y, baseWidth: d.originW });
         return;
       }
 
