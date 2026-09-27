@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useWorkspace } from "@/state/workspace";
 import type { Card } from "@/state/workspace";
-import { decodeFrameContent } from "@/state/frameContent";
+import { decodeFrameConfig } from "@/state/frameContent";
+import { ColumnsSkin } from "./skins/ColumnsSkin";
 
 /* ─────────────────────────────────────────────────────────────
  * FEAT-sticky-redesign n7 — 메모판(frame) 렌더.
@@ -14,7 +15,8 @@ import { decodeFrameContent } from "@/state/frameContent";
 
 export function FrameCardContent({ card }: { card: Card }) {
   const renameFrame = useWorkspace((s) => s.renameFrame);
-  const name = decodeFrameContent(card.content);
+  const config = decodeFrameConfig(card.content);
+  const name = config.name;
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(name);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -46,6 +48,10 @@ export function FrameCardContent({ card }: { card: Card }) {
         borderImage: 'url("/cards/v2/whiteboard.png") 50 fill / 18px stretch',
       }}
     >
+      {/* FEAT-frame-skins: 세로 칸 스킨의 경계·이름표 배경. 메모보다 아래층. */}
+      {config.skin === "columns" && (
+        <ColumnsSkin frameId={card.id} columns={config.columns} />
+      )}
       <div
         role={editing ? undefined : "button"}
         tabIndex={editing ? undefined : -1}

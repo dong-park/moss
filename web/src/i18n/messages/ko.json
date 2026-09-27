@@ -260,6 +260,19 @@
         "toParent": "상위로 내보내기",
         "toAncestor": "조상으로 내보내기"
       }
+    },
+    "frameSkin": {
+      "menu": "판 모양",
+      "free": "자유",
+      "columns": "세로 칸",
+      "addColumn": "칸 추가",
+      "removeColumn": "칸 삭제",
+      "unnamedColumn": "이름 없는 칸",
+      "defaults": {
+        "seed": "씨앗",
+        "growing": "자라는 중",
+        "resting": "묵힘"
+      }
     }
   },
   "capture": {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useWorkspace, SYSTEM_BOARD_ID, widthForKind } from "@/state/workspace";
 import { useToasts } from "@/state/notifications";
 import { useT } from "@/i18n/Provider";
@@ -611,7 +611,10 @@ export function Canvas() {
           transformOrigin: "0 0",
           willChange: "transform, opacity",
           opacity: boardTransitioning ? 0 : 1,
-        }}
+          // FEAT-frame-skins §8: 줌·팬 중 칸 배경은 React로 다시 그리지 않는다.
+          // 이름표 크기는 이 변수만으로 바뀐다 — 화면 11px 하한 역보정에 쓴다.
+          "--frame-zoom": String(viewport.scale),
+        } as CSSProperties}
       >
         {visibleCards.map((card) => (
           <DraggableCard key={card.id} card={card} />
