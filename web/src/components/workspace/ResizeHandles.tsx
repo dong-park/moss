@@ -7,11 +7,12 @@ import {
   CARD_MIN_HEIGHT,
   CARD_MIN_WIDTH,
   FRAME_MIN_HEIGHT,
-  FRAME_MIN_WIDTH,
   aspectForKind,
   useWorkspace,
   type Card,
 } from "@/state/workspace";
+import { readFrameContent } from "@/state/frameContent";
+import { clampFrameWidth } from "@/state/frameSkins";
 
 type HandleDir = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
 
@@ -156,7 +157,9 @@ export function ResizeHandles({
         if (d.dir.includes("w")) w = d.originW - dx;
         if (d.dir.includes("s")) h = d.originH + dy;
         if (d.dir.includes("n")) h = d.originH - dy;
-        w = clamp(w, FRAME_MIN_WIDTH, CARD_MAX_WIDTH);
+        // FEAT-frame-skins: 폭 한계는 스킨이 정한다(AC-9·AC-10). 핸들을 잡는 순간
+        // 현재 폭이 자유 판 상한이 되어 튀지 않는다.
+        w = clampFrameWidth(readFrameContent(card.content), d.originW, w);
         h = clamp(h, FRAME_MIN_HEIGHT, CARD_MAX_HEIGHT);
         let x = d.originCardX;
         let y = d.originCardY;
