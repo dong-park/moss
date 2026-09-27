@@ -136,7 +136,7 @@ export function ResizeHandles({
     const startH =
       card.kind === "text" ? card.width : (card.height ?? measuredHeight);
 
-    const frameCfg = readFrameContent(card.content);
+    const frameCfg = isFrame ? readFrameContent(card.content) : undefined;
     const ratio = aspectForKind(card.kind);
     // 비율 유지 조건에서 width의 유효 범위 — 두 축 min/max 모두를 만족시키도록 좁힌다.
     const minW = Math.max(CARD_MIN_WIDTH, CARD_MIN_HEIGHT * ratio);
@@ -160,7 +160,7 @@ export function ResizeHandles({
         if (d.dir.includes("n")) h = d.originH - dy;
         // FEAT-frame-skins: 폭 한계는 스킨이 정한다(AC-9·AC-10). 핸들을 잡는 순간
         // 시작 폭이 자유 판 상한이 되어 튀지 않는다. 설정은 mousedown에 한 번만 읽는다.
-        w = clampFrameWidth(frameCfg, d.originW, w);
+        w = clampFrameWidth(frameCfg!, d.originW, w);
         h = clamp(h, FRAME_MIN_HEIGHT, CARD_MAX_HEIGHT);
         let x = d.originCardX;
         let y = d.originCardY;

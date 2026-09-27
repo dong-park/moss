@@ -491,7 +491,7 @@ interface WorkspaceState {
    * DB 반영은 판+멤버를 한 Dexie 트랜잭션으로 쓰는 그룹 쓰기를 각 카드 키로 디바운스 예약한다(동시성 §: 일부만 저장 금지).
    */
   moveFrame: (frameId: string, dx: number, dy: number) => void;
-  /** 판 리사이즈. [[FRAME_MIN_WIDTH]]~[[CARD_MAX_WIDTH]], [[FRAME_MIN_HEIGHT]]~[[CARD_MAX_HEIGHT]]로 클램프. */
+  /** 판 리사이즈. 폭은 스킨 규칙([[clampFrameWidth]]), 높이는 [[FRAME_MIN_HEIGHT]]~[[CARD_MAX_HEIGHT]]로 클램프. */
   resizeFrame: (
     id: string,
     /**
