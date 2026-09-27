@@ -41,7 +41,7 @@ import {
   type FrameContentJson,
   type FrameSkinId,
 } from "./frameContent";
-import { clampFrameWidth, frameSkinFor } from "./frameSkins";
+import { clampFrameWidth } from "./frameSkins";
 // FEAT-memo-fulltext-search (W4): 본문 평문 검색 — 셀렉터/액션이 위임.
 import { searchMemos as searchMemosImpl } from "./memoSearch";
 import { normalizeTitle, normalizeTitleTyping } from "./memoTitle";
