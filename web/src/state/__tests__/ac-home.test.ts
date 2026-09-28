@@ -19,6 +19,8 @@ import { useStorage } from "@/state/storage";
 import { useToasts } from "@/state/notifications";
 import { resetDB, getDB } from "@/state/db/schema";
 import { computeNowStayingCards } from "@/state/selectors/systemBoard";
+import { getOrOpenBoardDoc } from "@/state/ydoc/activeDoc";
+import { putNote } from "@/state/ydoc/model";
 
 let originalStorage: PropertyDescriptor | undefined;
 
@@ -72,10 +74,12 @@ describe("AC-1(부분): 재노출 기반 자동 큐레이팅 — '지금 머무�
       { id: "recent-3", content: "최근 회상", lastVisitedAt: now - 100 },
     ];
     for (const s of seeds) {
-      await db.notes.put({
+      // n23: 원본은 Y.Doc — 시드를 문서에 넣는다. lastVisitedAt은 기기 로컬이라
+      // Dexie 미러에서 합쳐지는지도 함께 검증한다(두 곳에 같은 id로 넣는다).
+      const note = {
         id: s.id,
         boardId: null,
-        kind: "text",
+        kind: "text" as const,
         x: 0,
         y: 0,
         width: 240,
@@ -85,7 +89,11 @@ describe("AC-1(부분): 재노출 기반 자동 큐레이팅 — '지금 머무�
         createdAt: s.lastVisitedAt,
         updatedAt: s.lastVisitedAt,
         lastVisitedAt: s.lastVisitedAt,
-      });
+      };
+      await db.notes.put(note);
+      const handle = getOrOpenBoardDoc(null);
+      await handle.whenLoaded;
+      putNote(handle.doc, note);
     }
     // installPromptShown=true → seed 카드 우회 (이 테스트에서는 우리가 직접 넣음)
     await useStorage.getState().updateSettings({ installPromptShown: true });

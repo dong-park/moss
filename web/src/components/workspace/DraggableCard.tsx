@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { animate } from "motion/react";
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import {
@@ -48,10 +48,16 @@ function tiltTransform(baseDeg: number): string {
 }
 const TILT_VARS = ["--tilt", "--px", "--py", "--lift-scale"] as const;
 
-export function DraggableCard({ card }: { card: Card }) {
+/**
+ * P1: 카드 하나가 바뀌지 않았으면 다시 그리지 않는다. 드래그·가상화 중
+ * 부모(Canvas)가 리렌더돼도 `card` 참조가 같으면 건너뛴다.
+ */
+export const DraggableCard = memo(function DraggableCard({ card }: { card: Card }) {
   const t = useT();
   const moveCard = useWorkspace((s) => s.moveCard);
   const moveSelectedBy = useWorkspace((s) => s.moveSelectedBy);
+  // n3 D4: 드래그 종료 시 좌표를 Y.Doc에 한 번 쓴다.
+  const commitMove = useWorkspace((s) => s.commitMove);
   // FEAT-sticky-redesign: 메모판 이동(멤버 동반) + 드롭 종료 시 소속 재판정.
   const moveFrame = useWorkspace((s) => s.moveFrame);
   const resolveMembership = useWorkspace((s) => s.resolveMembership);
@@ -577,6 +583,9 @@ export function DraggableCard({ card }: { card: Card }) {
       hoveredFunnelId = null;
       hoveredCrumbId = null;
 
+      // n3 D4: 드래그가 끝난 지금 좌표를 Y.Doc에 한 번 쓴다(드래그 중엔 안 씀).
+      commitMove(d.multi ? useWorkspace.getState().selectedIds : [card.id]);
+
       // FEAT-sticky-redesign §4: 드롭 종료 시점에만 소속을 다시 정한다.
       if (d.multi) {
         const selectedIds = useWorkspace.getState().selectedIds;
@@ -826,4 +835,4 @@ export function DraggableCard({ card }: { card: Card }) {
       </ContextMenu.Portal>
     </ContextMenu.Root>
   );
-}
+});

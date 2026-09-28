@@ -120,6 +120,26 @@ describe("useStorage notes", () => {
     expect(got.y).toBe(20);
   });
 
+  it("P1-5: saveNote는 정규화된 Note를 돌려준다", async () => {
+    const s = useStorage.getState();
+    const saved = await s.saveNote({ id: "n-ret", boardId: "b1", content: "v" });
+    expect(saved.id).toBe("n-ret");
+    expect(saved.boardId).toBe("b1");
+    expect(saved.kind).toBe("text");
+    expect(typeof saved.createdAt).toBe("number");
+  });
+
+  it("P2-12: loadLastVisitedAt은 id→lastVisitedAt 맵만 돌려준다", async () => {
+    const s = useStorage.getState();
+    await s.saveNote({ id: "n1", boardId: "b1", content: "a" });
+    await s.saveNote({ id: "n2", boardId: "b1", content: "b" });
+    await s.saveNote({ id: "n3", boardId: null, content: "c" });
+    const map = await s.loadLastVisitedAt("b1");
+    expect(Object.keys(map).sort()).toEqual(["n1", "n2"]);
+    expect(map.n1).toBeGreaterThan(0);
+    expect(map.n3).toBeUndefined();
+  });
+
   it("removeNote cascades connections and embeddings", async () => {
     const s = useStorage.getState();
     await s.saveNote({ id: "n1" });

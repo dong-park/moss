@@ -10,6 +10,16 @@ import {
 } from "../db/schema";
 import { putBlob } from "../db/opfs";
 import { normalizeTitle } from "../memoTitle";
+import { useWorkspace, SYSTEM_BOARD_ID } from "../workspace";
+import { getActiveBoardDoc } from "@/state/ydoc/activeDoc";
+import {
+  clearBoardRecords,
+  clearSharedSnapshots,
+  putBoard,
+  putConnection,
+  putNote,
+  writeToBoardDoc,
+} from "@/state/ydoc";
 import { partitionImportNotes } from "./partitionImportNotes";
 import { validateManifest } from "./validateManifest";
 import type { ImportReport, MossBundleManifest } from "./types";
@@ -30,6 +40,87 @@ export class ImportRejectedError extends Error {
     super(reason);
     this.name = "ImportRejectedError";
   }
+}
+
+/**
+ * 가져온 settings.json에서 사용자 설정만 화이트리스트로 뽑는다. 이전 이력
+ * (migratedDocs·migrationFailures·dexieMigrationVersion)은 가져온 쪽의 부팅
+ * 상태를 오염시키므로 버린다.
+ */
+function pickUserSettings(raw: Settings | null): Settings {
+  if (!raw) return { ...DEFAULT_SETTINGS };
+  return {
+    id: "singleton",
+    aiOptOutGlobal: raw.aiOptOutGlobal ?? DEFAULT_SETTINGS.aiOptOutGlobal,
+    persistGranted: raw.persistGranted ?? DEFAULT_SETTINGS.persistGranted,
+    storageQuotaShown: raw.storageQuotaShown ?? DEFAULT_SETTINGS.storageQuotaShown,
+    uiLocale: DEFAULT_SETTINGS.uiLocale,
+    installPromptShown: raw.installPromptShown ?? DEFAULT_SETTINGS.installPromptShown,
+  };
+}
+
+/**
+ * 신뢰 경계 — boards.json은 사용자가 만든 파일일 수 있다. id는 문자열·유일해야
+ * 하고 시스템 보드 id는 쓰기를 가로채므로 거부한다.
+ */
+function validateImportedBoards(boards: Board[]): void {
+  const seen = new Set<string>();
+  for (const raw of boards as unknown[]) {
+    const board = raw as Partial<Board> | null;
+    if (!board || typeof board.id !== "string" || board.id === "") {
+      throw new ImportRejectedError("invalid_structure");
+    }
+    if (board.id === SYSTEM_BOARD_ID) {
+      throw new ImportRejectedError("invalid_structure");
+    }
+    if (seen.has(board.id)) {
+      throw new ImportRejectedError("invalid_structure");
+    }
+    seen.add(board.id);
+  }
+}
+
+/**
+ * n23 P1-2 / 재심사 2R-5: 가져온 메모의 boardId는 null이거나 문자열이어야 한다.
+ * 시스템 보드는 스토리지에서 null로 표현하므로 문자열 "system"은 시스템 문서를
+ * 가로채는 입력이라 거부하고, 빈 문자열도 거부한다. merge에서는 boardId가 번들
+ * boards id 또는 기존 Dexie boards id여야 한다(허용 집합 밖이면 거부).
+ */
+function validateImportedNotes(
+  notes: Note[],
+  allowedBoardIds: Set<string>,
+): void {
+  for (const note of notes as unknown[]) {
+    const n = note as Partial<Note> | null;
+    if (!n) continue;
+    const b = n.boardId;
+    if (b === undefined || b === null) continue;
+    if (typeof b !== "string" || b === "" || b === SYSTEM_BOARD_ID) {
+      throw new ImportRejectedError("invalid_structure");
+    }
+    if (!allowedBoardIds.has(b)) {
+      throw new ImportRejectedError("invalid_structure");
+    }
+  }
+}
+
+/** n23 P1-10: 문서를 동시에 여는 수를 제한한다 — overwrite가 보드 전부를 한꺼번에
+ * 열면 IndexedDB 연결·메모리가 급증한다. */
+export const IMPORT_DOC_CONCURRENCY = 4;
+
+export async function forEachWithConcurrency<T>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<void>,
+): Promise<void> {
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (cursor < items.length) {
+      const item = items[cursor++];
+      await fn(item);
+    }
+  });
+  await Promise.all(workers);
 }
 
 interface ParsedBundle {
@@ -91,14 +182,13 @@ async function parseMossZip(file: Blob): Promise<ParsedBundle> {
 
   const notes = await readJson<unknown[]>("notes.json", []);
   const boards = await readJson<Board[]>("boards.json", []);
+  if (!Array.isArray(boards)) throw new ImportRejectedError("invalid_structure");
+  validateImportedBoards(boards);
   const connections = await readJson<Connection[]>("connections.json", []);
   const embeddingsRaw = await readJson<
     { noteId: string; contentHash: string; vector: number[]; updatedAt: number }[]
   >("embeddings.json", []);
-  const settings =
-    (await readJson<Settings | null>("settings.json", null)) ?? {
-      ...DEFAULT_SETTINGS,
-    };
+  const settings = pickUserSettings(await readJson<Settings | null>("settings.json", null));
 
   const embeddings = embeddingsRaw.map(parseEmbedding);
 
@@ -160,6 +250,18 @@ export async function importMossBundle(
   const db = getDB();
   await db.open();
 
+  // n23 재심사 2R-5: merge의 note.boardId 허용 집합 = 번들 boards ∪ 기존 Dexie
+  // boards. overwrite는 기존 boards를 비우므로 번들 boards만 허용한다.
+  const existingBoardIds =
+    mode === "merge"
+      ? new Set<string>(await db.boards.toCollection().primaryKeys())
+      : new Set<string>();
+  const allowedBoardIds = new Set<string>(parsed.boards.map((b) => b.id));
+  if (mode === "merge") {
+    for (const id of existingBoardIds) allowedBoardIds.add(id);
+  }
+  validateImportedNotes(accepted, allowedBoardIds);
+
   let skippedDuplicateId = 0;
   let unlinkedFrameRefs = 0;
   const notesToPut: Note[] = [];
@@ -187,13 +289,18 @@ export async function importMossBundle(
   let embeddingsToPut = parsed.embeddings.filter((e) => noteIdSet.has(e.noteId));
 
   if (mode === "merge") {
-    const existingBoardIds = new Set(await db.boards.toCollection().primaryKeys());
     boardsToPut = parsed.boards.filter((b) => !existingBoardIds.has(b.id));
     const existingConnIds = new Set(await db.connections.toCollection().primaryKeys());
     connectionsToPut = connectionsToPut.filter((c) => !existingConnIds.has(c.id));
     const existingEmbIds = new Set(await db.embeddings.toCollection().primaryKeys());
     embeddingsToPut = embeddingsToPut.filter((e) => !existingEmbIds.has(e.noteId));
   }
+
+  // overwrite는 기존 보드 문서의 공유 내용도 비운다(작업 3) — Dexie clear와 정합.
+  const boardIdsBeforeOverwrite =
+    mode === "overwrite"
+      ? ((await db.boards.toCollection().primaryKeys()) as string[])
+      : [];
 
   // 단일 Dexie tx — 실패 시 롤백 (§3-1)
   await db.transaction(
@@ -217,6 +324,75 @@ export async function importMossBundle(
       }
     },
   );
+
+  // n23 작업 3: 원본은 Y.Doc — 가져온 레코드를 각 보드 문서에 직접 쓴다.
+  // overwrite는 먼저 옛 보드 문서를 비운다(새 집합에 없는 보드 정리 포함).
+  // n23 재심사 2R-4: clear도 동시 4개로 제한하고 쓰기 직후 닫아(closeNow) 실제
+  // 열려 있는 문서 수를 IMPORT_DOC_CONCURRENCY 이하로 유지한다.
+  if (mode === "overwrite") {
+    await forEachWithConcurrency(
+      [null, ...boardIdsBeforeOverwrite] as (string | null)[],
+      IMPORT_DOC_CONCURRENCY,
+      (boardId) => clearBoardRecords(boardId, { closeNow: true }),
+    );
+    // 문서를 비웠으니 공유 필드 스냅샷도 버린다 — 옛 값 기준 diff로 새 메모를
+    // 낡은 좌표로 덮지 않게.
+    clearSharedSnapshots();
+  }
+
+  // 보드별로 묶어 문서를 한 번만 연다 — 메모 1,000장도 open 1회.
+  const notesByBoard = new Map<string | null, Note[]>();
+  for (const note of notesToPut) {
+    const key = note.boardId ?? null;
+    const list = notesByBoard.get(key);
+    if (list) list.push(note);
+    else notesByBoard.set(key, [note]);
+  }
+  const sourceBoard = new Map<string, string | null>();
+  for (const note of accepted) sourceBoard.set(note.id, note.boardId ?? null);
+  const connsByBoard = new Map<string | null, Connection[]>();
+  for (const conn of connectionsToPut) {
+    const key = sourceBoard.get(conn.sourceNoteId) ?? null;
+    const list = connsByBoard.get(key);
+    if (list) list.push(conn);
+    else connsByBoard.set(key, [conn]);
+  }
+  const boardById = new Map(boardsToPut.map((b) => [b.id, b]));
+  const touchedBoards = new Set<string | null>([
+    ...boardById.keys(),
+    ...notesByBoard.keys(),
+    ...connsByBoard.keys(),
+  ]);
+  await forEachWithConcurrency(
+    [...touchedBoards],
+    IMPORT_DOC_CONCURRENCY,
+    (boardId) =>
+      writeToBoardDoc(
+        boardId,
+        (doc) => {
+          const board = boardId === null ? undefined : boardById.get(boardId);
+          if (board) putBoard(doc, board);
+          for (const note of notesByBoard.get(boardId) ?? []) putNote(doc, note);
+          for (const conn of connsByBoard.get(boardId) ?? []) putConnection(doc, conn);
+        },
+        // n23 재심사 2R-4: TTL로 열어 두지 않는다 — 동시 열기 상한이 곧 실제 open 수.
+        { closeNow: true },
+      ),
+  );
+
+  // n23 P1-3 / 재심사 2R-5: 스토어를 문서에서 다시 읽는다.
+  // overwrite는 활성 보드가 번들에 없어도(옛 보드가 사라졌어도) 항상 재로드한다 —
+  // 안 하면 사라진 보드를 보던 스토어가 낡은 카드를 유지한다. merge는 활성 보드가
+  // 실제로 바뀐 경우만.
+  if (mode === "overwrite") {
+    await useWorkspace.getState().loadFromStorage();
+  } else if (getActiveBoardDoc() !== null) {
+    const current = useWorkspace.getState().currentBoardId;
+    const activeStorageId = current === SYSTEM_BOARD_ID ? null : current;
+    if (touchedBoards.has(activeStorageId)) {
+      await useWorkspace.getState().loadFromStorage();
+    }
+  }
 
   // tx 성공 후 OPFS blob 쓰기 — 일부 실패해도 메모는 살림 (AC-10)
   let missingAttachments = 0;

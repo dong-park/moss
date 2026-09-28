@@ -9,6 +9,7 @@ import {
   peekMossManifest,
 } from "../mossBundleImport";
 import { CURRENT_SCHEMA_VERSION } from "../legacyKinds";
+import { SYSTEM_BOARD_ID } from "@/state/workspace";
 
 beforeEach(async () => {
   await resetDB();
@@ -79,6 +80,53 @@ async function seedRoundTripData() {
       lastVisitedAt: 3,
     },
   ]);
+}
+
+function makeBoardRow(id: unknown) {
+  return {
+    id,
+    name: "Board",
+    isSystem: false,
+    createdAt: 1,
+    updatedAt: 1,
+    lastOpenedAt: 1,
+  };
+}
+
+async function makeBundle(opts: {
+  notes?: unknown[];
+  boards?: unknown[];
+  settings?: unknown;
+}): Promise<Blob> {
+  const zip = new JSZip();
+  zip.file(
+    "manifest.json",
+    JSON.stringify({
+      version: "1.1",
+      exportedAt: 1,
+      schemaVersion: CURRENT_SCHEMA_VERSION,
+      counts: {
+        notes: opts.notes?.length ?? 0,
+        frames: 0,
+        boards: opts.boards?.length ?? 0,
+        connections: 0,
+        embeddings: 0,
+      },
+      scope: "all",
+    }),
+  );
+  zip.file("notes.json", JSON.stringify(opts.notes ?? []));
+  zip.file("boards.json", JSON.stringify(opts.boards ?? []));
+  if (opts.settings !== undefined) {
+    zip.file("settings.json", JSON.stringify(opts.settings));
+  }
+  return zip.generateAsync({ type: "blob" });
+}
+
+async function expectRejected(blob: Blob): Promise<ImportRejectedError> {
+  const err = await importMossBundle(blob, "overwrite").catch((e) => e);
+  expect(err).toBeInstanceOf(ImportRejectedError);
+  return err as ImportRejectedError;
 }
 
 describe("importMossBundle", () => {
@@ -259,5 +307,47 @@ describe("importMossBundle", () => {
     expect(note?.title!.length).toBeLessThanOrEqual(80);
     expect(note?.title).not.toContain("\n");
     expect(note?.title?.startsWith("가")).toBe(true);
+  });
+
+  it("P1-6 · boards.json 의 시스템 보드 id·중복 id·비문자열 id 를 거부한다", async () => {
+    const system = await expectRejected(
+      await makeBundle({ boards: [makeBoardRow(SYSTEM_BOARD_ID)] }),
+    );
+    expect(system.reason).toBe("invalid_structure");
+
+    const dup = await expectRejected(
+      await makeBundle({ boards: [makeBoardRow("b1"), makeBoardRow("b1")] }),
+    );
+    expect(dup.reason).toBe("invalid_structure");
+
+    const badType = await expectRejected(
+      await makeBundle({ boards: [makeBoardRow(1)] }),
+    );
+    expect(badType.reason).toBe("invalid_structure");
+  });
+
+  it("P2-7 · 가져온 settings.json 의 이전 이력은 버리고 사용자 설정만 반영한다", async () => {
+    const blob = await makeBundle({
+      settings: {
+        id: "singleton",
+        aiOptOutGlobal: true,
+        persistGranted: null,
+        storageQuotaShown: { at80: false, at95: false },
+        uiLocale: "ko",
+        installPromptShown: true,
+        migratedDocs: ["leak"],
+        migrationFailures: { leak: 3 },
+        dexieMigrationVersion: 1,
+      },
+    });
+
+    await importMossBundle(blob, "overwrite");
+
+    const s = await getDB().settings.get("singleton");
+    expect(s?.aiOptOutGlobal).toBe(true);
+    expect(s?.installPromptShown).toBe(true);
+    expect(s?.migratedDocs).toBeUndefined();
+    expect(s?.migrationFailures).toBeUndefined();
+    expect(s?.dexieMigrationVersion).toBeUndefined();
   });
 });

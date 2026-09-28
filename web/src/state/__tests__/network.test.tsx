@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, render } from "@testing-library/react";
+import { renderToString } from "react-dom/server";
 import { useOnlineStatus } from "@/state/network";
 
 function Probe() {
@@ -36,5 +37,10 @@ describe("useOnlineStatus", () => {
       window.dispatchEvent(new Event("online"));
     });
     expect(getByTestId("online").textContent).toBe("true");
+  });
+
+  it("첫 렌더는 navigator.onLine과 무관하게 true — SSR과 hydration이 같다", () => {
+    Object.defineProperty(navigator, "onLine", { value: false, configurable: true });
+    expect(renderToString(<Probe />)).toContain("true");
   });
 });

@@ -20,6 +20,11 @@ import {
   quotaUsage,
   type QuotaInfo,
 } from "@/state/db/opfs";
+import {
+  deleteConnectionRecord,
+  writeConnectionRecord,
+} from "@/state/ydoc/writeThrough";
+
 
 interface StorageState {
   initialized: boolean;
@@ -29,7 +34,12 @@ interface StorageState {
   init: () => Promise<void>;
 
   loadCards: (boardId: string | null) => Promise<Note[]>;
-  saveNote: (patch: Partial<Note> & { id: string }) => Promise<void>;
+  /**
+   * n23 P2-12: 보드의 기기 로컬 필드(lastVisitedAt)만 id→값으로 읽는다.
+   * 카드 본문·좌표는 Y.Doc이 원본이라 Dexie에서 Note 전체를 재구성할 필요가 없다.
+   */
+  loadLastVisitedAt: (boardId: string | null) => Promise<Record<string, number>>;
+  saveNote: (patch: Partial<Note> & { id: string }) => Promise<Note>;
   removeNote: (id: string) => Promise<void>;
 
   /**
@@ -217,12 +227,28 @@ export const useStorage = create<StorageState>((set, get) => ({
     return notes;
   },
 
+  loadLastVisitedAt: async (boardId) => {
+    const db = getDB();
+    const coll =
+      boardId === null
+        ? db.notes.filter((n) => n.boardId === null)
+        : db.notes.where("boardId").equals(boardId);
+    const out: Record<string, number> = {};
+    await coll.each((n) => {
+      if (typeof n.lastVisitedAt === "number") out[n.id] = n.lastVisitedAt;
+    });
+    return out;
+  },
+
   saveNote: async (patch) => {
     const db = getDB();
     const prev = await db.notes.get(patch.id);
     const next = mergeNote(prev, patch);
     await db.notes.put(next);
     // 빈번한 saveNote 후마다 quota 호출은 비싸므로 호출자가 refreshQuota를 명시적으로 부른다.
+    // n23 P1-5: 정규화된 Note를 돌려준다 — 호출자(브리지)가 Dexie read-back 없이
+    // 그대로 Y.Doc에 쓸 수 있게. read-back이 비면 쓰기를 조용히 건너뛰던 경로 제거.
+    return next;
   },
 
   removeNote: async (id) => {
@@ -485,10 +511,20 @@ export const useStorage = create<StorageState>((set, get) => ({
     const prev = await db.connections.get(patch.id);
     const next = mergeConnection(prev, patch);
     await db.connections.put(next);
+    // n23 P1-1: 연결선의 Y.Doc 쓰기는 writeThrough 단일 경로(소유=source 메모 보드)만
+    // 담당한다. 여기서 활성 문서에 쓰면 활성 보드가 아닌 소유 보드에도 실려 비공개
+    // 보드 정보가 공유 문서로 샌다.
+    // n23 재심사 2R-6: 저장은 Dexie 미러 + 소유 문서를 storage 한 액션으로 합친다.
+    // 소유 보드는 원본 문서의 source 메모에서 판정한다(미러는 locate 힌트일 뿐).
+    await writeConnectionRecord(next);
   },
 
   removeConnection: async (id) => {
-    await getDB().connections.delete(id);
+    const db = getDB();
+    const conn = await db.connections.get(id);
+    await db.connections.delete(id);
+    // n23 재심사 2R-6: 삭제도 한 액션에서 소유 문서까지 지운다.
+    if (conn) await deleteConnectionRecord(id, conn.sourceNoteId);
   },
 
   updateSettings: async (patch) => {

@@ -28,6 +28,11 @@ import {
 } from "@/state/workspace";
 import { useStorage } from "@/state/storage";
 import { getDB } from "@/state/db/schema";
+import {
+  deleteNoteRecord,
+  writeBoardRecord,
+  writeNoteRecord,
+} from "@/state/ydoc";
 import { serializeBlock } from "@/state/blocks";
 import { putBlob, makeAttachmentFilename } from "@/state/db/opfs";
 import {
@@ -313,17 +318,22 @@ export async function dispatchOp(
         return { id, kind: "text" };
       }
       const id = newNoteId();
-      await useStorage.getState().saveNote({
+      const note = {
         id,
         boardId: storageId,
-        kind: "text",
+        kind: "text" as const,
         x,
         y,
         ...(square !== undefined ? { width: square, height: square } : {}),
         content: finalContent,
         aiOptOut: false,
         rotation: 0,
-      });
+      };
+      const storage = useStorage.getState();
+      // n23 P1-5: saveNote가 정규화된 Note를 돌려준다 — Dexie read-back이 비어
+      // Y.Doc 쓰기를 조용히 건너뛰던 경로가 없다.
+      const saved = await storage.saveNote(note);
+      await writeNoteRecord(saved);
       return { id, kind: "text", boardId: storageId };
     }
 
@@ -338,7 +348,9 @@ export async function dispatchOp(
       // 다른 보드 카드 — 존재 확인 후 content만 병합 저장(없으면 junk 생성 방지).
       const note = await getDB().notes.get(id);
       if (!note) throw new Error(`카드를 찾을 수 없습니다: ${id}`);
-      await useStorage.getState().saveNote({ id, content });
+      // n23 P1-5: saveNote가 정규화된 Note를 돌려준다.
+      const saved = await useStorage.getState().saveNote({ id, content });
+      await writeNoteRecord(saved);
       return { id };
     }
 
@@ -354,6 +366,7 @@ export async function dispatchOp(
       // 판은 휴지통 대상이 아니다(spec §2) — 지금처럼 즉시 삭제.
       if (note.kind === "frame") await useStorage.getState().removeNote(id);
       else await useStorage.getState().trashNote(id);
+      await deleteNoteRecord(id, note.boardId ?? null);
       void ws.refreshTrashCount();
       return { id };
     }
@@ -380,18 +393,22 @@ export async function dispatchOp(
         parentBoardId: target,
       });
       const id = newNoteId();
-      await storage.saveNote({
+      const note = {
         id,
         boardId: storageId,
-        kind: "board",
+        kind: "board" as const,
         content: encodeSubcanvas(childBoardId),
         x,
         y,
         aiOptOut: false,
         rotation: 0,
-      });
-      return { id, kind: "board", boardRef: childBoardId, boardId: storageId };
-    }
+      };
+      // n23 P1-5: saveNote가 정규화된 Note를 돌려준다.
+      const savedNote = await storage.saveNote(note);
+      const savedBoard = await getDB().boards.get(childBoardId);
+      if (savedBoard) await writeBoardRecord(savedBoard);
+      await writeNoteRecord(savedNote);
+      return { id, kind: "board", boardRef: childBoardId, boardId: storageId };    }
 
     case "ai.preview": {
       // /api/preview는 same-origin만 허용한다(SSRF 가드). in-page fetch는 정당하게 통과.
@@ -456,6 +473,7 @@ export async function dispatchOp(
       const label = typeof params.label === "string" ? params.label : undefined;
       const id = `cx-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6)}`;
       // mergeConnection이 source="manual"/status="active"/createdAt을 채운다.
+      // n23 재심사 2R-6: Dexie 미러와 소유 문서 쓰기는 saveConnection 한 액션이 함께 한다.
       await useStorage.getState().saveConnection({ id, sourceNoteId, targetNoteId, label });
       return { id };
     }
@@ -463,6 +481,7 @@ export async function dispatchOp(
     case "connections.delete": {
       const id = String(params.id ?? "");
       if (!id) throw new Error("id가 필요합니다");
+      // n23 재심사 2R-6: 미러 삭제와 소유 문서 삭제를 한 액션이 함께 한다.
       await useStorage.getState().removeConnection(id);
       return { id };
     }

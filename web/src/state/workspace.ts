@@ -3,6 +3,7 @@
 import { create } from "zustand";
 import type { AINoteRef } from "./aiGate";
 import { useStorage } from "./storage";
+import { SYSTEM_BOARD_ID } from "./boardIds";
 import {
   getDB,
   makeFrameNote,
@@ -20,7 +21,42 @@ import {
   flushCard,
   flushAll,
 } from "./cardPersist";
-import { initLiveSync } from "./db/liveSync"; // W8: 다중 탭 동기화
+import { initLiveSync, attachLiveDoc, broadcastDocWrite } from "./db/liveSync"; // W8/n3: 다중 탭 동기화
+import {
+  activateBoardDoc,
+  getActiveBoardDoc,
+  getOrOpenBoardDoc,
+  closeBoardDoc,
+  discardBoardDocByKey,
+  isActiveBoard,
+  docKeyForBoard,
+  destroyBoardDocs,
+} from "./ydoc/activeDoc";
+import {
+  putNote as putNoteDoc,
+  updateNoteField,
+  updateNoteFields,
+  deleteNote as deleteNoteDoc,
+  putBoard as putBoardDoc,
+  notesMap,
+  connectionsMap,
+  metaMap,
+  readNote,
+  readNotes,
+  readConnection,
+  readBoard,
+  toSharedNote,
+  type SharedNote,
+} from "./ydoc/model";
+import { isRemoteTransaction, transactLocal } from "./ydoc/origin";
+import {
+  clearSharedSnapshots,
+  forgetSharedSnapshot,
+  getSharedSnapshot,
+  setSharedSnapshot,
+} from "./ydoc/sharedSnapshot";
+import { writeToBoardDoc } from "./ydoc/writeThrough";
+import type * as Y from "yjs";
 import {
   parseCode,
   parseHandwriting,
@@ -42,8 +78,9 @@ import {
 /**
  * 시스템 보드 "머무는 생각"의 가상 id. DB에는 row를 두지 않고
  * 실제 노트는 boardId=null로 저장한다 (FEAT-boards 결정 1).
+ * 단일 출처는 leaf 모듈 boardIds.ts — ydoc 문서 키도 여기서 파생한다.
  */
-export const SYSTEM_BOARD_ID = "system" as const;
+export { SYSTEM_BOARD_ID };
 export type CurrentBoardId = string;
 
 /**
@@ -268,6 +305,11 @@ interface WorkspaceState {
   viewportByBoard: Record<string, Viewport>;
   /** 보드 전환 페이드 (200ms ease-out) 진행 중 표시. UI 레이어가 구독. */
   boardTransitioning: boolean;
+  /**
+   * n23 작업 4: 부팅 예산(3초)을 넘긴 Dexie→Yjs 이전이 백그라운드에서 계속되는 동안
+   * true. UI가 로딩 표시를 띄운다. 이전이 끝나면 스토어를 다시 읽고 false.
+   */
+  migrationPending: boolean;
   /** TemplatePicker 모달 열림 상태 — Cmd+N / "+ 새 보드" 진입점이 공유. */
   templatePickerOpen: boolean;
   /**
@@ -321,6 +363,11 @@ interface WorkspaceState {
   ) => string;
   moveCard: (id: string, x: number, y: number) => void;
   moveSelectedBy: (dx: number, dy: number) => void;
+  /**
+   * FEAT-collab-auth n3 D4: 드래그 종료 시 좌표를 Y.Doc에 한 번 쓴다.
+   * ids 생략 시 현재 선택. 드래그 중에는 문서를 쓰지 않는다.
+   */
+  commitMove: (ids?: string[]) => void;
   /**
    * 사용자 리사이즈. 코너 핸들에서 left/top 엣지를 잡으면 x/y도 함께 이동한다.
    * width/height는 [[CARD_MIN_WIDTH]] ~ [[CARD_MAX_WIDTH]], [[CARD_MIN_HEIGHT]] ~ [[CARD_MAX_HEIGHT]]로 클램프.
@@ -928,9 +975,9 @@ export function computeBreadcrumb(
   return chain;
 }
 
-function persistCard(card: Card, boardId: string | null): Promise<void> {
+function persistCardDexie(card: Card, boardId: string | null): Promise<Note> {
   const storage = useStorage.getState();
-  if (!storage.initialized) return Promise.resolve();
+  if (!storage.initialized) return Promise.resolve(initialNoteFromCard(card, boardId));
   const content = encodeCardContent(card);
   // FEAT-ai-pipeline §2: 메모 저장 시 임베딩 큐로 enqueue.
   // moveCard처럼 본문 변경 없이 호출되는 경로에서도 큐 안에서 콘텐츠 해시
@@ -964,13 +1011,359 @@ function persistCard(card: Card, boardId: string | null): Promise<void> {
   });
 }
 
+/* ─────────── n23 작업 2: 공유 문서 쓰기의 단일 통로 ───────────
+ *
+ * 카드→문서 Note 변환과 "어떤 필드가 공유인가" 결정을 이 한 곳에 모은다.
+ * 호출부는 persistCard/persistCardDebounced만 부르고, 이들이 문서 쓰기를 포함한다.
+ * 드래그 중 쓰기 금지(D4)는 `{doc:false}`로 명시한다 — 좌표는 commitMove가 한 번 쓴다.
+ */
+
+/** 카드의 공유 필드를 활성 문서에 반영한다(없으면 생성). 문서에 안 실리는 기기 로컬
+ * 필드(lastVisitedAt)는 쓰지 않는다. 생성 시각은 불변이라 기존 메모에는 갱신하지 않는다. */
+function writeCardToDoc(card: Card, boardId: string | null): void {
+  withActiveDoc(boardId, (doc) => writeCardToDocHandle(doc, card, boardId));
+}
+
+function persistCard(
+  card: Card,
+  boardId: string | null,
+  opts?: { doc?: boolean },
+): Promise<Note> {
+  if (opts?.doc !== false) writeCardToDoc(card, boardId);
+  return persistCardDexie(card, boardId);
+}
+
 /** moveCard / setContent 같은 빈번한 변경은 300ms 디바운스 후 영속.
+ * 문서 반영은 즉시(원격 피어가 곧 본다), Dexie 미러만 디바운스한다.
  * 타이머·flush 기계는 cardPersist.ts(seam)로 분리 — 동작 불변, persist 본문만 주입.
  * flushCard/flushAll은 언마운트·beforeunload 유실 가드(W1)용으로 재노출. */
 export { flushCard, flushAll };
 
-function persistCardDebounced(card: Card, boardId: string | null) {
-  schedulePersist(card.id, () => persistCard(card, boardId));
+function persistCardDebounced(
+  card: Card,
+  boardId: string | null,
+  opts?: { doc?: boolean },
+) {
+  if (opts?.doc !== false) writeCardToDoc(card, boardId);
+  schedulePersist(card.id, async () => {
+    await persistCardDexie(card, boardId);
+  });
+}
+
+/* ─────────── FEAT-collab-auth n3: Y.Doc 쓰기·반영 ───────────
+ *
+ * 원본은 보드 Y.Doc. Dexie `notes`는 검색·휴지통·서브캔버스 집계가 읽는
+ * 파생 인덱스로 계속 미러링한다(마이그레이션 n2가 붙기 전까지 읽기 경로를
+ * 바꾸면 기존 Dexie 시드 테스트가 전부 깨진다 — 갭은 결산에 기록).
+ */
+
+/** Card를 문서에 처음 넣을 때의 전체 Note. */
+function initialNoteFromCard(card: Card, boardId: string | null): Note {
+  const now = Date.now();
+  return {
+    id: card.id,
+    boardId,
+    kind: card.kind,
+    x: card.x,
+    y: card.y,
+    width: card.width,
+    height: memoHeight(card.kind, card.width, card.height),
+    rotation: 0,
+    content: encodeCardContent(card),
+    attachmentRef: card.attachmentRef,
+    mediaType: card.mediaType,
+    overlay: card.overlay,
+    frameId: card.frameId,
+    title: card.title,
+    aiOptOut: !!card.aiOptOut,
+    createdAt: now,
+    updatedAt: now,
+    lastVisitedAt: now,
+  };
+}
+
+/** 활성 보드 문서가 있으면 그 안에서 fn을 실행한다(없으면 no-op). */
+function withActiveDoc(
+  boardId: string | null,
+  fn: (doc: Y.Doc) => void,
+): void {
+  if (!isActiveBoard(boardId)) return;
+  const doc = getActiveBoardDoc()?.doc;
+  if (!doc) return;
+  fn(doc);
+}
+
+/** n23 P2-11: 마지막으로 문서에 쓴 공유 필드 스냅샷. 로컬이 실제로 바꾼 필드만
+ * 문서에 쓰기 위한 기준이다 — 원격이 바꾼 필드를 낡은 로컬 값으로 덮지 않는다.
+ * n23 재심사 2R-2: 문서 쓰기 단일 출구가 갱신하고 삭제 경로가 버린다. */
+
+/** 문서 하나에 카드 공유 필드를 쓴다(없으면 생성). 활성/비활성 보드 공통 경로. */
+function writeCardToDocHandle(doc: Y.Doc, card: Card, boardId: string | null): void {
+  const full = initialNoteFromCard(card, boardId);
+  const shared = toSharedNote(full);
+  if (notesMap(doc).get(card.id) === undefined) {
+    putNoteDoc(doc, full);
+    setSharedSnapshot(card.id, shared);
+    return;
+  }
+  const prev = getSharedSnapshot(card.id);
+  if (prev === undefined) {
+    // 스냅샷이 없으면(재로드 뒤 첫 갱신) 전체를 갱신한다 — 생성 시각은 보존.
+    const fields: Partial<SharedNote> = { ...shared };
+    delete fields.createdAt;
+    updateNoteFields(doc, card.id, fields);
+    setSharedSnapshot(card.id, shared);
+    return;
+  }
+  // n23 P2-11: 스냅샷과 달라진 필드만 쓴다. updateNoteFields가 이미 문서와 같은
+  // 값은 건너뛰므로, 원격이 바꾼 width 등을 로컬 낡은 값으로 덮지 않는다.
+  const diff: Partial<SharedNote> = {};
+  const prevRec = prev as Record<string, unknown>;
+  for (const [field, value] of Object.entries(shared)) {
+    if (field === "createdAt") continue;
+    if (prevRec[field] !== value) (diff as Record<string, unknown>)[field] = value;
+  }
+  for (const field of Object.keys(prevRec)) {
+    if (!(field in shared) && prevRec[field] !== undefined) {
+      (diff as Record<string, unknown>)[field] = undefined;
+    }
+  }
+  if (Object.keys(diff).length > 0) updateNoteFields(doc, card.id, diff);
+  setSharedSnapshot(card.id, shared);
+}
+
+/** 보드 전환·로드 시 활성 문서에 원격 반영 observer를 건다. 이전 것을 해제한다. */
+let unbindDocReflection: (() => void) | null = null;
+
+/** 원격 연결선 반영의 Dexie 파생 쓰기 디바운스(6(d)). */
+const CONNECTION_MIRROR_DEBOUNCE_MS = 300;
+
+/**
+ * n23 작업 1: 앱 읽기 경로 — 카드는 활성 보드 문서가 원본이다. 기기 로컬 필드
+ * (lastVisitedAt)만 Dexie 미러에서 합친다. Dexie notes가 비어도 문서만으로 열린다.
+ * 정렬은 createdAt 오름차순(loadCards와 같은 규약 — 겹친 판 판정이 순서에 의존).
+ */
+async function loadBoardCards(storageBid: string | null): Promise<Card[]> {
+  const doc = getActiveBoardDoc()?.doc;
+  if (!doc || !isActiveBoard(storageBid)) return [];
+  const shared = readNotes(doc).sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+  const storage = useStorage.getState();
+  // n23 P2-12: 본문·좌표는 문서가 원본이라 기기 로컬 필드(lastVisitedAt)만 합친다.
+  const locals = storage.initialized ? await storage.loadLastVisitedAt(storageBid) : {};
+  return shared.map((n) => {
+    const base = n as Note;
+    const local = locals[n.id];
+    return decodeNoteToCard(
+      local === undefined ? base : { ...base, lastVisitedAt: local },
+    );
+  });
+}
+
+/**
+ * n23 작업 6(f): 활성 보드 전환의 단일 진입점. activeKey(activeDoc)·원격 반영
+ * observer·liveSync attach 세 배선을 함께 소유한다 — 보드 전환 지점은 이 함수만 부른다.
+ */
+async function activateBoard(storageBid: string | null) {
+  const handle = await activateBoardDoc(storageBid);
+  bindActiveDocReflection(handle.doc, storageBid);
+  attachLiveDoc(handle.doc, docKeyForBoard(storageBid));
+  return handle;
+}
+
+function bindActiveDocReflection(doc: Y.Doc, storageBoardId: string | null): void {
+  unbindDocReflection?.();
+  unbindDocReflection = null;
+
+  const reflect = (events: Y.YEvent<Y.AbstractType<unknown>>[], transaction: Y.Transaction): void => {
+    if (!isRemoteTransaction(transaction)) return;
+    if (!isActiveBoard(storageBoardId)) return;
+    const changed = new Set<string>();
+    for (const ev of events) {
+      if (ev.path.length >= 1) {
+        changed.add(String(ev.path[0]));
+      } else {
+        for (const key of (ev as Y.YMapEvent<unknown>).keysChanged) {
+          changed.add(key);
+        }
+      }
+    }
+    if (changed.size === 0) return;
+    const state = useWorkspace.getState();
+    const nextCards = [...state.cards];
+    let dirty = false;
+    for (const id of changed) {
+      const shared = readNote(doc, id);
+      const idx = nextCards.findIndex((c) => c.id === id);
+      if (!shared) {
+        if (idx !== -1) {
+          nextCards.splice(idx, 1);
+          dirty = true;
+          // 원격·다른 탭 삭제는 휴지통으로만 옮긴다. removeNote는 purge까지 해서
+          // 삭제한 탭이 만든 휴지통 행을 지워 버린다(n3 리뷰 P0).
+          void useStorage.getState().trashNote(id);
+        }
+        continue;
+      }
+      // 기기 로컬 필드(lastVisitedAt)는 문서에 없다 — 기존 카드 값으로 합친다.
+      const lastVisitedAt =
+        idx !== -1 ? (nextCards[idx].lastVisitedAt ?? Date.now()) : Date.now();
+      const card = decodeNoteToCard({ ...shared, lastVisitedAt });
+      if (idx !== -1) nextCards[idx] = card;
+      else nextCards.push(card);
+      dirty = true;
+      // 6(d): 원격 반영의 Dexie 파생 쓰기는 디바운스로 합친다 — 키 입력 1자마다
+      // 전행 get+put 하던 비용을 제거. 문서는 원격이 이미 원본이라 쓰지 않는다.
+      persistCardDebounced(card, storageBoardId, { doc: false });
+    }
+    if (dirty) useWorkspace.setState({ cards: nextCards });
+  };
+
+  notesMap(doc).observeDeep(reflect);
+
+  const reflectMeta = (_e: Y.YMapEvent<unknown>, transaction: Y.Transaction): void => {
+    if (!isRemoteTransaction(transaction)) return;
+    if (!isActiveBoard(storageBoardId)) return;
+    if (storageBoardId === null) return; // 시스템 보드는 boards 목록에 없다
+    const board = readBoard(doc);
+    void (async () => {
+      const storage = useStorage.getState();
+      if (!storage.initialized) return;
+      await storage.saveBoard({ id: storageBoardId, name: board.name });
+      const boards = await storage.loadBoards();
+      useWorkspace.setState({ boards });
+    })();
+  };
+  metaMap(doc).observe(reflectMeta);
+
+  // 6(c): 변경된 연결선 id만 읽고 삭제도 반영한다. 6(d): Dexie 미러 쓰기는 디바운스.
+  const pendingConnIds = new Set<string>();
+  let connTimer: ReturnType<typeof setTimeout> | null = null;
+  const flushConnections = () => {
+    connTimer = null;
+    const ids = [...pendingConnIds];
+    pendingConnIds.clear();
+    if (ids.length === 0) return;
+    const storage = useStorage.getState();
+    if (!storage.initialized) return;
+    void (async () => {
+      const db = getDB();
+      // n23 P2-13: id마다 한 건씩 쓰지 않고 bulk로 합친다.
+      const puts: Connection[] = [];
+      const deletes: string[] = [];
+      for (const id of ids) {
+        const conn = readConnection(doc, id);
+        // 원격에서 사라진 연결선은 미러에서도 지운다 — 남으면 새로고침 후 부활한다.
+        if (conn) puts.push(conn);
+        else deletes.push(id);
+      }
+      if (puts.length > 0) await db.connections.bulkPut(puts);
+      if (deletes.length > 0) await db.connections.bulkDelete(deletes);
+    })();
+  };
+
+  const reflectConnections = (events: Y.YEvent<Y.AbstractType<unknown>>[], transaction: Y.Transaction): void => {
+    if (!isRemoteTransaction(transaction)) return;
+    if (!isActiveBoard(storageBoardId)) return;
+    const changed = new Set<string>();
+    for (const ev of events) {
+      if (ev.path.length >= 1) changed.add(String(ev.path[0]));
+      else for (const key of (ev as Y.YMapEvent<unknown>).keysChanged) changed.add(key);
+    }
+    if (changed.size === 0) return;
+    for (const id of changed) pendingConnIds.add(id);
+    if (connTimer === null) connTimer = setTimeout(flushConnections, CONNECTION_MIRROR_DEBOUNCE_MS);
+  };
+  connectionsMap(doc).observeDeep(reflectConnections);
+
+  unbindDocReflection = () => {
+    notesMap(doc).unobserveDeep(reflect);
+    metaMap(doc).unobserve(reflectMeta);
+    connectionsMap(doc).unobserveDeep(reflectConnections);
+    if (connTimer !== null) {
+      clearTimeout(connTimer);
+      connTimer = null;
+    }
+    pendingConnIds.clear();
+  };
+}
+
+/** 보드 메타를 그 보드 문서에 쓴다. Dexie boards에서 최신 값을 읽어 채운다. */
+async function writeBoardToDoc(id: string): Promise<void> {
+  const storage = useStorage.getState();
+  if (!storage.initialized) return;
+  const board = (await storage.loadBoards()).find((b) => b.id === id);
+  if (!board) return;
+  // n23: writeThrough 단일 경로 — 활성은 직접, 비활성은 열고 방송하고 TTL 후 닫는다.
+  await writeToBoardDoc(id, (doc) => putBoardDoc(doc, board));
+}
+
+/**
+ * 카드를 보드 사이에서 옮긴다 — 원본 문서에서 지우고 대상 문서에 만든다.
+ *
+ * 6(a): 대상 문서 내용을 Dexie 미러가 아니라 원본 Y.Doc에서 읽는다(미러 지연·실패에
+ * 유실되지 않게). 대상 문서 변경은 그 문서 키로 탭 간 방송한다 — 대상 보드를 보고
+ * 있는 다른 탭이 새로고침 없이 본다. 잠깐 연 비활성 문서는 쓰고 닫는다(6(h)).
+ */
+async function moveCardBetweenDocs(
+  cardId: string,
+  fromBoardId: string | null,
+  toBoardId: string | null,
+): Promise<void> {
+  const fromHandle = getOrOpenBoardDoc(fromBoardId);
+  // n23 재심사 2R-3: 소스 문서 로드가 실패하면 캐시에서 버리고 그대로 실패시킨다.
+  // 남겨 두면 재시도가 rejected 핸들을 받아 영영 열지 못한다.
+  try {
+    await fromHandle.whenLoaded;
+  } catch (err) {
+    discardBoardDocByKey(docKeyForBoard(fromBoardId));
+    throw err;
+  }
+  const shared = readNote(fromHandle.doc, cardId);
+  const fromIsActive = isActiveBoard(fromBoardId);
+
+  // n23 P1-8: 대상 문서를 먼저 열고 로드까지 성공해야 원본에서 지운다. 순서를
+  // 뒤집으면 대상 열기가 실패했을 때 원본에서만 사라져 메모가 영구 유실된다.
+  const toHandle = getOrOpenBoardDoc(toBoardId);
+  try {
+    await toHandle.whenLoaded;
+  } catch (err) {
+    discardBoardDocByKey(docKeyForBoard(toBoardId));
+    throw err;
+  }
+
+  const toIsActive = isActiveBoard(toBoardId);
+  // 원본 문서에 없으면(이전 안 된 옛 행) Dexie 미러로 폴백한다.
+  const source = shared ?? ((await getDB().notes.get(cardId)) as Note | undefined);
+
+  if (fromIsActive) {
+    withActiveDoc(fromBoardId, (doc) => deleteNoteDoc(doc, cardId));
+  } else {
+    broadcastDocWrite(docKeyForBoard(fromBoardId), fromHandle.doc, () =>
+      deleteNoteDoc(fromHandle.doc, cardId),
+    );
+  }
+  forgetSharedSnapshot(cardId);
+
+  if (source) {
+    const moved: Note = {
+      ...source,
+      boardId: toBoardId,
+      frameId: undefined, // 다른 캔버스로 나가면 판 소속은 풀린다.
+      updatedAt: Date.now(),
+      lastVisitedAt: Date.now(),
+    };
+    if (toIsActive) {
+      withActiveDoc(toBoardId, (doc) => putNoteDoc(doc, moved));
+    } else {
+      broadcastDocWrite(docKeyForBoard(toBoardId), toHandle.doc, () =>
+        putNoteDoc(toHandle.doc, moved),
+      );
+    }
+    setSharedSnapshot(cardId, toSharedNote(moved));
+  }
+
+  if (!fromIsActive) closeBoardDoc(fromBoardId);
+  if (!toIsActive) closeBoardDoc(toBoardId);
 }
 
 /**
@@ -1091,6 +1484,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   lastNonSystemBoardId: null,
   viewportByBoard: {},
   boardTransitioning: false,
+  migrationPending: false,
   templatePickerOpen: false,
   pendingBoardUndo: null,
   deleteDialogBoardId: null,
@@ -1124,14 +1518,25 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   clearRenameRequest: () => set({ pendingRenameBoardId: null }),
 
   loadFromStorage: async () => {
-    initLiveSync(); // W8: 다중 탭 동기화 구독 시작(멱등)
+    initLiveSync(); // n3: 탭 간 Yjs 업데이트 동기화 구독 시작(멱등)
     const storage = useStorage.getState();
     if (!storage.initialized) await storage.init();
     const boards = await storage.loadBoards();
-    const notes = await storage.loadCards(null);
 
-    if (notes.length === 0 && !storage.settings?.installPromptShown) {
-      // 첫 실행 — 디자인 시드를 영속해두고 마킹.
+    // n23 P1-6: 재로드는 지금 보고 있는 보드를 재활성화한다. activateBoard(null)로
+    // 되돌리면 currentBoardId와 activeKey가 어긋나 이후 편집이 시스템 문서로 샌다.
+    const storageBid = storageBoardId(get().currentBoardId);
+    const activeDoc = await activateBoard(storageBid);
+
+    if (
+      storageBid === null &&
+      readNotes(activeDoc.doc).length === 0 &&
+      !storage.settings?.installPromptShown &&
+      // 작업 4: 이전이 아직 백그라운드면 시스템 문서가 비어 보일 수 있다 — 시드를
+      // 끼워 넣으면 이전이 끝난 뒤 실제 메모와 섞인다. 이전 완료 뒤에만 시드한다.
+      !get().migrationPending
+    ) {
+      // 첫 실행 — 디자인 시드를 문서·미러에 함께 영속하고 마킹.
       const seeds = SEED_CARDS.map((c) => ({
         ...c,
         height: memoHeight(c.kind, c.width, c.height),
@@ -1142,13 +1547,17 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       return;
     }
 
-    const cards = notes.map(decodeNoteToCard);
+    const cards = await loadBoardCards(storageBid);
     set({ cards, boards });
     void get().refreshSubcanvasCounts();
     void get().refreshTrashCount();
   },
 
   setCurrentBoard: async (id) => {
+    // n23 재심사 2R-1: 이전이 백그라운드면 보드를 바꾸지 않는다. 전환 대상과 이전
+    // 완료 뒤 재로드 대상이 어긋나 편집이 유실된다. 오버레이는 이제 표시 전용이라
+    // 단축키·함수 호출 모두 이 가드 하나로 막힌다.
+    if (get().migrationPending) return;
     const current = get().currentBoardId;
     if (current === id) return;
 
@@ -1159,11 +1568,22 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     // 2) 페이드아웃 시작
     set({ boardTransitioning: true, viewportByBoard });
 
-    // 3) DB에서 카드 로드 (시스템 보드는 boardId=null)
+    // 3) 문서에서 카드 로드 (시스템 보드는 boardId=null). 문서가 원본, Dexie는 미러.
     const storage = useStorage.getState();
     if (!storage.initialized) await storage.init();
-    const notes = await storage.loadCards(storageBoardId(id));
-    const cards = notes.map(decodeNoteToCard);
+    const storageBid = storageBoardId(id);
+    const docHandle = await activateBoard(storageBid);
+    const cards = await loadBoardCards(storageBid);
+
+    // 3-1) 보드 메타도 문서가 원본 — 목록의 이 보드 이름을 문서 값으로 맞춘다.
+    if (storageBid !== null) {
+      const meta = readBoard(docHandle.doc);
+      if (typeof meta.name === "string") {
+        set((s) => ({
+          boards: s.boards.map((b) => (b.id === id ? { ...b, name: meta.name } : b)),
+        }));
+      }
+    }
 
     // 4) state 교체 — viewport 복원 (없으면 reset). AC-5: 저장된 scale이 한계 밖일 수
     // 있으므로 복원 시점에 범위로 자른다.
@@ -1198,10 +1618,14 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   createBoard: async (name = "") => {
+    // n23 재심사 2R-1: 이전 중에는 새 보드를 만들지 않는다. 만들면 setCurrentBoard가
+    // 막혀 전환되지 않는 고아 보드가 남는다.
+    if (get().migrationPending) return get().currentBoardId;
     const storage = useStorage.getState();
     if (!storage.initialized) await storage.init();
     const id = `b-${Date.now().toString(36)}-${counter++}`;
     await storage.saveBoard({ id, name, isSystem: false });
+    await writeBoardToDoc(id);
     const boards = await storage.loadBoards();
     set({ boards });
     await get().setCurrentBoard(id);
@@ -1209,6 +1633,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   createBoardFromTemplate: async (templateId, name, t, now) => {
+    // n23 재심사 2R-1: 이전 중 새 보드 생성 차단(고아 보드·전환 불일치 방지).
+    if (get().migrationPending) return get().currentBoardId;
     const template = getTemplate(templateId);
     if (!template) throw new Error(`Unknown templateId: ${templateId}`);
     const storage = useStorage.getState();
@@ -1223,12 +1649,24 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       templateId: template.id,
     });
 
+    await writeBoardToDoc(boardId);
+
     // 초기 카드 일괄 저장 — boardId 부여, AI 임베딩 큐는 skip(placeholder 텍스트).
+    // n23: 카드→문서 Note 정의는 writeCardToDocHandle 하나를 재사용한다(정의 이원화 제거).
     const initialCards = template.buildInitialCards(t, now);
+    const handle = getOrOpenBoardDoc(boardId);
+    await handle.whenLoaded;
     for (const init of initialCards) {
-      const cardId = nextId();
+      const card: Card = {
+        id: nextId(),
+        kind: init.kind,
+        x: init.x,
+        y: init.y,
+        width: init.width,
+        content: init.content,
+      };
       await storage.saveNote({
-        id: cardId,
+        id: card.id,
         boardId,
         kind: init.kind,
         x: init.x,
@@ -1238,7 +1676,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         aiOptOut: false,
         rotation: 0,
       });
+      writeCardToDocHandle(handle.doc, card, boardId);
     }
+    // 새 보드는 아직 활성이 아니다 — 쓰기 끝나면 문서를 닫아 둔다(6(h)).
+    closeBoardDoc(boardId);
 
     const boards = await storage.loadBoards();
     set({ boards });
@@ -1253,6 +1694,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const storage = useStorage.getState();
     if (!storage.initialized) await storage.init();
     await storage.saveBoard({ id, name });
+    await writeBoardToDoc(id);
     const boards = await storage.loadBoards();
     set({ boards });
   },
@@ -1371,7 +1813,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       editingId: isCapture ? id : null,
       lastToolId: isCaptureTool ? (toolId as CaptureToolId) : s.lastToolId,
     }));
-    void persistCard(card, storageBoardId(get().currentBoardId));
+    const boardId = storageBoardId(get().currentBoardId);
+    void persistCard(card, boardId);
     return id;
   },
 
@@ -1396,7 +1839,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         return updated;
       }),
     }));
-    if (updated) persistCardDebounced(updated, storageBoardId(get().currentBoardId));
+    if (updated) persistCardDebounced(updated, storageBoardId(get().currentBoardId), { doc: false });
   },
 
   moveSelectedBy: (dx, dy) => {
@@ -1429,6 +1872,44 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     for (const card of moved) persistCardDebounced(card, boardId);
   },
 
+  /**
+   * n3 D4: 드래그가 끝났을 때 좌표를 문서에 한 번 쓴다. 드래그 중(moveCard/
+   * moveSelectedBy)에는 문서를 건드리지 않는다 — Awareness가 그 역할(n7).
+   * 여러 장이면 한 트랜잭션에 모아 Yjs 업데이트 1건으로 만든다.
+   */
+  commitMove: (ids) => {
+    const boardId = storageBoardId(get().currentBoardId);
+    withActiveDoc(boardId, (doc) => {
+      const requested =
+        ids && ids.length > 0
+          ? new Set(ids)
+          : new Set(get().selectedIds);
+      // 판이 옮겨졌으면 속한 멤버도 같이 문서에 쓴다(moveFrame과 동일 이동).
+      const frameIds = new Set(
+        get()
+          .cards.filter((c) => requested.has(c.id) && c.kind === "frame")
+          .map((c) => c.id),
+      );
+      const targets = get().cards.filter(
+        (c) =>
+          requested.has(c.id) ||
+          (c.frameId !== undefined && frameIds.has(c.frameId)),
+      );
+      if (targets.length === 0) return;
+      transactLocal(doc, () => {
+        for (const card of targets) {
+          updateNoteField(doc, card.id, "x", card.x);
+          updateNoteField(doc, card.id, "y", card.y);
+        }
+      });
+      // n23 재심사 2R-2: 좌표를 문서에 쓴 만큼 스냅샷도 갱신한다. 안 하면 다음
+      // 카드 영속의 diff가 낡은 스냅샷 기준으로 원격 좌표를 되돌려 쓴다.
+      for (const card of targets) {
+        setSharedSnapshot(card.id, toSharedNote(initialNoteFromCard(card, boardId)));
+      }
+    });
+  },
+
   resizeCard: (id, next) => {
     // clamp는 NaN을 그대로 통과시키므로(Math.min/max 의미상) finite 가드 명시.
     if (!Number.isFinite(next.width) || !Number.isFinite(next.height)) return;
@@ -1452,7 +1933,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         return updated;
       }),
     }));
-    if (updated) persistCardDebounced(updated, storageBoardId(get().currentBoardId));
+    if (updated) {
+      persistCardDebounced(updated, storageBoardId(get().currentBoardId));
+    }
   },
 
   /* ─────────── FEAT-sticky-redesign: 메모판(frame) ─────────── */
@@ -1466,11 +1949,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       selectedIds: [card.id],
       editingId: null,
     }));
-    void (async () => {
-      const storage = useStorage.getState();
-      if (!storage.initialized) await storage.init();
-      await storage.saveNote(note);
-    })();
+    void persistCard(card, boardId);
     return card.id;
   },
 
@@ -1504,6 +1983,14 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         byId.has(c.id) ? { ...c, frameId: byId.get(c.id) } : c,
       ),
     }));
+    const boardId = storageBoardId(get().currentBoardId);
+    const updatedById = new Map(get().cards.map((c) => [c.id, c]));
+    withActiveDoc(boardId, (doc) => {
+      for (const u of updates) {
+        const c = updatedById.get(u.id);
+        if (c) writeCardToDocHandle(doc, c, boardId);
+      }
+    });
     void setFrameMembership(updates);
   },
 
@@ -1544,11 +2031,14 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const db = getDB();
       await db
         .transaction("rw", db.notes, () =>
-          Promise.all(cards.map((card) => persistCard(card, boardId))),
+          // n23 P1-7: 드래그 중(D4)에는 좌표를 문서에 쓰지 않는다 — 좌표는 드롭 때
+          // commitMove가 한 번 쓴다. 여기서는 Dexie 미러만 갱신한다.
+          Promise.all(cards.map((card) => persistCard(card, boardId, { doc: false }))),
         )
         .catch((err) => console.warn("[moss] 메모판 이동 저장 실패", err));
     };
     for (const id of groupIds) schedulePersist(id, persistGroup);
+    // n3 D4: 좌표는 드롭 시점(commitMove)에만 문서에 쓴다 — 드래그 중 쓰기 없음.
   },
 
   resizeFrame: (id, next) => {
@@ -1571,7 +2061,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         return updated;
       }),
     }));
-    if (updated) persistCardDebounced(updated, storageBoardId(get().currentBoardId));
+    if (updated) {
+      persistCardDebounced(updated, storageBoardId(get().currentBoardId));
+    }
   },
 
   renameFrame: (id, name) => {
@@ -1584,7 +2076,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         return updated;
       }),
     }));
-    if (updated) persistCardDebounced(updated, storageBoardId(get().currentBoardId));
+    if (updated) {
+      persistCardDebounced(updated, storageBoardId(get().currentBoardId));
+    }
   },
 
   deleteFrame: (id) => {
@@ -1602,6 +2096,17 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       expandedCardId: s.expandedCardId === id ? null : s.expandedCardId,
     }));
     cancelPersist(id);
+    const boardId = storageBoardId(get().currentBoardId);
+    const afterDelete = new Map(get().cards.map((c) => [c.id, c]));
+    withActiveDoc(boardId, (doc) => {
+      for (const mid of memberIds) {
+        const member = afterDelete.get(mid);
+        if (member) writeCardToDocHandle(doc, member, boardId);
+      }
+      deleteNoteDoc(doc, id);
+    });
+    // n23 재심사 2R-2: 삭제한 판의 스냅샷을 버린다(누수 방지).
+    forgetSharedSnapshot(id);
     const storage = useStorage.getState();
     if (!storage.initialized) return;
     const db = getDB();
@@ -1625,7 +2130,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         return updated;
       }),
     }));
-    if (updated) persistCardDebounced(updated, storageBoardId(get().currentBoardId));
+    const boardId = storageBoardId(get().currentBoardId);
+    // n3 급소: 본문은 Y.Doc에 곧바로 쓴다(persistCardDebounced가 문서 반영을 포함).
+    if (updated) {
+      persistCardDebounced(updated, boardId);
+    }
   },
 
   setTitle: (id, title) => {
@@ -1638,7 +2147,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         return updated;
       }),
     }));
-    if (updated) persistCardDebounced(updated, storageBoardId(get().currentBoardId));
+    if (updated) {
+      persistCardDebounced(updated, storageBoardId(get().currentBoardId));
+    }
   },
 
   commitTitle: (id) => {
@@ -1676,7 +2187,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         return updated;
       }),
     }));
-    if (updated) void persistCard(updated, storageBoardId(get().currentBoardId));
+    if (updated) {
+      void persistCard(updated, storageBoardId(get().currentBoardId));
+    }
   },
 
   selectOne: (id) => set({ selectedIds: id ? [id] : [] }),
@@ -1739,8 +2252,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       penRedoStack: [],
       lastPenCardId: id,
     }));
-    if (updated)
+    if (updated) {
       persistCardDebounced(updated, storageBoardId(get().currentBoardId));
+    }
   },
   penUndo: () => {
     const { penUndoStack, cards } = get();
@@ -1758,8 +2272,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       penRedoStack: [...s.penRedoStack, { cardId: entry.cardId, overlay: cur }],
       lastPenCardId: entry.cardId,
     }));
-    if (updated)
+    if (updated) {
       persistCardDebounced(updated, storageBoardId(get().currentBoardId));
+    }
   },
   penRedo: () => {
     const { penRedoStack, cards } = get();
@@ -1777,8 +2292,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       penUndoStack: [...s.penUndoStack, { cardId: entry.cardId, overlay: cur }],
       lastPenCardId: entry.cardId,
     }));
-    if (updated)
+    if (updated) {
       persistCardDebounced(updated, storageBoardId(get().currentBoardId));
+    }
   },
   penClear: () => {
     const id = get().lastPenCardId;
@@ -1795,8 +2311,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       penUndoStack: [...s.penUndoStack, { cardId: id, overlay: cur }],
       penRedoStack: [],
     }));
-    if (updated)
+    if (updated) {
       persistCardDebounced(updated, storageBoardId(get().currentBoardId));
+    }
   },
 
   remove: (id) => {
@@ -1818,6 +2335,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       expandedCardId: s.expandedCardId === id ? null : s.expandedCardId,
     }));
     cancelPersist(id);
+    // n3: 카드를 문서에서도 지운다(휴지통 스냅샷은 Dexie 미러에서 읽는다).
+    withActiveDoc(storageBoardId(boardAtDeletion), (doc) => deleteNoteDoc(doc, id));
+    // n23 재심사 2R-2: 삭제한 메모의 스냅샷을 버린다(다른 id 재사용 시 누수 방지).
+    forgetSharedSnapshot(id);
     const storage = useStorage.getState();
     if (!storage.initialized) return;
     if (funnel) {
@@ -1855,6 +2376,14 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
           : s.expandedCardId,
     }));
     for (const id of remainingIds) cancelPersist(id);
+    // n23 재심사 2R-2: 삭제한 메모의 스냅샷을 버린다(누수 방지).
+    for (const id of remainingIds) forgetSharedSnapshot(id);
+    // n3: 문서에서도 지운다(휴지통 스냅샷은 Dexie 미러에서).
+    withActiveDoc(storageBoardId(boardAtDeletion), (doc) =>
+      transactLocal(doc, () => {
+        for (const id of remainingIds) deleteNoteDoc(doc, id);
+      }),
+    );
     const storage = useStorage.getState();
     if (!storage.initialized) return;
     // 함이 아닌 일반 메모는 휴지통으로(AC-2). frameIds는 위에서 deleteFrame이 이미
@@ -1897,6 +2426,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     });
     if (note.boardId === boardId) {
       set((s) => ({ cards: [...s.cards, decodeNoteToCard(note)] }));
+      // n3: 복구한 메모를 문서에도 되돌린다.
+      withActiveDoc(boardId, (doc) => putNoteDoc(doc, note));
+      // n23 재심사 2R-2: 복구도 문서 쓰기 — 스냅샷을 맞춘다.
+      setSharedSnapshot(note.id, toSharedNote(note));
     }
     void get().refreshTrashCount();
   },
@@ -1956,6 +2489,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   promoteCardToNewBoard: async (cardId, boardName = "") => {
+    // n23 재심사 2R-1: 이전 중 새 보드로 카드를 옮기지 않는다 — 전환이 막혀
+    // 카드만 사라진 것처럼 보인다.
+    if (get().migrationPending) return get().currentBoardId;
     // 1) 새 보드 생성 (자동 전환 발생 — 카드 목록이 새 보드 기준으로 리로드됨)
     //    그 직전에 카드의 boardId를 새 보드로 옮겨두어야 한다.
     const storage = useStorage.getState();
@@ -1963,11 +2499,17 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
     const id = `b-${Date.now().toString(36)}-${counter++}`;
     await storage.saveBoard({ id, name: boardName, isSystem: false });
+    await writeBoardToDoc(id);
 
     // 2) 카드의 boardId 변경 — 본문/위치는 그대로.
     const card = get().cards.find((c) => c.id === cardId);
     if (card) {
       await storage.saveNote({ id: card.id, boardId: id });
+      await moveCardBetweenDocs(
+        card.id,
+        storageBoardId(get().currentBoardId),
+        id,
+      );
     }
 
     // 3) 보드 목록 갱신 + 새 보드로 전환
@@ -1986,7 +2528,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         return updated;
       }),
     }));
-    if (updated) persistCard(updated, storageBoardId(get().currentBoardId));
+    if (updated) {
+      persistCard(updated, storageBoardId(get().currentBoardId));
+    }
   },
 
   setPendingAIGate: (p) => set({ pendingAIGate: p }),
@@ -2074,9 +2618,13 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         parentBoardId,
       });
       await persistCard(card, storageBoardId(parentBoardId));
+      await writeBoardToDoc(childBoardId);
       const boards = await storage.loadBoards();
       set({ boards });
-    })();
+    })().catch((err) => {
+      // 테스트 teardown·새로고침 경계에서 DB가 닫히면 저장이 실패할 수 있다.
+      console.warn("[moss] 함 생성 저장 실패", err);
+    });
 
     return id;
   },
@@ -2130,6 +2678,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     if (!storage.initialized) await storage.init();
     // FEAT-sticky-redesign §4: 파일함(다른 캔버스)으로 이동하면 판 소속은 풀린다.
     await storage.saveNote({ id: cardId, boardId: targetBoardId, frameId: undefined });
+    await moveCardBetweenDocs(
+      cardId,
+      storageBoardId(get().currentBoardId),
+      targetBoardId,
+    );
 
     set((s) => ({
       cards: s.cards.filter((c) => c.id !== cardId),
@@ -2180,6 +2733,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       boardId: storageBoardId(targetBoardId),
       frameId: undefined,
     });
+    await moveCardBetweenDocs(
+      cardId,
+      storageBoardId(currentBoardId),
+      storageBoardId(targetBoardId),
+    );
 
     set((s) => {
       // count 정합성: 떠나는 현재 보드는 -1(0 미만 가드), 대상이 추적 대상(시스템
@@ -2340,3 +2898,11 @@ export const __internal = {
   SUBCANVAS_MARKER,
   SEED_CARDS,
 };
+
+/** n3 테스트·재개 경계 — 열린 보드 문서를 모두 닫는다(멱등). */
+export async function __resetBoardDocsForTest(): Promise<void> {
+  unbindDocReflection?.();
+  unbindDocReflection = null;
+  clearSharedSnapshots();
+  await destroyBoardDocs();
+}
