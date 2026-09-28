@@ -5,6 +5,13 @@ import { useWorkspace, SYSTEM_BOARD_ID, widthForKind } from "@/state/workspace";
 import { useToasts } from "@/state/notifications";
 import { useT } from "@/i18n/Provider";
 import { DraggableCard } from "./DraggableCard";
+import {
+  DragGhostLayer,
+  RemoteCursorsLayer,
+  RemoteSelectionLayer,
+} from "@/components/presence/CollabOverlays";
+import { useCollab } from "@/state/collab";
+import { memoRotationDeg } from "./memoVariety";
 import { SystemBoard } from "./SystemBoard";
 import { SystemBoardEmpty } from "./cards/SystemBoardEmpty";
 import { ZoomBar } from "./ZoomBar";
@@ -78,6 +85,7 @@ export function Canvas() {
   const viewport = useWorkspace((s) => s.viewport);
   const selectedIds = useWorkspace((s) => s.selectedIds);
   const editingId = useWorkspace((s) => s.editingId);
+  const draggingId = useWorkspace((s) => s.draggingId);
   const dockDrag = useWorkspace((s) => s.dockDrag);
   const selectMany = useWorkspace((s) => s.selectMany);
   const clearSelection = useWorkspace((s) => s.clearSelection);
@@ -103,6 +111,12 @@ export function Canvas() {
   const pushToast = useToasts((s) => s.push);
   const t = useT();
 
+  // FEAT-collab-auth n7: 로컬 커서·선택·드래그 발행. 원격 표시는 각 레이어가
+  // useCollab을 직접 구독한다 — Canvas는 participants를 구독하지 않는다(P1).
+  const publishCursor = useCollab((s) => s.publishCursor);
+  const publishSelection = useCollab((s) => s.publishSelection);
+  const publishDragging = useCollab((s) => s.publishDragging);
+
   /**
    * 사이드바 도구 커스텀 드래그 중 — 커서가 캔버스 위에 있으면 drop hint 점 표시.
    * 좌표는 캔버스 로컬(rect.left/top 기준). 캔버스 밖이거나 드래그 종료면 null.
@@ -122,6 +136,36 @@ export function Canvas() {
     canvasSize: { width: canvasRect.width, height: canvasRect.height },
     editingId,
   });
+
+  /* ─ FEAT-collab-auth n7: 로컬 선택·드래그를 Awareness로 발행 (D4) ─
+   * 좌표는 문서에 쓰지 않는다 — 원격 화면이 이 값으로 테두리·잔상을 그린다. */
+  useEffect(() => {
+    const rects = cards
+      .filter((c) => selectedIds.includes(c.id))
+      .map((c) => ({
+        noteId: c.id,
+        x: c.x,
+        y: c.y,
+        width: c.width,
+        height: c.height ?? c.width,
+        rotation: c.kind === "text" && !penMode ? memoRotationDeg(c.id) : 0,
+      }));
+    publishSelection(rects);
+  }, [cards, selectedIds, penMode, publishSelection]);
+
+  useEffect(() => {
+    const dragged = draggingId ? cards.find((c) => c.id === draggingId) : undefined;
+    if (!dragged) {
+      publishDragging(null);
+      return;
+    }
+    publishDragging({
+      noteId: dragged.id,
+      x: dragged.x,
+      y: dragged.y,
+      rotation: dragged.kind === "text" && !penMode ? memoRotationDeg(dragged.id) : 0,
+    });
+  }, [cards, draggingId, penMode, publishDragging]);
 
   /* ─ 캔버스 실측 위치·크기 추적 (ResizeObserver + window resize) ─ */
   useEffect(() => {
@@ -518,6 +562,17 @@ export function Canvas() {
     window.addEventListener("mouseup", onUp);
   };
 
+  /* ─ FEAT-collab-auth n7: 커서 world 좌표를 Awareness로 (스토어가 스로틀) ─ */
+  const onCanvasMouseMove = (e: React.MouseEvent) => {
+    // 매 mousemove마다 getBoundingClientRect(강제 레이아웃)를 다시 재지 않는다 —
+    // ResizeObserver가 갱신해 둔 canvasRect를 재사용한다(P2).
+    const v = useWorkspace.getState().viewport;
+    publishCursor(
+      (e.clientX - canvasRect.left - v.x) / v.scale,
+      (e.clientY - canvasRect.top - v.y) / v.scale,
+    );
+  };
+
   const cursorClass = panning
     ? "cursor-grabbing"
     : spaceDown
@@ -529,6 +584,7 @@ export function Canvas() {
       ref={canvasRef}
       data-canvas-root="true"
       onMouseDown={onMouseDown}
+      onMouseMove={onCanvasMouseMove}
       onDragOver={onCanvasDragOver}
       onDrop={onCanvasDrop}
       className={`relative h-full overflow-hidden bg-bg ${cursorClass}`}
@@ -550,6 +606,10 @@ export function Canvas() {
         {visibleCards.map((card) => (
           <DraggableCard key={card.id} card={card} />
         ))}
+        {/* FEAT-collab-auth n7: 원격 드래그 잔상 → 선택 테두리 → 커서 순서. */}
+        <DragGhostLayer />
+        <RemoteSelectionLayer />
+        <RemoteCursorsLayer />
       </div>
 
       {/* 빈 안내 — 시스템 보드 + 카드가 한 장도 없을 때만. 작업물이 있으면 안내가 가리지 않는다. */}

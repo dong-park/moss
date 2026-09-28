@@ -12,6 +12,11 @@ import { AICallPreview } from "@/components/privacy/AICallPreview";
 import { SignalsPanel } from "@/components/signals/SignalsPanel";
 import { ExportModal } from "@/components/export/ExportModal";
 import { ImportDialog } from "@/components/export/ImportDialog";
+import { AuthBootstrap } from "@/components/auth/AuthBootstrap";
+import { AuthSessionOverlay } from "@/components/auth/SessionExpiredCard";
+import { CollabSession } from "@/components/collab/CollabSession";
+import { ShareControlMount } from "@/components/share/ShareControlMount";
+import { OfflineBadge } from "@/components/presence/OfflineBadge";
 
 export default function WorkspacePage() {
   const [signalsOpen, setSignalsOpen] = useState(false);
@@ -23,6 +28,12 @@ export default function WorkspacePage() {
       <div className="fixed top-3 left-3 z-[var(--z-panel)]">
         <Breadcrumb />
       </div>
+      {/* FEAT-collab-auth n7: 우상단 오프라인 표시 + 공유 아이콘. */}
+      <div className="fixed top-3 right-3 z-[var(--z-panel)] flex items-center gap-2">
+        <OfflineBadge />
+        <ShareControlMount />
+      </div>
+      <CollabSession />
       <Dock
         onSignalsClick={() => setSignalsOpen((v) => !v)}
         signalsOpen={signalsOpen}
@@ -36,6 +47,8 @@ export default function WorkspacePage() {
       <SubcanvasUndoToast />
       <ExportModal />
       <ImportDialog />
+      <AuthBootstrap />
+      <AuthSessionOverlay />
     </main>
   );
 }

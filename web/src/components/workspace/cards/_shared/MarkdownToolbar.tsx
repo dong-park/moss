@@ -30,8 +30,10 @@ import {
 import { toggleStrikethroughCommand } from "@milkdown/preset-gfm";
 import { useT } from "@/i18n/Provider";
 import type { Translator } from "@/i18n";
-import { putBlob, makeAttachmentFilename } from "@/state/db/opfs";
+import { makeAttachmentFilename } from "@/state/db/opfs";
 import { useToasts } from "@/state/notifications";
+import { storeAttachment } from "@/state/share/attachments";
+import { useWorkspace } from "@/state/workspace";
 
 /** 이미지 삽입 가드 — imagePaste와 동일 기준(10MB). */
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
@@ -177,7 +179,11 @@ export function MarkdownToolbar() {
       return;
     }
     try {
-      const ref = await putBlob(makeAttachmentFilename(file.type), file); // opfs:<id>
+      const ref = await storeAttachment(
+        useWorkspace.getState().currentBoardId,
+        makeAttachmentFilename(file.type),
+        file,
+      ); // opfs:<id>
       const src = ref.replace(/^opfs:/, "opfs://"); // 마크다운 URL 스킴
       getEditor().action(callCommand(insertImageCommand.key, { src, alt: file.name }));
     } catch {

@@ -22,13 +22,20 @@ import type { Node as ProseNode } from "@milkdown/prose/model";
 import { Plugin, TextSelection } from "@milkdown/prose/state";
 import type { EditorView, NodeView } from "@milkdown/prose/view";
 
-import { getBlobUrl, makeAttachmentFilename, putBlob } from "@/state/db/opfs";
+import { getBlobUrl, makeAttachmentFilename } from "@/state/db/opfs";
 import {
   OPFS_URL_PREFIX,
   toMarkdownUrl,
   toStorageRef,
 } from "@/state/db/opfsRef";
 import { useToasts } from "@/state/notifications";
+import {
+  onFilesMapChange,
+  resolveAttachment,
+  storeAttachment,
+} from "@/state/share/attachments";
+import { useWorkspace } from "@/state/workspace";
+import { t } from "@/i18n";
 // FEAT-sticky-redesign 2단계 리뷰 P1-6 — 한도·지원 형식은 state/attachmentLimits.ts가
 // 유일한 출처(BlockMenu.tsx·canvasCapture.ts와 공유). 로직은 그대로, import만 바뀐다.
 import { MAX_IMAGE_BYTES, SUPPORTED_IMAGE_TYPES } from "@/state/attachmentLimits";
@@ -136,7 +143,11 @@ async function insertImages(
 
     let storageRef: string;
     try {
-      storageRef = await putBlob(makeAttachmentFilename(file.type), file);
+      storageRef = await storeAttachment(
+        useWorkspace.getState().currentBoardId,
+        makeAttachmentFilename(file.type),
+        file,
+      );
     } catch (err) {
       console.warn("imagePaste: OPFS 저장 실패", err);
       warn("이미지를 저장하지 못했어요.");
@@ -182,11 +193,18 @@ export const imagePasteHandler: PasteHandler = (view, event) => {
  * image 노드의 src가 opfs://면 blob URL로 해석해 그린다. 노드 attr(마크다운
  * 직렬화)은 opfs:// 그대로 유지되고, 화면에만 blob URL을 쓴다. atom 노드라
  * contentDOM이 없고, ignoreMutation으로 src 교체가 PM 재렌더 루프를 타지 않게 한다. */
+/** n10 작업 4 — 공유 보드에서 아직 업로드/다운로드가 안 끝난 첨부의 자리표시자. */
+const UPLOADING_LABEL = t("collab.attachment.uploading");
+
 class OpfsImageNodeView implements NodeView {
   dom: HTMLImageElement;
   private currentSrc = "";
+  private altText = "";
   private objectUrl: string | null = null;
   private destroyed = false;
+  /** n10w B: fileId가 나중에 동기화되면 다시 해석하도록 files 맵을 구독한다. */
+  private watchingSrc: string | null = null;
+  private unsubscribe: (() => void) | null = null;
 
   constructor(node: ProseNode) {
     this.dom = document.createElement("img");
@@ -207,7 +225,8 @@ class OpfsImageNodeView implements NodeView {
 
   private render(node: ProseNode): void {
     const src = typeof node.attrs.src === "string" ? node.attrs.src : "";
-    this.dom.alt = typeof node.attrs.alt === "string" ? node.attrs.alt : "";
+    this.altText = typeof node.attrs.alt === "string" ? node.attrs.alt : "";
+    this.dom.alt = this.altText;
     const title = typeof node.attrs.title === "string" ? node.attrs.title : "";
     if (title) this.dom.title = title;
     else this.dom.removeAttribute("title");
@@ -220,19 +239,54 @@ class OpfsImageNodeView implements NodeView {
       // 해석 전까지는 src 미지정(placeholder). data 속성은 디버그·테스트용.
       this.dom.removeAttribute("src");
       this.dom.setAttribute("data-opfs-src", src);
-      void resolveOpfsImageSrc(src).then((url) => {
-        // 해석 도중 노드가 바뀌거나 파괴됐으면 새 URL을 즉시 회수.
-        if (this.destroyed || this.currentSrc !== src) {
-          if (url.startsWith("blob:")) URL.revokeObjectURL(url);
-          return;
-        }
-        if (url.startsWith("blob:")) this.objectUrl = url;
-        this.dom.src = url;
-      });
+      this.watchFileSync(src);
+      this.resolveAndApply(src);
     } else {
+      this.unwatchFileSync();
       this.dom.removeAttribute("data-opfs-src");
+      this.dom.removeAttribute("data-moss-attachment-state");
       this.dom.src = src;
     }
+  }
+
+  /** n10: 공유 보드면 로컬에 없을 때 서버에서 내려받는다. 아직 못 쓰면 '올리는 중'. */
+  private resolveAndApply(src: string): void {
+    void resolveAttachment(toStorageRef(src)).then((res) => {
+      // 해석 도중 노드가 바뀌거나 파괴됐으면 새 URL을 즉시 회수.
+      if (this.destroyed || this.currentSrc !== src) {
+        if (res.state === "ready" && res.url.startsWith("blob:")) {
+          URL.revokeObjectURL(res.url);
+        }
+        return;
+      }
+      if (res.state === "ready") {
+        this.releaseUrl();
+        this.objectUrl = res.url;
+        this.dom.removeAttribute("data-moss-attachment-state");
+        this.dom.alt = this.altText;
+        this.dom.src = res.url;
+        this.unwatchFileSync();
+        return;
+      }
+      this.dom.setAttribute("data-moss-attachment-state", res.state);
+      this.dom.alt = res.state === "pending" ? UPLOADING_LABEL : this.altText;
+    });
+  }
+
+  private watchFileSync(src: string): void {
+    if (this.watchingSrc === src) return;
+    this.unwatchFileSync();
+    this.watchingSrc = src;
+    this.unsubscribe = onFilesMapChange(() => {
+      if (this.destroyed || this.currentSrc !== src) return;
+      this.resolveAndApply(src);
+    });
+  }
+
+  private unwatchFileSync(): void {
+    this.unsubscribe?.();
+    this.unsubscribe = null;
+    this.watchingSrc = null;
   }
 
   update(node: ProseNode): boolean {
@@ -256,6 +310,7 @@ class OpfsImageNodeView implements NodeView {
 
   destroy(): void {
     this.destroyed = true;
+    this.unwatchFileSync();
     this.releaseUrl();
   }
 }

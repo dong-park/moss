@@ -30,9 +30,17 @@ import type { EditorView } from "@milkdown/prose/view";
 import type { Node as ProseNode } from "@milkdown/prose/model";
 import { $prose } from "@milkdown/utils";
 
-import { getBlob, getBlobUrl } from "@/state/db/opfs";
+import { getBlob } from "@/state/db/opfs";
 import { classifyLinkMark, type Block } from "@/state/blocks";
+import {
+  onFilesMapChange,
+  resolveAttachment,
+  resolveAttachmentState,
+} from "@/state/share/attachments";
 import { t } from "@/i18n";
+
+/** n10 작업 4 — 공유 보드에서 아직 업로드/다운로드가 안 끝난 첨부의 자리표시자. */
+const UPLOADING_LABEL = t("collab.attachment.uploading");
 
 /** 이 모듈이 다루는 블록 — 이미지는 opfsImagePlugin(실제 스키마 노드)이 그린다. */
 export type ParagraphBlock = Exclude<Block, { type: "image" }>;
@@ -58,6 +66,12 @@ export function paragraphBlock(node: ProseNode): ParagraphBlock | null {
 const BLOB_URL_CACHE_LIMIT = 32;
 const blobUrlCache = new Map<string, Promise<string | null>>();
 
+/**
+ * n10w P1-3/B — `files` 맵(fileId 동기화)이 바뀔 때마다 올린다. 위젯 캐시와
+ * 위젯 key에 이 값을 섞어, 수신 화면이 자리표시자를 실제 첨부로 다시 그리게 한다.
+ */
+let filesVersion = 0;
+
 function evictOldestIfNeeded(): void {
   while (blobUrlCache.size > BLOB_URL_CACHE_LIMIT) {
     const oldestKey = blobUrlCache.keys().next().value;
@@ -70,18 +84,30 @@ function evictOldestIfNeeded(): void {
   }
 }
 
-function resolveBlobUrl(ref: string): Promise<string | null> {
-  let p = blobUrlCache.get(ref);
-  if (p) {
+/**
+ * n10w P1-3 — 사용자 트리거(재생·열기)용 해석. `ready`가 아닌 결과는 캐시에
+ * 남기지 않는다 — pending/missing을 null로 굳혀 두면 fileId가 나중에 동기화돼도
+ * 재시도가 캐시된 null만 받아 영구히 복구 불가가 된다.
+ */
+export function resolveBlobUrl(ref: string): Promise<string | null> {
+  const cached = blobUrlCache.get(ref);
+  if (cached) {
     // LRU: 다시 접근했으니 맨 뒤로(Map은 삽입 순서를 유지한다).
     blobUrlCache.delete(ref);
-    blobUrlCache.set(ref, p);
-    return p;
+    blobUrlCache.set(ref, cached);
+    return cached;
   }
-  p = getBlobUrl(ref);
-  blobUrlCache.set(ref, p);
+  // n10: 로컬에 없으면 공유 보드일 때 서버에서 내려받아 캐시한다(사용자 트리거).
+  const task = resolveAttachment(ref, { force: true }).then((res) => {
+    if (res.state !== "ready") {
+      if (blobUrlCache.get(ref) === task) blobUrlCache.delete(ref);
+      return null;
+    }
+    return res.url;
+  });
+  blobUrlCache.set(ref, task);
   evictOldestIfNeeded();
-  return p;
+  return task;
 }
 
 /** 이 플러그인을 쓰는 에디터 뷰 수. 0이 되면 캐시 전체를 revoke한다. */
@@ -165,6 +191,28 @@ function ellipsisSpan(text: string, extra = ""): HTMLSpanElement {
   return span;
 }
 
+/**
+ * n10 작업 4 — 공유 보드에서 아직 못 쓰는 첨부는 '올리는 중' 자리표시자로 보여준다.
+ * 해석(다운로드)도 여기서 시작한다 — 받는 쪽은 열자마자 캐시된다.
+ */
+function watchAttachmentState(
+  row: HTMLElement,
+  label: HTMLElement,
+  ref: string,
+  defaultLabel: string,
+): void {
+  // P2-2: object URL이 필요 없으므로 상태만 조회한다(URL을 만들었다 버리지 않는다).
+  void resolveAttachmentState(ref).then((state) => {
+    if (state === "pending") {
+      row.setAttribute("data-moss-attachment-state", "pending");
+      label.textContent = UPLOADING_LABEL;
+      return;
+    }
+    row.removeAttribute("data-moss-attachment-state");
+    label.textContent = defaultLabel;
+  });
+}
+
 /** 링크·녹음·파일 블록 위젯 DOM을 만든다. n5 앞면이 readonly:true로 재사용한다. */
 export function buildBlockWidget(block: ParagraphBlock, opts: { readonly: boolean }): HTMLElement {
   const row = document.createElement("div");
@@ -205,6 +253,7 @@ export function buildBlockWidget(block: ParagraphBlock, opts: { readonly: boolea
     icon.setAttribute("aria-hidden", "true");
     const label = ellipsisSpan(t("workspace.memoEditor.block.audioLabel"));
     row.append(icon, label);
+    watchAttachmentState(row, label, block.ref, t("workspace.memoEditor.block.audioLabel"));
     if (!opts.readonly) {
       const audioEl = document.createElement("audio");
       audioEl.style.display = "none";
@@ -253,6 +302,7 @@ export function buildBlockWidget(block: ParagraphBlock, opts: { readonly: boolea
   icon.setAttribute("aria-hidden", "true");
   const label = ellipsisSpan(block.filename);
   row.append(icon, label);
+  watchAttachmentState(row, label, block.ref, block.filename);
   if (!opts.readonly) {
     const openBtn = document.createElement("button");
     openBtn.type = "button";
@@ -299,14 +349,19 @@ export function buildBlockWidget(block: ParagraphBlock, opts: { readonly: boolea
  * 포함해도 한 뷰의 수명 동안 readonly는 사실상 고정값(카드 앞면은 항상 readonly,
  * 창은 항상 editable)이라 doc 편집 중 재생이 끊기는 원래 우려는 재현되지 않는다.
  */
-function blockWidgetKey(block: ParagraphBlock, readonly: boolean): string {
+function blockWidgetKey(block: ParagraphBlock, readonly: boolean, version: number): string {
   const suffix = readonly ? "ro" : "rw";
   if (block.type === "link") return `moss-blk-link-${block.url}-${suffix}`;
-  if (block.type === "audio") return `moss-blk-audio-${block.ref}-${suffix}`;
-  return `moss-blk-file-${block.ref}-${suffix}`;
+  // 첨부 위젯은 files 버전을 key에 넣어 자리표시자 DOM이 실제 첨부로 교체되게 한다.
+  if (block.type === "audio") return `moss-blk-audio-${block.ref}-${suffix}-${version}`;
+  return `moss-blk-file-${block.ref}-${suffix}-${version}`;
 }
 
-function buildBlockDecorations(doc: ProseNode, readonly: boolean): DecorationSet {
+function buildBlockDecorations(
+  doc: ProseNode,
+  readonly: boolean,
+  version: number,
+): DecorationSet {
   const decos: Decoration[] = [];
   doc.descendants((node, pos) => {
     const block = paragraphBlock(node);
@@ -318,7 +373,7 @@ function buildBlockDecorations(doc: ProseNode, readonly: boolean): DecorationSet
     decos.push(
       Decoration.widget(start, () => buildBlockWidget(block, { readonly }), {
         side: -1,
-        key: blockWidgetKey(block, readonly),
+        key: blockWidgetKey(block, readonly, version),
       }),
     );
     return false; // 단일 텍스트 자식 — 더 내려갈 것 없음.
@@ -339,14 +394,25 @@ function buildBlockDecorations(doc: ProseNode, readonly: boolean): DecorationSet
  */
 export function createBlockDecorationsPlugin(): Plugin {
   let currentView: EditorView | null = null;
-  let cache: { doc: ProseNode; readonly: boolean; set: DecorationSet } | null = null;
+  let cache: { doc: ProseNode; readonly: boolean; version: number; set: DecorationSet } | null =
+    null;
 
   return new Plugin({
     props: {
       decorations(state) {
         const readonly = currentView ? !currentView.editable : false;
-        if (!cache || cache.doc !== state.doc || cache.readonly !== readonly) {
-          cache = { doc: state.doc, readonly, set: buildBlockDecorations(state.doc, readonly) };
+        if (
+          !cache ||
+          cache.doc !== state.doc ||
+          cache.readonly !== readonly ||
+          cache.version !== filesVersion
+        ) {
+          cache = {
+            doc: state.doc,
+            readonly,
+            version: filesVersion,
+            set: buildBlockDecorations(state.doc, readonly, filesVersion),
+          };
         }
         return cache.set;
       },
@@ -354,6 +420,11 @@ export function createBlockDecorationsPlugin(): Plugin {
     view(view) {
       currentView = view;
       mountedViews += 1;
+      // n10w B: fileId가 나중에 동기화되면 자리표시자를 실제 첨부로 다시 그린다.
+      const unsubscribe = onFilesMapChange(() => {
+        filesVersion += 1;
+        if (currentView === view) view.updateState(view.state);
+      });
       queueMicrotask(() => {
         // 그 사이 다른 view로 교체되거나 destroy됐으면 건너뛴다.
         if (currentView === view) view.updateState(view.state);
@@ -363,6 +434,7 @@ export function createBlockDecorationsPlugin(): Plugin {
           currentView = v;
         },
         destroy() {
+          unsubscribe();
           currentView = null;
           cache = null;
           mountedViews = Math.max(0, mountedViews - 1);

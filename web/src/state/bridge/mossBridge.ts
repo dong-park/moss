@@ -34,7 +34,8 @@ import {
   writeNoteRecord,
 } from "@/state/ydoc";
 import { serializeBlock } from "@/state/blocks";
-import { putBlob, makeAttachmentFilename } from "@/state/db/opfs";
+import { makeAttachmentFilename } from "@/state/db/opfs";
+import { storeAttachment } from "@/state/share/attachments";
 import {
   MAX_ATTACHMENT_BYTES,
   MAX_IMAGE_BYTES,
@@ -130,7 +131,10 @@ function replacePlaceholdersOutsideFences(
   return lines.join("\n");
 }
 
-async function blockToMarkdown(raw: unknown): Promise<{ md: string; placeholder: string }> {
+async function blockToMarkdown(
+  raw: unknown,
+  boardId: string | null,
+): Promise<{ md: string; placeholder: string }> {
   const b = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   const placeholder = typeof b.placeholder === "string" ? b.placeholder : "";
   if (placeholder && !/^[a-zA-Z0-9_-]+$/.test(placeholder)) {
@@ -152,7 +156,11 @@ async function blockToMarkdown(raw: unknown): Promise<{ md: string; placeholder:
       if (blob.size > MAX_IMAGE_BYTES) {
         throw new Error(`이미지가 너무 큽니다(${blob.size} bytes > ${MAX_IMAGE_BYTES}).`);
       }
-      const ref = await putBlob(makeAttachmentFilename(mimeType), blob);
+      const ref = await storeAttachment(
+        boardId,
+        makeAttachmentFilename(mimeType),
+        blob,
+      );
       return { md: serializeBlock({ type: "image", ref }), placeholder };
     }
     case "audio": {
@@ -163,7 +171,11 @@ async function blockToMarkdown(raw: unknown): Promise<{ md: string; placeholder:
       if (blob.size > MAX_ATTACHMENT_BYTES) {
         throw new Error(`녹음이 너무 큽니다(${blob.size} bytes > ${MAX_ATTACHMENT_BYTES}).`);
       }
-      const ref = await putBlob(makeAttachmentFilename(mimeType), blob);
+      const ref = await storeAttachment(
+        boardId,
+        makeAttachmentFilename(mimeType),
+        blob,
+      );
       return { md: serializeBlock({ type: "audio", ref }), placeholder };
     }
     case "file": {
@@ -172,7 +184,11 @@ async function blockToMarkdown(raw: unknown): Promise<{ md: string; placeholder:
       if (blob.size > MAX_ATTACHMENT_BYTES) {
         throw new Error(`파일이 너무 큽니다(${blob.size} bytes > ${MAX_ATTACHMENT_BYTES}).`);
       }
-      const ref = await putBlob(makeAttachmentFilename(mimeType || undefined), blob);
+      const ref = await storeAttachment(
+        boardId,
+        makeAttachmentFilename(mimeType || undefined),
+        blob,
+      );
       const filename =
         typeof b.filename === "string" && b.filename.trim() ? b.filename : DEFAULT_FILE_LABEL;
       return { md: serializeBlock({ type: "file", ref, filename }), placeholder };
@@ -195,14 +211,18 @@ async function blockToMarkdown(raw: unknown): Promise<{ md: string; placeholder:
  * 블록은 "자기 문단에 단독"일 때만 블록이므로(`blocks.ts:isolatedBlockLines`)
  * 치환·append 모두 `\n\n…\n\n` 경계를 지킨다(§12 /hate).
  */
-async function embedInlineBlocks(content: string, blocks: unknown): Promise<string> {
+async function embedInlineBlocks(
+  content: string,
+  blocks: unknown,
+  boardId: string | null,
+): Promise<string> {
   if (!Array.isArray(blocks) || blocks.length === 0) return content;
 
   const replacements: { token: string; md: string }[] = [];
   const append: string[] = [];
 
   for (const raw of blocks) {
-    const { md, placeholder } = await blockToMarkdown(raw);
+    const { md, placeholder } = await blockToMarkdown(raw, boardId);
     const token = placeholder ? `{{${placeholder}}}` : "";
     if (token && contentIncludesTokenOutsideFences(content, token)) {
       // 같은 토큰은 blocks[] 순서상 첫 블록만 치환한다.
@@ -296,12 +316,14 @@ export async function dispatchOp(
       // 우측이 잘린다. 블록이 있으면 width 미지정이어도 720을 기본으로 넓힌다.
       const width = typeof params.width === "number" ? params.width : undefined;
       const blocks = Array.isArray(params.blocks) ? params.blocks : [];
+      // 대상 보드를 먼저 정한다 — 첨부 저장/업로드가 "현재 보드"가 아니라 이 보드
+      // 기준이어야 한다(신뢰 경계: 다른 보드 op가 현재 보드 저장소로 새지 않게).
+      const { storageId, isCurrent } = resolveBoard(params.boardId);
       // 블록을 먼저 전부 처리한다 — 하나라도 실패하면 throw로 빠져 카드를 만들지 않는다.
-      const finalContent = await embedInlineBlocks(raw, blocks);
+      const finalContent = await embedInlineBlocks(raw, blocks, storageId);
       const effWidth = width !== undefined ? width : blocks.length > 0 ? 720 : undefined;
       // 메모는 항상 정사각형 — 브리지가 넘긴 height는 무시하고 폭에 맞춘다.
       const square = effWidth;
-      const { storageId, isCurrent } = resolveBoard(params.boardId);
       if (isCurrent) {
         const id = ws.addCardAt("text", x, y);
         if (square !== undefined) {

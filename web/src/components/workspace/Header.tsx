@@ -1,10 +1,15 @@
 "use client";
 
 import { useT } from "@/i18n/Provider";
+import { useWorkspace } from "@/state/workspace";
+import { ShareControl } from "@/components/share/ShareControl";
 import { BoardPicker } from "./BoardPicker";
 
 export function Header() {
   const t = useT();
+  const currentBoardId = useWorkspace((s) => s.currentBoardId);
+  const boards = useWorkspace((s) => s.boards);
+  const currentBoard = boards.find((b) => b.id === currentBoardId) ?? null;
 
   return (
     <header className="flex items-center justify-between border-b border-border bg-bg px-5">
@@ -18,6 +23,12 @@ export function Header() {
       </div>
 
       <div className="flex items-center gap-2 text-base text-text-muted">
+        {currentBoard ? (
+          <ShareControl
+            boardId={currentBoard.id}
+            boardName={currentBoard.name}
+          />
+        ) : null}
         <IconButton label={t("common.search")}>🔍</IconButton>
         {/* 2026-09-19 사용자 결정: 시그널스(AI 모드) 관련 알림 아이콘 임시 숨김 — 삭제 아님.
         <IconButton label={t("common.notifications")}>🔔</IconButton>
