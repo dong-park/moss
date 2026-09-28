@@ -1,0 +1,77 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: moss
+      POSTGRES_PASSWORD: moss
+      POSTGRES_DB: moss
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U moss -d moss"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  server:
+    build:
+      context: ./server
+    environment:
+      PORT: "8080"
+      DATABASE_URL: jdbc:postgresql://postgres:5432/moss
+      DATABASE_USER: moss
+      DATABASE_PASSWORD: moss
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      # Browser origins for CORS, comma-separated, no wildcards.
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
+      # n10: board attachments land here, on a named volume (D12).
+      FILES_DIR: /data/files
+      # n5 Hocuspocus control endpoint for revoke/kick (internal port, not published).
+      SYNC_INTERNAL_URL: ${SYNC_INTERNAL_URL:-http://sync:1235}
+      SYNC_INTERNAL_SECRET: ${SYNC_INTERNAL_SECRET:?SYNC_INTERNAL_SECRET is required}
+    ports:
+      - "8080:8080"
+    volumes:
+      - filedata:/data/files
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Ktor binds 8080 only after Flyway runs (DatabaseFactory.connect runs before
+    # embeddedServer.start), so an open TCP port means V3 documents exists.
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8080'"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 20s
+
+  sync:
+    build:
+      context: ./sync
+    environment:
+      PORT: "1234"
+      INTERNAL_PORT: "1235"
+      # Ktor runs in a sibling container, so the control port must bind the
+      # container network (it is not published to the host); the shared secret
+      # gates it.
+      SYNC_INTERNAL_HOST: "0.0.0.0"
+      SYNC_INTERNAL_SECRET: ${SYNC_INTERNAL_SECRET:?SYNC_INTERNAL_SECRET is required}
+      # node-postgres URL (Ktor uses the jdbc: prefix on its own service).
+      DATABASE_URL: postgres://moss:moss@postgres:5432/moss
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+    ports:
+      - "1234:1234"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      # Flyway V3 owns `documents`; wait for the server to have migrated so the
+      # first fetch does not hit "relation does not exist".
+      server:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  filedata:
