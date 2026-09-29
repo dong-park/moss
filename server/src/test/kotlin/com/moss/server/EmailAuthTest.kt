@@ -172,4 +172,48 @@ class EmailAuthTest : ApiTest() {
         }
         assertNull(storedEmail)
     }
+
+    @Test
+    fun signupRejectsEmailLongerThan254() = app {
+        val longEmail = "a".repeat(250) + "@x.com"
+        assertEquals(HttpStatusCode.BadRequest, client().signup(longEmail, "password123", "Name").status)
+    }
+
+    @Test
+    fun loginRejectsEmailLongerThan254() = app {
+        val longEmail = "a".repeat(250) + "@x.com"
+        assertEquals(HttpStatusCode.BadRequest, client().loginRequest(longEmail, "password123").status)
+    }
+
+    @Test
+    fun loginIsRateLimitedAcrossEmailsFromOneIp() = app {
+        val http = client()
+        // 메일마다 버킷이 따로여도 IP 전용 집계 60회가 걸린다. 빈 비번은 400이라 bcrypt를 아낀다.
+        repeat(60) { index ->
+            val response = http.loginRequest("user$index@example.com", "")
+            assertEquals(HttpStatusCode.BadRequest, response.status, "request $index")
+        }
+        assertEquals(HttpStatusCode.TooManyRequests, http.loginRequest("late@example.com", "").status)
+    }
+
+    @Test
+    fun loginWithSevenCharPasswordIsUnauthorized() = app {
+        client().signup("seven@example.com", "password123", "Seven")
+        // 가입 정책(8자)과 달리 로그인은 형식을 보지 않는다 — 7자도 틀린 비번이면 401.
+        assertEquals(
+            HttpStatusCode.Unauthorized,
+            client().loginRequest("seven@example.com", "short7c").status,
+        )
+    }
+
+    @Test
+    fun googleOnlyAccountCannotLoginWithEmail() = app {
+        google.register("tok-g2", "sub-g2", "G2")
+        login("tok-g2")
+        // Google 전용 계정은 email이 null이라 어떤 메일로도 찾히지 않는다.
+        assertEquals(
+            HttpStatusCode.Unauthorized,
+            client().loginRequest("g2@example.com", "password123").status,
+        )
+    }
 }

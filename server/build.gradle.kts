@@ -30,6 +30,7 @@ dependencies {
     implementation("io.ktor:ktor-server-call-logging:$ktorVersion")
     implementation("io.ktor:ktor-server-cors:$ktorVersion")
     implementation("io.ktor:ktor-server-rate-limit:$ktorVersion")
+    implementation("io.ktor:ktor-server-double-receive:$ktorVersion")
 
     implementation("ch.qos.logback:logback-classic:1.5.18")
     implementation("com.zaxxer:HikariCP:6.3.3")

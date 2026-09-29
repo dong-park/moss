@@ -11,3 +11,7 @@ create unique index users_email_idx on users (email);
 
 alter table users add constraint users_identity_check
     check (google_sub is not null or password_hash is not null);
+
+-- password_hash가 있는 행은 반드시 메일도 있어야 한다 — 메일 없는 메일계정이 생기지 않게.
+alter table users add constraint users_email_required_with_password
+    check (password_hash is null or email is not null);

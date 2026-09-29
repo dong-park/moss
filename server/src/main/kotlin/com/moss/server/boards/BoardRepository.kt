@@ -27,8 +27,8 @@ import java.util.UUID
 
 data class UserRow(val id: UUID, val googleSub: String?, val name: String, val avatar: String?)
 
-/** D5: 메일 로그인에 필요한 최소 정보 — 계정 id와 저장된 bcrypt 해시. */
-data class EmailCredential(val id: UUID, val passwordHash: String)
+/** D5: 메일 로그인에 필요한 정보 — 응답에 쓸 [UserRow]와 저장된 bcrypt 해시. */
+data class EmailCredential(val user: UserRow, val passwordHash: String)
 data class BoardRow(val id: String, val ownerId: UUID, val name: String)
 data class FileRow(val id: UUID, val boardId: String, val name: String, val size: Long, val contentType: String?)
 data class MemberBoard(val id: String, val name: String, val role: String, val ownerName: String)
@@ -113,7 +113,10 @@ class BoardRepository(
         val row = Users.selectAll().where { Users.email eq email }.singleOrNull()
             ?: return@dbQuery null
         val hash = row[Users.passwordHash] ?: return@dbQuery null
-        EmailCredential(row[Users.id], hash)
+        EmailCredential(
+            UserRow(row[Users.id], row[Users.googleSub], row[Users.name], row[Users.avatar]),
+            hash,
+        )
     }
 
     suspend fun board(boardId: String): BoardRow? = dbQuery {
