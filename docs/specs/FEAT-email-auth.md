@@ -156,3 +156,5 @@ moss는 로그인해야 쓴다([[FEAT-onboarding-routes]] D5). 지금 로그인 
 - 메일은 정규식 전에 254자 상한을 보고(초과 400), 제한 키도 254자로 자른다. 상한이 없으면 3000바이트 메일이 btree 한도로 500을 낸다.
 - **D1 보강**: V5에 `password_hash is null or email is not null` 제약을 더해 메일 없는 메일계정 행을 막는다.
 - 로그인은 `findByEmail`이 돌려준 `UserRow`로 응답해 `userById` 재조회를 없앴다.
+- 로그인 본문을 두 번 읽으려고 Ktor `DoubleReceive`를 전역 설치했다가 되돌렸다. 업로드 본문까지 힙에 통째로 복사해 스트리밍 보호가 무력해졌다. 로그인 본문만 call 속성에 담는 `receiveEmailLogin`을 쓴다.
+- 로그인 비밀번호 상한을 1024바이트로 풀었다가 bcrypt가 72바이트 초과에서 예외를 던져 500이 났다. 로그인은 72바이트 초과를 bcrypt 없이 바로 401로 답한다. 빈 비밀번호는 400이다.

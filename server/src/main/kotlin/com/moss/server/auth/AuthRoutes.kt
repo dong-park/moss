@@ -14,7 +14,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.install
-import io.ktor.server.plugins.doublereceive.DoubleReceive
+import io.ktor.util.AttributeKey
 import io.ktor.server.plugins.origin
 import io.ktor.server.plugins.ratelimit.RateLimit
 import io.ktor.server.plugins.ratelimit.RateLimitName
@@ -37,8 +37,9 @@ val EmailSignupRateLimit = RateLimitName("email-signup")
 val EmailLoginIpRateLimit = RateLimitName("email-login-ip")
 
 /**
- * RateLimit의 requestKey가 본문을 읽어야 하므로 [DoubleReceive]를 설치한다 — 핸들러가
- * 평범하게 `receive`해도 이미 소비된 본문 예외가 나지 않는다.
+ * RateLimit의 requestKey가 로그인 본문을 읽어야 한다. 본문은 한 번만 읽히므로 [receiveEmailLogin]이
+ * 첫 읽기를 call 속성에 담고 핸들러도 같은 함수로 받는다. DoubleReceive 플러그인을 전역에 깔았다가
+ * 업로드 본문까지 힙에 통째로 복사해 되돌렸다.
  *
  * IP는 `origin.remoteHost`다. 지금은 compose가 8080 직결이라 프록시가 없어 이 값이 진짜
  * 클라이언트 IP다. 프록시 뒤로 옮기면 전원이 한 버킷이 되므로 `XForwardedHeaders`를
@@ -46,12 +47,11 @@ val EmailLoginIpRateLimit = RateLimitName("email-login-ip")
  * 그만큼의 홉만 반영해야 한다 — 스펙 D8·11절 참고.
  */
 fun Application.installAuthRateLimits() {
-    install(DoubleReceive)
     install(RateLimit) {
         register(EmailLoginRateLimit) {
             rateLimiter(limit = 10, refillPeriod = 1.minutes)
             requestKey { call ->
-                val email = rateLimitEmail(call.receive<EmailLoginRequest>().email)
+                val email = rateLimitEmail(call.receiveEmailLogin().email)
                 "${call.request.origin.remoteHost}:$email"
             }
         }
@@ -65,6 +65,12 @@ fun Application.installAuthRateLimits() {
         }
     }
 }
+
+private val emailLoginBodyKey = AttributeKey<EmailLoginRequest>("EmailLoginBody")
+
+private suspend fun ApplicationCall.receiveEmailLogin(): EmailLoginRequest =
+    attributes.getOrNull(emailLoginBodyKey)
+        ?: receive<EmailLoginRequest>().also { attributes.put(emailLoginBodyKey, it) }
 
 fun Route.authRoutes(server: MossServer) {
     post("/auth/google") {
@@ -101,10 +107,14 @@ fun Route.authRoutes(server: MossServer) {
     rateLimit(EmailLoginIpRateLimit) {
         rateLimit(EmailLoginRateLimit) {
             post("/auth/login") {
-                val body = call.receive<EmailLoginRequest>()
+                val body = call.receiveEmailLogin()
                 val email = normalizeEmail(body.email)
                 validateEmail(email)
                 validateLoginPassword(body.password)
+                // bcrypt는 72바이트를 넘으면 예외를 던진다. 그런 비밀번호로 저장된 해시는 없으니 바로 401.
+                if (body.password.toByteArray(Charsets.UTF_8).size > 72) {
+                    throw UnauthorizedException("메일이나 비밀번호가 맞지 않아요")
+                }
                 val credential = server.repo.findByEmail(email)
                 if (credential == null) {
                     PasswordHasher.wasteTime(body.password)

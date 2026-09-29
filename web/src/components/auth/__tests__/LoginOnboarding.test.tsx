@@ -111,18 +111,36 @@ describe("AC-1·2·6 · 메일 폼", () => {
     expect(screen.getByRole("button", { name: "이미 계정이 있어요" })).toBeTruthy();
   });
 
-  test("AC-6 · 짧은 비밀번호는 보내기 전에 막고 api를 부르지 않는다", async () => {
+  test("AC-6 · 가입 · 짧은 비밀번호는 보내기 전에 막고 api를 부르지 않는다", async () => {
+    const api = fakeApi();
+    configureAuth({ api, googleIdToken: vi.fn() });
+    mount();
+
+    fireEvent.click(screen.getByRole("button", { name: "메일로 계속" }));
+    fireEvent.click(screen.getByRole("button", { name: "처음이에요? 가입하기" }));
+    fireEvent.change(screen.getByLabelText("이름"), { target: { value: "동환" } });
+    fireEvent.change(screen.getByLabelText("메일"), { target: { value: "a@x.com" } });
+    fireEvent.change(screen.getByLabelText("비밀번호"), { target: { value: "short" } });
+    fireEvent.click(screen.getByRole("button", { name: "가입하기" }));
+
+    expect(await screen.findByText("비밀번호는 8자 이상이에요")).toBeTruthy();
+    expect(api.signup).not.toHaveBeenCalled();
+  });
+
+  test("로그인은 가입 최소 길이를 보지 않고 빈 비밀번호만 막는다", async () => {
     const api = fakeApi();
     configureAuth({ api, googleIdToken: vi.fn() });
     mount();
 
     fireEvent.click(screen.getByRole("button", { name: "메일로 계속" }));
     fireEvent.change(screen.getByLabelText("메일"), { target: { value: "a@x.com" } });
+    fireEvent.click(screen.getByRole("button", { name: "로그인" }));
+    expect(await screen.findByText("비밀번호를 입력해 주세요")).toBeTruthy();
+    expect(api.login).not.toHaveBeenCalled();
+
     fireEvent.change(screen.getByLabelText("비밀번호"), { target: { value: "short" } });
     fireEvent.click(screen.getByRole("button", { name: "로그인" }));
-
-    expect(await screen.findByText("비밀번호는 8자 이상이에요")).toBeTruthy();
-    expect(api.login).not.toHaveBeenCalled();
+    await waitFor(() => expect(api.login).toHaveBeenCalled());
   });
 
   test("AC-1 · 가입은 trim한 값을 넘기고 로그인 상태가 된다", async () => {
@@ -185,18 +203,20 @@ describe("AC-1·2·6 · 메일 폼", () => {
     }
   });
 
-  test("AC-6 · 이모지 4개 비밀번호는 코드포인트 4자라 보내기 전에 막는다", async () => {
+  test("AC-6 · 가입 · 이모지 4개 비밀번호는 코드포인트 4자라 보내기 전에 막는다", async () => {
     const api = fakeApi();
     configureAuth({ api, googleIdToken: vi.fn() });
     mount();
 
     fireEvent.click(screen.getByRole("button", { name: "메일로 계속" }));
+    fireEvent.click(screen.getByRole("button", { name: "처음이에요? 가입하기" }));
+    fireEvent.change(screen.getByLabelText("이름"), { target: { value: "동환" } });
     fireEvent.change(screen.getByLabelText("메일"), { target: { value: "a@x.com" } });
     fireEvent.change(screen.getByLabelText("비밀번호"), { target: { value: "😀😀😀😀" } });
-    fireEvent.click(screen.getByRole("button", { name: "로그인" }));
+    fireEvent.click(screen.getByRole("button", { name: "가입하기" }));
 
     expect(await screen.findByText("비밀번호는 8자 이상이에요")).toBeTruthy();
-    expect(api.login).not.toHaveBeenCalled();
+    expect(api.signup).not.toHaveBeenCalled();
   });
 
   test("AC-6 · 이모지 21자 이름은 UTF-16 길이가 아니라 코드포인트로 봐 통과한다", async () => {

@@ -444,6 +444,7 @@
         "toLogin": "이미 계정이 있어요",
         "invalidEmail": "메일 주소를 확인해 주세요",
         "passwordTooShort": "비밀번호는 8자 이상이에요",
+        "passwordRequired": "비밀번호를 입력해 주세요",
         "passwordTooLong": "비밀번호는 72바이트 이하여야 해요",
         "nameRequired": "이름을 입력해 주세요",
         "nameTooLong": "이름은 40자 이하예요",

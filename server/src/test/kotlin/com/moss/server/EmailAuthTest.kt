@@ -207,6 +207,15 @@ class EmailAuthTest : ApiTest() {
     }
 
     @Test
+    fun loginWithOver72BytePasswordIsUnauthorizedNot500() = app {
+        client().signup("long@example.com", "password123", "Long")
+        // bcrypt는 72바이트 초과에서 예외를 던진다. 500이 아니라 같은 401이어야 한다.
+        val long = "가".repeat(30)
+        assertEquals(HttpStatusCode.Unauthorized, client().loginRequest("long@example.com", long).status)
+        assertEquals(HttpStatusCode.Unauthorized, client().loginRequest("none@example.com", long).status)
+    }
+
+    @Test
     fun googleOnlyAccountCannotLoginWithEmail() = app {
         google.register("tok-g2", "sub-g2", "G2")
         login("tok-g2")

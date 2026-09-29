@@ -33,7 +33,10 @@ function validate(
   const errors: FieldErrors = {};
   if (!EMAIL_RE.test(email.trim())) errors.email = t("collab.auth.email.invalidEmail");
   // 서버는 코드포인트로 최소 길이를 본다 — UTF-16 length는 이모지를 2로 세어 어긋난다.
-  if ([...password].length < PASSWORD_MIN) {
+  // 로그인은 가입 정책의 최소 길이를 보지 않는다 — 서버 validateLoginPassword와 같다.
+  if (mode === "login" && password.length === 0) {
+    errors.password = t("collab.auth.email.passwordRequired");
+  } else if (mode === "signup" && [...password].length < PASSWORD_MIN) {
     errors.password = t("collab.auth.email.passwordTooShort");
   } else if (new TextEncoder().encode(password).length > PASSWORD_MAX_BYTES) {
     errors.password = t("collab.auth.email.passwordTooLong");
