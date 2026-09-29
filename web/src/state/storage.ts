@@ -24,16 +24,18 @@ import {
   deleteConnectionRecord,
   writeConnectionRecord,
 } from "@/state/ydoc/writeThrough";
-import { SYSTEM_BOARD_ID, normalizeBoardId } from "@/state/boardIds";
+import {
+  SYSTEM_BOARD_ID,
+  isSystemBoardNote,
+  normalizeBoardId,
+} from "@/state/boardIds";
 
 /**
  * n1: 시스템 보드 주소의 메모를 고르는 필터. 마이그레이션 전 레거시 행(boardId=null)도
  * 함께 포함한다 — 중단·재개 경계에서 잠깐 공존할 수 있다.
  */
 function systemBoardNoteFilter(db: MossDB) {
-  return db.notes.filter(
-    (n) => n.boardId === null || n.boardId === SYSTEM_BOARD_ID,
-  );
+  return db.notes.filter(isSystemBoardNote);
 }
 
 
@@ -80,6 +82,10 @@ interface StorageState {
   loadBoards: () => Promise<Board[]>;
   saveBoard: (patch: Partial<Board> & { id: string }) => Promise<void>;
   removeBoard: (id: string) => Promise<void>;
+  /** P1 AC-8: 지운 보드 id를 settings.deletedBoardIds에 남긴다(최근 200개). */
+  rememberDeletedBoards: (ids: string[]) => Promise<void>;
+  /** P1 AC-8: 휴지통 복원으로 보드가 돌아오면 목록에서 뺀다. */
+  forgetDeletedBoards: (ids: string[]) => Promise<void>;
   /** FEAT-subcanvas: boardId별 카드 수 — 함 카드의 "카드 N개" 표시용. */
   countCardsByBoard: (boardIds: string[]) => Promise<Record<string, number>>;
   /**
@@ -113,6 +119,21 @@ async function ensureSettings(db: MossDB): Promise<Settings> {
   if (existing) return existing;
   await db.settings.put({ ...DEFAULT_SETTINGS });
   return { ...DEFAULT_SETTINGS };
+}
+
+/** P1 AC-8: 지운 보드 id 목록의 최근 보관 상한. 오래된 것부터 밀려난다. */
+const DELETED_BOARD_IDS_LIMIT = 200;
+
+/** deletedBoardIds를 덮어쓰고 settings 상태를 갱신한다. */
+async function putDeletedBoardIds(db: MossDB, ids: string[]): Promise<Settings> {
+  const current = (await db.settings.get("singleton")) ?? { ...DEFAULT_SETTINGS };
+  const next: Settings = {
+    ...current,
+    id: "singleton",
+    deletedBoardIds: ids.slice(-DELETED_BOARD_IDS_LIMIT),
+  };
+  await db.settings.put(next);
+  return next;
 }
 
 function mergeNote(
@@ -431,6 +452,30 @@ export const useStorage = create<StorageState>((set, get) => ({
         .modify({ boardId: SYSTEM_BOARD_ID });
       await db.boards.delete(id);
     });
+    // P1 AC-8: 지운 사실을 남겨 `/b/<id>` 재진입이 "찾을 수 없는 보드예요"가 되게 한다.
+    await get().rememberDeletedBoards([id]);
+  },
+
+  rememberDeletedBoards: async (ids) => {
+    if (ids.length === 0) return;
+    const db = getDB();
+    const current = (await db.settings.get("singleton")) ?? { ...DEFAULT_SETTINGS };
+    const drop = new Set(ids);
+    const prev = (current.deletedBoardIds ?? []).filter((x) => !drop.has(x));
+    const next = await putDeletedBoardIds(db, [...prev, ...ids]);
+    set({ settings: next });
+  },
+
+  forgetDeletedBoards: async (ids) => {
+    if (ids.length === 0) return;
+    const db = getDB();
+    const current = (await db.settings.get("singleton")) ?? { ...DEFAULT_SETTINGS };
+    const drop = new Set(ids);
+    const next = await putDeletedBoardIds(
+      db,
+      (current.deletedBoardIds ?? []).filter((x) => !drop.has(x)),
+    );
+    set({ settings: next });
   },
 
   countCardsByBoard: async (boardIds) => {
@@ -500,6 +545,8 @@ export const useStorage = create<StorageState>((set, get) => ({
       },
     );
     // OPFS blob은 의도적으로 보존 — undo 만료 시 purgeAttachments가 정리.
+    // P1 AC-8: 지운 보드(트리 전체) id를 남긴다 — 함 카드 삭제 뒤 주소 재진입 안내.
+    await get().rememberDeletedBoards(toDelete);
     return snapshot;
   },
 

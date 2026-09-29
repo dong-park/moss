@@ -13,7 +13,7 @@ function deps(over: Partial<BoardAccessDeps> = {}): BoardAccessDeps {
     isGoneLocalBoard: vi.fn(async () => false),
     hasSession: () => true,
     isOnline: () => true,
-    openShared: vi.fn(async () => true),
+    openAndPersistShared: vi.fn(async () => true),
     ...over,
   };
 }
@@ -27,40 +27,40 @@ describe("resolveBoardAccess", () => {
   it("로컬 보드는 그대로 연다", async () => {
     const d = deps({ isLocalBoard: vi.fn(async () => true) });
     expect(await resolveBoardAccess("b1", d)).toEqual({ kind: "open" });
-    expect(d.openShared).not.toHaveBeenCalled();
+    expect(d.openAndPersistShared).not.toHaveBeenCalled();
   });
 
   it("로컬에 있었지만 사라진 보드는 찾을 수 없음 (AC-8)", async () => {
     const d = deps({ isGoneLocalBoard: vi.fn(async () => true) });
     expect(await resolveBoardAccess("gone", d)).toEqual({ kind: "not-found" });
-    expect(d.openShared).not.toHaveBeenCalled();
+    expect(d.openAndPersistShared).not.toHaveBeenCalled();
   });
 
   it("세션이 없으면 볼 수 없음 (AC-10)", async () => {
     const d = deps({ hasSession: () => false });
     expect(await resolveBoardAccess("b1", d)).toEqual({ kind: "no-access" });
-    expect(d.openShared).not.toHaveBeenCalled();
+    expect(d.openAndPersistShared).not.toHaveBeenCalled();
   });
 
   it("오프라인이면 연결 대기 카드 (AC-13)", async () => {
     const d = deps({ isOnline: () => false });
     expect(await resolveBoardAccess("b1", d)).toEqual({ kind: "offline" });
-    expect(d.openShared).not.toHaveBeenCalled();
+    expect(d.openAndPersistShared).not.toHaveBeenCalled();
   });
 
   it("서버에 멤버면 공유 보드로 연다 (AC-9)", async () => {
-    const d = deps({ openShared: vi.fn(async () => true) });
+    const d = deps({ openAndPersistShared: vi.fn(async () => true) });
     expect(await resolveBoardAccess("shared", d)).toEqual({ kind: "shared" });
   });
 
   it("멤버가 아니거나 서버에도 없으면 볼 수 없음 (AC-10)", async () => {
-    const d = deps({ openShared: vi.fn(async () => false) });
+    const d = deps({ openAndPersistShared: vi.fn(async () => false) });
     expect(await resolveBoardAccess("shared", d)).toEqual({ kind: "no-access" });
   });
 
   it("멤버십 확인 중 세션이 만료되면 볼 수 없음 (AC-10)", async () => {
     const d = deps({
-      openShared: vi.fn(async () => {
+      openAndPersistShared: vi.fn(async () => {
         throw new SessionExpiredError();
       }),
     });
@@ -69,7 +69,7 @@ describe("resolveBoardAccess", () => {
 
   it("멤버십 확인 중 네트워크 실패는 오프라인 (AC-13)", async () => {
     const d = deps({
-      openShared: vi.fn(async () => {
+      openAndPersistShared: vi.fn(async () => {
         throw new TypeError("Failed to fetch");
       }),
     });

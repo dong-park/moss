@@ -188,6 +188,12 @@ export interface Settings {
    * 계정별 저장소 분리는 미룬 질문이라 여기서는 소유자 표시만 남긴다.
    */
   ownerUserId?: string | null;
+  /**
+   * P1 AC-8: 이 기기에서 지운 보드 id(최근 순, 상한 있음). 보드 행을 지우는 순간
+   * 남겨, `/b/<id>`로 다시 들어올 때 "찾을 수 없는 보드예요"를 띄운다. 휴지통
+   * 복원으로 보드가 돌아오면 목록에서 뺀다. optional — 없으면 판정에 영향 없다.
+   */
+  deletedBoardIds?: string[];
 }
 
 export const DEFAULT_SETTINGS: Settings = {

@@ -43,8 +43,11 @@ export interface BoardAccessDeps {
   isGoneLocalBoard: (boardId: string) => Promise<boolean>;
   hasSession: () => boolean;
   isOnline: () => boolean;
-  /** 서버 멤버십 확인 + 멤버면 원격 사본 저장. 멤버 여부를 돌려준다. */
-  openShared: (boardId: string) => Promise<boolean>;
+  /**
+   * 서버 멤버십 확인 + 멤버면 원격 사본 저장. true를 돌려주면 로컬 행(보드 행·시스템
+   * 보드 입구 카드)이 이미 저장돼 있다 — 이름이 저장까지 포함함을 말한다.
+   */
+  openAndPersistShared: (boardId: string) => Promise<boolean>;
 }
 
 const defaultDeps: BoardAccessDeps = {
@@ -53,6 +56,10 @@ const defaultDeps: BoardAccessDeps = {
     return boards.some((b) => b.id === boardId);
   },
   isGoneLocalBoard: async (boardId) => {
+    // P1: 보드 행 삭제 시 남긴 id 목록. 파일함 카드 삭제처럼 휴지통 흔적이 없는
+    // 경로도 이 목록으로 "이 기기에 있던 보드"임을 안다(AC-8).
+    const settings = await getDB().settings.get("singleton");
+    if (settings?.deletedBoardIds?.includes(boardId)) return true;
     // 지운 보드의 메모가 휴지통에 남아 있으면 "이 기기에 있던 보드"라는 흔적이다.
     const trashed = await getDB()
       .trash.filter((e) => e.note.boardId === boardId)
@@ -64,7 +71,8 @@ const defaultDeps: BoardAccessDeps = {
   hasSession: () => useAuth.getState().session !== null,
   isOnline: () =>
     typeof navigator === "undefined" ? true : navigator.onLine !== false,
-  openShared: async (boardId) => (await openSharedBoard(boardId)) !== null,
+  openAndPersistShared: async (boardId) =>
+    (await openSharedBoard(boardId)) !== null,
 };
 
 export async function resolveBoardAccess(
@@ -77,7 +85,7 @@ export async function resolveBoardAccess(
   if (!deps.hasSession()) return { kind: "no-access" };
   if (!deps.isOnline()) return { kind: "offline" };
   try {
-    const member = await deps.openShared(boardId);
+    const member = await deps.openAndPersistShared(boardId);
     return member ? { kind: "shared" } : { kind: "no-access" };
   } catch (err) {
     // 세션 만료는 로그인 버튼으로 안내(AC-10), 그 밖의 실패는 연결 문제로 본다(AC-13).
