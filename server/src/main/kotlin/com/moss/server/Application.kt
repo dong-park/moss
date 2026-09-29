@@ -1,6 +1,7 @@
 package com.moss.server
 
 import com.moss.server.auth.GoogleVerifier
+import com.moss.server.auth.PasswordHasher
 import com.moss.server.auth.TokenService
 import com.moss.server.auth.authRoutes
 import com.moss.server.auth.installAuthRateLimits
@@ -51,6 +52,8 @@ fun Application.mossModule(
     dataSource: DataSource,
 ) {
     Database.connect(dataSource)
+    // D6: 더미 해시를 서버 시작 때 만들어 첫 없는-메일 로그인의 bcrypt 2회를 피한다.
+    PasswordHasher.warmUp()
 
     val server = MossServer(
         config = config,
