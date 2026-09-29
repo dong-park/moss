@@ -41,6 +41,12 @@ data class GoogleLoginRequest(val idToken: String)
 data class RefreshRequest(val refreshToken: String)
 
 @Serializable
+data class EmailSignupRequest(val email: String, val password: String, val name: String)
+
+@Serializable
+data class EmailLoginRequest(val email: String, val password: String)
+
+@Serializable
 data class ShareRequest(val name: String)
 
 @Serializable

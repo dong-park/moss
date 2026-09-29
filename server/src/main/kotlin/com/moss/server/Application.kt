@@ -3,6 +3,7 @@ package com.moss.server
 import com.moss.server.auth.GoogleVerifier
 import com.moss.server.auth.TokenService
 import com.moss.server.auth.authRoutes
+import com.moss.server.auth.installAuthRateLimits
 import com.moss.server.boards.BoardRepository
 import com.moss.server.boards.boardRoutes
 import io.ktor.http.HttpStatusCode
@@ -69,6 +70,7 @@ fun Application.mossModule(
         json(Json { ignoreUnknownKeys = true; encodeDefaults = true })
     }
     install(CallLogging) { level = Level.INFO }
+    installAuthRateLimits()
     install(CORS) {
         config.allowedOrigins.forEach { origin ->
             val (scheme, host) = origin.split("://", limit = 2)
@@ -83,6 +85,10 @@ fun Application.mossModule(
     install(StatusPages) {
         exception<ApiFailure> { call, cause ->
             call.respond(cause.status, ErrorResponse(cause.code, cause.message ?: cause.code))
+        }
+        // D8: RateLimit 플러그인의 429는 본문이 비어 있으므로 다른 오류와 같은 형식으로 맞춘다.
+        status(HttpStatusCode.TooManyRequests) { call, status ->
+            call.respond(status, ErrorResponse("rate_limited", "잠시 뒤 다시 시도해 주세요"))
         }
         exception<io.ktor.server.plugins.BadRequestException> { call, cause ->
             call.respond(

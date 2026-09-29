@@ -29,6 +29,7 @@ dependencies {
     implementation("io.ktor:ktor-server-status-pages:$ktorVersion")
     implementation("io.ktor:ktor-server-call-logging:$ktorVersion")
     implementation("io.ktor:ktor-server-cors:$ktorVersion")
+    implementation("io.ktor:ktor-server-rate-limit:$ktorVersion")
 
     implementation("ch.qos.logback:logback-classic:1.5.18")
     implementation("com.zaxxer:HikariCP:6.3.3")
@@ -42,6 +43,7 @@ dependencies {
 
     implementation("com.auth0:java-jwt:4.6.1")
     implementation("com.google.api-client:google-api-client:2.9.1")
+    implementation("at.favre.lib:bcrypt:0.10.2")
 
     // Local dev / tests without Docker: run Postgres inside the JVM.
     implementation("io.zonky.test:embedded-postgres:2.2.2")

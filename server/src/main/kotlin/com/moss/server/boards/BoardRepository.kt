@@ -25,7 +25,10 @@ import java.security.SecureRandom
 import java.util.Base64
 import java.util.UUID
 
-data class UserRow(val id: UUID, val googleSub: String, val name: String, val avatar: String?)
+data class UserRow(val id: UUID, val googleSub: String?, val name: String, val avatar: String?)
+
+/** D5: 메일 로그인에 필요한 최소 정보 — 계정 id와 저장된 bcrypt 해시. */
+data class EmailCredential(val id: UUID, val passwordHash: String)
 data class BoardRow(val id: String, val ownerId: UUID, val name: String)
 data class FileRow(val id: UUID, val boardId: String, val name: String, val size: Long, val contentType: String?)
 data class MemberBoard(val id: String, val name: String, val role: String, val ownerName: String)
@@ -86,6 +89,31 @@ class BoardRepository(
     suspend fun userById(userId: UUID): UserRow? = dbQuery {
         Users.selectAll().where { Users.id eq userId }.singleOrNull()
             ?.let { UserRow(it[Users.id], it[Users.googleSub], it[Users.name], it[Users.avatar]) }
+    }
+
+    /**
+     * D4~D7: 메일 가입 계정 생성. 저장 전에 이메일은 정규화되어 있어야 한다(D2).
+     * 고유 인덱스 충돌은 insertIgnore로 잡아 409로 알린다 — 동시 가입 경쟁에도 계정은 하나만 생긴다.
+     */
+    suspend fun createEmailUser(email: String, passwordHash: String, name: String): UserRow = dbQuery {
+        val id = newId()
+        val inserted = Users.insertIgnore {
+            it[Users.id] = id
+            it[Users.email] = email
+            it[Users.passwordHash] = passwordHash
+            it[Users.name] = name
+            it[createdAt] = System.currentTimeMillis()
+        }.insertedCount
+        if (inserted == 0) throw ConflictException("이미 가입된 메일이에요")
+        UserRow(id, null, name, null)
+    }
+
+    /** 로그인용: 정규화된 이메일로 계정을 찾되 password_hash가 없는 행은 계정 없음으로 본다. */
+    suspend fun findByEmail(email: String): EmailCredential? = dbQuery {
+        val row = Users.selectAll().where { Users.email eq email }.singleOrNull()
+            ?: return@dbQuery null
+        val hash = row[Users.passwordHash] ?: return@dbQuery null
+        EmailCredential(row[Users.id], hash)
     }
 
     suspend fun board(boardId: String): BoardRow? = dbQuery {

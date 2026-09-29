@@ -14,7 +14,10 @@ import java.util.UUID
 
 object Users : Table("users") {
     val id = uuid("id")
-    val googleSub = text("google_sub")
+    val googleSub = text("google_sub").nullable()
+    val email = text("email").nullable()
+    val passwordHash = text("password_hash").nullable()
+    val emailVerifiedAt = long("email_verified_at").nullable()
     val name = text("name")
     val avatar = text("avatar").nullable()
     val createdAt = long("created_at")
