@@ -182,6 +182,12 @@ export interface Settings {
    * 중간에 끊기면 없으므로 다음 부팅에 재개된다(멱등).
    */
   systemBoardMigratedAt?: number;
+  /**
+   * FEAT-onboarding-routes n2: 이 기기 로컬 데이터의 주인 계정 id. 처음 로그인한
+   * 계정으로 한 번 기록하고, 다른 계정이 로그인하면 안내 카드를 띄운다 (D5-2).
+   * 계정별 저장소 분리는 미룬 질문이라 여기서는 소유자 표시만 남긴다.
+   */
+  ownerUserId?: string | null;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -191,6 +197,7 @@ export const DEFAULT_SETTINGS: Settings = {
   storageQuotaShown: { at80: false, at95: false },
   uiLocale: "ko",
   installPromptShown: false,
+  ownerUserId: null,
 };
 
 export class MossDB extends Dexie {
