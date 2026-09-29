@@ -38,6 +38,8 @@ const board: BoardSummary = {
 function fakeAuthApi(): AuthApi {
   return {
     googleLogin: vi.fn(async () => session),
+    signup: vi.fn(async () => session),
+    login: vi.fn(async () => session),
     refresh: vi.fn(async () => session),
     previewInvite: vi.fn(async () => ({ boardName: "이번 주 기획", ownerName: "동환" })),
     acceptInvite: vi.fn(async () => board),

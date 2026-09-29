@@ -50,6 +50,8 @@ describe("AC-12 · 리프레시 만료 로그인 카드", () => {
   test("로그인하면 카드가 사라지고 로컬 사본은 유지된다", async () => {
     const api: AuthApi = {
       googleLogin: vi.fn(async () => fresh),
+      signup: vi.fn(async () => fresh),
+      login: vi.fn(async () => fresh),
       refresh: vi.fn(async () => fresh),
       previewInvite: vi.fn(),
       acceptInvite: vi.fn(),
