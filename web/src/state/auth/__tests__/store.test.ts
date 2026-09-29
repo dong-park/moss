@@ -23,6 +23,8 @@ function sessionWith(accessExp: number, refreshExp: number): AuthSession {
 function fakeApi(overrides: Partial<AuthApi> = {}): AuthApi {
   return {
     googleLogin: vi.fn(async () => sessionWith(NOW / 1000 + 600, NOW / 1000 + 600)),
+    signup: vi.fn(async () => sessionWith(NOW / 1000 + 600, NOW / 1000 + 600)),
+    login: vi.fn(async () => sessionWith(NOW / 1000 + 600, NOW / 1000 + 600)),
     refresh: vi.fn(async (): Promise<AuthSession> => {
       throw new AuthRequestError("refresh 401", 401);
     }),
@@ -130,6 +132,26 @@ describe("auth/store", () => {
     expect(user.name).toBe("동환");
     expect(googleIdToken).toHaveBeenCalledTimes(1);
     expect(api.googleLogin).toHaveBeenCalledWith("google-id-token");
+    expect(useAuth.getState().status).toBe("authenticated");
+    expect(await loadSession()).not.toBeNull();
+  });
+
+  test("signupWithEmail이 세션을 저장하고 authenticated", async () => {
+    const api = fakeApi();
+    configureAuth({ api });
+    const user = await useAuth.getState().signupWithEmail("a@x.com", "secret123", "동환");
+    expect(user.name).toBe("동환");
+    expect(api.signup).toHaveBeenCalledWith("a@x.com", "secret123", "동환");
+    expect(useAuth.getState().status).toBe("authenticated");
+    expect(await loadSession()).not.toBeNull();
+  });
+
+  test("loginWithEmail이 세션을 저장하고 authenticated", async () => {
+    const api = fakeApi();
+    configureAuth({ api });
+    const user = await useAuth.getState().loginWithEmail("a@x.com", "secret123");
+    expect(user.name).toBe("동환");
+    expect(api.login).toHaveBeenCalledWith("a@x.com", "secret123");
     expect(useAuth.getState().status).toBe("authenticated");
     expect(await loadSession()).not.toBeNull();
   });

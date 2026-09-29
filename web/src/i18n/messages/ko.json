@@ -433,6 +433,26 @@
     "auth": {
       "google": "Google로 계속하기",
       "googleAria": "Google 계정으로 로그인",
+      "email": {
+        "continue": "메일로 계속",
+        "emailLabel": "메일",
+        "passwordLabel": "비밀번호",
+        "nameLabel": "이름",
+        "loginButton": "로그인",
+        "signupButton": "가입하기",
+        "toSignup": "처음이에요? 가입하기",
+        "toLogin": "이미 계정이 있어요",
+        "invalidEmail": "메일 주소를 확인해 주세요",
+        "passwordTooShort": "비밀번호는 8자 이상이에요",
+        "passwordTooLong": "비밀번호는 72바이트 이하여야 해요",
+        "nameRequired": "이름을 입력해 주세요",
+        "nameTooLong": "이름은 40자 이하예요",
+        "conflict": "이미 가입된 메일이에요",
+        "loginFailed": "메일이나 비밀번호가 맞지 않아요",
+        "rateLimited": "잠시 뒤 다시 시도해 주세요",
+        "failed": "잠시 뒤 다시 시도해 주세요",
+        "offline": "연결되면 다시 시도해 주세요"
+      },
       "invite": {
         "title": "보드에 초대받았어요",
         "ownerInvite": "{name}님의 초대",

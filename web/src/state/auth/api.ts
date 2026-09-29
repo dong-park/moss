@@ -52,9 +52,25 @@ export class InviteFullError extends Error {
 
 export interface AuthApi {
   googleLogin(idToken: string): Promise<AuthSession>;
+  signup(email: string, password: string, name: string): Promise<AuthSession>;
+  login(email: string, password: string): Promise<AuthSession>;
   refresh(refreshToken: string): Promise<AuthSession>;
   previewInvite(token: string): Promise<InvitePreview>;
   acceptInvite(token: string, accessToken: string): Promise<BoardSummary>;
+}
+
+/**
+ * 실패 본문은 Errors.kt의 `{ error, message }` 형식이다. `message`가 있으면
+ * 사람이 읽을 문구를 그대로 쓰고, 없으면(비JSON·프록시 오류) 상태 코드로 대신한다.
+ */
+async function readErrorMessage(res: Response, path: string): Promise<string> {
+  try {
+    const body = (await res.json()) as { message?: unknown };
+    if (typeof body?.message === "string" && body.message) return body.message;
+  } catch {
+    // 본문이 JSON이 아니면 기본 메시지를 쓴다.
+  }
+  return `${path} ${res.status}`;
 }
 
 async function postJson<T>(
@@ -70,7 +86,7 @@ async function postJson<T>(
     body: JSON.stringify(body),
   });
   if (!res.ok) {
-    throw new AuthRequestError(`${path} ${res.status}`, res.status);
+    throw new AuthRequestError(await readErrorMessage(res, path), res.status);
   }
   return (await res.json()) as T;
 }
@@ -84,6 +100,9 @@ function mapInviteStatus(err: unknown): Error {
 
 export const realAuthApi: AuthApi = {
   googleLogin: (idToken) => postJson<AuthSession>("/auth/google", { idToken }),
+  signup: (email, password, name) =>
+    postJson<AuthSession>("/auth/signup", { email, password, name }),
+  login: (email, password) => postJson<AuthSession>("/auth/login", { email, password }),
   refresh: (refreshToken) => postJson<AuthSession>("/auth/refresh", { refreshToken }),
   previewInvite: async (token) => {
     try {

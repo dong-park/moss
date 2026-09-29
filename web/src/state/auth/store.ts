@@ -96,6 +96,8 @@ export interface AuthState {
   /** IndexedDB에서 세션을 복원한다. 최초 1회만 실제로 돈다. */
   hydrate(): Promise<void>;
   loginWithGoogle(): Promise<AuthUser>;
+  signupWithEmail(email: string, password: string, name: string): Promise<AuthUser>;
+  loginWithEmail(email: string, password: string): Promise<AuthUser>;
   /** 무인증 초대 미리보기 — 카드 이름을 서버가 알려준 값으로만 채운다. */
   previewInvite(token: string): Promise<InvitePreview>;
   /** 유효 세션을 보장하고 초대를 수락한다. 세션이 없으면 SessionExpiredError. */
@@ -166,6 +168,20 @@ export const useAuth = create<AuthState>((set, get) => ({
     invalidateRefresh();
     const idToken = await deps.googleIdToken();
     const session = await deps.api.googleLogin(idToken);
+    await persist(session);
+    return session.user;
+  },
+
+  signupWithEmail: async (email, password, name) => {
+    invalidateRefresh();
+    const session = await deps.api.signup(email, password, name);
+    await persist(session);
+    return session.user;
+  },
+
+  loginWithEmail: async (email, password) => {
+    invalidateRefresh();
+    const session = await deps.api.login(email, password);
     await persist(session);
     return session.user;
   },
