@@ -30,6 +30,7 @@ function fakeGoogle(prompt: (cb?: (n: unknown) => void) => void, credential?: st
           if (credential) queueMicrotask(() => callback({ credential }));
         },
         prompt,
+        renderButton: () => {},
       },
     },
   };
@@ -76,5 +77,48 @@ describe("auth/googleIdentity", () => {
     addLoadedScript();
     fakeGoogle(() => {}, "id-token");
     await expect(requestGoogleIdToken("client")).resolves.toBe("id-token");
+  });
+
+  describe("Google 공식 버튼을 One Tap과 함께 띄운다", () => {
+    function fakeCooldown() {
+      let cb: ((r: { credential?: string }) => void) | undefined;
+      const rendered: HTMLElement[] = [];
+      (window as unknown as { google: unknown }).google = {
+        accounts: {
+          id: {
+            initialize: ({ callback }: { callback: typeof cb }) => (cb = callback),
+            prompt: (n?: (x: unknown) => void) =>
+              n?.({ isNotDisplayed: () => true, isSkippedMoment: () => false, isDismissedMoment: () => false }),
+            renderButton: (el: HTMLElement) => rendered.push(el),
+          },
+        },
+      };
+      return { press: (credential: string) => cb?.({ credential }), rendered };
+    }
+    const box = () => document.querySelector('[role="dialog"][aria-label="Google 로그인"]');
+
+    test("버튼으로 받은 토큰으로 resolve하고 버튼을 치운다", async () => {
+      addLoadedScript();
+      const g = fakeCooldown();
+      const token = requestGoogleIdToken("client");
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(g.rendered).toHaveLength(1);
+      expect(box()).not.toBeNull();
+      g.press("button-token");
+      await expect(token).resolves.toBe("button-token");
+      expect(box()).toBeNull();
+    });
+
+    test("닫기를 누르면 취소로 reject하고 버튼을 치운다", async () => {
+      addLoadedScript();
+      fakeCooldown();
+      const token = requestGoogleIdToken("client");
+      await Promise.resolve();
+      await Promise.resolve();
+      box()?.querySelector("button")?.click();
+      await expect(token).rejects.toBeInstanceOf(GoogleUnavailableError);
+      expect(box()).toBeNull();
+    });
   });
 });

@@ -22,6 +22,7 @@ interface GoogleAccountsId {
     callback: (response: GoogleCredentialResponse) => void;
   }): void;
   prompt(onNotification?: (notification: GooglePromptNotification) => void): void;
+  renderButton(parent: HTMLElement, options: Record<string, unknown>): void;
 }
 
 interface GoogleNamespace {
@@ -87,12 +88,16 @@ export async function requestGoogleIdToken(
   return new Promise<string>((resolve, reject) => {
     let settled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let fallback: HTMLElement | undefined;
     const finish = (settle: () => void) => {
       if (settled) return;
       settled = true;
       if (timer) clearTimeout(timer);
+      fallback?.remove();
       settle();
     };
+    const cancel = () =>
+      finish(() => reject(new GoogleUnavailableError("Google 계정 확인을 취소했어요")));
     google.accounts.id.initialize({
       client_id: clientId,
       callback: (response) => {
@@ -108,15 +113,33 @@ export async function requestGoogleIdToken(
         timeoutMs,
       );
     }
-    // One Tap을 닫거나 띄우지 못하면 콜백이 오지 않는다 — 여기서 정리해 버튼 상태로 돌린다.
+    // One Tap 옆에 Google 공식 버튼을 처음부터 같이 띄운다. One Tap은 한 번 닫으면 쿨다운이 걸리고,
+    // "못 띄웠다" 알림(isNotDisplayed·isSkippedMoment)은 FedCM 전환 뒤 오지 않는다 — 버튼은 둘 다 없다.
+    // 어느 쪽을 눌러도 같은 callback으로 온다. One Tap을 직접 닫는 건 취소로 본다.
+    fallback = showFallbackButton(google.accounts.id, cancel);
     google.accounts.id.prompt((notification) => {
-      if (
-        notification?.isDismissedMoment?.() ||
-        notification?.isSkippedMoment?.() ||
-        notification?.isNotDisplayed?.()
-      ) {
-        finish(() => reject(new GoogleUnavailableError("Google 계정 확인을 취소했어요")));
-      }
+      if (notification?.isDismissedMoment?.()) cancel();
     });
   });
+}
+
+/** 화면 위쪽 가운데에 Google 공식 로그인 버튼과 닫기를 띄운다. */
+function showFallbackButton(id: GoogleAccountsId, onClose: () => void): HTMLElement {
+  const box = document.createElement("div");
+  box.setAttribute("role", "dialog");
+  box.setAttribute("aria-label", "Google 로그인");
+  box.style.cssText =
+    "position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:2147483647;" +
+    "display:flex;align-items:center;gap:8px;padding:12px;border-radius:14px;" +
+    "background:#fff;box-shadow:0 8px 30px rgba(0,0,0,.18)";
+  const slot = document.createElement("div");
+  const close = document.createElement("button");
+  close.type = "button";
+  close.textContent = "닫기";
+  close.style.cssText = "font-size:13px;color:#6e6e73;padding:4px 8px";
+  close.addEventListener("click", onClose);
+  box.append(slot, close);
+  document.body.appendChild(box);
+  id.renderButton(slot, { type: "standard", theme: "outline", size: "large", text: "continue_with" });
+  return box;
 }
