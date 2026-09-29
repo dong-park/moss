@@ -60,6 +60,8 @@ export async function runBootstrap(budgetMs = MIGRATION_BOOT_BUDGET_MS): Promise
     await useWorkspace.getState().loadFromStorage();
     useWorkspace.setState({ migrationPending: false });
   }
+  // n3: 부팅 완료 신호 — `/b/[boardId]` 동기화가 이전 완료 뒤에만 보드를 연다.
+  useWorkspace.setState({ bootstrapComplete: true });
 }
 
 /**

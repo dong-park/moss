@@ -25,6 +25,7 @@ import {
   encodeSubcanvas,
   __internal,
 } from "@/state/workspace";
+import { newBoardId } from "@/state/boardIds";
 import { useStorage } from "@/state/storage";
 import { getDB } from "@/state/db/schema";
 import {
@@ -405,7 +406,7 @@ export async function dispatchOp(
         ws.clearSelection();
         return { id, kind: "board", boardRef: card?.boardRef };
       }
-      const childBoardId = `b-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6)}`;
+      const childBoardId = newBoardId();
       const storage = useStorage.getState();
       await storage.saveBoard({
         id: childBoardId,
@@ -474,8 +475,10 @@ export async function dispatchOp(
     case "boards.switch": {
       const id = String(params.id ?? "");
       if (!id) throw new Error("id가 필요합니다");
-      await ws.setCurrentBoard(id);
-      return { currentBoardId: useWorkspace.getState().currentBoardId };
+      // n3 D8: URL이 원본 — 라우터가 있으면 push하고, 상태 반영은 라우트 effect가 한다.
+      // 요청한 보드로의 전환이므로 결과는 요청 id를 돌려준다(라우터 반영은 비동기).
+      await ws.navigateToBoard(id);
+      return { currentBoardId: id };
     }
 
     /* ── connections: 캔버스 렌더 대상 아님 → storage(Dexie) 데이터 경로 ── */

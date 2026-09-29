@@ -29,3 +29,16 @@ export function normalizeBoardId(id: string | null | undefined): string {
 export function isSystemBoardId(id: string | null | undefined): boolean {
   return id === SYSTEM_BOARD_ID;
 }
+
+/**
+ * n3 D2: 새 보드 id는 UUID다. 예전 `b-<시각>-<카운터>`는 기기 두 대에서 겹칠 수 있다.
+ * 기존 `b-…` id는 그대로 주소·문서 키에 쓴다(변경은 Yjs 문서·서버 행 이전이 필요해 미룸).
+ * crypto.randomUUID가 없는 환경(구형 브라우저·일부 테스트 런타임)은 형식이 겹치지 않는
+ * 폴백을 쓴다 — 폴백 id도 유일성만 보장하면 라우팅에는 지장이 없다.
+ */
+export function newBoardId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `b-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6)}`;
+}

@@ -26,7 +26,7 @@ export function BoardPicker() {
   const t = useT();
   const boards = useWorkspace((s) => s.boards);
   const currentBoardId = useWorkspace((s) => s.currentBoardId);
-  const setCurrentBoard = useWorkspace((s) => s.setCurrentBoard);
+  const navigateToBoard = useWorkspace((s) => s.navigateToBoard);
   const renameBoard = useWorkspace((s) => s.renameBoard);
   const requestRenameBoard = useWorkspace((s) => s.requestRenameBoard);
   const openDeleteDialog = useWorkspace((s) => s.openDeleteDialog);
@@ -146,7 +146,7 @@ export function BoardPicker() {
           {/* 시스템 보드 — 항상 첫 항목 */}
           <DropdownMenu.Item
             className="flex cursor-pointer items-center justify-between rounded-md px-3 py-2 text-sm text-text outline-none transition-colors data-[highlighted]:bg-panel"
-            onSelect={() => void setCurrentBoard(SYSTEM_BOARD_ID)}
+            onSelect={() => void navigateToBoard(SYSTEM_BOARD_ID)}
           >
             <span className="flex items-center gap-2">
               <span>{t("workspace.boardPicker.system")}</span>
@@ -162,7 +162,7 @@ export function BoardPicker() {
               <ContextMenu.Trigger asChild>
                 <DropdownMenu.Item
                   className="flex cursor-pointer items-center justify-between rounded-md px-3 py-2 text-sm text-text outline-none transition-colors data-[highlighted]:bg-panel"
-                  onSelect={() => void setCurrentBoard(board.id)}
+                  onSelect={() => void navigateToBoard(board.id)}
                   data-board-item-id={board.id}
                 >
                   <span>{labelFor(board)}</span>

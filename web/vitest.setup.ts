@@ -2,10 +2,17 @@ import "fake-indexeddb/auto";
 import { afterEach } from "vitest";
 import { cleanup } from "@testing-library/react";
 import { _resetEmbeddingQueue } from "./src/state/ai/embeddingQueue";
-import { __resetBoardDocsForTest } from "./src/state/workspace";
+import {
+  __resetBoardDocsForTest,
+  __resetBoardNavigatorForTest,
+  useWorkspace,
+} from "./src/state/workspace";
 
 afterEach(async () => {
   cleanup();
+  // n3: 라우터 sink·부팅 플래그가 다음 테스트로 새지 않게 초기화.
+  __resetBoardNavigatorForTest();
+  useWorkspace.setState({ bootstrapComplete: false });
   // 5초 debounce 타이머가 다음 테스트로 새어 나가 닫힌 fake-indexeddb를
   // 건드리는 unhandled rejection을 막기 위해 매 테스트 후 큐를 리셋.
   _resetEmbeddingQueue();

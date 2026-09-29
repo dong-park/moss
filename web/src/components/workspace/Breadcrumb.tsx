@@ -18,7 +18,7 @@ export function Breadcrumb() {
   const t = useT();
   const boards = useWorkspace((s) => s.boards);
   const currentBoardId = useWorkspace((s) => s.currentBoardId);
-  const setCurrentBoard = useWorkspace((s) => s.setCurrentBoard);
+  const navigateToBoard = useWorkspace((s) => s.navigateToBoard);
   // FEAT-eject: 카드를 함 밖으로 드래그할 때 커서가 올라온 조각을 하이라이트.
   const dropTargetCrumbId = useWorkspace((s) => s.dropTargetCrumbId);
 
@@ -47,7 +47,7 @@ export function Breadcrumb() {
         <span key={b.id} className="flex items-center gap-1">
           <button
             type="button"
-            onClick={() => void setCurrentBoard(b.id)}
+            onClick={() => void navigateToBoard(b.id)}
             data-crumb-board-id={b.id}
             className={[
               "cursor-pointer rounded-md px-1.5 py-1 transition-colors hover:bg-panel hover:text-text",

@@ -3,7 +3,7 @@
 import { create } from "zustand";
 import type { AINoteRef } from "./aiGate";
 import { useStorage } from "./storage";
-import { SYSTEM_BOARD_ID } from "./boardIds";
+import { SYSTEM_BOARD_ID, newBoardId } from "./boardIds";
 import {
   getDB,
   makeFrameNote,
@@ -310,6 +310,11 @@ interface WorkspaceState {
    * true. UI가 로딩 표시를 띄운다. 이전이 끝나면 스토어를 다시 읽고 false.
    */
   migrationPending: boolean;
+  /**
+   * n3: 부팅(마이그레이션 + loadFromStorage)이 끝났는가. `/b/[boardId]` 동기화가
+   * 이전이 끝난 뒤에만 보드를 열도록 하는 신호 — 이전 중 열면 빈/낡은 문서를 읽는다.
+   */
+  bootstrapComplete: boolean;
   /** TemplatePicker 모달 열림 상태 — Cmd+N / "+ 새 보드" 진입점이 공유. */
   templatePickerOpen: boolean;
   /**
@@ -332,6 +337,12 @@ interface WorkspaceState {
   /** BoardPicker가 편집 모드 진입을 확인했음을 알리는 acknowledge. */
   clearRenameRequest: () => void;
   setCurrentBoard: (id: CurrentBoardId) => Promise<void>;
+  /**
+   * n3 D8: 보드 전환 "요청". URL이 원본이라 스토어는 라우터 sink로 push만 하고,
+   * 실제 상태 반영은 `/b/[boardId]` 페이지의 effect가 setCurrentBoard로 한다.
+   * sink가 없으면(라우터 없는 테스트 환경) setCurrentBoard로 폴백한다.
+   */
+  navigateToBoard: (id: CurrentBoardId) => Promise<void>;
   createBoard: (name?: string) => Promise<string>;
   /**
    * FEAT-templates: 새 보드 생성 + 템플릿의 초기 카드 자동 배치 + 그 보드로 전환.
@@ -1469,6 +1480,24 @@ async function cascadeDeleteFunnels(
   }, BOARD_UNDO_MS);
 }
 
+/**
+ * n3 D8: URL이 보드 전환의 원본이다. 스토어 액션은 setCurrentBoard를 직접 부르지 않고
+ * 이 sink로 "이 보드로 가라"만 요청한다. 라우터가 있는 브라우저에서는 WorkspaceShell이
+ * `router.push('/b/'+id)`를 등록하고, 라우터가 없는 테스트 환경은 sink가 없어
+ * setCurrentBoard로 폴백한다 — URL 없는 유닛 테스트에서도 전환 의미를 유지한다.
+ */
+type BoardNavigator = (boardId: string) => void;
+let boardNavigator: BoardNavigator | null = null;
+
+export function setBoardNavigator(fn: BoardNavigator | null): void {
+  boardNavigator = fn;
+}
+
+/** 테스트 격리 — 등록된 라우터 sink를 지운다. */
+export function __resetBoardNavigatorForTest(): void {
+  boardNavigator = null;
+}
+
 export const useWorkspace = create<WorkspaceState>((set, get) => ({
   cards: [],
   selectedIds: [],
@@ -1489,6 +1518,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   viewportByBoard: {},
   boardTransitioning: false,
   migrationPending: false,
+  bootstrapComplete: false,
   templatePickerOpen: false,
   pendingBoardUndo: null,
   deleteDialogBoardId: null,
@@ -1516,7 +1546,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   openDeleteDialog: (boardId) => set({ deleteDialogBoardId: boardId }),
   requestRenameBoard: async (boardId) => {
     if (boardId === SYSTEM_BOARD_ID) return;
-    await get().setCurrentBoard(boardId);
+    await get().navigateToBoard(boardId);
     set({ pendingRenameBoardId: boardId });
   },
   clearRenameRequest: () => set({ pendingRenameBoardId: null }),
@@ -1607,12 +1637,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       viewport: restored,
     });
 
-    // 5) lastOpenedAt 업데이트 (사용자 보드만)
-    if (id !== SYSTEM_BOARD_ID) {
-      await storage.saveBoard({ id, lastOpenedAt: Date.now() });
-      const fresh = await storage.loadBoards();
-      set({ boards: fresh });
-    }
+    // 5) lastOpenedAt 업데이트 — `/`(RootBoardRedirect)가 "마지막 연 보드"로 돌아가려면
+    // 시스템 보드도 평범한 행인 지금 방문 시각을 남겨야 한다(n1 이후).
+    await storage.saveBoard({ id, lastOpenedAt: Date.now() });
+    const fresh = await storage.loadBoards();
+    set({ boards: fresh });
 
     // 6) 페이드인 — BOARD_FADE_MS 후 transitioning 해제
     setTimeout(() => set({ boardTransitioning: false }), BOARD_FADE_MS);
@@ -1621,18 +1650,31 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     void get().refreshSubcanvasCounts();
   },
 
+  navigateToBoard: async (id) => {
+    // n23: 이전 중에는 이동하지 않는다(setCurrentBoard와 같은 가드). 이전이 끝나면
+    // `/b/[boardId]` 동기화가 URL을 보고 다시 연다.
+    if (get().migrationPending) return;
+    // 같은 보드로 push하면 history를 쌓지 않는다(spec §6).
+    if (get().currentBoardId === id) return;
+    if (boardNavigator) {
+      boardNavigator(id);
+      return;
+    }
+    await get().setCurrentBoard(id);
+  },
+
   createBoard: async (name = "") => {
     // n23 재심사 2R-1: 이전 중에는 새 보드를 만들지 않는다. 만들면 setCurrentBoard가
     // 막혀 전환되지 않는 고아 보드가 남는다.
     if (get().migrationPending) return get().currentBoardId;
     const storage = useStorage.getState();
     if (!storage.initialized) await storage.init();
-    const id = `b-${Date.now().toString(36)}-${counter++}`;
+    const id = newBoardId();
     await storage.saveBoard({ id, name, isSystem: false });
     await writeBoardToDoc(id);
     const boards = await storage.loadBoards();
     set({ boards });
-    await get().setCurrentBoard(id);
+    await get().navigateToBoard(id);
     return id;
   },
 
@@ -1644,7 +1686,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const storage = useStorage.getState();
     if (!storage.initialized) await storage.init();
 
-    const boardId = `b-${Date.now().toString(36)}-${counter++}`;
+    const boardId = newBoardId();
     const trimmedName = name.trim() || t("templates.picker.defaultBoardName");
     await storage.saveBoard({
       id: boardId,
@@ -1687,7 +1729,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
     const boards = await storage.loadBoards();
     set({ boards });
-    await get().setCurrentBoard(boardId);
+    await get().navigateToBoard(boardId);
     return boardId;
   },
 
@@ -1715,7 +1757,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     if (get().currentBoardId === id) {
       // 삭제된 보드를 보고 있었으면 시스템 보드로 복귀
       set(next as WorkspaceState);
-      await get().setCurrentBoard(SYSTEM_BOARD_ID);
+      await get().navigateToBoard(SYSTEM_BOARD_ID);
       return;
     }
     if (get().lastNonSystemBoardId === id) {
@@ -1790,9 +1832,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     if (current === SYSTEM_BOARD_ID) {
       const last = get().lastNonSystemBoardId;
       if (!last) return;
-      await get().setCurrentBoard(last);
+      await get().navigateToBoard(last);
     } else {
-      await get().setCurrentBoard(SYSTEM_BOARD_ID);
+      await get().navigateToBoard(SYSTEM_BOARD_ID);
     }
   },
 
@@ -2503,7 +2545,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const storage = useStorage.getState();
     if (!storage.initialized) await storage.init();
 
-    const id = `b-${Date.now().toString(36)}-${counter++}`;
+    const id = newBoardId();
     await storage.saveBoard({ id, name: boardName, isSystem: false });
     await writeBoardToDoc(id);
 
@@ -2521,7 +2563,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     // 3) 보드 목록 갱신 + 새 보드로 전환
     const boards = await storage.loadBoards();
     set({ boards });
-    await get().setCurrentBoard(id);
+    await get().navigateToBoard(id);
     return id;
   },
 
@@ -2588,7 +2630,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     // 함 카드는 현재 보드(시스템이면 boardId=null)에 저장하고, 새 서브 보드의
     // parentBoardId는 현재 보드 id(시스템이면 "system" sentinel)로 둔다.
     const parentBoardId = get().currentBoardId;
-    const childBoardId = `b-${Date.now().toString(36)}-${counter++}`;
+    const childBoardId = newBoardId();
     const id = nextId();
     const width = widthForKind("board");
     const height = clamp(
@@ -2649,7 +2691,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   enterSubcanvas: async (cardId) => {
     const card = get().cards.find((c) => c.id === cardId);
     if (!card || card.kind !== "board" || !card.boardRef) return;
-    await get().setCurrentBoard(card.boardRef);
+    await get().navigateToBoard(card.boardRef);
   },
 
   goToParent: async () => {
@@ -2658,7 +2700,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const board = get().boards.find((b) => b.id === cur);
     // 루트 사용자 보드(부모 없음)는 함을 통해 들어온 게 아니므로 no-op.
     if (!board || board.parentBoardId == null) return;
-    await get().setCurrentBoard(board.parentBoardId);
+    await get().navigateToBoard(board.parentBoardId);
   },
 
   getBreadcrumb: () => computeBreadcrumb(get().boards, get().currentBoardId),

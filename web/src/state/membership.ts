@@ -175,7 +175,7 @@ async function removeSystemBoardCards(boardId: string): Promise<void> {
 async function removeBoardFromList(boardId: string): Promise<void> {
   const ws = useWorkspace.getState();
   if (ws.currentBoardId === boardId) {
-    await ws.setCurrentBoard(SYSTEM_BOARD_ID);
+    await ws.navigateToBoard(SYSTEM_BOARD_ID);
   }
   const boards = await useStorage.getState().loadBoards();
   useWorkspace.setState({ boards });
