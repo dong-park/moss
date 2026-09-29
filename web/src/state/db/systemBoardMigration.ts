@@ -1,4 +1,3 @@
-import { clearDocument } from "y-indexeddb";
 import {
   DEFAULT_SETTINGS,
   getDB,
@@ -7,7 +6,7 @@ import {
   type Settings,
 } from "./schema";
 import { SYSTEM_BOARD_ID } from "../boardIds";
-import { boardDocName, openBoardDoc, type BoardDocHandle } from "../ydoc/doc";
+import { openBoardDoc, type BoardDocHandle } from "../ydoc/doc";
 import {
   putBoard,
   putConnection,
@@ -30,7 +29,7 @@ import { transactLocal } from "../ydoc/origin";
  * - Yjs 내용은 `moss-board-<uuid>` 문서로 옮겨진다.
  *
  * 멱등: 중간에 끊겨 다시 돌아도 같은 id로 같은 결과가 나온다. `settings.systemBoardMigratedAt`
- * 이 찍히면 이후 부팅은 스킵한다. 옛 문서 키는 내용을 옮긴 뒤 비운다.
+ * 이 찍히면 이후 부팅은 스킵한다. 옛 문서 키는 되돌리기용 백업으로 남긴다(P1).
  */
 export const LEGACY_SYSTEM_DOC_KEY = "system";
 
@@ -53,7 +52,10 @@ function ensureSystemBoardRow(existing: Board | undefined): Board {
     templateId: existing?.templateId,
     createdAt: existing?.createdAt ?? now,
     updatedAt: existing?.updatedAt ?? now,
-    lastOpenedAt: existing?.lastOpenedAt ?? now,
+    // P1: 새로 만들 때 lastOpenedAt을 now로 채우면, RootBoardRedirect(boards[0],
+    // lastOpenedAt desc)가 기존 사용자를 시스템 보드로 보낸다(AC-7 위반). 0이면
+    // 방문 시각이 있는 기존 사용자 보드 뒤로 밀려 마지막 보드가 그대로 열린다.
+    lastOpenedAt: existing?.lastOpenedAt ?? 0,
   };
 }
 
@@ -82,11 +84,9 @@ async function copyLegacyDoc(board: Board): Promise<void> {
     transactLocal(target.doc, () => {
       putBoard(target.doc, board);
       for (const note of notes) {
-        putNote(target.doc, {
-          ...note,
-          boardId: SYSTEM_BOARD_ID,
-          lastVisitedAt: Date.now(),
-        });
+        // P1: lastVisitedAt을 Date.now()로 덮지 않는다 — 시스템 보드 큐레이팅
+        // (selectors/systemBoard.ts가 lastVisitedAt으로 정렬)이 뭉개진다. 원래 값 유지.
+        putNote(target.doc, { ...note, boardId: SYSTEM_BOARD_ID });
       }
       for (const connection of connections) {
         putConnection(target.doc, connection);
@@ -97,12 +97,8 @@ async function copyLegacyDoc(board: Board): Promise<void> {
     await destroyQuietly(target);
   }
 
-  // 옮긴 뒤 옛 문서를 비운다 — 남겨 두면 다음 실행에서 다시 스캔한다.
-  try {
-    await clearDocument(boardDocName(LEGACY_SYSTEM_DOC_KEY));
-  } catch {
-    /* ponytail: 옛 문서 정리 실패는 이전 결과에 영향이 없다(내용은 이미 옮겨졌다). */
-  }
+  // P1: 옛 문서를 지우지 않고 되돌리기용 백업으로 남긴다. systemBoardMigratedAt
+  // 마커가 재스캔을 막으므로 다음 실행에서 다시 읽지 않는다.
 }
 
 /**

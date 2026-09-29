@@ -138,11 +138,39 @@ describe("n1 · 시스템 보드 UUID 이전", () => {
     expect(moved.notes.every((n) => n.boardId === SYSTEM_BOARD_ID)).toBe(true);
     expect(moved.notes.find((n) => n.id === "y1")?.content).toBe("본문 y1");
 
-    // 옛 문서는 비워진다 — 다음 실행이 다시 스캔하지 않는다.
+    // P1: 옛 문서는 지우지 않고 되돌리기용 백업으로 남긴다.
     const legacyAfter = openBoardDoc(LEGACY_SYSTEM_DOC_KEY);
     await legacyAfter.whenLoaded;
-    expect(readNotes(legacyAfter.doc)).toEqual([]);
+    expect(readNotes(legacyAfter.doc).map((n) => n.id).sort()).toEqual(["y1", "y2"]);
     await legacyAfter.destroy();
+  });
+
+  it("P1 · 새 시스템 보드 행의 lastOpenedAt은 0 — 기존 사용자를 시스템 보드로 보내지 않는다", async () => {
+    const db = freshDB();
+    await db.open();
+    await db.settings.put({ ...DEFAULT_SETTINGS });
+
+    await migrateSystemBoard(db);
+
+    const board = await db.boards.get(SYSTEM_BOARD_ID);
+    expect(board?.isSystem).toBe(true);
+    expect(board?.lastOpenedAt).toBe(0);
+  });
+
+  it("P1 · 이전이 메모의 lastVisitedAt(Dexie)을 덮어쓰지 않는다", async () => {
+    const db = freshDB();
+    await db.open();
+    await db.settings.put({ ...DEFAULT_SETTINGS });
+    await db.notes.bulkPut([
+      { ...makeNote("y1", null), lastVisitedAt: 123 },
+      { ...makeNote("y2", null), lastVisitedAt: 456 },
+    ]);
+
+    await migrateSystemBoard(db);
+
+    // 큐레이팅(selectors/systemBoard.ts)은 이 Dexie 값을 읽는다 — 원래 값이 유지돼야 한다.
+    expect((await db.notes.get("y1"))?.lastVisitedAt).toBe(123);
+    expect((await db.notes.get("y2"))?.lastVisitedAt).toBe(456);
   });
 
   it("두 번 돌려도 중복이 없다 (멱등)", async () => {

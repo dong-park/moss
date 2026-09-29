@@ -163,8 +163,9 @@ export function yMapToBoard(map: Y.Map<unknown>): SharedBoard {
 
 /* ── 메모 ──────────────────────────────────────────────────────── */
 
-/** 메모 하나를 전부 쓴다(생성·일괄 갱신). 로컬 origin 트랜잭션. */
-export function putNote(doc: Y.Doc, note: Note): void {
+/** 메모 하나를 전부 쓴다(생성·일괄 갱신). 로컬 origin 트랜잭션.
+ * SharedNote도 받는다 — 문서는 lastVisitedAt(기기 로컬)을 쓰지 않는다. */
+export function putNote(doc: Y.Doc, note: Note | SharedNote): void {
   transactLocal(doc, () => {
     const notes = notesMap(doc);
     const existing = notes.get(note.id);
