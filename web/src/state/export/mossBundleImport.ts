@@ -333,8 +333,10 @@ export async function importMossBundle(
         await db.settings.put({
           ...parsed.settings,
           id: "singleton",
-          systemBoardId: current?.systemBoardId,
-          systemBoardMigratedAt: current?.systemBoardMigratedAt,
+          // 덮어쓰기는 시스템 보드 내용을 통째로 새로 쓴다. 이전 전 기기라도 마커를 굳혀
+          // 다음 부팅이 옛 문서를 다시 복사하지 않게 한다. 번들 메모의 null은 위에서 정규화됐다.
+          systemBoardId: current?.systemBoardId ?? SYSTEM_BOARD_ID,
+          systemBoardMigratedAt: current?.systemBoardMigratedAt ?? Date.now(),
           ownerUserId: current?.ownerUserId,
           deletedBoardIds: current?.deletedBoardIds,
         });

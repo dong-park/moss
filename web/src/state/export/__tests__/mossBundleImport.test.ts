@@ -401,5 +401,7 @@ describe("importMossBundle", () => {
     expect(await getDB().notes.get("sys1")).toBeTruthy();
     // 재심사 P1: 번들에 없는 시스템 보드 행을 덮어쓰기 뒤 되살린다 — 없으면 / 가 빈 화면이다.
     expect((await getDB().boards.get(SYSTEM_BOARD_ID))?.isSystem).toBe(true);
+    // 2차 재심사 P1: 이전 마커가 없던 기기라도 덮어쓰기 뒤에는 마커가 선다 — 옛 문서 재복사 방지.
+    expect((await getDB().settings.get("singleton"))?.systemBoardMigratedAt).toBeTypeOf("number");
   });
 });
