@@ -26,7 +26,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       # Browser origins for CORS, comma-separated, no wildcards.
-      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:3001}
       # n10: board attachments land here, on a named volume (D12).
       FILES_DIR: /data/files
       # n5 Hocuspocus control endpoint for revoke/kick (internal port, not published).
@@ -69,6 +69,20 @@ services:
         condition: service_healthy
       # Flyway V3 owns `documents`; wait for the server to have migrated so the
       # first fetch does not hit "relation does not exist".
+      server:
+        condition: service_healthy
+
+  # 로컬 배포용 웹. 3000은 next dev가 쓰므로 3001로 연다.
+  web:
+    build:
+      context: ./web
+      args:
+        NEXT_PUBLIC_MOSS_API_URL: ${NEXT_PUBLIC_MOSS_API_URL:-http://localhost:8080}
+        NEXT_PUBLIC_MOSS_SYNC_URL: ${NEXT_PUBLIC_MOSS_SYNC_URL:-ws://localhost:1234}
+        NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+    ports:
+      - "3001:3000"
+    depends_on:
       server:
         condition: service_healthy
 

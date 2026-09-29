@@ -1,0 +1,21 @@
+# 로컬 OrbStack 배포용. NEXT_PUBLIC_* 는 빌드 때 번들에 박히므로 build arg로 받는다.
+FROM oven/bun:1 AS build
+WORKDIR /app
+COPY package.json bun.lock* ./
+RUN bun install
+COPY . .
+ARG NEXT_PUBLIC_MOSS_API_URL
+ARG NEXT_PUBLIC_MOSS_SYNC_URL
+ARG NEXT_PUBLIC_GOOGLE_CLIENT_ID
+ENV NEXT_PUBLIC_MOSS_API_URL=$NEXT_PUBLIC_MOSS_API_URL \
+    NEXT_PUBLIC_MOSS_SYNC_URL=$NEXT_PUBLIC_MOSS_SYNC_URL \
+    NEXT_PUBLIC_GOOGLE_CLIENT_ID=$NEXT_PUBLIC_GOOGLE_CLIENT_ID \
+    NEXT_TELEMETRY_DISABLED=1
+RUN bun run build
+
+FROM oven/bun:1
+WORKDIR /app
+ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1
+COPY --from=build /app ./
+EXPOSE 3000
+CMD ["bun", "run", "start", "-p", "3000", "-H", "0.0.0.0"]
