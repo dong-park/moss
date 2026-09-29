@@ -2,7 +2,7 @@
 
 > 보드를 링크로 공유하면 여러 사람이 같은 캔버스에서 서로의 커서와 드래그를 실시간으로 보며 함께 편집한다.
 
-**Status**: 구현 완료 (2026-09-28) — 12노드 전부 병합, 실환경 /prove 3회차 12개 중 11 통과, 남은 AC-13은 9dd24a1 수정 후 4회차에서 통과. Google 실로그인만 미검증. 계획 [[FEAT-collab-auth.plan]]
+**Status**: 구현 완료 (2026-09-28) — 12노드 전부 병합, 실환경 /prove 3회차 12개 중 11 통과, 남은 AC-13은 9dd24a1 수정 후 4회차에서 통과. Google 실로그인도 2026-09-29 확인. 계획 [[FEAT-collab-auth.plan]]
 **Owner**: dong-park
 **Estimated**: L
 **Blueprint**: (신규 — 블루프린트 미등록, 추후 features[id="FEAT-collab-auth"] 추가)
@@ -249,3 +249,4 @@
 - docker-compose: `server`(8080), `sync`(1234), `postgres`(5432). 웹은 `.env.local`에 두 URL.
 - 2026-09-28 /prove: 1회차 통과1·실패2·미증명9(CORS 없음, 공유 보드 진입점 없음) → 2회차 통과9·실패2(빈 보드 이름, 만료 초대 안내) → 3회차 통과11·실패1(AC-13 소유자 사본 삭제, 9dd24a1로 수정). 환경: 로컬 docker compose(postgres·Ktor·Hocuspocus)+Next dev+Playwright 3컨텍스트, Google 실로그인 대신 서명 JWT 주입.
 - 2026-09-29 /prove 4회차(main 0549129): AC-13 소유자·편집자, 서버 행 0, 해제 후 회귀, 옛 토큰 거절 전부 통과. Google 실로그인은 OAuth 클라이언트 ID가 없어 미검증.
+- 2026-09-29 Google 실로그인: GCP dongpark에 웹 클라이언트 moss-local 생성, 출처 http://localhost:3000·http://localhost. 실계정으로 One Tap 동의 → POST /auth/google 200 → 공유 시작·초대 발급·보드 토큰·sync 문서 생성까지 통과. 발견: 출처는 포트 없는 localhost도 있어야 한다. One Tap만 쓰므로 사용자가 한 번 닫으면 쿨다운 동안 로그인 창이 안 뜬다.
