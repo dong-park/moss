@@ -2,7 +2,7 @@
 
 > moss는 로그인해야 쓴다. 처음 온 사람은 로그인 온보딩을 거친다. 기본 보드를 포함한 모든 보드가 UUID 주소를 가진다. 새로고침해도, 링크를 붙여 넣어도 같은 보드가 열린다.
 
-**Status**: spec 작성 (2026-09-29, 로그인 필수·시스템 보드 UUID 반영)
+**Status**: 구현 완료·리뷰 통과 (2026-09-29) — 브랜치 feat/onboarding-routes, PR 전
 **Estimated**: L
 **계획**: [[FEAT-onboarding-routes.plan]] — 노드 6개
 **Blueprint**: (미등록)

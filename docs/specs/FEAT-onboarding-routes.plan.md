@@ -52,7 +52,7 @@ n2 auth-gate ──────────────────────�
 | n3 | board-routes | n1 | M | 완료 da5d8e7 |
 | n4 | first-board | n2, n3 | S | 완료 dce9c25 |
 | n5 | missing-shared | n2, n3 | M | 완료 552e5c3 |
-| n6 | prove | n4, n5 | S | 진행 |
+| n6 | prove | n4, n5 | S | 완료 — 실환경 재검증 9개 중 통과 7·미증명 1(가져오기 UI 진입점 없음)·스펙 수정 1(배율 유지 제외) |
 
 ## n1 · system-board-uuid
 
