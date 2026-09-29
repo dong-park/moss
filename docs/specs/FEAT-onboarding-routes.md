@@ -50,7 +50,7 @@ moss를 쓰는 사람은 노션처럼 보드 주소를 복사해 다른 탭이�
 | D5-3 | 한 번 로그인한 기기는 오프라인에서 세션이 만료돼도 계속 쓴다. 온라인이 되면 로그인 카드가 뜬다 | 오프라인 편집을 막으면 로컬 우선 앱의 장점이 사라진다 |
 | D6 | 공유 보드도 `/b/[id]`. 로컬에 없는 id면 로그인 상태에서 서버 멤버십을 확인해 연다 | 공유 보드 주소를 받은 멤버가 다른 기기에서 바로 연다 |
 | D7 | 초대는 계속 `/j/[token]`. 수락 뒤 `/b/[id]`로 replace | 토큰이 주소창·방문 기록에 남지 않는다 |
-| D8 | 원본은 URL이다. 기존 `setCurrentBoard` 호출부는 `router.push`로 바꾸고, `/b/[id]` 페이지가 URL을 보고 `setCurrentBoard`를 부른다 | 원본이 둘이면 뒤로 가기에서 어긋난다 |
+| D8 | 원본은 URL이다. 기존 `setCurrentBoard` 호출부는 네이티브 `history.pushState`로 바꾸고, 워크스페이스가 `usePathname`을 보고 `setCurrentBoard`를 부른다 | 원본이 둘이면 뒤로 가기에서 어긋난다 |
 
 ## 5. 수용 기준
 
@@ -169,11 +169,12 @@ moss를 쓰는 사람은 노션처럼 보드 주소를 복사해 다른 탭이�
 
 ## 12. 구현 메모
 
-- 라우트: `app/b/[boardId]/page.tsx`가 지금 `app/page.tsx`의 워크스페이스를 그대로 렌더한다. 워크스페이스 본문은 컴포넌트로 뽑는다. `app/page.tsx`는 갈림길만 남긴다.
-- 동기화: `/b/[boardId]` 페이지의 effect가 `params.boardId`로 `setCurrentBoard`를 부른다. `setCurrentBoard`를 부르던 곳은 `router.push(`/b/${id}`)`로 바꾼다. 호출부는 `grep setCurrentBoard`로 찾는다. createBoard·toggleSystemBoard·함 카드 진입·Breadcrumb·초대 수락이 들어간다.
+- 라우트: `app/b/[boardId]/page.tsx`가 워크스페이스를 렌더한다. 워크스페이스 본문은 컴포넌트로 뽑는다. `app/page.tsx`는 갈림길만 남긴다.
+- 동기화: `WorkspaceShell`이 `usePathname`에서 `/b/<id>`를 파싱한다. `setCurrentBoard`를 부르던 곳은 `history.pushState(null, "", "/b/"+id)`로 바꾸고(라우터 sink), `RootBoardRedirect`는 `history.replaceState`를 쓴다. 호출부는 `grep setCurrentBoard`로 찾는다. createBoard·toggleSystemBoard·함 카드 진입·Breadcrumb·초대 수락이 들어간다. 보드 id가 prop이 아니라 경로에서 오므로 `/b/[boardId]` 서버 페이지는 재렌더되지 않는다.
 - `createBoard`의 `setCurrentBoard(id)` 호출은 빼고 id만 돌려준다. 호출부가 push한다.
-- 로그인 게이트: 지금 `AuthBootstrap`이 세션을 복원한다. 워크스페이스 레이아웃이 세션 없으면 온보딩을 렌더하고 원래 주소를 `?next=`로 넘긴다.
-- 시스템 보드 이전: `SYSTEM_BOARD_ID` 참조 13개 파일, `boardId === null` 분기 15곳을 고친다. `storageBoardId()`의 null 매핑을 없앤다. 이전은 기존 Dexie→Yjs 이전 뒤에 이어 붙이고 `settings.systemBoardMigratedAt`으로 한 번만 돈다. Yjs 문서 키도 null 키에서 새 UUID 키로 옮긴다.
+- 로그인 게이트: `AuthBootstrap`이 세션을 복원한다. 게이트는 온보딩을 **원래 주소에서 그대로** 렌더하고, 로그인하면 워크스페이스로 바뀌어 `usePathname`의 보드가 열린다. `?next=` 전달도 로그인 뒤 `location.replace`도 없다(P1에서 제거).
+- 시스템 보드 이전: `SYSTEM_BOARD_ID` 참조 13개 파일, `boardId === null` 분기 15곳을 고친다. `storageBoardId()`는 항등이 돼 인라인한다. 이전은 기존 Dexie→Yjs 이전 뒤에 이어 붙이고 `settings.systemBoardMigratedAt`으로 한 번만 돈다. Yjs 문서 키도 null 키에서 새 UUID 키로 옮긴다. 옛 문서(`moss-board-system`)는 지우지 않고 되돌리기용 백업으로 남긴다(P1).
+- 내보내기: 시스템 보드 행(`isSystem`)은 `boards.json`에 넣지 않는다. "all"의 전체 `toArray()`·"selection"의 `bulkGet`이 시스템 행을 실으면 가져오기 경계가 왕복을 거부한다(P0).
 - MCP 브리지(`mossBridge.ts`)와 내보내기·가져오기가 시스템 보드를 id로 찾도록 바꾼다. 옛 번들을 가져올 때 boardId=null은 시스템 보드 UUID로 바꾼다.
 - 첫 보드 고르기(n4): `/`(RootBoardRedirect)에 `needsFirstBoard(boards, cards)` 판정을 둔다. 사용자 보드가 하나도 없고 시스템 보드에 사용자가 만든 카드가 없으면 `FirstBoardChooser`를 띄운다. "예제로 시작"은 `createExampleBoard()`(예제 메모 3장 든 UUID 보드), "빈 보드로 시작"은 기존 `createBoard()`를 부른다. 둘 다 `navigateToBoard`가 `/b/<uuid>`로 이동시킨다.
 - [[FEAT-collab-auth]] AC-1을 폐기로 표시한다.
@@ -191,6 +192,13 @@ moss를 쓰는 사람은 노션처럼 보드 주소를 복사해 다른 탭이�
 - n4: "새 사용자 vs 기존 사용자"를 시스템 보드 카드의 id로 가른다 — 자동 주입된 예제 시드(`seed-*`)뿐이면 새 사용자로 보고 고르기 화면을 띄우고, 그 외 카드가 하나라도 있으면 기존 사용자로 본다. AC-7의 "시스템 보드만 있고 사용자 보드가 없는 기존 사용자"와 AC-5의 새 사용자를 이 한 신호로 구분한다. 시스템 보드 자동 시드(`SEED_CARDS`)는 n4에서 제거하지 않았다 — 그 시드 내용을 "예제로 시작" 보드가 새 id로 복제한다. 새 설정 플래그나 마이그레이션 변경 없이 기존 상태만으로 판정하려는 선택이다(가정: 호출자 확인).
 - n4: 첫 보드 고르기는 `/`(갈림길)에서만 뜬다. `/b/<없는id>` 직접 진입은 n5 범위다. 선택 화면은 로그인 게이트 안에서만 렌더된다(게이트 밖 테스트는 인증 주입 없이 컴포넌트만 본다).
 - n5: `/b/[boardId]` 판정은 `boardAccess.resolveBoardAccess`가 맡는다. 순서는 시스템·로컬 → 로컬에 있었다가 사라진 보드(AC-8) → 세션 없음(AC-10) → 오프라인(AC-13) → 서버 멤버십(AC-9/10). `setCurrentBoard`가 로컬에 없는 id에 빈 행을 만들지 않도록 가드를 넣었다(n3 갭 봉합).
-- n5: **멤버 아님과 서버에 없음은 구분하지 않는다**(AC-10). AC-8 "찾을 수 없는 보드예요"는 휴지통에 흔적이 남은 로컬 보드(또는 5초 undo 대기 보드)에만 뜬다 — 스키마에 보드 단위 휴지통이 없어, 순수 오타 id는 서버 확인 뒤 AC-10 카드로 간다. spec AC-8의 "오타 난 id"와 AC-10의 "존재 비노출"을 함께 만족하는 신호가 로컬 흔적뿐이라 이렇게 정했다(호출자 판단 필요).
+- n5: **멤버 아님과 서버에 없음은 구분하지 않는다**(AC-10). AC-8 "찾을 수 없는 보드예요"는 이 기기에서 지운 보드 — 휴지통 흔적, 5초 undo 대기, 또는 `settings.deletedBoardIds`(P1 추가) — 에 뜬다. 순수 오타 id는 서버 확인 뒤 AC-10 카드로 간다. spec AC-8의 "오타 난 id"와 AC-10의 "존재 비노출"을 함께 만족하는 신호가 로컬 흔적뿐이라 이렇게 정했다(호출자 판단 필요).
 - n5: 멤버십 확인은 기존 `GET /me/boards`(`openSharedBoard`)를 이 보드 하나만 열도록 재사용한다. 네트워크 실패는 오프라인 카드(AC-13), 세션 만료는 AC-10으로 분류한다.
-- n5: 초대 수락(`InviteRoute`)은 `onJoined`가 없으면 `window.location.replace("/b/<id>")`로 이동한다(AC-11, D7).
+- n5: 초대 수락(`InviteRoute`)은 `onJoined`가 없으면 `window.location.replace("/b/<id>")`로 이동한다(AC-11, D7). 다른 라우트(`/j` → `/b`)라 네이티브 history 전환과 별개로 남긴다.
+
+### 리뷰 fix에서 뒤집은 것
+- D8: `router.push` → 네이티브 `history.pushState` + `usePathname`. `router.push`는 RSC 왕복과 워크스페이스 재마운트를 일으켜 오프라인에서 못 가 본 보드로 이동하지 못했다. Next 16이 네이티브 history를 `usePathname`과 동기화한다. popstate가 반영되지 않는 환경을 위해 리스너를 안전망으로 둔다.
+- AC-8: 지운 보드 판정에 `settings.deletedBoardIds`(최근 200개, optional)를 더한다. 파일함 카드 삭제처럼 휴지통 흔적도 5초 undo도 남기지 않는 경로를 잇는다. 보드가 복원되면 목록에서 뺀다.
+- D5-1(로그인 온보딩): `?next=` 전달과 로그인 뒤 `location.replace`를 제거했다. 게이트가 원래 주소에서 온보딩을 그리고 로그인 뒤 그 주소의 보드가 열려 불필요했고, 오픈 리다이렉트 표면이었다.
+- n1 이전: `ensureSystemBoardRow`가 새 행의 `lastOpenedAt`을 0으로 둔다. now로 채우면 `RootBoardRedirect`(lastOpenedAt desc)가 기존 사용자를 시스템 보드로 보냈다(AC-7).
+- n5 판정: `deps.openShared`를 `openAndPersistShared`로 이름을 고쳤다 — 멤버십 확인과 원격 행 저장을 함께 한다.
