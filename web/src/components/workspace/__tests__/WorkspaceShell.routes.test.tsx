@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { I18nProvider } from "@/i18n/Provider";
 import {
   RootBoardRedirect,
@@ -15,7 +15,7 @@ import {
 } from "@/state/workspace";
 import { newBoardId } from "@/state/boardIds";
 import { useStorage } from "@/state/storage";
-import { resetDB } from "@/state/db/schema";
+import { getDB, resetDB } from "@/state/db/schema";
 
 /**
  * FEAT-onboarding-routes n3 — URL을 보드 전환의 원본으로 만든다 (D1·D2·D4·D8).
@@ -127,6 +127,60 @@ describe("RouteBoardSync · /b/[boardId] 동기화", () => {
     render(<RouteBoardSync boardId={SYSTEM_BOARD_ID} />);
     await useWorkspace.getState().navigateToBoard(id);
     expect(push).toHaveBeenCalledWith(`/b/${id}`);
+  });
+});
+
+describe("RouteBoardSync · 로컬에 없는 보드 (n5)", () => {
+  it("모르는 id는 빈 보드 행을 만들지 않고 안내 카드를 띄운다 (AC-8 핵심)", async () => {
+    await useStorage.getState().init();
+    useWorkspace.setState({
+      currentBoardId: SYSTEM_BOARD_ID,
+      bootstrapComplete: true,
+    });
+    render(
+      <I18nProvider locale="ko">
+        <RouteBoardSync boardId="unknown-id" />
+      </I18nProvider>,
+    );
+    expect(await screen.findByText("이 보드를 볼 수 없어요")).toBeTruthy();
+    expect(useWorkspace.getState().currentBoardId).toBe(SYSTEM_BOARD_ID);
+    expect(await getDB().boards.get("unknown-id")).toBeUndefined();
+  });
+
+  it("휴지통에 흔적이 남은 보드는 '찾을 수 없는 보드예요' + '마지막 보드로' (AC-8)", async () => {
+    await useStorage.getState().init();
+    await getDB().trash.put({
+      id: "t1",
+      note: {
+        id: "t1",
+        boardId: "gone-board",
+        kind: "text",
+        x: 0,
+        y: 0,
+        width: 240,
+        rotation: 0,
+        content: "",
+        aiOptOut: false,
+        createdAt: 1,
+        updatedAt: 1,
+        lastVisitedAt: 1,
+      },
+      boardName: "지운 보드",
+      deletedAt: 2,
+    });
+    useWorkspace.setState({
+      currentBoardId: SYSTEM_BOARD_ID,
+      bootstrapComplete: true,
+    });
+    render(
+      <I18nProvider locale="ko">
+        <RouteBoardSync boardId="gone-board" />
+      </I18nProvider>,
+    );
+    expect(await screen.findByText("찾을 수 없는 보드예요")).toBeTruthy();
+    expect(useWorkspace.getState().currentBoardId).toBe(SYSTEM_BOARD_ID);
+    fireEvent.click(screen.getByRole("button", { name: "마지막 보드로" }));
+    expect(replace).toHaveBeenCalledWith("/");
   });
 });
 

@@ -12,6 +12,7 @@ import { getDB, resetDB, type Board, type Note } from "@/state/db/schema";
 import {
   configureMembership,
   handleBoardRevoked,
+  openSharedBoard,
   purgeLocalBoardCopy,
   resetMembershipDeps,
   syncMyBoards,
@@ -291,6 +292,57 @@ describe("AC-17 · 다른 기기에서 내 공유 보드 열기", () => {
     await syncMyBoards();
 
     expect(api.myBoards).not.toHaveBeenCalled();
+  });
+});
+
+describe("n5 · openSharedBoard — 로컬에 없는 공유 보드 주소로 열기 (AC-9·AC-10)", () => {
+  it("멤버면 원격 사본 행을 만들고 보드 요약을 돌려준다", async () => {
+    await useStorage.getState().init();
+    configureMembership({
+      api: fakeShareApi({ myBoards: vi.fn(async () => [summary("s1", "editor")]) }),
+    });
+
+    const result = await openSharedBoard("s1");
+
+    expect(result).toMatchObject({ id: "s1", name: "보드 s1", role: "editor" });
+    const row = await getDB().boards.get("s1");
+    expect(row).toMatchObject({ id: "s1", remote: true });
+    expect(useShare.getState().byBoard.s1).toMatchObject({ status: "shared", role: "editor" });
+    expect(useWorkspace.getState().boards.some((b) => b.id === "s1")).toBe(true);
+  });
+
+  it("목록에 없으면 null을 돌려주고 행을 만들지 않는다 (AC-10)", async () => {
+    await useStorage.getState().init();
+    configureMembership({
+      api: fakeShareApi({ myBoards: vi.fn(async () => [summary("s2", "editor")]) }),
+    });
+
+    expect(await openSharedBoard("nope")).toBeNull();
+    expect(await getDB().boards.get("nope")).toBeUndefined();
+  });
+
+  it("이미 로컬에 있으면 lastOpenedAt을 덮어쓰지 않는다", async () => {
+    await useStorage.getState().init();
+    const db = getDB();
+    await db.boards.put(makeBoard("s3", { remote: true, lastOpenedAt: NOW - 5000 }));
+    configureMembership({
+      api: fakeShareApi({ myBoards: vi.fn(async () => [summary("s3", "owner")]) }),
+    });
+
+    await openSharedBoard("s3");
+
+    expect((await db.boards.get("s3"))?.lastOpenedAt).toBe(NOW - 5000);
+    expect(useShare.getState().byBoard.s3).toMatchObject({ status: "shared", role: "owner" });
+  });
+
+  it("세션이 없으면 SessionExpiredError를 던진다", async () => {
+    await useStorage.getState().init();
+    useAuth.setState({ session: null, user: null, status: "anonymous" });
+    configureMembership({
+      api: fakeShareApi({ myBoards: vi.fn(async () => [summary("s4", "editor")]) }),
+    });
+
+    await expect(openSharedBoard("s4")).rejects.toThrow();
   });
 });
 

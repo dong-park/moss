@@ -187,3 +187,7 @@ moss를 쓰는 사람은 노션처럼 보드 주소를 복사해 다른 탭이�
 - n3: 스토어는 `setCurrentBoard` 대신 `navigateToBoard`로 라우터 sink에 push를 요청한다. 라우터가 없는 테스트 환경에서는 `setCurrentBoard`로 폴백해 유닛 테스트가 URL 없이도 전환 의미를 유지한다. `bootstrapComplete` 플래그로 이전 완료 뒤에만 URL의 보드를 연다.
 - n3: "마지막 연 보드"는 `boards`를 `lastOpenedAt` 내림차순으로 본 첫 행이다. 시스템 보드도 평범한 행이 된 뒤로는 방문 시각을 갱신한다.
 - n3: 로컬에 없는 보드 id로 진입하면 `setCurrentBoard`가 아직 행을 만든다(AC-8의 존재 판정은 n5). 프로덕션 `next build`는 워크트리 `node_modules` 심볼릭 링크를 Turbopack이 거부해 미검증(tsc·vitest·eslint만 통과).
+- n5: `/b/[boardId]` 판정은 `boardAccess.resolveBoardAccess`가 맡는다. 순서는 시스템·로컬 → 로컬에 있었다가 사라진 보드(AC-8) → 세션 없음(AC-10) → 오프라인(AC-13) → 서버 멤버십(AC-9/10). `setCurrentBoard`가 로컬에 없는 id에 빈 행을 만들지 않도록 가드를 넣었다(n3 갭 봉합).
+- n5: **멤버 아님과 서버에 없음은 구분하지 않는다**(AC-10). AC-8 "찾을 수 없는 보드예요"는 휴지통에 흔적이 남은 로컬 보드(또는 5초 undo 대기 보드)에만 뜬다 — 스키마에 보드 단위 휴지통이 없어, 순수 오타 id는 서버 확인 뒤 AC-10 카드로 간다. spec AC-8의 "오타 난 id"와 AC-10의 "존재 비노출"을 함께 만족하는 신호가 로컬 흔적뿐이라 이렇게 정했다(호출자 판단 필요).
+- n5: 멤버십 확인은 기존 `GET /me/boards`(`openSharedBoard`)를 이 보드 하나만 열도록 재사용한다. 네트워크 실패는 오프라인 카드(AC-13), 세션 만료는 AC-10으로 분류한다.
+- n5: 초대 수락(`InviteRoute`)은 `onJoined`가 없으면 `window.location.replace("/b/<id>")`로 이동한다(AC-11, D7).

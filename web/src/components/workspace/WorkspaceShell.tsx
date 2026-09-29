@@ -20,6 +20,11 @@ import { CollabSession } from "@/components/collab/CollabSession";
 import { ShareControlMount } from "@/components/share/ShareControlMount";
 import { OfflineBadge } from "@/components/presence/OfflineBadge";
 import { setBoardNavigator, useWorkspace } from "@/state/workspace";
+import {
+  resolveBoardAccess,
+  type BoardAccess,
+} from "@/state/boardAccess";
+import { BoardAccessCard } from "./BoardAccessCard";
 
 /** 보드 주소(`/b/[boardId]`)를 보드 전환의 원본으로 잇는 배선 (n3 D8).
  *
@@ -27,11 +32,18 @@ import { setBoardNavigator, useWorkspace } from "@/state/workspace";
  *   상태 반영은 URL이 바뀐 뒤 아래 effect가 setCurrentBoard로 한다 — 원본이 둘이 아니다.
  * - 부팅(마이그레이션)이 끝나기 전에는 열지 않는다. 이전 중 보드를 열면 빈/낡은
  *   문서를 읽는다(AC-12). 부팅이 끝나면 effect가 다시 돌아 URL의 보드를 연다.
+ * - n5: URL의 보드가 로컬에 없으면 resolveBoardAccess가 먼저 판정한다. 열 수 없으면
+ *   setCurrentBoard를 부르지 않고 카드로 안내한다 — 빈 보드 행을 만들지 않는다(AC-8).
  */
 export function RouteBoardSync({ boardId }: { boardId: string }) {
   const router = useRouter();
   const bootstrapComplete = useWorkspace((s) => s.bootstrapComplete);
   const migrationPending = useWorkspace((s) => s.migrationPending);
+  const [blocked, setBlocked] = useState<{
+    boardId: string;
+    access: Extract<BoardAccess, { kind: "not-found" | "no-access" | "offline" }>;
+  } | null>(null);
+  const [nonce, setNonce] = useState(0);
 
   useEffect(() => {
     setBoardNavigator((id) => router.push(`/b/${id}`));
@@ -41,9 +53,30 @@ export function RouteBoardSync({ boardId }: { boardId: string }) {
   useEffect(() => {
     if (!bootstrapComplete || migrationPending) return;
     if (useWorkspace.getState().currentBoardId === boardId) return;
-    void useWorkspace.getState().setCurrentBoard(boardId);
-  }, [boardId, bootstrapComplete, migrationPending]);
+    let cancelled = false;
+    void (async () => {
+      const result = await resolveBoardAccess(boardId);
+      if (cancelled) return;
+      if (result.kind === "open" || result.kind === "shared") {
+        setBlocked(null);
+        void useWorkspace.getState().setCurrentBoard(boardId);
+      } else {
+        setBlocked({ boardId, access: result });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [boardId, bootstrapComplete, migrationPending, nonce]);
 
+  if (blocked && blocked.boardId === boardId) {
+    return (
+      <BoardAccessCard
+        access={blocked.access}
+        onRetry={() => setNonce((n) => n + 1)}
+      />
+    );
+  }
   return null;
 }
 

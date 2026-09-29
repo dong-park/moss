@@ -1595,6 +1595,15 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const current = get().currentBoardId;
     if (current === id) return;
 
+    // n5 AC-8: 로컬에 없는 보드는 열지 않는다 — 빈 보드 행·문서를 만들지 않는다.
+    // URL 판정(RouteBoardSync)이 먼저 막지만, 직접 호출 경로도 여기서 방어한다.
+    if (id !== SYSTEM_BOARD_ID) {
+      const storage0 = useStorage.getState();
+      if (!storage0.initialized) await storage0.init();
+      const known = (await storage0.loadBoards()).some((b) => b.id === id);
+      if (!known) return;
+    }
+
     // 1) 현재 보드의 viewport 기억
     const prevViewport = get().viewport;
     const viewportByBoard = { ...get().viewportByBoard, [current]: prevViewport };
