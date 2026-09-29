@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import type { AuthStatus } from "@/state/auth";
 import { useAuth } from "@/state/auth";
 import { AccountOwnerGuard } from "./AccountOwnerGuard";
@@ -13,6 +12,10 @@ import { LoginOnboarding } from "./LoginOnboarding";
  *   로그인 이력이 있으면 계속 쓴다. refresh 실패가 401이면 expired가 되어 카드가 뜬다.
  * - 아직 복원 전(anonymous·!hydrated): 빈 화면 — 온보딩이 깜빡이지 않게.
  * - 복원이 끝난 anonymous: 로그인 온보딩만.
+ *
+ * P1: 온보딩은 원래 주소에서 그대로 그린다. 로그인하면 게이트가 워크스페이스로 바뀌고
+ * `usePathname`이 가리키는 보드가 열린다 — `?next=` 전달도, 로그인 뒤 location.replace도
+ * 필요 없었다(실환경 확인). 오픈 리다이렉트 표면이 사라진다.
  */
 export type GateView = "loading" | "onboarding" | "workspace";
 
@@ -22,29 +25,13 @@ export function gateView(status: AuthStatus, hydrated: boolean): GateView {
   return "onboarding";
 }
 
-/**
- * `?next=`를 사이트 내부 경로로만 제한한다. 오픈 리다이렉트 방지 —
- * `//evil.com`·`https://evil.com` 같은 외부 주소는 버리고 undefined를 돌려준다.
- */
-export function safeNextPath(raw: string | null | undefined): string | undefined {
-  if (!raw) return undefined;
-  if (!raw.startsWith("/") || raw.startsWith("//")) return undefined;
-  return raw;
-}
-
-function readNext(): string | undefined {
-  if (typeof window === "undefined") return undefined;
-  return safeNextPath(new URLSearchParams(window.location.search).get("next"));
-}
-
 export function WorkspaceGate({ children }: { children: React.ReactNode }) {
   const status = useAuth((s) => s.status);
   const hydrated = useAuth((s) => s.hydrated);
-  const [next] = useState(readNext);
 
   const view = gateView(status, hydrated);
   if (view === "loading") return null;
-  if (view === "onboarding") return <LoginOnboarding next={next} />;
+  if (view === "onboarding") return <LoginOnboarding />;
   return (
     <>
       <AccountOwnerGuard />

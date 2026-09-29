@@ -8,16 +8,10 @@ import { GoogleButton } from "./GoogleButton";
 /**
  * 로그인 온보딩 — 로그인 전에는 워크스페이스 대신 이 카드만 보인다 (D5, AC-4).
  * 캔버스 배경 위 가운데 카드 하나: 제목 한 줄, 소개 한 줄, 기능 3개, Google 버튼.
- * 로그인하면 원래 열려던 주소(`next`)로 돌아간다.
+ * 로그인하면 게이트가 워크스페이스로 바뀌고 `usePathname`의 보드가 열린다 — P1:
+ * 별도 `next` 전달·이동이 필요 없어 그 배선을 지웠다.
  */
-export function LoginOnboarding({
-  next,
-  onLoggedIn,
-}: {
-  next?: string;
-  /** 테스트 seam — 기본은 `next`(없으면 현재 주소)로 이동한다. */
-  onLoggedIn?: (target: string) => void;
-}) {
+export function LoginOnboarding() {
   const t = useT();
   const [busy, setBusy] = useState(false);
 
@@ -25,12 +19,6 @@ export function LoginOnboarding({
     setBusy(true);
     try {
       await useAuth.getState().loginWithGoogle();
-      // `next`(예: `/b/<id>`)가 있으면 그 주소로 돌아간다. 없으면 게이트가 곧바로
-      // 워크스페이스로 바뀌므로 새로고침 없이 그대로 둔다.
-      if (next) {
-        if (onLoggedIn) onLoggedIn(next);
-        else window.location.replace(next);
-      }
     } catch {
       // 실패하면 온보딩을 남긴다.
       setBusy(false);

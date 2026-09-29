@@ -32,10 +32,10 @@ afterEach(() => {
   resetAuthStore();
 });
 
-function mount(props: { next?: string; onLoggedIn?: (t: string) => void }) {
+function mount() {
   return render(
     <I18nProvider locale="ko">
-      <LoginOnboarding {...props} />
+      <LoginOnboarding />
     </I18nProvider>,
   );
 }
@@ -43,7 +43,7 @@ function mount(props: { next?: string; onLoggedIn?: (t: string) => void }) {
 describe("AC-4 · 로그인 온보딩", () => {
   test("소개·기능 3개·Google 버튼이 보인다", () => {
     configureAuth({ api: fakeApi(), googleIdToken: vi.fn() });
-    mount({});
+    mount();
     expect(screen.getByText("moss에 오신 것을 환영해요")).toBeTruthy();
     expect(screen.getByText("메모를 자유롭게 붙이고 옮겨요")).toBeTruthy();
     expect(screen.getByText("연결선이 아이디어 사이를 이어 줘요")).toBeTruthy();
@@ -51,40 +51,25 @@ describe("AC-4 · 로그인 온보딩", () => {
     expect(screen.getByRole("button", { name: "Google 계정으로 로그인" })).toBeTruthy();
   });
 
-  test("로그인하면 원래 열려던 주소(next)로 돌아간다", async () => {
-    const onLoggedIn = vi.fn();
+  test("로그인하면 authenticated가 된다 — 이동은 게이트·주소가 맡는다 (P1)", async () => {
     configureAuth({
       api: fakeApi(),
       googleIdToken: vi.fn(async () => "id-token"),
     });
-    mount({ next: "/b/abc", onLoggedIn });
-
-    fireEvent.click(screen.getByRole("button", { name: "Google 계정으로 로그인" }));
-    await waitFor(() => expect(onLoggedIn).toHaveBeenCalledWith("/b/abc"));
-  });
-
-  test("next가 없으면 이동하지 않는다 — 게이트가 그대로 워크스페이스를 연다", async () => {
-    const onLoggedIn = vi.fn();
-    configureAuth({
-      api: fakeApi(),
-      googleIdToken: vi.fn(async () => "id-token"),
-    });
-    mount({ onLoggedIn });
+    mount();
 
     fireEvent.click(screen.getByRole("button", { name: "Google 계정으로 로그인" }));
     await waitFor(() => expect(useAuth.getState().status).toBe("authenticated"));
-    expect(onLoggedIn).not.toHaveBeenCalled();
   });
 
   test("로그인에 실패하면 온보딩을 남긴다", async () => {
-    const onLoggedIn = vi.fn();
     configureAuth({
       api: fakeApi(),
       googleIdToken: vi.fn(async () => {
         throw new Error("popup 닫힘");
       }),
     });
-    mount({ next: "/b/abc", onLoggedIn });
+    mount();
 
     fireEvent.click(screen.getByRole("button", { name: "Google 계정으로 로그인" }));
     await waitFor(() =>
@@ -93,6 +78,6 @@ describe("AC-4 · 로그인 온보딩", () => {
           .disabled,
       ).toBe(false),
     );
-    expect(onLoggedIn).not.toHaveBeenCalled();
+    expect(useAuth.getState().status).not.toBe("authenticated");
   });
 });
