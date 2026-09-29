@@ -172,6 +172,12 @@ export interface Settings {
    * 보드도 다시 옮겨야 하면 `MIGRATION_VERSION`을 올린다.
    */
   dexieMigrationVersion?: number;
+  /**
+   * FEAT-onboarding-routes n2: 이 기기 로컬 데이터의 주인 계정 id. 처음 로그인한
+   * 계정으로 한 번 기록하고, 다른 계정이 로그인하면 안내 카드를 띄운다 (D5-2).
+   * 계정별 저장소 분리는 미룬 질문이라 여기서는 소유자 표시만 남긴다.
+   */
+  ownerUserId?: string | null;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -181,6 +187,7 @@ export const DEFAULT_SETTINGS: Settings = {
   storageQuotaShown: { at80: false, at95: false },
   uiLocale: "ko",
   installPromptShown: false,
+  ownerUserId: null,
 };
 
 export class MossDB extends Dexie {
