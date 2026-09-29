@@ -14,7 +14,7 @@
 - ✓ `SystemBoard.tsx` — 시스템 보드 컨테이너
 - ✓ `state/selectors/systemBoard.ts` — `computeNowStayingCards()` (지금 머무는 ×n)
 - ✓ `cards/SystemBoardEmpty.tsx` — 메모 < 10 빈 상태 안내
-- ✓ `currentBoardId === SYSTEM_BOARD_ID` 기본값 (첫 진입 시스템 보드)
+- ✓ `currentBoardId === SYSTEM_BOARD_ID` 기본값 (첫 진입 시스템 보드). 2026-09-29부터 id는 고정 UUID `00000000-0000-4000-8000-000000000001`, 주소 `/b/<그 id>` — [[FEAT-onboarding-routes]] D3
 - ✓ `state/__tests__/ac-home.test.ts`
 - ✓ HTML 검증: "조금 더 머무르면…" 빈 상태 카피 노출
 

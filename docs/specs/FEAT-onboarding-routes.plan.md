@@ -50,9 +50,9 @@ n2 auth-gate ──────────────────────�
 | n1 | system-board-uuid | — | L | 완료 d115072 |
 | n2 | auth-gate | — | M | 완료 aa61cbd |
 | n3 | board-routes | n1 | M | 완료 da5d8e7 |
-| n4 | first-board | n2, n3 | S | 대기 |
-| n5 | missing-shared | n2, n3 | M | 대기 |
-| n6 | prove | n4, n5 | S | 대기 |
+| n4 | first-board | n2, n3 | S | 완료 dce9c25 |
+| n5 | missing-shared | n2, n3 | M | 완료 552e5c3 |
+| n6 | prove | n4, n5 | S | 진행 |
 
 ## n1 · system-board-uuid
 
