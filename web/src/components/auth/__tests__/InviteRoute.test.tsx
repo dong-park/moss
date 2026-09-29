@@ -68,6 +68,22 @@ afterEach(() => {
 });
 
 describe("AC-5 · InviteRoute", () => {
+  test("로그인 전이면 초대 맥락과 함께 로그인 온보딩을 먼저 보이고, 메일 로그인 뒤 참여하기로 돌아온다", async () => {
+    const api = fakeApi();
+    configureAuth({ api, googleIdToken: vi.fn(async () => "id-token") });
+    mount({ token: "tok", onJoined: vi.fn() });
+
+    expect(await screen.findByText("이번 주 기획")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "참여하기" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "메일로 계속" }));
+    fireEvent.change(screen.getByLabelText("메일"), { target: { value: "a@x.com" } });
+    fireEvent.change(screen.getByLabelText("비밀번호"), { target: { value: "password123" } });
+    fireEvent.click(screen.getByRole("button", { name: "로그인" }));
+
+    expect(await screen.findByRole("button", { name: "참여하기" })).toBeTruthy();
+    expect(api.acceptInvite).not.toHaveBeenCalled();
+  });
+
   test("카드 이름은 미리보기 응답에서 온다 (쿼리 파라미터 없음)", async () => {
     const api = fakeApi();
     configureAuth({ api, googleIdToken: vi.fn(async () => "id-token") });

@@ -60,7 +60,8 @@ function errorMessage(err: unknown, t: Translator): string {
   return t("collab.auth.email.failed");
 }
 
-export function LoginOnboarding() {
+/** `context`: 초대 링크처럼 로그인 이유가 있을 때 제목 위에 한 줄로 보여 준다. */
+export function LoginOnboarding({ context }: { context?: React.ReactNode } = {}) {
   const t = useT();
   const online = useOnlineStatus();
   const [busy, setBusy] = useState(false);
@@ -116,6 +117,7 @@ export function LoginOnboarding() {
         aria-label={t("collab.auth.onboarding.title")}
         className="w-[320px] rounded-[18px] bg-white/85 p-[26px_24px_20px] text-center shadow-[0_12px_40px_rgba(0,0,0,.08),0_0_0_.5px_rgba(0,0,0,.05)]"
       >
+        {context ? <div className="mb-3">{context}</div> : null}
         <h1 className="mb-1 text-[18px] font-semibold">
           {t("collab.auth.onboarding.title")}
         </h1>

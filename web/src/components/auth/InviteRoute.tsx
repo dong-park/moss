@@ -10,7 +10,7 @@ import {
   useAuth,
 } from "@/state/auth";
 import type { BoardSummary, InvitePreview } from "@/state/auth/types";
-import { GoogleButton } from "./GoogleButton";
+import { LoginOnboarding } from "./LoginOnboarding";
 
 type Phase = "idle" | "checking" | "joining" | "expired" | "full" | "error";
 
@@ -94,31 +94,39 @@ export function InviteRoute({
     };
   }, [token, mapError]);
 
-  // Google 로그인은 로그인까지만 — 수락은 "참여하기" 탭에서 일어난다 (동의 지점).
-  const handleGoogle = useCallback(async () => {
-    setPhase("joining");
-    try {
-      await useAuth.getState().loginWithGoogle();
-      setPhase("idle");
-    } catch (err) {
-      setPhase(mapError(err));
-    }
-  }, [mapError]);
-
   const retry = useCallback(() => {
     startedRef.current = false;
     const state = useAuth.getState();
     if (state.session && state.status !== "expired") void join();
-    else void handleGoogle();
-  }, [join, handleGoogle]);
+    else setPhase("idle");
+  }, [join]);
 
   const ownerName = board?.ownerName ?? preview?.ownerName;
   const boardName =
     board?.name ?? preview?.boardName ?? t("collab.auth.invite.boardFallback");
 
-  // status가 expired면 session이 남아 있어도 재로그인 버튼을 보여준다.
-  const showGoogle = phase === "idle" && (!session || status === "expired");
+  // 로그인 전이거나 세션이 만료됐으면 초대 카드 대신 로그인 온보딩을 먼저 보여 준다.
+  // Google·메일 어느 쪽으로든 로그인하면 session이 서고 이 카드의 "참여하기"로 돌아온다 —
+  // 수락은 여전히 사람이 누르는 동의 지점이다. 만료된 초대는 로그인시키지 않는다(AC-6).
+  const needsLogin = phase === "idle" && (!session || status === "expired");
   const showJoin = phase === "idle" && session !== null && status !== "expired";
+
+  if (needsLogin) {
+    return (
+      <LoginOnboarding
+        context={
+          <>
+            {ownerName ? (
+              <p className="text-[12px] text-[#8e8e93]">
+                {t("collab.auth.invite.ownerInvite", { name: ownerName })}
+              </p>
+            ) : null}
+            <p className="text-[15px] font-semibold">{boardName}</p>
+          </>
+        }
+      />
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center">
@@ -145,7 +153,6 @@ export function InviteRoute({
         ) : null}
         <h3 className="mb-1 text-[17px] font-semibold">{boardName}</h3>
 
-        {showGoogle ? <GoogleButton onClick={handleGoogle} /> : null}
         {showJoin ? (
           <button
             type="button"
