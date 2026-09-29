@@ -4,7 +4,7 @@
 
 **Status**: 구현 완료 · 리뷰 APPROVE
 **Estimated**: S
-**시안**: `~/docs/1-life/canvas/moss 메모 생김새 시안.canvas`의 A안. 색만 파스텔 6색 대신 노랑 계열이다.
+**시안**: `~/docs/1-life/canvas/2026-09-23 moss 메모 생김새 시안.canvas`의 A안. 색만 파스텔 6색 대신 노랑 계열이다.
 
 ---
 

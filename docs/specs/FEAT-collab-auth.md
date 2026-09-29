@@ -6,7 +6,7 @@
 **Owner**: dong-park
 **Estimated**: L
 **Blueprint**: (신규 — 블루프린트 미등록, 추후 features[id="FEAT-collab-auth"] 추가)
-**시안**: 옵시디언 `1-life/canvas/moss 공동 편집 가안.canvas` (v3 미니멀, 목업 `moss-collab/mock.html`)
+**시안**: 옵시디언 `1-life/canvas/2026-09-28 moss 공동 편집 가안.canvas` (v3 미니멀, 목업 `moss-collab/mock.html`)
 
 ---
 
