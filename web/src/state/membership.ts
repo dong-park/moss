@@ -19,6 +19,7 @@ import { useToasts } from "./notifications";
 import { realShareApi, type ShareApi } from "./share/api";
 import { useShare } from "./share/store";
 import { useStorage } from "./storage";
+import { isSystemBoardNote } from "./boardIds";
 import {
   SYSTEM_BOARD_ID,
   __internal,
@@ -107,10 +108,7 @@ async function systemBoardCardIds(boardId: string): Promise<string[]> {
   const content = encodeSubcanvas(boardId);
   return (await getDB()
     .notes.filter(
-      (n) =>
-        (n.boardId === null || n.boardId === SYSTEM_BOARD_ID) &&
-        n.kind === "board" &&
-        n.content === content,
+      (n) => isSystemBoardNote(n) && n.kind === "board" && n.content === content,
     )
     .primaryKeys()) as string[];
 }
@@ -124,7 +122,7 @@ async function freeSystemBoardSpot(): Promise<{ x: number; y: number }> {
   const h = w / aspectForKind("board");
   const gap = 24;
   const taken = await getDB()
-    .notes.filter((n) => n.boardId === null || n.boardId === SYSTEM_BOARD_ID)
+    .notes.filter(isSystemBoardNote)
     .toArray();
   // ponytail: 대각선 선형 탐색 — 카드 수백 개면 O(n²)지만 시스템 보드는 작다.
   for (let i = 0; ; i++) {

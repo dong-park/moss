@@ -350,4 +350,48 @@ describe("importMossBundle", () => {
     expect(s?.migrationFailures).toBeUndefined();
     expect(s?.dexieMigrationVersion).toBeUndefined();
   });
+
+  // 다른 테스트의 settings 단언과 섞이지 않게 파일 마지막에 둔다 — overwrite 가져오기가
+  // 백그라운드 로드(loadFromStorage)를 깨워 settings를 늦게 덮을 수 있다.
+  it("P0 · 시스템 보드 행이 있어도 all 내보내기→가져오기 왕복이 성공한다", async () => {
+    await seedRoundTripData();
+    // 시스템 보드 행 + 시스템 메모가 든 DB를 만든다 — 가져오기 경계가 이 행을 거부했다.
+    const db = getDB();
+    await db.boards.put({
+      id: SYSTEM_BOARD_ID,
+      name: "",
+      isSystem: true,
+      createdAt: 1,
+      updatedAt: 1,
+      lastOpenedAt: 100,
+    });
+    await db.notes.put({
+      id: "sys1",
+      boardId: SYSTEM_BOARD_ID,
+      kind: "text",
+      x: 0,
+      y: 0,
+      width: 240,
+      rotation: 0,
+      content: "시스템 메모",
+      aiOptOut: false,
+      createdAt: 1,
+      updatedAt: 1,
+      lastVisitedAt: 1,
+    });
+
+    const exported = await exportMossBundle({ scope: "all" });
+    expect(exported).not.toBeNull();
+
+    const zip = await JSZip.loadAsync(exported!.blob);
+    const boardsJson = JSON.parse(
+      await zip.file("boards.json")!.async("string"),
+    ) as { id: string }[];
+    expect(boardsJson.some((b) => b.id === SYSTEM_BOARD_ID)).toBe(false);
+
+    await resetDB();
+    const report = await importMossBundle(exported!.blob, "overwrite");
+    expect(report.imported.notes).toBeGreaterThan(0);
+    expect(await getDB().notes.get("sys1")).toBeTruthy();
+  });
 });
