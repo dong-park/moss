@@ -179,7 +179,71 @@ describe("AC-1·2·6 · 메일 폼", () => {
           .disabled,
       ).toBe(true);
     } finally {
+      // jsdom의 onLine은 프로토타입에 있어 original이 undefined다 — 남긴 own 속성을 지운다.
       if (original) Object.defineProperty(navigator, "onLine", original);
+      else delete (navigator as unknown as { onLine?: boolean }).onLine;
     }
+  });
+
+  test("AC-6 · 이모지 4개 비밀번호는 코드포인트 4자라 보내기 전에 막는다", async () => {
+    const api = fakeApi();
+    configureAuth({ api, googleIdToken: vi.fn() });
+    mount();
+
+    fireEvent.click(screen.getByRole("button", { name: "메일로 계속" }));
+    fireEvent.change(screen.getByLabelText("메일"), { target: { value: "a@x.com" } });
+    fireEvent.change(screen.getByLabelText("비밀번호"), { target: { value: "😀😀😀😀" } });
+    fireEvent.click(screen.getByRole("button", { name: "로그인" }));
+
+    expect(await screen.findByText("비밀번호는 8자 이상이에요")).toBeTruthy();
+    expect(api.login).not.toHaveBeenCalled();
+  });
+
+  test("AC-6 · 이모지 21자 이름은 UTF-16 길이가 아니라 코드포인트로 봐 통과한다", async () => {
+    const api = fakeApi();
+    configureAuth({ api, googleIdToken: vi.fn() });
+    mount();
+
+    fireEvent.click(screen.getByRole("button", { name: "메일로 계속" }));
+    fireEvent.click(screen.getByRole("button", { name: "처음이에요? 가입하기" }));
+    fireEvent.change(screen.getByLabelText("메일"), { target: { value: "a@x.com" } });
+    fireEvent.change(screen.getByLabelText("비밀번호"), { target: { value: "secret123" } });
+    const emojiName = "😀".repeat(21);
+    fireEvent.change(screen.getByLabelText("이름"), { target: { value: emojiName } });
+    fireEvent.click(screen.getByRole("button", { name: "가입하기" }));
+
+    await waitFor(() => expect(api.signup).toHaveBeenCalledWith("a@x.com", "secret123", emojiName));
+  });
+
+  test("AC-6 · 메일 형식 오류는 앱 안내를 띄우고 api를 부르지 않는다", async () => {
+    const api = fakeApi();
+    configureAuth({ api, googleIdToken: vi.fn() });
+    mount();
+
+    fireEvent.click(screen.getByRole("button", { name: "메일로 계속" }));
+    fireEvent.change(screen.getByLabelText("메일"), { target: { value: "not-an-email" } });
+    fireEvent.change(screen.getByLabelText("비밀번호"), { target: { value: "secret123" } });
+    fireEvent.click(screen.getByRole("button", { name: "로그인" }));
+
+    expect(await screen.findByText("메일 주소를 확인해 주세요")).toBeTruthy();
+    expect(api.login).not.toHaveBeenCalled();
+  });
+
+  test("제출하면 앞선 오류 안내를 지운다", async () => {
+    const api = fakeApi();
+    configureAuth({ api, googleIdToken: vi.fn() });
+    mount();
+
+    fireEvent.click(screen.getByRole("button", { name: "메일로 계속" }));
+    fireEvent.change(screen.getByLabelText("메일"), { target: { value: "not-an-email" } });
+    fireEvent.change(screen.getByLabelText("비밀번호"), { target: { value: "secret123" } });
+    fireEvent.click(screen.getByRole("button", { name: "로그인" }));
+    expect(await screen.findByText("메일 주소를 확인해 주세요")).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText("메일"), { target: { value: "a@x.com" } });
+    fireEvent.click(screen.getByRole("button", { name: "로그인" }));
+
+    await waitFor(() => expect(api.login).toHaveBeenCalledWith("a@x.com", "secret123"));
+    expect(screen.queryByText("메일 주소를 확인해 주세요")).toBeNull();
   });
 });

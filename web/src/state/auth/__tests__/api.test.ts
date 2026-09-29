@@ -2,7 +2,6 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   ApiConfigError,
   apiBaseUrl,
-  AuthRequestError,
   InviteExpiredError,
   InviteFullError,
   realAuthApi,
@@ -92,8 +91,9 @@ describe("auth/api", () => {
       "fetch",
       vi.fn(async () => new Response("nope", { status: 500 })),
     );
-    await expect(realAuthApi.login("a@x.com", "secret123")).rejects.toBeInstanceOf(
-      AuthRequestError,
-    );
+    await expect(realAuthApi.login("a@x.com", "secret123")).rejects.toMatchObject({
+      status: 500,
+      message: "",
+    });
   });
 });

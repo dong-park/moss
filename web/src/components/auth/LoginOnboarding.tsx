@@ -32,7 +32,8 @@ function validate(
 ): FieldErrors {
   const errors: FieldErrors = {};
   if (!EMAIL_RE.test(email.trim())) errors.email = t("collab.auth.email.invalidEmail");
-  if (password.length < PASSWORD_MIN) {
+  // 서버는 코드포인트로 최소 길이를 본다 — UTF-16 length는 이모지를 2로 세어 어긋난다.
+  if ([...password].length < PASSWORD_MIN) {
     errors.password = t("collab.auth.email.passwordTooShort");
   } else if (new TextEncoder().encode(password).length > PASSWORD_MAX_BYTES) {
     errors.password = t("collab.auth.email.passwordTooLong");
@@ -40,7 +41,7 @@ function validate(
   if (mode === "signup") {
     const trimmed = name.trim();
     if (trimmed.length === 0) errors.name = t("collab.auth.email.nameRequired");
-    else if (trimmed.length > NAME_MAX) errors.name = t("collab.auth.email.nameTooLong");
+    else if ([...trimmed].length > NAME_MAX) errors.name = t("collab.auth.email.nameTooLong");
   }
   return errors;
 }
@@ -134,7 +135,7 @@ export function LoginOnboarding() {
             {t("collab.auth.email.continue")}
           </button>
         ) : (
-          <form onSubmit={submit} className="mt-3 space-y-2 text-left">
+          <form onSubmit={submit} noValidate className="mt-3 space-y-2 text-left">
             <div>
               <label htmlFor="moss-auth-email" className="text-[11px] text-[#8e8e93]">
                 {t("collab.auth.email.emailLabel")}

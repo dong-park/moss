@@ -60,17 +60,18 @@ export interface AuthApi {
 }
 
 /**
- * 실패 본문은 Errors.kt의 `{ error, message }` 형식이다. `message`가 있으면
- * 사람이 읽을 문구를 그대로 쓰고, 없으면(비JSON·프록시 오류) 상태 코드로 대신한다.
+ * 실패 본문은 Errors.kt의 `{ error, message }` 형식이다. `message`가 있으면 사람이 읽을
+ * 문구를 그대로 쓰고, 없으면(비JSON·프록시 오류) null을 돌려준다 — 호출자가 상태 코드별
+ * 기본 문구를 살릴 수 있게 한다. "/auth/login 401" 같은 기계 문구를 만들지 않는다.
  */
-async function readErrorMessage(res: Response, path: string): Promise<string> {
+async function readErrorMessage(res: Response): Promise<string | null> {
   try {
     const body = (await res.json()) as { message?: unknown };
     if (typeof body?.message === "string" && body.message) return body.message;
   } catch {
-    // 본문이 JSON이 아니면 기본 메시지를 쓴다.
+    // 본문이 JSON이 아니면 서버 문구 없음.
   }
-  return `${path} ${res.status}`;
+  return null;
 }
 
 async function postJson<T>(
@@ -86,7 +87,7 @@ async function postJson<T>(
     body: JSON.stringify(body),
   });
   if (!res.ok) {
-    throw new AuthRequestError(await readErrorMessage(res, path), res.status);
+    throw new AuthRequestError((await readErrorMessage(res)) ?? "", res.status);
   }
   return (await res.json()) as T;
 }
