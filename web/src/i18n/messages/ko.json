@@ -405,6 +405,14 @@
       "label": "다음에 도착 — 군집·흐름 요약"
     }
   },
+  "onboarding": {
+    "firstBoard": {
+      "title": "첫 보드를 골라 주세요",
+      "intro": "예제 메모로 시작하거나 빈 보드로 시작할 수 있어요.",
+      "example": "예제로 시작",
+      "empty": "빈 보드로 시작"
+    }
+  },
   "collab": {
     "auth": {
       "google": "Google로 계속하기",

@@ -345,6 +345,11 @@ interface WorkspaceState {
   navigateToBoard: (id: CurrentBoardId) => Promise<void>;
   createBoard: (name?: string) => Promise<string>;
   /**
+   * FEAT-onboarding-routes n4: "예제로 시작" — 예제 메모 3장이 든 새 보드를 만들고 이동한다.
+   * 첫 보드 고르기 화면(AC-5)에서 부른다.
+   */
+  createExampleBoard: (name?: string) => Promise<string>;
+  /**
    * FEAT-templates: 새 보드 생성 + 템플릿의 초기 카드 자동 배치 + 그 보드로 전환.
    * 빈 이름은 i18n 기본명("이름 없는 보드")으로 폴백.
    */
@@ -781,6 +786,21 @@ const SEED_CARDS: Card[] = [
     content: "",
   },
 ];
+
+/** 예제 시드 카드 id — 시스템 보드에 자동 주입된 "예제"일 뿐 사용자 콘텐츠가 아니다. */
+const SEED_CARD_IDS = new Set(SEED_CARDS.map((c) => c.id));
+
+/**
+ * FEAT-onboarding-routes n4 — 첫 보드 고르기 화면을 띄울지 (AC-5·AC-7).
+ *
+ * 사용자 보드가 하나도 없고, 시스템 보드에 사용자가 만든 카드가 없을 때만 true다.
+ * 즉 방금 로그인한 새 사용자(시스템 보드에는 자동 주입된 예제 메모 3장뿐)에는
+ * 뜨고, 예전부터 시스템 보드에 메모를 쌓아 둔 기존 사용자에는 뜨지 않는다(AC-7).
+ */
+export function needsFirstBoard(boards: Board[], cards: Card[]): boolean {
+  if (boards.some((b) => !b.isSystem)) return false;
+  return cards.every((c) => SEED_CARD_IDS.has(c.id));
+}
 
 let counter = 1;
 const nextId = () => `c-${Date.now().toString(36)}-${counter++}`;
@@ -1676,6 +1696,42 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     set({ boards });
     await get().navigateToBoard(id);
     return id;
+  },
+
+  createExampleBoard: async (name = "") => {
+    // n23 재심사 2R-1: 이전 중 새 보드 생성 차단 — createBoard와 같은 가드.
+    if (get().migrationPending) return get().currentBoardId;
+    const storage = useStorage.getState();
+    if (!storage.initialized) await storage.init();
+
+    const boardId = newBoardId();
+    await storage.saveBoard({ id: boardId, name, isSystem: false });
+    await writeBoardToDoc(boardId);
+
+    // 예제 메모 3장 — 시스템 보드 시드와 같은 내용을 새 id로 복제한다(AC-5).
+    const handle = getOrOpenBoardDoc(boardId);
+    await handle.whenLoaded;
+    for (const seed of SEED_CARDS) {
+      const card: Card = { ...seed, id: nextId() };
+      await storage.saveNote({
+        id: card.id,
+        boardId,
+        kind: card.kind,
+        x: card.x,
+        y: card.y,
+        width: card.width,
+        content: card.content,
+        aiOptOut: false,
+        rotation: 0,
+      });
+      writeCardToDocHandle(handle.doc, card, boardId);
+    }
+    closeBoardDoc(boardId);
+
+    const boards = await storage.loadBoards();
+    set({ boards });
+    await get().navigateToBoard(boardId);
+    return boardId;
   },
 
   createBoardFromTemplate: async (templateId, name, t, now) => {

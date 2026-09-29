@@ -19,7 +19,8 @@ import { WorkspaceGate } from "@/components/auth/WorkspaceGate";
 import { CollabSession } from "@/components/collab/CollabSession";
 import { ShareControlMount } from "@/components/share/ShareControlMount";
 import { OfflineBadge } from "@/components/presence/OfflineBadge";
-import { setBoardNavigator, useWorkspace } from "@/state/workspace";
+import { FirstBoardChooser } from "./FirstBoardChooser";
+import { needsFirstBoard, setBoardNavigator, useWorkspace } from "@/state/workspace";
 
 /** 보드 주소(`/b/[boardId]`)를 보드 전환의 원본으로 잇는 배선 (n3 D8).
  *
@@ -48,24 +49,31 @@ export function RouteBoardSync({ boardId }: { boardId: string }) {
 }
 
 /** `/`는 화면이 아니라 갈림길이다 (D4). 로그인했으면 마지막으로 연 보드로 replace한다.
- * 뒤로 가기에도 `/`가 남지 않는다(AC-6). 보드가 하나도 없을 때의 첫 보드 고르기는
- * n4 범위라 여기서는 아무것도 하지 않는다.
+ * 뒤로 가기에도 `/`가 남지 않는다(AC-6). 사용자 보드가 하나도 없으면 첫 보드 고르기
+ * 화면을 보여 준다(n4 D5-1, AC-5) — 기존 사용자는 시스템 보드 메모가 있어 뜨지 않는다(AC-7).
  */
 export function RootBoardRedirect() {
   const router = useRouter();
   const bootstrapComplete = useWorkspace((s) => s.bootstrapComplete);
   const migrationPending = useWorkspace((s) => s.migrationPending);
   const boards = useWorkspace((s) => s.boards);
+  const cards = useWorkspace((s) => s.cards);
+
+  const firstBoardNeeded =
+    bootstrapComplete && !migrationPending && needsFirstBoard(boards, cards);
 
   useEffect(() => {
     if (!bootstrapComplete || migrationPending) return;
+    // 첫 보드 고르기 화면이 떠 있으면 마지막 보드로 보내지 않는다.
+    if (needsFirstBoard(boards, cards)) return;
     const last = boards[0];
     if (!last) return;
     const target = `/b/${last.id}`;
     if (typeof window !== "undefined" && window.location.pathname === target) return;
     router.replace(target);
-  }, [bootstrapComplete, migrationPending, boards, router]);
+  }, [bootstrapComplete, migrationPending, boards, cards, router]);
 
+  if (firstBoardNeeded) return <FirstBoardChooser />;
   return null;
 }
 

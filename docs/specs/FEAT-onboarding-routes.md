@@ -175,6 +175,7 @@ moss를 쓰는 사람은 노션처럼 보드 주소를 복사해 다른 탭이�
 - 로그인 게이트: 지금 `AuthBootstrap`이 세션을 복원한다. 워크스페이스 레이아웃이 세션 없으면 온보딩을 렌더하고 원래 주소를 `?next=`로 넘긴다.
 - 시스템 보드 이전: `SYSTEM_BOARD_ID` 참조 13개 파일, `boardId === null` 분기 15곳을 고친다. `storageBoardId()`의 null 매핑을 없앤다. 이전은 기존 Dexie→Yjs 이전 뒤에 이어 붙이고 `settings.systemBoardMigratedAt`으로 한 번만 돈다. Yjs 문서 키도 null 키에서 새 UUID 키로 옮긴다.
 - MCP 브리지(`mossBridge.ts`)와 내보내기·가져오기가 시스템 보드를 id로 찾도록 바꾼다. 옛 번들을 가져올 때 boardId=null은 시스템 보드 UUID로 바꾼다.
+- 첫 보드 고르기(n4): `/`(RootBoardRedirect)에 `needsFirstBoard(boards, cards)` 판정을 둔다. 사용자 보드가 하나도 없고 시스템 보드에 사용자가 만든 카드가 없으면 `FirstBoardChooser`를 띄운다. "예제로 시작"은 `createExampleBoard()`(예제 메모 3장 든 UUID 보드), "빈 보드로 시작"은 기존 `createBoard()`를 부른다. 둘 다 `navigateToBoard`가 `/b/<uuid>`로 이동시킨다.
 - [[FEAT-collab-auth]] AC-1을 폐기로 표시한다.
 
 ### 가정하고 진행한 것
@@ -187,3 +188,5 @@ moss를 쓰는 사람은 노션처럼 보드 주소를 복사해 다른 탭이�
 - n3: 스토어는 `setCurrentBoard` 대신 `navigateToBoard`로 라우터 sink에 push를 요청한다. 라우터가 없는 테스트 환경에서는 `setCurrentBoard`로 폴백해 유닛 테스트가 URL 없이도 전환 의미를 유지한다. `bootstrapComplete` 플래그로 이전 완료 뒤에만 URL의 보드를 연다.
 - n3: "마지막 연 보드"는 `boards`를 `lastOpenedAt` 내림차순으로 본 첫 행이다. 시스템 보드도 평범한 행이 된 뒤로는 방문 시각을 갱신한다.
 - n3: 로컬에 없는 보드 id로 진입하면 `setCurrentBoard`가 아직 행을 만든다(AC-8의 존재 판정은 n5). 프로덕션 `next build`는 워크트리 `node_modules` 심볼릭 링크를 Turbopack이 거부해 미검증(tsc·vitest·eslint만 통과).
+- n4: "새 사용자 vs 기존 사용자"를 시스템 보드 카드의 id로 가른다 — 자동 주입된 예제 시드(`seed-*`)뿐이면 새 사용자로 보고 고르기 화면을 띄우고, 그 외 카드가 하나라도 있으면 기존 사용자로 본다. AC-7의 "시스템 보드만 있고 사용자 보드가 없는 기존 사용자"와 AC-5의 새 사용자를 이 한 신호로 구분한다. 시스템 보드 자동 시드(`SEED_CARDS`)는 n4에서 제거하지 않았다 — 그 시드 내용을 "예제로 시작" 보드가 새 id로 복제한다. 새 설정 플래그나 마이그레이션 변경 없이 기존 상태만으로 판정하려는 선택이다(가정: 호출자 확인).
+- n4: 첫 보드 고르기는 `/`(갈림길)에서만 뜬다. `/b/<없는id>` 직접 진입은 n5 범위다. 선택 화면은 로그인 게이트 안에서만 렌더된다(게이트 밖 테스트는 인증 주입 없이 컴포넌트만 본다).

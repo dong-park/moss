@@ -139,11 +139,16 @@ describe("RootBoardRedirect · /는 갈림길 (D4·AC-6)", () => {
     await waitFor(() => expect(replace).toHaveBeenCalledWith(`/b/${id}`));
   });
 
-  it("보드가 없으면 아무것도 하지 않는다 (첫 보드 고르기는 n4 범위)", async () => {
-    useWorkspace.setState({ boards: [], bootstrapComplete: true });
-    render(<RootBoardRedirect />);
+  it("사용자 보드가 없으면 첫 보드 고르기를 보여 주고 replace하지 않는다 (n4 AC-5)", async () => {
+    useWorkspace.setState({ boards: [], cards: [], bootstrapComplete: true });
+    render(
+      <I18nProvider locale="ko">
+        <RootBoardRedirect />
+      </I18nProvider>,
+    );
     await new Promise((r) => setTimeout(r, 20));
     expect(replace).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "예제로 시작" })).toBeTruthy();
   });
 });
 
