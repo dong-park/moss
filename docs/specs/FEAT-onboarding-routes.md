@@ -184,3 +184,6 @@ moss를 쓰는 사람은 노션처럼 보드 주소를 복사해 다른 탭이�
 - 첫 로그인 계정을 로컬 데이터 유무와 상관없이 owner로 기록한다.
 - 온보딩 문구와 기능 3개는 runner가 i18n에 임의로 썼다.
 - 원래부터 red인 `Canvas.virtualization` 테스트 1개와 lint 오류 3개는 범위 밖이라 두었다.
+- n3: 스토어는 `setCurrentBoard` 대신 `navigateToBoard`로 라우터 sink에 push를 요청한다. 라우터가 없는 테스트 환경에서는 `setCurrentBoard`로 폴백해 유닛 테스트가 URL 없이도 전환 의미를 유지한다. `bootstrapComplete` 플래그로 이전 완료 뒤에만 URL의 보드를 연다.
+- n3: "마지막 연 보드"는 `boards`를 `lastOpenedAt` 내림차순으로 본 첫 행이다. 시스템 보드도 평범한 행이 된 뒤로는 방문 시각을 갱신한다.
+- n3: 로컬에 없는 보드 id로 진입하면 `setCurrentBoard`가 아직 행을 만든다(AC-8의 존재 판정은 n5). 프로덕션 `next build`는 워크트리 `node_modules` 심볼릭 링크를 Turbopack이 거부해 미검증(tsc·vitest·eslint만 통과).
