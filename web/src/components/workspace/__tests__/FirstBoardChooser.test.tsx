@@ -108,8 +108,11 @@ describe("AC-5 · 첫 보드 고르기", () => {
     expect(board.id).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
     );
-    expect(state.currentBoardId).toBe(board.id);
-    await waitFor(() => expect(state.cards).toHaveLength(3));
+    // 보드 행 저장 뒤 전환은 비동기로 이어진다 — 스냅샷이 아니라 최신 상태를 기다린다.
+    await waitFor(() =>
+      expect(useWorkspace.getState().currentBoardId).toBe(board.id),
+    );
+    await waitFor(() => expect(useWorkspace.getState().cards).toHaveLength(3));
   });
 
   it("빈 보드로 시작 → 카드 없는 새 보드로 이동", async () => {
@@ -119,9 +122,11 @@ describe("AC-5 · 첫 보드 고르기", () => {
     fireEvent.click(screen.getByRole("button", { name: "빈 보드로 시작" }));
     await waitFor(() => expect(useWorkspace.getState().boards).toHaveLength(1));
 
-    const state = useWorkspace.getState();
-    expect(state.boards[0].isSystem).toBe(false);
-    expect(state.currentBoardId).toBe(state.boards[0].id);
-    expect(state.cards).toHaveLength(0);
+    const board = useWorkspace.getState().boards[0];
+    expect(board.isSystem).toBe(false);
+    await waitFor(() =>
+      expect(useWorkspace.getState().currentBoardId).toBe(board.id),
+    );
+    expect(useWorkspace.getState().cards).toHaveLength(0);
   });
 });
