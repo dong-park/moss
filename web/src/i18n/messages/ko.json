@@ -380,6 +380,22 @@
       "unlinkedFrames": "지워진 메모판 참조 {count}개를 풀었어요."
     }
   },
+  "boardAccess": {
+    "notFound": {
+      "title": "찾을 수 없는 보드예요",
+      "body": "지워졌거나 주소가 잘못됐어요.",
+      "goLast": "마지막 보드로"
+    },
+    "noAccess": {
+      "title": "이 보드를 볼 수 없어요",
+      "body": "멤버가 아니거나 공유가 끝난 보드예요."
+    },
+    "offline": {
+      "title": "연결되면 다시 시도할게요",
+      "body": "오프라인이라 이 보드를 열 수 없어요.",
+      "retry": "다시 시도"
+    }
+  },
   "signals": {
     "sidebar": {
       "label": "시그널스"

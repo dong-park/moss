@@ -42,7 +42,9 @@ export function InviteRoute({
   const openBoard = useCallback(
     (joined: BoardSummary) => {
       if (onJoined) onJoined(joined);
-      else window.location.assign("/");
+      // n5 AC-11: 수락한 보드의 `/b/[boardId]`로 replace한다 — 토큰 주소가
+      // 방문 기록에 남지 않는다(D7).
+      else window.location.replace(`/b/${joined.id}`);
     },
     [onJoined],
   );

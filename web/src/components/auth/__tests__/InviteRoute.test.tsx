@@ -62,6 +62,7 @@ beforeEach(async () => {
 
 afterEach(() => {
   resetAuthStore();
+  vi.unstubAllGlobals();
 });
 
 describe("AC-5 · InviteRoute", () => {
@@ -127,6 +128,20 @@ describe("AC-5 · InviteRoute", () => {
     fireEvent.click(await joinButton());
     fireEvent.click(await screen.findByRole("button", { name: "다시 시도" }));
     await waitFor(() => expect(onJoined).toHaveBeenCalledWith(joinedBoard));
+  });
+
+  test("수락하면 수락한 보드의 /b/[boardId]로 replace한다 (AC-11)", async () => {
+    const api = fakeApi();
+    configureAuth({ api, googleIdToken: vi.fn(async () => "id-token") });
+    await saveSession(session);
+    useAuth.setState({ session, user: session.user, status: "authenticated", hydrated: true });
+    const replace = vi.fn();
+    vi.stubGlobal("location", { replace, pathname: "/j/tok" });
+
+    mount({ token: "tok" });
+    fireEvent.click(await joinButton());
+
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/b/b1"));
   });
 
   test("세션이 만료됐으면 참여하기 대신 재로그인 버튼을 보여준다", async () => {

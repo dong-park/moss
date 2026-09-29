@@ -260,3 +260,38 @@ export async function syncMyBoards(): Promise<void> {
   const fresh = await storage.loadBoards();
   useWorkspace.setState({ boards: fresh });
 }
+
+/**
+ * FEAT-onboarding-routes n5 — `/b/[boardId]`로 로컬에 없는 보드에 들어올 때,
+ * 계정의 공유 보드 목록(`GET /me/boards`)에서 이 보드의 멤버십을 확인한다 (D6).
+ *
+ * - 멤버면 기기에 원격 사본 행 + 시스템 보드 입구 카드를 만들고 요약을 돌려준다(AC-9).
+ * - 목록에 없으면 null — 멤버가 아니거나 서버에도 없는 경우를 구분하지 않는다(AC-10).
+ * - 네트워크 실패는 그대로 던진다 — 호출자가 오프라인 카드로 구분한다(AC-13).
+ *
+ * `syncMyBoards`와 달리 이 보드 하나만 연다. 이미 로컬에 있으면 목록·멤버상태만 맞춘다.
+ */
+export async function openSharedBoard(boardId: string): Promise<BoardSummary | null> {
+  const session = await useAuth.getState().ensureSession();
+  const summaries = await deps.api.myBoards(session.accessToken);
+  const summary = summaries.find((s) => s.id === boardId);
+  if (!summary) return null;
+
+  const storage = useStorage.getState();
+  if (!storage.initialized) await storage.init();
+  const local = await storage.loadBoards();
+  if (!local.some((b) => b.id === summary.id)) {
+    await storage.saveBoard({
+      id: summary.id,
+      name: summary.name,
+      remote: true,
+      parentBoardId: SYSTEM_BOARD_ID,
+    });
+    await ensureSystemBoardCard(summary.id);
+  }
+  useShare.getState().restoreShared(summary.id, summary.role);
+
+  const fresh = await storage.loadBoards();
+  useWorkspace.setState({ boards: fresh });
+  return summary;
+}
