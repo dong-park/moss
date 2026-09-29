@@ -33,7 +33,7 @@ function validate(
   const errors: FieldErrors = {};
   if (!EMAIL_RE.test(email.trim())) errors.email = t("collab.auth.email.invalidEmail");
   // 서버는 코드포인트로 최소 길이를 본다 — UTF-16 length는 이모지를 2로 세어 어긋난다.
-  // 로그인은 가입 정책의 최소 길이를 보지 않는다 — 서버 validateLoginPassword와 같다.
+  // 로그인은 가입 정책의 최소 길이를 보지 않는다. 72바이트 상한은 둘 다 본다 — bcrypt가 그 이상을 못 받는다.
   if (mode === "login" && password.length === 0) {
     errors.password = t("collab.auth.email.passwordRequired");
   } else if (mode === "signup" && [...password].length < PASSWORD_MIN) {

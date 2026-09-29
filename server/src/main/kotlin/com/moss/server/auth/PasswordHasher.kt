@@ -15,6 +15,7 @@ import kotlinx.coroutines.withContext
  */
 object PasswordHasher {
     private const val COST = 12
+    const val MAX_BYTES = 72
     private val hasher = BCrypt.withDefaults()
     private val verifier = BCrypt.verifyer()
     private val dummyHash: String = hasher.hashToString(COST, "moss-dummy-password".toCharArray())
@@ -24,6 +25,9 @@ object PasswordHasher {
 
     suspend fun verify(password: String, hash: String): Boolean =
         withContext(Dispatchers.Default) { verifier.verify(password.toCharArray(), hash).verified }
+
+    /** bcrypt는 72바이트를 넘는 입력에서 예외를 던진다. 넘으면 어떤 저장 해시와도 맞을 수 없다. */
+    fun canVerify(password: String): Boolean = password.toByteArray(Charsets.UTF_8).size <= MAX_BYTES
 
     /** D6: 없는 메일에 쓸 가짜 해시와 비교 — 반환값은 항상 false. */
     suspend fun wasteTime(password: String) {

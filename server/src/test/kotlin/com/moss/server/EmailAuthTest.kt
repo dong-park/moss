@@ -95,8 +95,9 @@ class EmailAuthTest : ApiTest() {
         assertEquals("메일이나 비밀번호가 맞지 않아요", wrongMessage)
         assertEquals(wrongMessage, unknown.body<ErrorResponse>().message)
 
-        val knownTimes = (1..3).map { measureTimeMillis { client().loginRequest("known@example.com", "wrongpass1") } }
-        val missingTimes = (1..3).map { measureTimeMillis { client().loginRequest("missing@example.com", "wrongpass1") } }
+        // 최솟값 비교라 표본을 늘리면 bcrypt·스케줄링 잡음이 줄어든다 — 3회에서 가끔 50ms를 넘었다.
+        val knownTimes = (1..6).map { measureTimeMillis { client().loginRequest("known@example.com", "wrongpass1") } }
+        val missingTimes = (1..6).map { measureTimeMillis { client().loginRequest("missing@example.com", "wrongpass1") } }
         val diff = abs(knownTimes.min() - missingTimes.min())
         assertTrue(diff < 50, "응답 시간 차 ${diff}ms (known=${knownTimes.min()} missing=${missingTimes.min()})")
     }

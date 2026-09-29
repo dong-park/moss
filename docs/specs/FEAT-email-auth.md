@@ -2,7 +2,7 @@
 
 > Google 계정이 없거나 쓰기 싫은 사람도 메일과 비밀번호로 가입해 moss를 쓴다. 메일 인증은 이번에 하지 않는다.
 
-**Status**: spec 작성 (2026-09-29)
+**Status**: 구현 완료·리뷰 통과 (2026-09-29) — 브랜치 feat/email-auth, PR 전
 **Estimated**: M
 **의존**: [[FEAT-onboarding-routes]] — 로그인 온보딩 화면(`LoginOnboarding`)에 메일 폼을 붙인다. 그 브랜치가 병합된 뒤 시작한다.
 
@@ -152,7 +152,6 @@ moss는 로그인해야 쓴다([[FEAT-onboarding-routes]] D5). 지금 로그인 
 - `CallLogging`이 본문을 찍는지 확인하고, 찍으면 `/auth/*`를 걸러 낸다.
 - **D4 뒤집힘**: 로그인은 가입 비밀번호 정책(8자·72바이트)을 적용하지 않는다. 정책이 바뀌면 옛 계정이 못 들어온다. 빈 값·1024바이트 초과만 400으로 막고 틀리면 401이다.
 - **D6 보강**: bcrypt(`hash`/`verify`/없는 메일 시간 맞춤)는 `withContext(Dispatchers.Default)`에서 돌아 Netty 워커를 묶지 않는다. 더미 해시는 `PasswordHasher.warmUp()`으로 서버 시작 때 미리 계산해 첫 없는-메일 로그인의 bcrypt 2회를 피한다.
-- **D8 보강**: 로그인 제한 키의 본문 읽기는 Ktor `DoubleReceive`가 대신한다 — 커스텀 AttributeKey 캐시는 지웠다.
 - 메일은 정규식 전에 254자 상한을 보고(초과 400), 제한 키도 254자로 자른다. 상한이 없으면 3000바이트 메일이 btree 한도로 500을 낸다.
 - **D1 보강**: V5에 `password_hash is null or email is not null` 제약을 더해 메일 없는 메일계정 행을 막는다.
 - 로그인은 `findByEmail`이 돌려준 `UserRow`로 응답해 `userById` 재조회를 없앴다.

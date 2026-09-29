@@ -111,8 +111,7 @@ fun Route.authRoutes(server: MossServer) {
                 val email = normalizeEmail(body.email)
                 validateEmail(email)
                 validateLoginPassword(body.password)
-                // bcrypt는 72바이트를 넘으면 예외를 던진다. 그런 비밀번호로 저장된 해시는 없으니 바로 401.
-                if (body.password.toByteArray(Charsets.UTF_8).size > 72) {
+                if (!PasswordHasher.canVerify(body.password)) {
                     throw UnauthorizedException("메일이나 비밀번호가 맞지 않아요")
                 }
                 val credential = server.repo.findByEmail(email)
