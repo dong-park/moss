@@ -42,7 +42,7 @@ export interface SystemBoardMigrationResult {
 }
 
 /** 시스템 보드 행을 보장한다(멱등). 기존 이름·시각은 보존한다. */
-function ensureSystemBoardRow(existing: Board | undefined): Board {
+export function ensureSystemBoardRow(existing: Board | undefined): Board {
   const now = Date.now();
   return {
     id: SYSTEM_BOARD_ID,
@@ -111,7 +111,10 @@ export async function migrateSystemBoard(
   const settings = (await db.settings.get("singleton")) ?? { ...DEFAULT_SETTINGS };
   const existing = (await db.boards.get(SYSTEM_BOARD_ID)) as Board | undefined;
 
-  if (settings.systemBoardMigratedAt && existing) {
+  // 마커가 있으면 다시 옮기지 않는다. 행만 없어졌으면(덮어쓰기 가져오기 등) 행만 되살린다 —
+  // 남겨 둔 옛 문서를 다시 복사하면 지운 메모가 되살아난다.
+  if (settings.systemBoardMigratedAt) {
+    if (!existing) await db.boards.put(ensureSystemBoardRow(undefined));
     return { migrated: false, boardId: SYSTEM_BOARD_ID, movedNotes: 0 };
   }
 

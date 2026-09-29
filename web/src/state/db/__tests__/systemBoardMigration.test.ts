@@ -145,6 +145,31 @@ describe("n1 · 시스템 보드 UUID 이전", () => {
     await legacyAfter.destroy();
   });
 
+  it("재심사 P1 · 마커가 있으면 행이 없어져도 옛 문서를 다시 복사하지 않는다", async () => {
+    const db = freshDB();
+    await db.open();
+    await db.settings.put({ ...DEFAULT_SETTINGS });
+
+    const legacy = openBoardDoc(LEGACY_SYSTEM_DOC_KEY);
+    await legacy.whenLoaded;
+    putNote(legacy.doc, makeNote("y1", null));
+    await legacy.destroy();
+    await migrateSystemBoard(db);
+
+    // 사용자가 메모를 지우고, 덮어쓰기 가져오기가 시스템 행을 지운 상황.
+    const target = openBoardDoc(SYSTEM_BOARD_ID);
+    await target.whenLoaded;
+    target.doc.getMap("notes").delete("y1");
+    await target.destroy();
+    await db.boards.delete(SYSTEM_BOARD_ID);
+
+    const again = await migrateSystemBoard(db);
+    expect(again.migrated).toBe(false);
+    expect((await db.boards.get(SYSTEM_BOARD_ID))?.isSystem).toBe(true);
+    const after = await readPersisted(SYSTEM_BOARD_ID);
+    expect(after.notes.map((n) => n.id)).not.toContain("y1");
+  });
+
   it("P1 · 새 시스템 보드 행의 lastOpenedAt은 0 — 기존 사용자를 시스템 보드로 보내지 않는다", async () => {
     const db = freshDB();
     await db.open();

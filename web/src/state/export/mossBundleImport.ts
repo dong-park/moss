@@ -12,6 +12,7 @@ import { putBlob } from "../db/opfs";
 import { normalizeTitle } from "../memoTitle";
 import { useWorkspace } from "../workspace";
 import { SYSTEM_BOARD_ID, normalizeBoardId } from "../boardIds";
+import { ensureSystemBoardRow } from "../db/systemBoardMigration";
 import { getActiveBoardDoc } from "@/state/ydoc/activeDoc";
 import {
   clearBoardRecords,
@@ -71,7 +72,8 @@ function validateImportedBoards(boards: Board[]): void {
     if (!board || typeof board.id !== "string" || board.id === "") {
       throw new ImportRejectedError("invalid_structure");
     }
-    if (board.id === SYSTEM_BOARD_ID) {
+    // 내보내기가 isSystem 행을 빼므로 경계도 같은 기준으로 거부한다.
+    if (board.id === SYSTEM_BOARD_ID || board.isSystem) {
       throw new ImportRejectedError("invalid_structure");
     }
     if (seen.has(board.id)) {
@@ -320,10 +322,19 @@ export async function importMossBundle(
       }
       if (notesToPut.length > 0) await db.notes.bulkPut(notesToPut);
       if (boardsToPut.length > 0) await db.boards.bulkPut(boardsToPut);
+      // 번들에는 시스템 보드 행이 없다. 덮어쓰기로 지웠으면 이 기기의 행을 되살린다.
+      if (mode === "overwrite") await db.boards.put(ensureSystemBoardRow(undefined));
       if (connectionsToPut.length > 0) await db.connections.bulkPut(connectionsToPut);
       if (embeddingsToPut.length > 0) await db.embeddings.bulkPut(embeddingsToPut);
       if (mode === "overwrite" && parsed.settings) {
-        await db.settings.put({ ...parsed.settings, id: "singleton" });
+        // 시스템 보드 이전 마커는 이 기기의 사실이다. 옛 번들 설정이 덮어쓰면 이전이 다시 돈다.
+        const current = await db.settings.get("singleton");
+        await db.settings.put({
+          ...parsed.settings,
+          id: "singleton",
+          systemBoardId: current?.systemBoardId,
+          systemBoardMigratedAt: current?.systemBoardMigratedAt,
+        });
       }
     },
   );

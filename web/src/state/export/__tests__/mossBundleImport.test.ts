@@ -324,6 +324,12 @@ describe("importMossBundle", () => {
       await makeBundle({ boards: [makeBoardRow(1)] }),
     );
     expect(badType.reason).toBe("invalid_structure");
+
+    // 재심사 P1: 내보내기가 isSystem 으로 빼므로 경계도 isSystem 행을 거부한다.
+    const flagged = await expectRejected(
+      await makeBundle({ boards: [{ ...makeBoardRow("evil"), isSystem: true }] }),
+    );
+    expect(flagged.reason).toBe("invalid_structure");
   });
 
   it("P2-7 · 가져온 settings.json 의 이전 이력은 버리고 사용자 설정만 반영한다", async () => {
@@ -393,5 +399,7 @@ describe("importMossBundle", () => {
     const report = await importMossBundle(exported!.blob, "overwrite");
     expect(report.imported.notes).toBeGreaterThan(0);
     expect(await getDB().notes.get("sys1")).toBeTruthy();
+    // 재심사 P1: 번들에 없는 시스템 보드 행을 덮어쓰기 뒤 되살린다 — 없으면 / 가 빈 화면이다.
+    expect((await getDB().boards.get(SYSTEM_BOARD_ID))?.isSystem).toBe(true);
   });
 });
