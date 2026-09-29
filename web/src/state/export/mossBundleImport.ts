@@ -327,13 +327,16 @@ export async function importMossBundle(
       if (connectionsToPut.length > 0) await db.connections.bulkPut(connectionsToPut);
       if (embeddingsToPut.length > 0) await db.embeddings.bulkPut(embeddingsToPut);
       if (mode === "overwrite" && parsed.settings) {
-        // 시스템 보드 이전 마커는 이 기기의 사실이다. 옛 번들 설정이 덮어쓰면 이전이 다시 돈다.
+        // 이전 마커·기기 주인·지운 보드 목록은 이 기기의 사실이다. 번들 설정이 지우면
+        // 이전이 다시 돌거나 다른 계정 안내가 사라진다.
         const current = await db.settings.get("singleton");
         await db.settings.put({
           ...parsed.settings,
           id: "singleton",
           systemBoardId: current?.systemBoardId,
           systemBoardMigratedAt: current?.systemBoardMigratedAt,
+          ownerUserId: current?.ownerUserId,
+          deletedBoardIds: current?.deletedBoardIds,
         });
       }
     },
