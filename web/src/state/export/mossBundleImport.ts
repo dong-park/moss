@@ -10,7 +10,8 @@ import {
 } from "../db/schema";
 import { putBlob } from "../db/opfs";
 import { normalizeTitle } from "../memoTitle";
-import { useWorkspace, SYSTEM_BOARD_ID } from "../workspace";
+import { useWorkspace } from "../workspace";
+import { SYSTEM_BOARD_ID, normalizeBoardId } from "../boardIds";
 import { getActiveBoardDoc } from "@/state/ydoc/activeDoc";
 import {
   clearBoardRecords,
@@ -94,8 +95,10 @@ function validateImportedNotes(
     const n = note as Partial<Note> | null;
     if (!n) continue;
     const b = n.boardId;
-    if (b === undefined || b === null) continue;
-    if (typeof b !== "string" || b === "" || b === SYSTEM_BOARD_ID) {
+    // n1: null(레거시)과 시스템 보드 UUID는 항상 허용한다 — 전자는 시스템 보드로
+    // 정규화되고, 후자는 번들에 보드 행이 없어도 가져온 쪽의 시스템 보드로 간다.
+    if (b === undefined || b === null || b === SYSTEM_BOARD_ID) continue;
+    if (typeof b !== "string" || b === "") {
       throw new ImportRejectedError("invalid_structure");
     }
     if (!allowedBoardIds.has(b)) {
@@ -331,7 +334,7 @@ export async function importMossBundle(
   // 열려 있는 문서 수를 IMPORT_DOC_CONCURRENCY 이하로 유지한다.
   if (mode === "overwrite") {
     await forEachWithConcurrency(
-      [null, ...boardIdsBeforeOverwrite] as (string | null)[],
+      [SYSTEM_BOARD_ID, ...boardIdsBeforeOverwrite],
       IMPORT_DOC_CONCURRENCY,
       (boardId) => clearBoardRecords(boardId, { closeNow: true }),
     );
@@ -341,24 +344,29 @@ export async function importMossBundle(
   }
 
   // 보드별로 묶어 문서를 한 번만 연다 — 메모 1,000장도 open 1회.
-  const notesByBoard = new Map<string | null, Note[]>();
+  // n1: 레거시 boardId=null은 시스템 보드 UUID로 정규화해 묶는다. 새 행에도 UUID를 쓴다.
+  const notesByBoard = new Map<string, Note[]>();
   for (const note of notesToPut) {
-    const key = note.boardId ?? null;
+    const normalized: Note = { ...note, boardId: normalizeBoardId(note.boardId) };
+    const key = normalized.boardId as string;
+    note.boardId = normalized.boardId;
     const list = notesByBoard.get(key);
-    if (list) list.push(note);
-    else notesByBoard.set(key, [note]);
+    if (list) list.push(normalized);
+    else notesByBoard.set(key, [normalized]);
   }
-  const sourceBoard = new Map<string, string | null>();
-  for (const note of accepted) sourceBoard.set(note.id, note.boardId ?? null);
-  const connsByBoard = new Map<string | null, Connection[]>();
+  const sourceBoard = new Map<string, string>();
+  for (const note of accepted) {
+    sourceBoard.set(note.id, normalizeBoardId(note.boardId));
+  }
+  const connsByBoard = new Map<string, Connection[]>();
   for (const conn of connectionsToPut) {
-    const key = sourceBoard.get(conn.sourceNoteId) ?? null;
+    const key = sourceBoard.get(conn.sourceNoteId) ?? SYSTEM_BOARD_ID;
     const list = connsByBoard.get(key);
     if (list) list.push(conn);
     else connsByBoard.set(key, [conn]);
   }
   const boardById = new Map(boardsToPut.map((b) => [b.id, b]));
-  const touchedBoards = new Set<string | null>([
+  const touchedBoards = new Set<string>([
     ...boardById.keys(),
     ...notesByBoard.keys(),
     ...connsByBoard.keys(),
@@ -370,7 +378,7 @@ export async function importMossBundle(
       writeToBoardDoc(
         boardId,
         (doc) => {
-          const board = boardId === null ? undefined : boardById.get(boardId);
+          const board = boardById.get(boardId);
           if (board) putBoard(doc, board);
           for (const note of notesByBoard.get(boardId) ?? []) putNote(doc, note);
           for (const conn of connsByBoard.get(boardId) ?? []) putConnection(doc, conn);
@@ -388,8 +396,7 @@ export async function importMossBundle(
     await useWorkspace.getState().loadFromStorage();
   } else if (getActiveBoardDoc() !== null) {
     const current = useWorkspace.getState().currentBoardId;
-    const activeStorageId = current === SYSTEM_BOARD_ID ? null : current;
-    if (touchedBoards.has(activeStorageId)) {
+    if (touchedBoards.has(current)) {
       await useWorkspace.getState().loadFromStorage();
     }
   }

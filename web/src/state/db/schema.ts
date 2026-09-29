@@ -172,6 +172,16 @@ export interface Settings {
    * 보드도 다시 옮겨야 하면 `MIGRATION_VERSION`을 올린다.
    */
   dexieMigrationVersion?: number;
+  /**
+   * FEAT-onboarding-routes n1: 시스템 보드의 UUID id. 4절 D3 — 시스템 보드도
+   * 예외 없는 보드 행이다. 마이그레이션이 이 값을 채우고, 라우팅·문서 키가 쓴다.
+   */
+  systemBoardId?: string;
+  /**
+   * FEAT-onboarding-routes n1: 시스템 보드 UUID 이전을 끝낸 시각. 있으면 다시 돌지 않는다.
+   * 중간에 끊기면 없으므로 다음 부팅에 재개된다(멱등).
+   */
+  systemBoardMigratedAt?: number;
 }
 
 export const DEFAULT_SETTINGS: Settings = {

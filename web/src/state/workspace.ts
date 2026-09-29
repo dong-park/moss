@@ -879,9 +879,12 @@ function decodeNoteToCard(note: Note): Card {
   };
 }
 
-/** 시스템 보드는 boardId=null로 저장. 사용자 보드는 그대로. */
-function storageBoardId(currentBoardId: CurrentBoardId): string | null {
-  return currentBoardId === SYSTEM_BOARD_ID ? null : currentBoardId;
+/**
+ * n1: 시스템 보드도 평범한 UUID id를 쓴다 — 저장 시 id 변환이 없다.
+ * 보드 id가 곧 저장 id다(예전 `system → null` 매핑은 제거됐다).
+ */
+function storageBoardId(currentBoardId: CurrentBoardId): string {
+  return currentBoardId;
 }
 
 /**
@@ -1223,7 +1226,8 @@ function bindActiveDocReflection(doc: Y.Doc, storageBoardId: string | null): voi
   const reflectMeta = (_e: Y.YMapEvent<unknown>, transaction: Y.Transaction): void => {
     if (!isRemoteTransaction(transaction)) return;
     if (!isActiveBoard(storageBoardId)) return;
-    if (storageBoardId === null) return; // 시스템 보드는 boards 목록에 없다
+    // 시스템 보드는 이제 boards 목록에 있지만, meta 반영으로 이름을 덮지 않는다.
+    if (!storageBoardId || storageBoardId === SYSTEM_BOARD_ID) return;
     const board = readBoard(doc);
     void (async () => {
       const storage = useStorage.getState();
@@ -1529,7 +1533,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const activeDoc = await activateBoard(storageBid);
 
     if (
-      storageBid === null &&
+      storageBid === SYSTEM_BOARD_ID &&
       readNotes(activeDoc.doc).length === 0 &&
       !storage.settings?.installPromptShown &&
       // 작업 4: 이전이 아직 백그라운드면 시스템 문서가 비어 보일 수 있다 — 시드를
@@ -1541,7 +1545,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         ...c,
         height: memoHeight(c.kind, c.width, c.height),
       }));
-      await Promise.all(seeds.map((card) => persistCard(card, null)));
+      await Promise.all(seeds.map((card) => persistCard(card, SYSTEM_BOARD_ID)));
       await storage.updateSettings({ installPromptShown: true });
       set({ cards: seeds, boards });
       return;
@@ -1771,7 +1775,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       .where("id")
       .anyOf(pending.affectedNoteIds)
       .modify((n) => {
-        if (n.boardId === null) n.boardId = pending.board.id;
+        if (n.boardId === null || n.boardId === SYSTEM_BOARD_ID) {
+          n.boardId = pending.board.id;
+        }
       });
     const boards = await storage.loadBoards();
     set({ boards });

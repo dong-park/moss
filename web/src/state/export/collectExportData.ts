@@ -8,6 +8,7 @@ import {
   type Settings,
 } from "../db/schema";
 import type { ExportScope } from "./types";
+import { SYSTEM_BOARD_ID, normalizeBoardId } from "../boardIds";
 
 export interface CollectedExportData {
   notes: Note[];
@@ -33,14 +34,17 @@ export async function collectExportData(opts: {
     notes = await db.notes.toArray();
     boards = await db.boards.toArray();
   } else if (opts.scope === "board") {
-    const boardId = opts.boardId ?? null;
-    notes =
-      boardId === null
-        ? await db.notes.filter((n) => n.boardId === null).toArray()
-        : await db.notes.where("boardId").equals(boardId).toArray();
-    if (boardId === null) {
+    // n1: 레거시 boardId=null은 시스템 보드로 정규화한다. 시스템 보드는 예외 없는
+    // UUID id지만, 내보내기 boards.json에는 넣지 않는다 — 가져오기 경계가 시스템
+    // id가 든 행을 거부하고, 시스템 보드는 가져온 쪽에서 다시 만들어진다.
+    const boardId = normalizeBoardId(opts.boardId);
+    if (boardId === SYSTEM_BOARD_ID) {
+      notes = await db.notes
+        .filter((n) => n.boardId === null || n.boardId === SYSTEM_BOARD_ID)
+        .toArray();
       boards = [];
     } else {
+      notes = await db.notes.where("boardId").equals(boardId).toArray();
       const board = await db.boards.get(boardId);
       boards = board ? [board] : [];
     }

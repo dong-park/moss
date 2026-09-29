@@ -352,11 +352,22 @@ describe("n23 P1-1 — 연결선은 source 메모 보드 문서 하나만 소유
 });
 
 describe("n23 P1-2 — 가져오기 notes boardId 검증", () => {
-  it("문자열 boardId=system 은 거부한다", async () => {
-    const blob = await makeBundle([makeNote({ id: "bad", boardId: SYSTEM_BOARD_ID })]);
+  it("옛 시스템 센티널 boardId='system' 은 알 수 없는 보드라 거부한다", async () => {
+    const blob = await makeBundle([makeNote({ id: "bad", boardId: "system" })]);
     await expect(importMossBundle(blob, "merge")).rejects.toMatchObject({
       reason: "invalid_structure",
     });
+  });
+
+  it("시스템 보드 UUID boardId는 시스템 보드 메모로 허용한다", async () => {
+    await boot();
+    const blob = await makeBundle([
+      makeNote({ id: "sys-ok", boardId: SYSTEM_BOARD_ID }),
+    ]);
+    const report = await importMossBundle(blob, "merge");
+    expect(report.imported.notes).toBe(1);
+    const note = await getDB().notes.get("sys-ok");
+    expect(note?.boardId).toBe(SYSTEM_BOARD_ID);
   });
 
   it("문자열이 아닌 boardId 는 거부한다", async () => {

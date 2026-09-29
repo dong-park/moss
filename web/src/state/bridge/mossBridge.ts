@@ -22,7 +22,6 @@
 import {
   useWorkspace,
   type Card,
-  SYSTEM_BOARD_ID,
   encodeSubcanvas,
   __internal,
 } from "@/state/workspace";
@@ -57,18 +56,18 @@ export interface BridgeNote {
 }
 
 /**
- * boardId 파라미터를 storage용 boardId(null=시스템)와 "현재 보드인가"로 해석한다.
- * raw가 없으면 현재 보드를 대상으로 본다.
+ * boardId 파라미터를 "현재 보드인가"로 해석한다. raw가 없으면 현재 보드를 대상으로
+ * 본다. n1: 시스템 보드도 UUID id 그대로 저장 id가 된다(null 매핑 제거).
  */
 function resolveBoard(raw: unknown): {
-  storageId: string | null;
+  storageId: string;
   isCurrent: boolean;
   target: string;
 } {
   const current = useWorkspace.getState().currentBoardId;
   const target = typeof raw === "string" && raw ? raw : current;
   return {
-    storageId: target === SYSTEM_BOARD_ID ? null : target,
+    storageId: target,
     isCurrent: target === current,
     target,
   };

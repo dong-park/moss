@@ -557,10 +557,13 @@ describe("dispatchOp", () => {
       expect(boards.find((b) => b.id === r.boardRef)?.parentBoardId).toBe("b-host");
     });
 
-    it('boardId "system"은 현재가 사용자 보드여도 시스템 보드(null)를 타겟', async () => {
+    it("boardId SYSTEM_BOARD_ID는 현재가 사용자 보드여도 시스템 보드를 타겟", async () => {
       useWorkspace.setState({ currentBoardId: "b-user" });
-      await dispatchOp("notes.create", { content: "시스템행", boardId: "system" });
-      const sys = await useStorage.getState().loadCards(null);
+      await dispatchOp("notes.create", {
+        content: "시스템행",
+        boardId: SYSTEM_BOARD_ID,
+      });
+      const sys = await useStorage.getState().loadCards(SYSTEM_BOARD_ID);
       expect(sys.map((n) => n.content)).toContain("시스템행");
     });
 

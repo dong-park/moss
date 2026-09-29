@@ -78,7 +78,7 @@ describe("AC-1(부분): 재노출 기반 자동 큐레이팅 — '지금 머무�
       // Dexie 미러에서 합쳐지는지도 함께 검증한다(두 곳에 같은 id로 넣는다).
       const note = {
         id: s.id,
-        boardId: null,
+        boardId: SYSTEM_BOARD_ID,
         kind: "text" as const,
         x: 0,
         y: 0,
@@ -91,7 +91,7 @@ describe("AC-1(부분): 재노출 기반 자동 큐레이팅 — '지금 머무�
         lastVisitedAt: s.lastVisitedAt,
       };
       await db.notes.put(note);
-      const handle = getOrOpenBoardDoc(null);
+      const handle = getOrOpenBoardDoc(SYSTEM_BOARD_ID);
       await handle.whenLoaded;
       putNote(handle.doc, note);
     }
@@ -118,7 +118,7 @@ describe("AC-2: 빈 상태 (메모 < 10)", () => {
 });
 
 describe("AC-3: 도구 drop → 무소속 + '새 보드' CTA → promoteCardToNewBoard", () => {
-  it("시스템 보드에서 addCardAt → boardId=null로 영속", async () => {
+  it("시스템 보드에서 addCardAt → 시스템 보드 UUID로 영속", async () => {
     await useStorage.getState().init();
     await useWorkspace.getState().loadFromStorage();
     expect(useWorkspace.getState().currentBoardId).toBe(SYSTEM_BOARD_ID);
@@ -126,7 +126,7 @@ describe("AC-3: 도구 drop → 무소속 + '새 보드' CTA → promoteCardToNe
     const id = useWorkspace.getState().addCardAt("text", 100, 100);
     await new Promise((r) => setTimeout(r, 50));
     const note = await getDB().notes.get(id);
-    expect(note?.boardId).toBeNull();
+    expect(note?.boardId).toBe(SYSTEM_BOARD_ID);
   });
 
   it("promoteCardToNewBoard → 새 보드 생성 + 카드 boardId 변경 + 새 보드로 전환", async () => {
@@ -159,13 +159,13 @@ describe("AC-4: 첫 진입 = 시스템 보드, 첫 메모는 무소속", () => {
     expect(useWorkspace.getState().currentBoardId).toBe(SYSTEM_BOARD_ID);
   });
 
-  it("첫 캡처 → boardId=null (시스템 보드 = 가상 = 무소속)", async () => {
+  it("첫 캡처 → 시스템 보드 UUID", async () => {
     await useStorage.getState().init();
     await useWorkspace.getState().loadFromStorage();
     const id = useWorkspace.getState().addCardAt("text", 0, 0);
     await new Promise((r) => setTimeout(r, 50));
     const note = await getDB().notes.get(id);
-    expect(note?.boardId).toBeNull();
+    expect(note?.boardId).toBe(SYSTEM_BOARD_ID);
   });
 });
 

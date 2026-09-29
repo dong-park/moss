@@ -1,6 +1,7 @@
 import JSZip from "jszip";
 import type { Board, Connection, Note } from "../db/schema";
 import { decodeFrameContent } from "../frameContent";
+import { isSystemBoardId, normalizeBoardId } from "../boardIds";
 
 /** Obsidian JSON Canvas — https://jsoncanvas.org */
 export interface JsonCanvasNode {
@@ -102,9 +103,9 @@ export async function exportJsonCanvasZip(
 
   for (const [boardId, boardNotes] of byBoard) {
     const board = boards.find((b) => b.id === boardId);
+    const key = normalizeBoardId(boardId);
     const name =
-      board?.name.trim() ||
-      (boardId === null ? "system" : boardId ?? "canvas");
+      board?.name.trim() || (isSystemBoardId(key) ? "system" : key);
     const safeName = name.replace(/[^\w\uAC00-\uD7A3-]+/g, "-") || "canvas";
     const noteIds = new Set(boardNotes.map((n) => n.id));
     const boardConnections = connections.filter(

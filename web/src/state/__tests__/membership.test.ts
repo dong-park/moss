@@ -298,9 +298,14 @@ describe("AC-17 · 받은 공유 보드는 시스템 보드 함 카드로 들어
   async function boxCount(boardId: string): Promise<number> {
     const content = encodeSubcanvas(boardId);
     const dexie = await getDB()
-      .notes.filter((n) => n.boardId === null && n.kind === "board" && n.content === content)
+      .notes.filter(
+        (n) =>
+          (n.boardId === null || n.boardId === SYSTEM_BOARD_ID) &&
+          n.kind === "board" &&
+          n.content === content,
+      )
       .count();
-    const handle = getOrOpenBoardDoc(null);
+    const handle = getOrOpenBoardDoc(SYSTEM_BOARD_ID);
     await handle.whenLoaded;
     const doc = readNotes(handle.doc).filter((n) => n.kind === "board" && n.content === content).length;
     expect(doc).toBe(dexie);
@@ -340,7 +345,11 @@ describe("공유 보드 함 카드 배치 (/prove 관찰)", () => {
     await syncMyBoards();
 
     const cards = await getDB()
-      .notes.filter((n) => n.boardId === null && n.kind === "board")
+      .notes.filter(
+        (n) =>
+          (n.boardId === null || n.boardId === SYSTEM_BOARD_ID) &&
+          n.kind === "board",
+      )
       .toArray();
     expect(cards).toHaveLength(3);
     expect(new Set(cards.map((c) => `${c.x},${c.y}`)).size).toBe(3);

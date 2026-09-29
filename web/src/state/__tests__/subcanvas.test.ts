@@ -153,7 +153,7 @@ describe("createSubcanvas / enter / goToParent / breadcrumb", () => {
     expect(child?.parentBoardId).toBe(parentId);
   });
 
-  it("시스템 보드에서도 함을 만들 수 있고, 그 함의 서브 보드 parentBoardId는 system", async () => {
+  it("시스템 보드에서도 함을 만들 수 있고, 그 함의 서브 보드 parentBoardId는 시스템 UUID", async () => {
     await useStorage.getState().init();
     await useWorkspace.getState().loadFromStorage();
     expect(useWorkspace.getState().currentBoardId).toBe(SYSTEM_BOARD_ID);
@@ -168,9 +168,9 @@ describe("createSubcanvas / enter / goToParent / breadcrumb", () => {
     const child = useWorkspace.getState().boards.find((b) => b.id === childRef);
     expect(child?.parentBoardId).toBe(SYSTEM_BOARD_ID);
 
-    // 함 카드는 boardId=null(시스템)로 저장됨 → 시스템 보드 카드 목록에 포함
+    // 함 카드는 시스템 보드 UUID로 저장됨 → 시스템 보드 카드 목록에 포함
     const note = await getDB().notes.get(funnelId);
-    expect(note?.boardId).toBeNull();
+    expect(note?.boardId).toBe(SYSTEM_BOARD_ID);
 
     // 진입 후 breadcrumb은 시스템 보드를 루트 크럼으로 포함
     await useWorkspace.getState().enterSubcanvas(funnelId);
@@ -341,7 +341,7 @@ describe("moveCardToBoard (함 밖으로 내보내기)", () => {
     );
   });
 
-  it("시스템 보드 대상이면 boardId=null로 저장한다", async () => {
+  it("시스템 보드 대상이면 시스템 보드 UUID로 저장한다", async () => {
     await useStorage.getState().init();
     await useWorkspace.getState().loadFromStorage();
     expect(useWorkspace.getState().currentBoardId).toBe(SYSTEM_BOARD_ID);
@@ -363,7 +363,7 @@ describe("moveCardToBoard (함 밖으로 내보내기)", () => {
       false,
     );
     const note = await getDB().notes.get(textId);
-    expect(note?.boardId).toBeNull();
+    expect(note?.boardId).toBe(SYSTEM_BOARD_ID);
   });
 
   it("count 정합성 — 떠나는 현재 보드 -1, 대상(비시스템) +1", async () => {

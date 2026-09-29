@@ -7,6 +7,7 @@ import { useWorkspace } from "@/state/workspace";
 import { startMossBridge } from "@/state/bridge/mossBridge";
 import { getDB } from "@/state/db/schema";
 import { migrateDexieBoards, withMigrationLock } from "@/state/db/dexieMigration";
+import { migrateSystemBoard } from "@/state/db/systemBoardMigration";
 
 /**
  * n23 작업 4: 부팅 예산. 이전이 이 시간 안에 끝나면 그대로 진행하고, 넘기면 로딩
@@ -27,6 +28,9 @@ async function runMigrationLocked(): Promise<void> {
         migrationFailures: result.migrationFailures,
         dexieMigrationVersion: result.dexieMigrationVersion,
       });
+      // n1: 시스템 보드를 UUID id의 평범한 보드 행으로 이전한다. Dexie→Yjs 이전
+      // 뒤에 이어 돈다(둘 다 끝나야 시스템 보드 문서가 최종 위치에 놓인다).
+      await migrateSystemBoard(getDB());
     });
   } catch (err) {
     console.warn("[moss] Dexie → Yjs 이전을 건너뜁니다", err);

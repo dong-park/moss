@@ -1,6 +1,6 @@
 import { clearDocument } from "y-indexeddb";
 import { boardDocName, openBoardDoc, type BoardDocHandle } from "./doc";
-import { SYSTEM_BOARD_ID } from "../boardIds";
+import { normalizeBoardId } from "../boardIds";
 
 /**
  * FEAT-collab-auth n3 — 보드별 Y.Doc 수명 관리.
@@ -8,19 +8,19 @@ import { SYSTEM_BOARD_ID } from "../boardIds";
  * 스토어는 한 번에 한 보드만 화면에 띄운다. 활성 보드의 문서만 observer가
  * 스토어로 반영하고, 나머지 보드 문서는 쓰기 경로가 필요할 때 열어 캐시한다.
  *
- * 스토리지 boardId 규약(system은 null)을 문서 키 문자열로 정규화한다.
+ * 스토리지 boardId를 문서 키 문자열로 정규화한다. n1 이후 시스템 보드도 UUID
+ * id를 쓰므로 null은 레거시 호환(마이그레이션 전 데이터)일 때만 나타난다.
  * 키는 y-indexeddb 이름(`moss-board-<key>`)에 그대로 들어간다.
  */
 
 /**
- * 스토리지 boardId(null=system) → 문서 키 문자열. SYSTEM_BOARD_ID에서 파생한다.
+ * 스토리지 boardId → 문서 키 문자열. 레거시 null은 시스템 보드 id로 정규화한다.
  *
- * n23 재심사 2R-7: 여기서는 total 매핑만 한다(null은 시스템). 문자열 "system"을
- * 거부하는 신뢰 경계 검사는 .moss 가져오기 경계(validateImported*)가 맡는다 —
+ * 신뢰 경계 검사(가져온 번들의 시스템 id 거부)는 .moss 가져오기 경계가 맡는다 —
  * 내부 호출자가 시스템 키를 정상적으로 다룰 수 있어야 한다.
  */
 export function docKeyForBoard(storageBoardId: string | null): string {
-  return storageBoardId === null ? SYSTEM_BOARD_ID : storageBoardId;
+  return normalizeBoardId(storageBoardId);
 }
 
 const handles = new Map<string, BoardDocHandle>();

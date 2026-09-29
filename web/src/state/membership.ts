@@ -106,7 +106,12 @@ export async function purgeLocalBoardCopy(boardId: string): Promise<void> {
 async function systemBoardCardIds(boardId: string): Promise<string[]> {
   const content = encodeSubcanvas(boardId);
   return (await getDB()
-    .notes.filter((n) => n.boardId === null && n.kind === "board" && n.content === content)
+    .notes.filter(
+      (n) =>
+        (n.boardId === null || n.boardId === SYSTEM_BOARD_ID) &&
+        n.kind === "board" &&
+        n.content === content,
+    )
     .primaryKeys()) as string[];
 }
 
@@ -118,7 +123,9 @@ async function freeSystemBoardSpot(): Promise<{ x: number; y: number }> {
   const w = widthForKind("board");
   const h = w / aspectForKind("board");
   const gap = 24;
-  const taken = await getDB().notes.filter((n) => n.boardId === null).toArray();
+  const taken = await getDB()
+    .notes.filter((n) => n.boardId === null || n.boardId === SYSTEM_BOARD_ID)
+    .toArray();
   // ponytail: 대각선 선형 탐색 — 카드 수백 개면 O(n²)지만 시스템 보드는 작다.
   for (let i = 0; ; i++) {
     const x = 40 + i * (w + gap);
@@ -140,7 +147,7 @@ async function ensureSystemBoardCard(boardId: string): Promise<void> {
   const { x, y } = await freeSystemBoardSpot();
   const note = await useStorage.getState().saveNote({
     id: `c-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6)}`,
-    boardId: null,
+    boardId: SYSTEM_BOARD_ID,
     kind: "board",
     content: encodeSubcanvas(boardId),
     x,
@@ -159,7 +166,7 @@ async function removeSystemBoardCards(boardId: string): Promise<void> {
   const ids = await systemBoardCardIds(boardId);
   if (ids.length === 0) return;
   await getDB().notes.bulkDelete(ids);
-  for (const id of ids) await deleteNoteRecord(id, null);
+  for (const id of ids) await deleteNoteRecord(id, SYSTEM_BOARD_ID);
   const gone = new Set(ids);
   useWorkspace.setState((s) => ({ cards: s.cards.filter((c) => !gone.has(c.id)) }));
 }

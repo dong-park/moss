@@ -24,6 +24,17 @@ import {
   deleteConnectionRecord,
   writeConnectionRecord,
 } from "@/state/ydoc/writeThrough";
+import { SYSTEM_BOARD_ID, normalizeBoardId } from "@/state/boardIds";
+
+/**
+ * n1: 시스템 보드 주소의 메모를 고르는 필터. 마이그레이션 전 레거시 행(boardId=null)도
+ * 함께 포함한다 — 중단·재개 경계에서 잠깐 공존할 수 있다.
+ */
+function systemBoardNoteFilter(db: MossDB) {
+  return db.notes.filter(
+    (n) => n.boardId === null || n.boardId === SYSTEM_BOARD_ID,
+  );
+}
 
 
 interface StorageState {
@@ -218,10 +229,11 @@ export const useStorage = create<StorageState>((set, get) => ({
 
   loadCards: async (boardId) => {
     const db = getDB();
+    const bid = normalizeBoardId(boardId);
     const coll =
-      boardId === null
-        ? db.notes.filter((n) => n.boardId === null)
-        : db.notes.where("boardId").equals(boardId);
+      bid === SYSTEM_BOARD_ID
+        ? systemBoardNoteFilter(db)
+        : db.notes.where("boardId").equals(bid);
     const notes = await coll.toArray();
     notes.sort((a, b) => a.createdAt - b.createdAt);
     return notes;
@@ -229,10 +241,11 @@ export const useStorage = create<StorageState>((set, get) => ({
 
   loadLastVisitedAt: async (boardId) => {
     const db = getDB();
+    const bid = normalizeBoardId(boardId);
     const coll =
-      boardId === null
-        ? db.notes.filter((n) => n.boardId === null)
-        : db.notes.where("boardId").equals(boardId);
+      bid === SYSTEM_BOARD_ID
+        ? systemBoardNoteFilter(db)
+        : db.notes.where("boardId").equals(bid);
     const out: Record<string, number> = {};
     await coll.each((n) => {
       if (typeof n.lastVisitedAt === "number") out[n.id] = n.lastVisitedAt;
@@ -411,7 +424,11 @@ export const useStorage = create<StorageState>((set, get) => ({
   removeBoard: async (id) => {
     const db = getDB();
     await db.transaction("rw", db.boards, db.notes, async () => {
-      await db.notes.where("boardId").equals(id).modify({ boardId: null });
+      // n1: 보드 삭제 후 메모는 시스템 보드로 옮긴다. 이제 그 id는 UUID다.
+      await db.notes
+        .where("boardId")
+        .equals(id)
+        .modify({ boardId: SYSTEM_BOARD_ID });
       await db.boards.delete(id);
     });
   },

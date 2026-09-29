@@ -162,17 +162,13 @@ export async function migrateDexieBoards(
   ]);
 
   // 신뢰 경계 — Dexie 행을 그대로 문서에 흘리지 않는다. id는 문자열이어야 하고
-  // boardId는 문자열|null이어야 한다. 시스템 보드 id를 가진 Dexie board 행은
-  // 문서 meta로 덮어써질 수 있으므로 거부한다(시스템 보드는 문서에만 존재).
+  // boardId는 문자열|null이어야 한다. n1 이후 시스템 보드도 정상 board 행이다 —
+  // (SYSTEM_BOARD_ID, isSystem) 행을 그대로 이전한다.
   const boardById = new Map<string, Board>();
   for (const raw of boardsRaw as unknown[]) {
     const row = raw as Partial<Board>;
     if (typeof row?.id !== "string") {
       warnInvalidRow("boards", "id");
-      continue;
-    }
-    if (row.id === SYSTEM_BOARD_ID) {
-      console.warn(`[moss] 시스템 보드 id의 Dexie board 행을 이전에서 거부합니다: ${row.id}`);
       continue;
     }
     boardById.set(row.id, raw as Board);

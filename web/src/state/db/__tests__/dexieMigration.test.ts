@@ -183,7 +183,8 @@ describe("AC-2 · Dexie v6 보드 자동 이전 (무손실)", () => {
     await db.settings.put({ ...DEFAULT_SETTINGS, aiOptOutGlobal: true, installPromptShown: true });
 
     const result = await migrateDexieBoards(db);
-    expect(result.migrated.sort()).toEqual(["b1", "b2", "b3", SYSTEM_BOARD_ID]);
+    // n1: 시스템 보드 id는 UUID라 문자열 정렬에서 맨 앞에 온다.
+    expect(result.migrated.sort()).toEqual([SYSTEM_BOARD_ID, "b1", "b2", "b3"]);
     expect(result.failed).toEqual([]);
     await persistResult(db, result);
 
@@ -478,18 +479,19 @@ describe("n2 재심사 반영", () => {
     expect(b2.connections.map((c) => c.id)).toEqual([]);
   });
 
-  it("P1-6 · 스키마가 어긋난 행과 시스템 보드 행을 이전에서 거부한다", async () => {
+  it("P1-6 · 스키마가 어긋난 행은 거부하고 시스템 보드 행은 정상 이전한다", async () => {
     const db = freshDB();
     await db.open();
-    await db.boards.put(makeBoard(SYSTEM_BOARD_ID, { name: "악성" }));
+    // n1: 시스템 보드도 평범한 보드 행이다 — 이제 거부하지 않고 이전한다.
+    await db.boards.put(makeBoard(SYSTEM_BOARD_ID, { name: "시스템", isSystem: true }));
     await db.boards.put(makeBoard("b1"));
     await db.notes.put(makeNote("n1", "b1"));
     await db.notes.put({ ...makeNote("bad-id", "b1"), id: 123 as unknown as string });
     await db.notes.put({ ...makeNote("bad-board", "b1"), boardId: 7 as unknown as string });
 
     const result = await migrateDexieBoards(db);
-    expect(result.migrated).toEqual(["b1"]);
-    expect(result.migratedDocs).not.toContain(SYSTEM_BOARD_ID);
+    expect([...result.migrated].sort()).toEqual(["b1", SYSTEM_BOARD_ID].sort());
+    expect(result.migratedDocs).toContain(SYSTEM_BOARD_ID);
 
     const b1 = await readPersisted("b1");
     expect(b1.notes.map((n) => n.id)).toEqual(["n1"]);
