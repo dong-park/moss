@@ -293,7 +293,7 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
     if (
       editing &&
       (e.target as HTMLElement).closest(
-        "[data-textbox-input], [data-textbox-toolbar], [data-board-name-input]",
+        "[data-textbox-input], [data-textbox-toolbar], [data-board-name-input], [data-photo-caption-input]",
       )
     ) {
       return;
@@ -401,6 +401,7 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
       !wasInMulti &&
       card.kind !== "frame" &&
       card.kind !== "textbox" &&
+      card.kind !== "photo" &&
       !reducedMotion;
     // FEAT-frame-feel T4: 판 단독 드래그면 멤버들이 따라 흔들린다(reduced-motion 제외).
     // 2026-09-25 사용자 결정: 메모판을 끌 때 안의 멤버가 흔들리는 효과(FEAT-frame-feel T4)를 끈다.
@@ -1031,7 +1032,9 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
         // 오른쪽 끝을 넘어 그대로 보였다. width는 card.height 유무와 무관하게
         // 항상 크롭돼야 하므로 overflow는 조건 없이 hidden으로 둔다.
         // FEAT-text-tool: textbox만 예외 — 선택 툴바가 카드 위로 떠야 해서 visible.
-        overflow: card.kind === "textbox" ? "visible" : "hidden",
+        // FEAT-photo-card: 사진도 예외 — 캡션 여백이 카드 상자 밖으로 흘러넘친다.
+        overflow:
+          card.kind === "textbox" || card.kind === "photo" ? "visible" : "hidden",
       }}
     >
       <CardContent
@@ -1132,7 +1135,9 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
   const isFrame = card.kind === "frame";
   // 파일함은 어디서든 우클릭으로 이름을 바꾼다.
   const isBoardCard = card.kind === "board" && !!card.boardRef;
-  if (ancestors.length === 0 && !isFrame && !isBoardCard) return cardNode;
+  // FEAT-photo-card: 사진은 어디서든 우클릭으로 캡션을 단다(시스템 보드 포함).
+  const isPhoto = card.kind === "photo";
+  if (ancestors.length === 0 && !isFrame && !isBoardCard && !isPhoto) return cardNode;
 
   const parent = ancestors[ancestors.length - 1];
   const crumbLabel = (id: string, name: string) =>
@@ -1157,6 +1162,17 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
               onSelect={() => setEditing(card.id)}
             >
               {t("cards.board.rename")}
+            </ContextMenu.Item>
+          )}
+          {isPhoto && (
+            <ContextMenu.Item
+              data-photo-caption-menu
+              className="cursor-pointer rounded-md px-3 py-1.5 text-sm text-text outline-none transition-colors data-[highlighted]:bg-panel"
+              onSelect={() => setEditing(card.id)}
+            >
+              {card.content.trim()
+                ? t("cards.photo.caption.edit")
+                : t("cards.photo.caption.add")}
             </ContextMenu.Item>
           )}
           {ancestors.length > 0 && (

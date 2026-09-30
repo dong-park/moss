@@ -137,7 +137,11 @@ export function ResizeHandles({
       card.kind === "text" ? card.width : (card.height ?? measuredHeight);
 
     const frameCfg = isFrame ? readFrameContent(card.content) : undefined;
-    const ratio = aspectForKind(card.kind);
+    // FEAT-photo-card: 사진은 저장된 width÷height를 비율로 쓴다(사진마다 다름).
+    const ratio =
+      card.kind === "photo" && card.height
+        ? card.width / card.height
+        : aspectForKind(card.kind);
     // 비율 유지 조건에서 width의 유효 범위 — 두 축 min/max 모두를 만족시키도록 좁힌다.
     const minW = Math.max(CARD_MIN_WIDTH, CARD_MIN_HEIGHT * ratio);
     const maxW = Math.min(CARD_MAX_WIDTH, CARD_MAX_HEIGHT * ratio);

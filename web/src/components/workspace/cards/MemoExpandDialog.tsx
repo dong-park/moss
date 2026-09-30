@@ -9,6 +9,7 @@ import { ExpandedMarkdownEditor } from "./_shared/MarkdownEditor";
 import { DrawingLayer, type DrawingTool } from "./_shared/DrawingLayer";
 import { BlockMenu } from "./_shared/editor/BlockMenu";
 import { MemoExpandTitleSlot } from "./_shared/MemoExpandTitleSlot"; // FEAT-memo-title
+import { PhotoLightbox } from "./photo/PhotoLightbox"; // FEAT-photo-card
 
 /* ─────────────────────────────────────────────────────────────
  * FEAT-memo-expand — 메모(text) 카드 펼치기 모달.
@@ -70,6 +71,11 @@ export function MemoExpandDialog() {
     setTool(next);
     setDrawing(true);
   };
+
+  // FEAT-photo-card: 사진 카드는 편집기 대신 크게 보기 다이얼로그를 띄운다.
+  if (card && card.kind === "photo") {
+    return <PhotoLightbox card={card} onClose={close} />;
+  }
 
   const toolBtn = (active: boolean) =>
     [

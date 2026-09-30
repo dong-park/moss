@@ -327,6 +327,16 @@
       "shortCount": "{count}개",
       "rename": "이름 바꾸기"
     },
+    "photo": {
+      "caption": {
+        "add": "캡션 달기",
+        "edit": "캡션 고치기",
+        "placeholder": "캡션 한 줄"
+      },
+      "pending": "사진 올리는 중",
+      "missing": "사진 없음",
+      "lightboxLabel": "사진 크게 보기"
+    },
     "body": {
       "empty": "내용 없음"
     }

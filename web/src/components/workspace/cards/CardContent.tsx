@@ -2,6 +2,7 @@
 
 import { BoardCardContent } from "./board/Content";
 import { FrameCardContent } from "./frame/Content";
+import { PhotoCardContent } from "./photo/Content";
 import { TextCardContent } from "./text/Content";
 import { TextboxCardContent } from "./textbox/Content";
 import type { CardContentProps } from "./_shared/types";
@@ -24,6 +25,16 @@ export function CardContent({
     // FEAT-sticky-redesign: 메모판. 이름 더블클릭 편집은 FrameCardContent 자체가 처리.
     case "frame":
       return <FrameCardContent card={card} />;
+    // FEAT-photo-card: 사진 자체가 카드. 캡션만 content에 담는다.
+    case "photo":
+      return (
+        <PhotoCardContent
+          card={card}
+          editing={editing}
+          onChange={onChange}
+          onCommitEdit={onCommitEdit}
+        />
+      );
     // FEAT-text-tool: 캔버스 평문 텍스트.
     case "textbox":
       return (
