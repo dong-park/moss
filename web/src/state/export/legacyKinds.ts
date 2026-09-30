@@ -21,6 +21,7 @@ export const ACCEPTED_LOGICAL_KINDS = [
   "board",
   "frame",
   "textbox",
+  "photo",
 ] as const;
 export type AcceptedLogicalKind = (typeof ACCEPTED_LOGICAL_KINDS)[number];
 
@@ -47,4 +48,5 @@ export const ALL_NOTE_KINDS: readonly NoteKind[] = [
   "board",
   "frame",
   "textbox",
+  "photo",
 ];

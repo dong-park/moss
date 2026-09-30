@@ -11,6 +11,7 @@ const ACCEPTED_KINDS: ReadonlySet<NoteKind> = new Set([
   "board",
   "frame",
   "textbox",
+  "photo",
 ]);
 
 function isNoteShape(row: unknown): row is Note {

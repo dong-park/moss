@@ -28,7 +28,10 @@ export type NoteKind =
   // FEAT-sticky-redesign: 메모판 틀. content = JSON.stringify({name}). width/height 필수, rotation 0.
   | "frame"
   // FEAT-text-tool: 종이·제목 없이 캔버스에 적는 평문 텍스트. content는 평문 그대로.
-  | "textbox";
+  | "textbox"
+  // FEAT-photo-card: 메모 종이 없이 사진 자체가 카드. attachmentRef=OPFS 참조,
+  // mediaType=MIME, content=캡션 평문(빈 값이면 그냥 사진, 있으면 폴라로이드).
+  | "photo";
 
 /**
  * FEAT-text-tool: textbox 글자 크기 4단. px는 [[TEXT_SIZE_PX]]에 있다.

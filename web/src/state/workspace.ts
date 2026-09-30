@@ -324,6 +324,12 @@ export const TEXTBOX_MIN_AUTO_WIDTH = 16;
 /** textbox 자동 폭 좌우 여백(px) — 측정 글자 폭에 더한다(Content와 동일 값). */
 export const TEXTBOX_PADDING_X = 4;
 
+/** FEAT-photo-card: 새 사진 카드의 폭(px). 높이는 원본 비율로 계산한다(spec 성공 기준 3). */
+export const PHOTO_DEFAULT_WIDTH = 240;
+
+/** FEAT-photo-card: 캡션 최대 길이(자). 한 줄만 저장한다(spec 경계 조건). */
+export const PHOTO_CAPTION_MAX = 200;
+
 /**
  * FEAT-text-tool §7: 독 "텍스트" 아이콘 — "T" 글리프. 별도 PNG 에셋 대신 데이터 URI
  * SVG를 쓴다(독 Image·드래그 프리뷰 배경 공용). 색은 기본 잉크 톤과 맞춘다.
@@ -359,6 +365,9 @@ const CARD_ASPECT_BY_KIND: Record<CardKind, number> = {
   frame: 1,
   // FEAT-text-tool: 텍스트는 종이가 없다 — 비율 강제하지 않음(정사각 폴백은 미사용).
   textbox: 1,
+  // FEAT-photo-card: 사진은 원본 비율을 height에 저장한다. addPhotoAt이 실제 비율을
+  // 쓰고, 리사이즈는 card.width÷card.height를 쓴다 — 이 표의 값은 미사용 폴백.
+  photo: 1,
 };
 
 export function aspectForKind(kind: CardKind): number {
@@ -515,6 +524,17 @@ interface WorkspaceState {
   openCardOnCanvas: (noteId: string) => Promise<void>;
 
   addCardAt: (toolId: ToolId, x: number, y: number) => string;
+  /**
+   * FEAT-photo-card: 지정 좌표에 사진 카드를 만든다(기존 addCardAt과 분리한 이유는
+   * 첨부 참조·원본 비율이 필요하고 인라인 편집 모드로 들어가면 안 되기 때문).
+   * 폭은 [[PHOTO_DEFAULT_WIDTH]], 높이는 `240 × naturalH ÷ naturalW`로 저장한다.
+   * 원본 크기를 못 읽으면 정사각형.
+   */
+  addPhotoAt: (
+    x: number,
+    y: number,
+    opts: { ref: string; mediaType?: string; naturalW?: number; naturalH?: number },
+  ) => string;
   /** 화면 중앙의 world 좌표에 카드 생성 (단축키 진입). viewport 크기는 인자로 주입. */
   addCardAtViewportCenter: (
     toolId: ToolId,
@@ -840,7 +860,9 @@ interface WorkspaceState {
 
 function isCaptureKind(kind: CardKind): boolean {
   // board·frame은 텍스트 입력 카드가 아니다 — drop/더블클릭 시 편집 모드로 들어가지 않는다.
-  return kind !== "board" && kind !== "frame";
+  // FEAT-photo-card: 사진도 인라인 편집(editingId)으로 들어가지 않는다 — 캡션은 우클릭
+  // 메뉴로만 열고, 더블클릭은 크게 보기다. next-card 양산 흐름(Enter)에서도 제외된다.
+  return kind !== "board" && kind !== "frame" && kind !== "photo";
 }
 
 function kindToDefaultToolId(kind: CardKind): ToolId {
@@ -919,6 +941,9 @@ export function widthForKind(kind: CardKind): number {
     // FEAT-text-tool: 자동 폭 시작 폭 — 내용이 없을 때의 최소 자리.
     case "textbox":
       return TEXTBOX_DEFAULT_WIDTH;
+    // FEAT-photo-card: 새 사진 카드 폭(spec 성공 기준 3). 높이는 원본 비율로 계산.
+    case "photo":
+      return PHOTO_DEFAULT_WIDTH;
     case "text":
     default:
       return 240;
@@ -2353,6 +2378,35 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     }));
     const boardId = get().currentBoardId;
     void persistCard(card, boardId);
+    return id;
+  },
+
+  addPhotoAt: (x, y, opts) => {
+    const naturalW = opts.naturalW ?? 0;
+    const naturalH = opts.naturalH ?? 0;
+    const ratio = naturalW > 0 && naturalH > 0 ? naturalH / naturalW : 1;
+    const height = clamp(PHOTO_DEFAULT_WIDTH * ratio, CARD_MIN_HEIGHT, CARD_MAX_HEIGHT);
+    const id = nextId();
+    const card: Card = {
+      id,
+      kind: "photo",
+      x,
+      y,
+      width: PHOTO_DEFAULT_WIDTH,
+      height,
+      content: "",
+      attachmentRef: opts.ref,
+      mediaType: opts.mediaType,
+      aiOptOut: false,
+      lastVisitedAt: Date.now(),
+    };
+    set((s) => ({
+      cards: [...s.cards, card],
+      selectedIds: [id],
+      // 사진은 인라인 편집에 들어가지 않는다 — 캡션은 우클릭으로 연다.
+      editingId: null,
+    }));
+    void persistCard(card, get().currentBoardId);
     return id;
   },
 
