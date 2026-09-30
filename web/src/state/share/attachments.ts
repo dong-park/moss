@@ -133,10 +133,19 @@ export async function uploadAttachment(
  */
 const ATTACHMENT_MD_RE = /opfs:\/\/([^\s)"']+)/g;
 
-/** 본문(메모들)에 등장하는 `opfs:<file>` 저장 참조 목록. */
+/**
+ * 보드 문서에서 올려야 할 로컬 첨부 참조 목록. 두 곳을 본다:
+ *  - 본문 마크다운의 `opfs://<file>`(이미지 블록 등)
+ *  - `note.attachmentRef`(FEAT-photo-card 사진 카드 — content에 마크다운이 없다)
+ * 사진은 content가 캡션 평문이라 본문 스캔만으로는 나중에 공유로 바꾼 보드의
+ * 사진이 올라가지 않는다(성공 기준 13).
+ */
 export function collectLocalRefs(doc: Y.Doc): string[] {
   const refs = new Set<string>();
   for (const note of readNotes(doc)) {
+    if (typeof note.attachmentRef === "string" && note.attachmentRef.startsWith(OPFS_PREFIX)) {
+      refs.add(note.attachmentRef);
+    }
     const content = typeof note.content === "string" ? note.content : "";
     for (const m of content.matchAll(ATTACHMENT_MD_RE)) {
       refs.add(`${OPFS_PREFIX}${m[1]}`);

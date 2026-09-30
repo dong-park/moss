@@ -324,6 +324,24 @@ describe("backfillBoardAttachments (A)", () => {
     expect(readDocFile(handle.doc, "opfs:a.png")).toBe("f-1");
   });
 
+  it("FEAT-photo-card: note.attachmentRef를 가진 사진도 소급 업로드한다", async () => {
+    useShare.setState({ byBoard: { b1: { status: "shared", inviteToken: null } } });
+    const handle = await activateBoardDoc("b1");
+    await putBlob("photo.png", new Blob([new Uint8Array([1])]));
+    putNote(handle.doc, {
+      ...noteWith(""),
+      id: "photo-1",
+      kind: "photo",
+      attachmentRef: "opfs:photo.png",
+      mediaType: "image/png",
+    });
+
+    await backfillBoardAttachments("b1");
+
+    expect(upload).toHaveBeenCalledTimes(1);
+    expect(readDocFile(handle.doc, "opfs:photo.png")).toBe("f-1");
+  });
+
   it("이미 fileId가 있는 참조는 다시 올리지 않는다", async () => {
     useShare.setState({ byBoard: { b1: { status: "shared", inviteToken: null } } });
     const handle = await activateBoardDoc("b1");
