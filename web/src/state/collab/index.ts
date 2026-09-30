@@ -1,6 +1,8 @@
 export {
+  UPLOAD_SYNC_TIMEOUT_MS,
   configureCollab,
   resetCollabStore,
+  uploadBoardDoc,
   useCollab,
   type CollabConnectionStatus,
   type CollabDeps,

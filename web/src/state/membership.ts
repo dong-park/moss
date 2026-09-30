@@ -13,6 +13,7 @@
  */
 import { t } from "@/i18n";
 import { useAuth } from "./auth";
+import { uploadBoardDoc } from "./collab";
 import type { BoardSummary } from "./auth/types";
 import { getDB } from "./db/schema";
 import { useToasts } from "./notifications";
@@ -35,12 +36,18 @@ export interface MembershipDeps {
   api: ShareApi;
   /** y-indexeddb 문서 삭제. 테스트는 디스크를 건드리지 않게 대체한다. */
   deleteDoc: (boardId: string) => Promise<void>;
+  /**
+   * 새로 공유된 파일함의 로컬 Y.Doc을 서버로 한 번 올린다 — 사용자가 열지 않아도
+   * 다른 멤버가 내용을 본다 (spec/share-subboards.md).
+   */
+  uploadDoc: (boardId: string, accessToken: string) => Promise<void>;
   notify: (message: string) => void;
 }
 
 const defaultDeps: MembershipDeps = {
   api: realShareApi,
   deleteDoc: (boardId) => deleteBoardDoc(boardId),
+  uploadDoc: (boardId, accessToken) => uploadBoardDoc(boardId, accessToken),
   notify: (message) => {
     useToasts.getState().push({ tone: "calm", title: message });
   },
@@ -270,7 +277,7 @@ async function saveRemoteBoard(summary: BoardSummary): Promise<void> {
  * 공유 보드 안 파일함을 서버에 올린다 (spec/share-subboards.md).
  * 부모는 공유 중인데 자기는 아직인 로컬 보드를 parentId와 함께 등록한다.
  * 등록된 보드가 다시 부모가 되므로 더 늘지 않을 때까지 돈다.
- * ponytail: 파일함 안 내용은 그 보드를 열어 sync에 붙을 때 올라간다 — 등록만으로는 안 올라간다.
+ * 등록한 파일함은 내용도 함께 서버로 올린다 — 안 열어도 다른 멤버가 본다.
  */
 export async function shareSubBoards(): Promise<void> {
   let session;
@@ -282,6 +289,7 @@ export async function shareSubBoards(): Promise<void> {
   const storage = useStorage.getState();
   if (!storage.initialized) await storage.init();
   const boards = await storage.loadBoards();
+  const registered: string[] = [];
   for (let progressed = true; progressed; ) {
     progressed = false;
     const byBoard = useShare.getState().byBoard;
@@ -296,12 +304,22 @@ export async function shareSubBoards(): Promise<void> {
           board.parentBoardId,
         );
         useShare.getState().restoreShared(board.id, summary.role);
+        registered.push(board.id);
         progressed = true;
       } catch {
         // 오프라인·권한 없음 — 다음 동기화 때 다시 시도한다.
       }
     }
   }
+  // 등록만으로는 내용이 안 올라간다 — 각 파일함을 한 번 sync에 붙여 로컬 Y.Doc을
+  // 서버로 민다. 실패는 삼킨다: 다음 동기화·그 보드를 열 때 다시 기회가 있다.
+  await Promise.all(
+    registered.map((id) =>
+      deps.uploadDoc(id, session.accessToken).catch(() => {
+        /* 업로드 실패는 치명적이지 않다 */
+      }),
+    ),
+  );
 }
 
 /**
