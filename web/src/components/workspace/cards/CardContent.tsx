@@ -20,7 +20,7 @@ export function CardContent({
   switch (card.kind) {
     // FEAT-subcanvas: 함 카드. 더블클릭 진입은 DraggableCard가 처리.
     case "board":
-      return <BoardCardContent card={card} />;
+      return <BoardCardContent card={card} editing={editing} onCommitEdit={onCommitEdit} />;
     // FEAT-sticky-redesign: 메모판. 이름 더블클릭 편집은 FrameCardContent 자체가 처리.
     case "frame":
       return <FrameCardContent card={card} />;

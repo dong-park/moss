@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { useWorkspace } from "@/state/workspace";
 import { useT } from "@/i18n/Provider";
 import type { Card } from "@/state/workspace";
@@ -30,8 +31,23 @@ function paperState(count: number): "low" | "high" | null {
   return count >= 4 ? "high" : "low";
 }
 
-export function BoardCardContent({ card }: { card: Card }) {
+export function BoardCardContent({
+  card,
+  editing = false,
+  onCommitEdit,
+}: {
+  card: Card;
+  editing?: boolean;
+  onCommitEdit?: () => void;
+}) {
   const t = useT();
+  const inputRef = useRef<HTMLInputElement>(null);
+  // 우클릭 메뉴가 닫히며 포커스를 카드로 돌려준 뒤에 입력칸을 잡는다.
+  useEffect(() => {
+    if (!editing) return;
+    const id = requestAnimationFrame(() => inputRef.current?.select());
+    return () => cancelAnimationFrame(id);
+  }, [editing]);
   const rawName = useWorkspace((s) => {
     const board = s.boards.find((b) => b.id === card.boardRef);
     return board?.name.trim() ?? "";
@@ -79,7 +95,37 @@ export function BoardCardContent({ card }: { card: Card }) {
           transform: isDropTarget ? "translateY(2.5%)" : undefined,
         }}
       />
-      {/* 앞판 가운데 이름. 작은 카드에서도 읽히고 긴 이름은 두 줄까지만. */}
+      {/* 앞판 가운데 이름. 작은 카드에서도 읽히고 긴 이름은 두 줄까지만.
+        * 우클릭 "이름 바꾸기"면 같은 자리에 입력칸을 띄운다. Enter·바깥 클릭 저장, Esc 취소. */}
+      {editing && card.boardRef ? (
+        <input
+          ref={inputRef}
+          data-board-name-input
+          defaultValue={rawName}
+          placeholder={t("cards.board.unnamed")}
+          aria-label={t("cards.board.rename")}
+          maxLength={80}
+          onMouseDown={(e) => e.stopPropagation()}
+          onDoubleClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => {
+            e.stopPropagation();
+            if (e.key === "Enter") e.currentTarget.blur();
+            if (e.key === "Escape") {
+              e.currentTarget.value = rawName;
+              e.currentTarget.blur();
+            }
+          }}
+          onBlur={(e) => {
+            const next = e.currentTarget.value.trim();
+            if (next !== rawName && card.boardRef) {
+              void useWorkspace.getState().renameBoard(card.boardRef, next);
+            }
+            onCommitEdit?.();
+          }}
+          className="absolute rounded-md bg-white/80 text-center font-semibold text-[#3b3426] outline-none"
+          style={{ left: "10%", top: "47%", width: "80%", fontSize: "clamp(10px, 7.5cqw, 22px)" }}
+        />
+      ) : (
       <span
         data-board-name
         title={name}
@@ -93,6 +139,7 @@ export function BoardCardContent({ card }: { card: Card }) {
       >
         {name}
       </span>
+      )}
       {/* 탭의 흰 라벨판에는 개수만. */}
       <span
         data-board-count

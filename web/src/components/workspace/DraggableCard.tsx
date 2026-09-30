@@ -292,7 +292,9 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
     // FEAT-text-tool: textbox 편집 중 textarea·툴바 위에서는 드래그를 시작하지 않는다.
     if (
       editing &&
-      (e.target as HTMLElement).closest("[data-textbox-input], [data-textbox-toolbar]")
+      (e.target as HTMLElement).closest(
+        "[data-textbox-input], [data-textbox-toolbar], [data-board-name-input]",
+      )
     ) {
       return;
     }
@@ -1128,7 +1130,9 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
   // FEAT-frame-skins: 판은 서브캔버스 밖에서도 "판 모양" 메뉴가 필요하다.
   // 편집/펜 모드에선 트리거를 비활성화해 브라우저 기본 메뉴(복사·붙여넣기 등)를 살린다.
   const isFrame = card.kind === "frame";
-  if (ancestors.length === 0 && !isFrame) return cardNode;
+  // 파일함은 어디서든 우클릭으로 이름을 바꾼다.
+  const isBoardCard = card.kind === "board" && !!card.boardRef;
+  if (ancestors.length === 0 && !isFrame && !isBoardCard) return cardNode;
 
   const parent = ancestors[ancestors.length - 1];
   const crumbLabel = (id: string, name: string) =>
@@ -1146,6 +1150,15 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
       </ContextMenu.Trigger>
       <ContextMenu.Portal>
         <ContextMenu.Content className="z-[var(--z-panel)] min-w-44 rounded-lg border border-border bg-bg p-1 shadow-card-lift">
+          {isBoardCard && (
+            <ContextMenu.Item
+              data-board-rename
+              className="cursor-pointer rounded-md px-3 py-1.5 text-sm text-text outline-none transition-colors data-[highlighted]:bg-panel"
+              onSelect={() => setEditing(card.id)}
+            >
+              {t("cards.board.rename")}
+            </ContextMenu.Item>
+          )}
           {ancestors.length > 0 && (
             <>
               <ContextMenu.Item

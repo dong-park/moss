@@ -192,3 +192,34 @@ describe("우클릭 메뉴로 밖으로 내보내기", () => {
     expect(screen.queryByText("상위로 내보내기")).toBeNull();
   });
 });
+
+describe("파일함 우클릭 → 이름 바꾸기", () => {
+  it("루트에서도 메뉴가 뜨고, 입력 뒤 Enter면 보드 이름을 바꾼다", async () => {
+    const renameBoard = vi.fn(async () => {});
+    const realRename = useWorkspace.getState().renameBoard;
+    useWorkspace.setState({
+      boards: [
+        { id: "P", name: "부모보드", parentBoardId: null },
+        { id: "sub", name: "", parentBoardId: "P" },
+      ] as Board[],
+      currentBoardId: "P",
+      editingId: null,
+      penMode: false,
+      renameBoard,
+    });
+    const card: Card = { id: "f1", kind: "board", x: 0, y: 0, width: 200, content: "", boardRef: "sub" };
+    const { container } = wrap(<DraggableCard card={card} />);
+
+    fireEvent.contextMenu(container.querySelector("[data-card-id='f1']")!);
+    fireEvent.click(await screen.findByText("이름 바꾸기"));
+
+    const input = await screen.findByLabelText("이름 바꾸기");
+    fireEvent.change(input, { target: { value: "  회의록 " } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    fireEvent.blur(input);
+
+    expect(renameBoard).toHaveBeenCalledWith("sub", "회의록");
+    expect(useWorkspace.getState().editingId).toBeNull();
+    useWorkspace.setState({ renameBoard: realRename });
+  });
+});

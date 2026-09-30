@@ -85,7 +85,7 @@
     },
     "boardPicker": {
       "label": "프로젝트 선택",
-      "system": "머무는 생각",
+      "system": "홈",
       "systemBadge": "시스템",
       "systemNote": "(시스템 프로젝트)",
       "newBoard": "새 프로젝트 만들기",
@@ -324,7 +324,8 @@
     },
     "board": {
       "unnamed": "이름 없는 파일함",
-      "shortCount": "{count}개"
+      "shortCount": "{count}개",
+      "rename": "이름 바꾸기"
     },
     "body": {
       "empty": "내용 없음"

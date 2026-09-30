@@ -61,7 +61,7 @@ describe("FEAT-boards · BoardPicker", () => {
     mount();
 
     expect(screen.getByLabelText("프로젝트 선택")).toBeTruthy();
-    expect(screen.getByText("머무는 생각")).toBeTruthy();
+    expect(screen.getByText("홈")).toBeTruthy();
     expect(screen.getByText("(시스템 프로젝트)")).toBeTruthy();
   });
 
@@ -92,8 +92,8 @@ describe("FEAT-boards · BoardPicker", () => {
     fireEvent.click(trigger);
 
     // Radix Portal로 메뉴가 렌더된 뒤 항목들이 노출돼야 함
-    // "머무는 생각"이 메뉴 안 + 트리거 외에 한 번 더 등장
-    const stays = screen.getAllByText("머무는 생각");
+    // "홈"이 메뉴 안 + 트리거 외에 한 번 더 등장
+    const stays = screen.getAllByText("홈");
     expect(stays.length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("새 프로젝트 만들기")).toBeTruthy();
     expect(screen.getByText("시스템")).toBeTruthy();

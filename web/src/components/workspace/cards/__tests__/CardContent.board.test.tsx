@@ -70,7 +70,7 @@ describe("BoardCardContent · 마닐라 폴더", () => {
     useWorkspace.setState({
       boards: [{ id: "b1", name: fullName, isSystem: false, parentBoardId: null, createdAt: 0, updatedAt: 0, lastOpenedAt: 0 }],
     });
-    const { container } = renderCard("board", { card: { boardRef: "b1" } });
+    const { container } = renderCard("board", { card: { boardRef: "b1" }, editing: false });
     const name = container.querySelector("[data-board-name]");
     expect(name?.getAttribute("title")).toBe(fullName);
     expect(name?.getAttribute("style")).toContain("-webkit-line-clamp: 2");
@@ -78,7 +78,7 @@ describe("BoardCardContent · 마닐라 폴더", () => {
 
   it("100개 이상은 탭에 99+로 줄이고 종이는 high에서 멈춘다", () => {
     useWorkspace.setState({ subcanvasCounts: { b1: 143 } });
-    const { container } = renderCard("board", { card: { boardRef: "b1" } });
+    const { container } = renderCard("board", { card: { boardRef: "b1" }, editing: false });
     expect(container.querySelector("[data-board-count]")?.textContent).toBe("99+");
     expect(container.querySelector("[data-board-papers]")?.getAttribute("data-board-papers")).toBe("high");
   });
