@@ -1720,6 +1720,20 @@ type WsSet = (
 type WsGet = () => WorkspaceState;
 
 /**
+ * undo 만료·포기로 삭제가 확정된 보드들. 공유된 파일함이면 서버 행도 지운다
+ * (spec/share-subboards.md "미룬 것" — 파일함을 지울 때 서버 행 정리).
+ * 되살릴 수 있는 동안에는 부르지 않는다 — undo로 되살려도 서버 사본이 먼저 사라진다.
+ */
+function unshareFinalizedBoards(boards: Board[]): void {
+  if (boards.length === 0) return;
+  void import("./membership")
+    .then((m) => m.unshareRemovedSubBoards(boards))
+    .catch(() => {
+      /* 오프라인 — 다음 syncMyBoards가 다시 시도한다 */
+    });
+}
+
+/**
  * FEAT-subcanvas: 함 카드들을 cascade 삭제하고 5초 undo 스냅샷을 건다.
  * DB row(board/note/connection/embedding)는 즉시 지우되 OPFS blob은 보존하고,
  * undo 만료(또는 ×) 시에만 purge한다 — 만료 전 undo면 미디어까지 복원되도록.
@@ -1791,6 +1805,7 @@ async function cascadeDeleteFunnels(
     const cur = get().pendingSubcanvasUndo;
     if (cur && cur.expiresAt === expiresAt) {
       void storage.purgeAttachments([...cur.funnelNotes, ...cur.notes]);
+      unshareFinalizedBoards(cur.boards);
       set({ pendingSubcanvasUndo: null });
     }
   }, BOARD_UNDO_MS);
@@ -2210,7 +2225,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     setTimeout(() => {
       // 만료 시 — 다른 undo로 덮어쓰여 있지 않다면만 비운다.
       const cur = get().pendingBoardUndo;
-      if (cur && cur.board.id === id) set({ pendingBoardUndo: null });
+      if (cur && cur.board.id === id) {
+        unshareFinalizedBoards([cur.board]);
+        set({ pendingBoardUndo: null });
+      }
     }, BOARD_UNDO_MS);
   },
 
@@ -2238,7 +2256,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     set({ boards });
   },
 
-  clearBoardUndo: () => set({ pendingBoardUndo: null }),
+  clearBoardUndo: () => {
+    const pending = get().pendingBoardUndo;
+    if (pending) unshareFinalizedBoards([pending.board]);
+    set({ pendingBoardUndo: null });
+  },
 
   toggleSystemBoard: async () => {
     const current = get().currentBoardId;
@@ -3634,6 +3656,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     void useStorage
       .getState()
       .purgeAttachments([...pending.funnelNotes, ...pending.notes]);
+    unshareFinalizedBoards(pending.boards);
     set({ pendingSubcanvasUndo: null });
   },
 

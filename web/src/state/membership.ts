@@ -14,7 +14,7 @@
 import { t } from "@/i18n";
 import { useAuth } from "./auth";
 import type { BoardSummary } from "./auth/types";
-import { getDB } from "./db/schema";
+import { getDB, type Board } from "./db/schema";
 import { useToasts } from "./notifications";
 import { realShareApi, type ShareApi } from "./share/api";
 import { useShare } from "./share/store";
@@ -300,6 +300,40 @@ export async function shareSubBoards(): Promise<void> {
       } catch {
         // 오프라인·권한 없음 — 다음 동기화 때 다시 시도한다.
       }
+    }
+  }
+}
+
+/**
+ * undo 만료·포기로 로컬에서 되살릴 수 없게 지워진 공유 파일함의 서버 행을 지운다
+ * (spec/share-subboards.md "미룬 것" — 파일함을 지울 때 서버 행 정리).
+ *
+ * 되살릴 수 있는 단계에서 부르면 안 된다 — undo로 사본을 되돌려도 서버에서 먼저 사라진다.
+ * 부모도 같이 지워졌으면 서버 cascade가 처리하므로 건너뛴다. 공유 루트(부모 없음)는
+ * 여기서 건드리지 않는다 — 소유자의 루트 해제 몫이다.
+ */
+export async function unshareRemovedSubBoards(boards: Board[]): Promise<void> {
+  if (boards.length === 0) return;
+  const deleted = new Set(boards.map((b) => b.id));
+  const targets = boards.filter(
+    (b) =>
+      b.parentBoardId &&
+      !deleted.has(b.parentBoardId) &&
+      useShare.getState().byBoard[b.id]?.status === "shared",
+  );
+  if (targets.length === 0) return;
+  let session;
+  try {
+    session = await useAuth.getState().ensureSession();
+  } catch {
+    return; // 로그인 안 한 기기는 서버를 부르지 않는다.
+  }
+  for (const board of targets) {
+    try {
+      await deps.api.unshare(board.id, session.accessToken);
+      useShare.getState().forgetBoard(board.id);
+    } catch {
+      // 오프라인·이미 지워짐 — 다음 syncMyBoards가 정리한다.
     }
   }
 }

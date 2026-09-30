@@ -71,6 +71,19 @@ private suspend fun streamToTemp(part: PartData.FileItem, tmp: Path, maxBytes: L
     return total
 }
 
+/**
+ * 공유 보드(루트 해제·파일함 삭제)를 자손까지 지운다.
+ * D12: 파일을 먼저 지운다. 실패하면 행이 남아 같은 호출로 재시도할 수 있다.
+ * 행을 먼저 지우면 재시도에서 권한을 확인할 수 없어 누구나 남은 디렉터리를 지울 수 있게 된다(리뷰 P0).
+ * 자손 행은 FK cascade로 같이 지워진다 — 파일과 sync 연결은 직접 정리한다.
+ */
+private suspend fun deleteBoardTree(server: MossServer, boardId: String) {
+    val all = listOf(boardId) + server.repo.descendants(boardId)
+    all.forEach { server.fileStore.deleteBoard(it) }
+    server.repo.deleteBoard(boardId)
+    all.forEach { server.syncClose.closeBoard(it) }
+}
+
 fun Route.boardRoutes(server: MossServer) {
 
     // Owner adds the board to the server (AC-4). Idempotent for the same owner.
@@ -106,20 +119,23 @@ fun Route.boardRoutes(server: MossServer) {
         call.respond(HttpStatusCode.OK, view.toDto())
     }
 
-    // Owner revokes the share (AC-13). Server rows are deleted; n9 clears the clients.
+    // Owner revokes the root share (AC-13); a file cabinet is deleted by any parent-chain member.
+    // Server rows are deleted; n9 clears the clients.
     delete("/boards/{id}/share") {
         val boardId = parseBoardId(call.parameters["id"])
         val userId = call.requireUserId(server)
         val board = server.repo.board(boardId) ?: throw NotFoundException("보드를 찾을 수 없어요")
+        if (board.parentId != null) {
+            // 파일함은 부모 체인 멤버 누구나 지운다 — 서버 행·파일·sync 연결을 자손까지 정리한다.
+            if (server.repo.roleOf(board.parentId, userId) == null) {
+                throw ForbiddenException("이 보드의 멤버가 아니에요")
+            }
+            deleteBoardTree(server, boardId)
+            call.respond(HttpStatusCode.NoContent)
+            return@delete
+        }
         if (board.ownerId != userId) throw ForbiddenException("소유자만 공유를 해제할 수 있어요")
-        if (board.parentId != null) throw InvalidRequestException("파일함은 바깥 보드에서 공유를 해제해 주세요")
-        // D12: 파일을 먼저 지운다. 실패하면 행이 남아 소유자가 같은 호출로 재시도할 수 있다.
-        // 행을 먼저 지우면 재시도에서 소유권을 확인할 수 없어 누구나 남은 디렉터리를 지울 수 있게 된다(리뷰 P0).
-        // 파일함 행은 FK cascade로 같이 지워진다 — 파일과 sync 연결은 직접 정리한다.
-        val all = listOf(boardId) + server.repo.descendants(boardId)
-        all.forEach { server.fileStore.deleteBoard(it) }
-        server.repo.deleteBoard(boardId)
-        all.forEach { server.syncClose.closeBoard(it) }
+        deleteBoardTree(server, boardId)
         call.respond(HttpStatusCode.NoContent)
     }
 

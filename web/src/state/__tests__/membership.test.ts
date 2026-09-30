@@ -16,6 +16,7 @@ import {
   purgeLocalBoardCopy,
   resetMembershipDeps,
   syncMyBoards,
+  unshareRemovedSubBoards,
 } from "@/state/membership";
 import { useShare } from "@/state/share";
 import type { BoardMember, ShareApi } from "@/state/share";
@@ -448,5 +449,27 @@ describe("공유 보드 안 파일함 (spec/share-subboards.md)", () => {
       ["grand", "child"],
     ]);
     expect(useShare.getState().byBoard.grand.status).toBe("shared");
+  });
+
+  it("되살릴 수 없게 지워진 공유 파일함만 서버에서 지운다", async () => {
+    const unshare = vi.fn<ShareApi["unshare"]>(async () => undefined);
+    configureMembership({ api: fakeShareApi({ unshare }) });
+    const share = useShare.getState();
+    share.restoreShared("root", "owner");
+    share.restoreShared("child", "editor");
+    share.restoreShared("grand", "editor");
+    share.restoreShared("loose", "editor");
+    useShare.getState().setLocal("localChild");
+
+    await unshareRemovedSubBoards([
+      makeBoard("child", { parentBoardId: "root" }),
+      makeBoard("grand", { parentBoardId: "child" }),
+      makeBoard("loose"),
+      makeBoard("localChild", { parentBoardId: "child" }),
+    ]);
+
+    // 부모도 같이 지워진 손자·공유 루트·비공유 파일함은 부르지 않는다.
+    expect(unshare.mock.calls.map((c) => c[0])).toEqual(["child"]);
+    expect(useShare.getState().byBoard.child).toBeUndefined();
   });
 });
