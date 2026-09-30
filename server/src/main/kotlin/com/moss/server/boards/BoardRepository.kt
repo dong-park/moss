@@ -12,6 +12,7 @@ import com.moss.server.newId
 import org.jetbrains.exposed.sql.JoinType
 import org.jetbrains.exposed.sql.SortOrder
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.inList
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.deleteWhere
 import org.jetbrains.exposed.sql.insert
@@ -29,9 +30,15 @@ data class UserRow(val id: UUID, val googleSub: String?, val name: String, val a
 
 /** D5: 메일 로그인에 필요한 정보 — 응답에 쓸 [UserRow]와 저장된 bcrypt 해시. */
 data class EmailCredential(val user: UserRow, val passwordHash: String)
-data class BoardRow(val id: String, val ownerId: UUID, val name: String)
+data class BoardRow(val id: String, val ownerId: UUID, val name: String, val parentId: String? = null)
 data class FileRow(val id: UUID, val boardId: String, val name: String, val size: Long, val contentType: String?)
-data class MemberBoard(val id: String, val name: String, val role: String, val ownerName: String)
+data class MemberBoard(
+    val id: String,
+    val name: String,
+    val role: String,
+    val ownerName: String,
+    val parentId: String? = null,
+)
 data class MemberUser(val id: UUID, val name: String, val avatar: String?, val role: String)
 data class InvitePreview(val boardName: String, val ownerName: String)
 
@@ -121,7 +128,37 @@ class BoardRepository(
 
     suspend fun board(boardId: String): BoardRow? = dbQuery {
         Boards.selectAll().where { Boards.id eq boardId }.singleOrNull()
-            ?.let { BoardRow(it[Boards.id], it[Boards.ownerId], it[Boards.name]) }
+            ?.let { BoardRow(it[Boards.id], it[Boards.ownerId], it[Boards.name], it[Boards.parentId]) }
+    }
+
+    /** 부모 체인의 꼭대기(공유 루트) id. 멤버·초대 행은 루트에만 있다. */
+    suspend fun rootOf(boardId: String): String = dbQuery { rootIn(boardId) }
+
+    /** [boardId] 아래 모든 하위 보드 id(자기 제외). 해제·내보내기가 sync 연결을 끊을 때 쓴다. */
+    suspend fun descendants(boardId: String): List<String> = dbQuery {
+        val out = mutableListOf<String>()
+        var frontier = listOf(boardId)
+        while (frontier.isNotEmpty()) {
+            frontier = Boards.selectAll().where { Boards.parentId inList frontier }.map { it[Boards.id] }
+            out += frontier
+        }
+        out
+    }
+
+    /**
+     * 공유 보드 안 파일함을 등록한다. 소유자는 루트 소유자, 멤버 행은 만들지 않는다 —
+     * 권한은 [roleOf]가 부모 체인에서 찾는다. 이미 있으면 그대로 둔다(멱등).
+     */
+    suspend fun shareSubBoard(boardId: String, parentId: String, name: String) = dbQuery {
+        val root = rootIn(parentId)
+        val ownerId = Boards.selectAll().where { Boards.id eq root }.single()[Boards.ownerId]
+        Boards.insertIgnore {
+            it[id] = boardId
+            it[Boards.ownerId] = ownerId
+            it[Boards.name] = name
+            it[Boards.parentId] = parentId
+            it[createdAt] = System.currentTimeMillis()
+        }
     }
 
     /**
@@ -150,9 +187,16 @@ class BoardRepository(
         dbQuery { Boards.update({ Boards.id eq boardId }) { it[Boards.name] = name } }
     }
 
+    /** 이 보드나 부모 체인에서 처음 만나는 멤버 역할. 파일함은 공유 루트의 멤버십을 물려받는다. */
     suspend fun roleOf(boardId: String, userId: UUID): String? = dbQuery {
-        Members.selectAll().where { (Members.boardId eq boardId) and (Members.userId eq userId) }
-            .singleOrNull()?.get(Members.role)
+        var id: String? = boardId
+        repeat(MAX_DEPTH) {
+            val current = id ?: return@dbQuery null
+            Members.selectAll().where { (Members.boardId eq current) and (Members.userId eq userId) }
+                .singleOrNull()?.let { return@dbQuery it[Members.role] }
+            id = Boards.selectAll().where { Boards.id eq current }.singleOrNull()?.get(Boards.parentId)
+        }
+        null
     }
 
     suspend fun memberCount(boardId: String): Int = dbQuery {
@@ -167,19 +211,33 @@ class BoardRepository(
             .map { MemberUser(it[Users.id], it[Users.name], it[Users.avatar], it[Members.role]) }
     }
 
+    /** 멤버인 공유 루트와 그 아래 파일함 전부. 파일함은 루트의 역할을 물려받고 부모 id를 싣는다. */
     suspend fun boardsForUser(userId: UUID): List<MemberBoard> = dbQuery {
-        Boards.join(Members, JoinType.INNER, Boards.id, Members.boardId)
+        val roots = Boards.join(Members, JoinType.INNER, Boards.id, Members.boardId)
             .join(Users, JoinType.INNER, Boards.ownerId, Users.id)
             .selectAll().where { Members.userId eq userId }
-            .map { MemberBoard(it[Boards.id], it[Boards.name], it[Members.role], it[Users.name]) }
+            .map { MemberBoard(it[Boards.id], it[Boards.name], it[Members.role], it[Users.name], it[Boards.parentId]) }
+        val out = roots.toMutableList()
+        var frontier = roots
+        while (frontier.isNotEmpty()) {
+            val byId = frontier.associateBy { it.id }
+            frontier = Boards.selectAll().where { Boards.parentId inList byId.keys }.map {
+                val parent = byId.getValue(it[Boards.parentId]!!)
+                MemberBoard(it[Boards.id], it[Boards.name], parent.role, parent.ownerName, parent.id)
+            }.filter { child -> out.none { it.id == child.id } }
+            out += frontier
+        }
+        out
     }
 
-    suspend fun boardForUser(boardId: String, userId: UUID): MemberBoard? = dbQuery {
-        Boards.join(Members, JoinType.INNER, Boards.id, Members.boardId)
-            .join(Users, JoinType.INNER, Boards.ownerId, Users.id)
-            .selectAll().where { (Boards.id eq boardId) and (Members.userId eq userId) }
-            .singleOrNull()
-            ?.let { MemberBoard(it[Boards.id], it[Boards.name], it[Members.role], it[Users.name]) }
+    suspend fun boardForUser(boardId: String, userId: UUID): MemberBoard? {
+        val role = roleOf(boardId, userId) ?: return null
+        return dbQuery {
+            Boards.join(Users, JoinType.INNER, Boards.ownerId, Users.id)
+                .selectAll().where { Boards.id eq boardId }
+                .singleOrNull()
+                ?.let { MemberBoard(it[Boards.id], it[Boards.name], role, it[Users.name], it[Boards.parentId]) }
+        }
     }
 
     /** Revokes any active invite for the board and returns a fresh raw token. */
@@ -293,7 +351,18 @@ class BoardRepository(
         SaveFileResult.ACCEPTED
     }
 
+    private fun rootIn(boardId: String): String {
+        var id = boardId
+        repeat(MAX_DEPTH) {
+            id = Boards.selectAll().where { Boards.id eq id }.singleOrNull()?.get(Boards.parentId) ?: return id
+        }
+        return id
+    }
+
     companion object {
+        /** 부모 체인 상한. 사이클이 생겨도 무한 루프가 되지 않는다. */
+        private const val MAX_DEPTH = 32
+
         /** D12: 500 MB per board. */
         const val DEFAULT_MAX_BOARD_FILE_BYTES: Long = 500L * 1024 * 1024
     }

@@ -78,10 +78,24 @@ fun Route.boardRoutes(server: MossServer) {
         val boardId = parseBoardId(call.parameters["id"])
         val userId = call.requireUserId(server)
         // 앱에 보드 이름 UI가 없어 빈 이름이 온다 — 기본값으로 받는다.
-        val name = call.receive<ShareRequest>().name.trim().ifEmpty { UNNAMED_BOARD }
+        val request = call.receive<ShareRequest>()
+        val name = request.name.trim().ifEmpty { UNNAMED_BOARD }
         if (name.length > BOARD_NAME_MAX) throw InvalidRequestException("보드 이름은 ${BOARD_NAME_MAX}자까지예요")
 
         val existing = server.repo.board(boardId)
+        val parentId = request.parentId?.let { parseBoardId(it) }
+        if (parentId != null) {
+            // 공유 보드 안 파일함 — 부모 체인의 멤버면 편집자도 등록한다. 권한은 루트에서 물려받는다.
+            if (parentId == boardId) throw InvalidRequestException("보드를 자기 안에 둘 수 없어요")
+            if (server.repo.roleOf(parentId, userId) == null) throw ForbiddenException("이 보드의 멤버가 아니에요")
+            if (existing != null && existing.parentId != parentId) throw ForbiddenException("이미 다른 곳에 공유된 보드예요")
+            if (existing == null) server.repo.shareSubBoard(boardId, parentId, name)
+            else if (existing.name != name) server.repo.renameBoard(boardId, name)
+            val view = server.repo.boardForUser(boardId, userId) ?: throw NotFoundException("보드를 찾을 수 없어요")
+            call.respond(HttpStatusCode.OK, view.toDto())
+            return@post
+        }
+
         if (existing != null && existing.ownerId != userId) throw ForbiddenException("이미 다른 사람이 공유한 보드예요")
         // Idempotent insert; a concurrent share keeps the first row.
         server.repo.shareBoard(boardId, userId, name)
@@ -98,11 +112,14 @@ fun Route.boardRoutes(server: MossServer) {
         val userId = call.requireUserId(server)
         val board = server.repo.board(boardId) ?: throw NotFoundException("보드를 찾을 수 없어요")
         if (board.ownerId != userId) throw ForbiddenException("소유자만 공유를 해제할 수 있어요")
+        if (board.parentId != null) throw InvalidRequestException("파일함은 바깥 보드에서 공유를 해제해 주세요")
         // D12: 파일을 먼저 지운다. 실패하면 행이 남아 소유자가 같은 호출로 재시도할 수 있다.
         // 행을 먼저 지우면 재시도에서 소유권을 확인할 수 없어 누구나 남은 디렉터리를 지울 수 있게 된다(리뷰 P0).
-        server.fileStore.deleteBoard(boardId)
+        // 파일함 행은 FK cascade로 같이 지워진다 — 파일과 sync 연결은 직접 정리한다.
+        val all = listOf(boardId) + server.repo.descendants(boardId)
+        all.forEach { server.fileStore.deleteBoard(it) }
         server.repo.deleteBoard(boardId)
-        server.syncClose.closeBoard(boardId)
+        all.forEach { server.syncClose.closeBoard(it) }
         call.respond(HttpStatusCode.NoContent)
     }
 
@@ -201,7 +218,8 @@ fun Route.boardRoutes(server: MossServer) {
 
     // Owner (re)issues the invite link. Old links stop working (AC-6), members stay.
     post("/boards/{id}/invites") {
-        val boardId = parseBoardId(call.parameters["id"])
+        // 파일함에서 불러도 공유 루트의 링크를 준다 — 멤버십은 루트에만 있다.
+        val boardId = server.repo.rootOf(parseBoardId(call.parameters["id"]))
         val userId = call.requireUserId(server)
         val board = server.repo.board(boardId) ?: throw NotFoundException("보드를 찾을 수 없어요")
         if (board.ownerId != userId) throw ForbiddenException("소유자만 링크를 만들 수 있어요")
@@ -237,20 +255,20 @@ fun Route.boardRoutes(server: MossServer) {
 
     // Owner removes a member (AC-14). Removing the owner is impossible.
     delete("/boards/{id}/members/{userId}") {
-        val boardId = parseBoardId(call.parameters["id"])
+        val boardId = server.repo.rootOf(parseBoardId(call.parameters["id"]))
         val actor = call.requireUserId(server)
         val target = parseUuid(call.parameters["userId"], "사용자 id")
         val board = server.repo.board(boardId) ?: throw NotFoundException("보드를 찾을 수 없어요")
         if (board.ownerId != actor) throw ForbiddenException("소유자만 내보낼 수 있어요")
         if (target == board.ownerId) throw InvalidRequestException("소유자는 내보낼 수 없어요")
         if (!server.repo.removeMember(boardId, target)) throw NotFoundException("그 사람은 이 보드의 멤버가 아니에요")
-        server.syncClose.closeBoard(boardId, target)
+        (listOf(boardId) + server.repo.descendants(boardId)).forEach { server.syncClose.closeBoard(it, target) }
         call.respond(HttpStatusCode.NoContent)
     }
 
     // n9: 팝오버 멤버 목록. 멤버만 볼 수 있다 (AC-5·AC-9).
     get("/boards/{id}/members") {
-        val boardId = parseBoardId(call.parameters["id"])
+        val boardId = server.repo.rootOf(parseBoardId(call.parameters["id"]))
         val userId = call.requireUserId(server)
         if (server.repo.roleOf(boardId, userId) == null) throw ForbiddenException("이 보드의 멤버가 아니에요")
         val members: List<MemberDto> = server.repo.membersOf(boardId).map { it.toDto() }

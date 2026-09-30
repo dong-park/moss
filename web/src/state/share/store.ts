@@ -34,6 +34,12 @@ const defaultDeps: ShareDeps = {
       .catch(() => {
         /* 소급 업로드 실패는 치명적이지 않다 — 다음 공유 세션에 재시도된다 */
       });
+    // 이미 있던 파일함도 같은 멤버에게 열리게 서버에 올린다.
+    void import("../membership")
+      .then((m) => m.shareSubBoards())
+      .catch(() => {
+        /* 다음 syncMyBoards가 다시 시도한다 */
+      });
   },
 };
 let deps: ShareDeps = defaultDeps;

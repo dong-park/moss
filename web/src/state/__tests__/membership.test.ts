@@ -407,3 +407,46 @@ describe("공유 보드 함 카드 배치 (/prove 관찰)", () => {
     expect(new Set(cards.map((c) => `${c.x},${c.y}`)).size).toBe(3);
   });
 });
+
+describe("공유 보드 안 파일함 (spec/share-subboards.md)", () => {
+  it("다른 기기는 /me/boards의 파일함을 부모 아래 원격 사본으로 연다", async () => {
+    await useStorage.getState().init();
+    configureMembership({
+      api: fakeShareApi({
+        myBoards: vi.fn(async () => [
+          summary("root", "editor"),
+          { ...summary("child", "editor"), parentId: "root" },
+        ]),
+      }),
+    });
+
+    await syncMyBoards();
+
+    const boards = await getDB().boards.toArray();
+    expect(boards.find((b) => b.id === "root")?.parentBoardId).toBe(SYSTEM_BOARD_ID);
+    expect(boards.find((b) => b.id === "child")?.parentBoardId).toBe("root");
+    expect(useShare.getState().byBoard.child.status).toBe("shared");
+  });
+
+  it("공유 보드 아래 로컬 파일함을 손자까지 부모 id와 함께 서버에 올린다", async () => {
+    await useStorage.getState().init();
+    await getDB().boards.bulkPut([
+      makeBoard("root"),
+      makeBoard("child", { parentBoardId: "root" }),
+      makeBoard("grand", { parentBoardId: "child" }),
+      makeBoard("loose", { parentBoardId: "other" }),
+    ]);
+    const share = vi.fn(async (id: string) => summary(id, "owner"));
+    configureMembership({
+      api: fakeShareApi({ share, myBoards: vi.fn(async () => [summary("root", "owner")]) }),
+    });
+
+    await syncMyBoards();
+
+    expect(share.mock.calls.map((c) => [c[0], c[3]])).toEqual([
+      ["child", "root"],
+      ["grand", "child"],
+    ]);
+    expect(useShare.getState().byBoard.grand.status).toBe("shared");
+  });
+});

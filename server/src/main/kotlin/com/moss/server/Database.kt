@@ -29,6 +29,8 @@ object Boards : Table("boards") {
     val ownerId = uuid("owner_id")
     val name = text("name")
     val createdAt = long("created_at")
+    /** 공유 보드 안 파일함이면 부모 보드 id. 권한은 부모 체인에서 물려받는다 (V6). */
+    val parentId = text("parent_id").nullable()
     override val primaryKey = PrimaryKey(id)
 }
 

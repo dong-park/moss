@@ -10,7 +10,7 @@ import type { BoardMember, BoardToken } from "./types";
 
 export interface ShareApi {
   /** POST /boards/{id}/share — 이 보드만 서버에 올린다 (AC-4). */
-  share(boardId: string, name: string, accessToken: string): Promise<BoardSummary>;
+  share(boardId: string, name: string, accessToken: string, parentId?: string): Promise<BoardSummary>;
   /** POST /boards/{id}/token — Hocuspocus 접속용 보드 토큰 (AC-11). 멤버만. */
   boardToken(boardId: string, accessToken: string): Promise<BoardToken>;
   /** DELETE /boards/{id}/share — 소유자가 공유를 해제한다 (AC-13). */
@@ -50,12 +50,12 @@ async function request<T>({ method, path, accessToken, body }: RequestInit_): Pr
 }
 
 export const realShareApi: ShareApi = {
-  share: (boardId, name, accessToken) =>
+  share: (boardId, name, accessToken, parentId) =>
     request<BoardSummary>({
       method: "POST",
       path: `/boards/${encodeURIComponent(boardId)}/share`,
       accessToken,
-      body: { name },
+      body: parentId ? { name, parentId } : { name },
     }),
 
   boardToken: (boardId, accessToken) =>

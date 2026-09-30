@@ -229,13 +229,7 @@ export async function syncMyBoards(): Promise<void> {
 
   for (const summary of summaries) {
     if (!localIds.has(summary.id)) {
-      await storage.saveBoard({
-        id: summary.id,
-        name: summary.name,
-        remote: true,
-        parentBoardId: SYSTEM_BOARD_ID,
-      });
-      await ensureSystemBoardCard(summary.id);
+      await saveRemoteBoard(summary);
     }
     useShare.getState().restoreShared(summary.id, summary.role);
   }
@@ -257,6 +251,57 @@ export async function syncMyBoards(): Promise<void> {
 
   const fresh = await storage.loadBoards();
   useWorkspace.setState({ boards: fresh });
+  await shareSubBoards();
+}
+
+/** 원격 사본 행을 만든다. 공유 루트는 홈 아래 입구 카드를, 파일함은 부모 아래에 둔다. */
+async function saveRemoteBoard(summary: BoardSummary): Promise<void> {
+  const storage = useStorage.getState();
+  await storage.saveBoard({
+    id: summary.id,
+    name: summary.name,
+    remote: true,
+    parentBoardId: summary.parentId ?? SYSTEM_BOARD_ID,
+  });
+  if (!summary.parentId) await ensureSystemBoardCard(summary.id);
+}
+
+/**
+ * 공유 보드 안 파일함을 서버에 올린다 (spec/share-subboards.md).
+ * 부모는 공유 중인데 자기는 아직인 로컬 보드를 parentId와 함께 등록한다.
+ * 등록된 보드가 다시 부모가 되므로 더 늘지 않을 때까지 돈다.
+ * ponytail: 파일함 안 내용은 그 보드를 열어 sync에 붙을 때 올라간다 — 등록만으로는 안 올라간다.
+ */
+export async function shareSubBoards(): Promise<void> {
+  let session;
+  try {
+    session = await useAuth.getState().ensureSession();
+  } catch {
+    return;
+  }
+  const storage = useStorage.getState();
+  if (!storage.initialized) await storage.init();
+  const boards = await storage.loadBoards();
+  for (let progressed = true; progressed; ) {
+    progressed = false;
+    const byBoard = useShare.getState().byBoard;
+    for (const board of boards) {
+      if (!board.parentBoardId || byBoard[board.id]?.status === "shared") continue;
+      if (byBoard[board.parentBoardId]?.status !== "shared") continue;
+      try {
+        const summary = await deps.api.share(
+          board.id,
+          board.name,
+          session.accessToken,
+          board.parentBoardId,
+        );
+        useShare.getState().restoreShared(board.id, summary.role);
+        progressed = true;
+      } catch {
+        // 오프라인·권한 없음 — 다음 동기화 때 다시 시도한다.
+      }
+    }
+  }
 }
 
 /**
@@ -279,13 +324,19 @@ export async function openSharedBoard(boardId: string): Promise<BoardSummary | n
   if (!storage.initialized) await storage.init();
   const local = await storage.loadBoards();
   if (!local.some((b) => b.id === summary.id)) {
-    await storage.saveBoard({
-      id: summary.id,
-      name: summary.name,
-      remote: true,
-      parentBoardId: SYSTEM_BOARD_ID,
-    });
-    await ensureSystemBoardCard(summary.id);
+    // 파일함이면 부모 보드도 이 기기에 있어야 브레드크럼이 이어진다 — 없는 조상부터 연다.
+    const chain: BoardSummary[] = [];
+    for (let cur: BoardSummary | undefined = summary; cur; ) {
+      chain.unshift(cur);
+      const parentId: string | null | undefined = cur.parentId;
+      cur = parentId && !local.some((b) => b.id === parentId)
+        ? summaries.find((s) => s.id === parentId)
+        : undefined;
+    }
+    for (const s of chain) {
+      await saveRemoteBoard(s);
+      useShare.getState().restoreShared(s.id, s.role);
+    }
   }
   useShare.getState().restoreShared(summary.id, summary.role);
 

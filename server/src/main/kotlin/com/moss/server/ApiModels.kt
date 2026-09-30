@@ -17,7 +17,14 @@ data class MemberDto(val id: String, val name: String, val avatar: String? = nul
 data class AuthResponse(val accessToken: String, val refreshToken: String, val user: UserDto)
 
 @Serializable
-data class BoardDto(val id: String, val name: String, val role: String, val ownerName: String)
+data class BoardDto(
+    val id: String,
+    val name: String,
+    val role: String,
+    val ownerName: String,
+    /** 공유 보드 안 파일함이면 부모 보드 id, 공유 루트면 null. */
+    val parentId: String? = null,
+)
 
 @Serializable
 data class FileDto(val id: String, val name: String, val size: Long, val contentType: String? = null)
@@ -47,7 +54,7 @@ data class EmailSignupRequest(val email: String, val password: String, val name:
 data class EmailLoginRequest(val email: String, val password: String)
 
 @Serializable
-data class ShareRequest(val name: String)
+data class ShareRequest(val name: String, val parentId: String? = null)
 
 @Serializable
 data class AcceptInviteRequest(val token: String)
@@ -60,7 +67,7 @@ data class InvitePreviewResponse(val boardName: String, val ownerName: String)
 
 fun UserRow.toDto() = UserDto(id.toString(), name, avatar)
 
-fun MemberBoard.toDto() = BoardDto(id.toString(), name, role, ownerName)
+fun MemberBoard.toDto() = BoardDto(id, name, role, ownerName, parentId)
 
 fun MemberUser.toDto() = MemberDto(id.toString(), name, avatar, role)
 

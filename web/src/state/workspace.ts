@@ -92,6 +92,7 @@ import {
   anchorPoint,
   nearestSide,
 } from "@/components/workspace/connectors/geometry";
+import { useShare } from "./share/store";
 
 /**
  * 시스템 보드 "머무는 생각"의 가상 id. DB에는 row를 두지 않고
@@ -3448,6 +3449,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       await writeBoardToDoc(childBoardId);
       const boards = await storage.loadBoards();
       set({ boards });
+      // 공유 보드 안 파일함은 같은 멤버에게 열린다 — 서버에 등록한다.
+      if (useShare.getState().byBoard[parentBoardId]?.status === "shared") {
+        await (await import("./membership")).shareSubBoards();
+      }
     })().catch((err) => {
       // 테스트 teardown·새로고침 경계에서 DB가 닫히면 저장이 실패할 수 있다.
       console.warn("[moss] 함 생성 저장 실패", err);
