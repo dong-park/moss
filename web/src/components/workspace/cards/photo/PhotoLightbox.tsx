@@ -1,13 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { useT } from "@/i18n/Provider";
-import {
-  onFilesMapChange,
-  resolveAttachment,
-  type AttachmentResolution,
-} from "@/state/share/attachments";
+import { usePhotoUrl } from "./usePhotoUrl";
 import type { Card } from "@/state/workspace";
 
 /* ─────────────────────────────────────────────────────────────
@@ -17,10 +12,6 @@ import type { Card } from "@/state/workspace";
  * Radix Dialog의 onOpenChange(false) → onClose. 캡션이 있으면 아래 한 줄.
  * ───────────────────────────────────────────────────────────── */
 
-type Resolved =
-  | { state: "loading"; url: null }
-  | AttachmentResolution;
-
 export function PhotoLightbox({
   card,
   onClose,
@@ -29,38 +20,8 @@ export function PhotoLightbox({
   onClose: () => void;
 }) {
   const t = useT();
-  const urlRef = useRef<string | null>(null);
-  const [res, setRes] = useState<Resolved>({ state: "loading", url: null });
-  const ref = card.attachmentRef;
+  const res = usePhotoUrl(card.attachmentRef);
 
-  useEffect(() => {
-    if (!ref) {
-      setRes({ state: "missing", url: null });
-      return;
-    }
-    let cancelled = false;
-    const apply = (next: AttachmentResolution) => {
-      if (cancelled) return;
-      if (urlRef.current && urlRef.current !== next.url) {
-        URL.revokeObjectURL(urlRef.current);
-      }
-      urlRef.current = next.url;
-      setRes(next);
-    };
-    const run = () => {
-      void resolveAttachment(ref).then(apply);
-    };
-    run();
-    const off = onFilesMapChange(run);
-    return () => {
-      cancelled = true;
-      off();
-      if (urlRef.current) {
-        URL.revokeObjectURL(urlRef.current);
-        urlRef.current = null;
-      }
-    };
-  }, [ref]);
 
   return (
     <Dialog.Root open onOpenChange={(o) => !o && onClose()}>

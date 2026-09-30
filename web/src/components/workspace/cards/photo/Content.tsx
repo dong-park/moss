@@ -1,12 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef } from "react";
 import { PHOTO_CAPTION_MAX } from "@/state/workspace";
-import {
-  onFilesMapChange,
-  resolveAttachment,
-  type AttachmentResolution,
-} from "@/state/share/attachments";
+import { usePhotoUrl } from "./usePhotoUrl";
 import { useT } from "@/i18n/Provider";
 import { useAutoFocusOnEdit } from "../_shared/useAutoFocusOnEdit";
 import type { CardContentProps } from "../_shared/types";
@@ -25,10 +21,6 @@ export function normalizeCaption(raw: string): string {
   return raw.replace(/[\r\n]+/g, " ").trim().slice(0, PHOTO_CAPTION_MAX);
 }
 
-type Resolved =
-  | { state: "loading"; url: null }
-  | AttachmentResolution;
-
 export function PhotoCardContent({
   card,
   editing,
@@ -37,42 +29,11 @@ export function PhotoCardContent({
 }: CardContentProps) {
   const t = useT();
   const inputRef = useRef<HTMLInputElement>(null);
-  const urlRef = useRef<string | null>(null);
-  const [res, setRes] = useState<Resolved>({ state: "loading", url: null });
 
-  const ref = card.attachmentRef;
+  const res = usePhotoUrl(card.attachmentRef);
 
   useAutoFocusOnEdit(inputRef, editing);
 
-  useEffect(() => {
-    if (!ref) {
-      setRes({ state: "missing", url: null });
-      return;
-    }
-    let cancelled = false;
-    const apply = (next: AttachmentResolution) => {
-      if (cancelled) return;
-      if (urlRef.current && urlRef.current !== next.url) {
-        URL.revokeObjectURL(urlRef.current);
-      }
-      urlRef.current = next.url;
-      setRes(next);
-    };
-    const run = () => {
-      void resolveAttachment(ref).then(apply);
-    };
-    run();
-    // 공유 보드에서 fileId가 뒤늦게 동기화되면 자리표시자를 사진으로 바꾼다.
-    const off = onFilesMapChange(run);
-    return () => {
-      cancelled = true;
-      off();
-      if (urlRef.current) {
-        URL.revokeObjectURL(urlRef.current);
-        urlRef.current = null;
-      }
-    };
-  }, [ref]);
 
   const caption = card.content;
 
