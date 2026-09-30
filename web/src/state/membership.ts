@@ -339,6 +339,55 @@ export async function unshareRemovedSubBoards(boards: Board[]): Promise<void> {
 }
 
 /**
+ * 움직인 파일함의 서버 parent_id를 로컬 부모 변경에 맞춘다 (spec/share-subboards.md "미룬 것").
+ *
+ * - 새 부모가 공유 중이면 새 parentId로 다시 등록한다 — 서버가 parent_id를 바꾼다.
+ * - 공유 밖으로 나갔으면(새 부모가 공유 아님) 서버에서 이 파일함과 자손을 지우고
+ *   로컬에선 혼자 쓰는 보드로 되돌린다. 서버 DELETE 계약은 부모 체인 멤버면 허용한다.
+ */
+export async function syncMovedBoard(boardId: string, newParentId: string): Promise<void> {
+  const share = useShare.getState();
+  const newParentShared = share.byBoard[newParentId]?.status === "shared";
+  const selfShared = share.byBoard[boardId]?.status === "shared";
+  if (!newParentShared && !selfShared) return;
+
+  let session;
+  try {
+    session = await useAuth.getState().ensureSession();
+  } catch {
+    return;
+  }
+
+  const storage = useStorage.getState();
+  if (!storage.initialized) await storage.init();
+  const board = (await storage.loadBoards()).find((b) => b.id === boardId);
+  if (!board) return;
+
+  if (newParentShared) {
+    try {
+      const summary = await deps.api.share(
+        boardId,
+        board.name,
+        session.accessToken,
+        newParentId,
+      );
+      useShare.getState().restoreShared(boardId, summary.role);
+    } catch {
+      // 오프라인·권한 없음 — 다음 syncMyBoards의 shareSubBoards가 다시 시도한다.
+    }
+    return;
+  }
+
+  // 공유 밖으로 나갔다 — 서버에서 이 파일함과 자손을 지우고 혼자 쓰기로 되돌린다.
+  try {
+    await deps.api.unshare(boardId, session.accessToken);
+  } catch {
+    // 오프라인·권한 없음 — 다음 기회에 정리한다.
+  }
+  useShare.getState().setLocal(boardId);
+}
+
+/**
  * FEAT-onboarding-routes n5 — `/b/[boardId]`로 로컬에 없는 보드에 들어올 때,
  * 계정의 공유 보드 목록(`GET /me/boards`)에서 이 보드의 멤버십을 확인한다 (D6).
  *

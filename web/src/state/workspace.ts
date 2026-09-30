@@ -3552,12 +3552,19 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
     // 함 카드를 옮기면 그 서브 보드의 부모도 새 보드로 따라간다(트리 일관성).
     if (card.kind === "board" && card.boardRef) {
+      const movedRef = card.boardRef;
       await storage.saveBoard({
-        id: card.boardRef,
+        id: movedRef,
         parentBoardId: targetBoardId,
       });
       const boards = await storage.loadBoards();
       set({ boards });
+      // 새 부모가 공유 중이면 서버 parent_id를 따라 옮기고, 공유 밖이면 해제한다.
+      void import("./membership")
+        .then((m) => m.syncMovedBoard(movedRef, targetBoardId))
+        .catch(() => {
+          /* 다음 동기화가 다시 시도한다 */
+        });
     }
   },
 
@@ -3612,12 +3619,19 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     // 함 카드를 꺼내면 그 서브 보드의 부모도 대상 보드로 reparent(트리 일관성).
     // parentBoardId는 보드 row의 리터럴 id(시스템이면 "system" sentinel)를 그대로 쓴다.
     if (card.kind === "board" && card.boardRef) {
+      const movedRef = card.boardRef;
       await storage.saveBoard({
-        id: card.boardRef,
+        id: movedRef,
         parentBoardId: targetBoardId,
       });
       const boards = await storage.loadBoards();
       set({ boards });
+      // 새 부모가 공유 중이면 서버 parent_id를 따라 옮기고, 공유 밖이면 해제한다.
+      void import("./membership")
+        .then((m) => m.syncMovedBoard(movedRef, targetBoardId))
+        .catch(() => {
+          /* 다음 동기화가 다시 시도한다 */
+        });
     }
   },
 

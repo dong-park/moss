@@ -96,14 +96,39 @@ fun Route.boardRoutes(server: MossServer) {
         if (name.length > BOARD_NAME_MAX) throw InvalidRequestException("보드 이름은 ${BOARD_NAME_MAX}자까지예요")
 
         val existing = server.repo.board(boardId)
+        val oldParent = existing?.parentId
         val parentId = request.parentId?.let { parseBoardId(it) }
         if (parentId != null) {
             // 공유 보드 안 파일함 — 부모 체인의 멤버면 편집자도 등록한다. 권한은 루트에서 물려받는다.
             if (parentId == boardId) throw InvalidRequestException("보드를 자기 안에 둘 수 없어요")
             if (server.repo.roleOf(parentId, userId) == null) throw ForbiddenException("이 보드의 멤버가 아니에요")
-            if (existing != null && existing.parentId != parentId) throw ForbiddenException("이미 다른 곳에 공유된 보드예요")
-            if (existing == null) server.repo.shareSubBoard(boardId, parentId, name)
-            else if (existing.name != name) server.repo.renameBoard(boardId, name)
+            when {
+                existing == null -> server.repo.shareSubBoard(boardId, parentId, name)
+                // 공유 루트는 남의 파일함이 될 수 없다.
+                oldParent == null -> throw ForbiddenException("이미 다른 곳에 공유된 보드예요")
+                oldParent != parentId -> {
+                    // 다른 보드로 옮긴다 — 요청자가 옛 부모·새 부모 양쪽 체인의 멤버여야 한다.
+                    if (server.repo.roleOf(oldParent, userId) == null) {
+                        throw ForbiddenException("이 보드의 멤버가 아니에요")
+                    }
+                    // 새 부모가 이 보드의 자손이면 트리에 사이클이 생긴다.
+                    if (parentId in server.repo.descendants(boardId)) {
+                        throw InvalidRequestException("보드를 자기 안에 둘 수 없어요")
+                    }
+                    val oldRoot = server.repo.rootOf(oldParent)
+                    val newRoot = server.repo.rootOf(parentId)
+                    server.repo.reparentBoard(boardId, parentId)
+                    if (name != existing.name) server.repo.renameBoard(boardId, name)
+                    // 옛 부모에만 있던 멤버는 이 보드와 자손에서 밀려난다 — sync 연결을 끊는다.
+                    val stayed = server.repo.membersOf(newRoot).map { it.id }.toSet()
+                    val affected = listOf(boardId) + server.repo.descendants(boardId)
+                    for (member in server.repo.membersOf(oldRoot)) {
+                        if (member.id in stayed) continue
+                        affected.forEach { server.syncClose.closeBoard(it, member.id) }
+                    }
+                }
+                else -> if (name != existing.name) server.repo.renameBoard(boardId, name)
+            }
             val view = server.repo.boardForUser(boardId, userId) ?: throw NotFoundException("보드를 찾을 수 없어요")
             call.respond(HttpStatusCode.OK, view.toDto())
             return@post
