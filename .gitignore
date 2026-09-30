@@ -7,3 +7,6 @@
 
 # dependencies
 node_modules/
+
+# local secrets for docker compose
+.env

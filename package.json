@@ -7,6 +7,9 @@
     "build": "bun run --cwd web build",
     "start": "bun run --cwd web start",
     "lint": "bun run --cwd web lint",
-    "test": "bun run --cwd web test"
+    "test": "bun run --cwd web test",
+    "up": "test -f .env || printf 'JWT_SECRET=%s\\nSYNC_INTERNAL_SECRET=%s\\n' $(openssl rand -hex 32) $(openssl rand -hex 32) > .env; docker compose up -d --build",
+    "down": "docker compose down",
+    "logs": "docker compose logs -f --tail=100"
   }
 }
