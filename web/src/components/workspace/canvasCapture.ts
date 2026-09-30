@@ -59,6 +59,92 @@ export function extractFilesFromDrop(event: DragEvent): File[] {
   return Array.from(transfer.files);
 }
 
+/** FEAT-photo-card: storePhoto 결과 — addPhotoAt이 그대로 받는다. */
+export interface StoredPhoto {
+  ref: string;
+  mediaType: string;
+  /** 원본 픽셀 크기. 0이면 못 읽음 → 호출부(addPhotoAt)가 정사각형으로 만든다. */
+  naturalW: number;
+  naturalH: number;
+}
+
+/**
+ * 이미지 원본 크기를 읽는다. `createImageBitmap`이 1순위(webp·gif·png 등),
+ * 지원 안 되는 svg 등은 `<img>` naturalWidth, 그것도 0이면 {0,0}을 돌려준다
+ * — 호출부가 정사각형으로 만든다(spec 경계 조건).
+ */
+async function readNaturalSize(file: File): Promise<{ w: number; h: number }> {
+  if (typeof createImageBitmap === "function") {
+    try {
+      const bitmap = await createImageBitmap(file);
+      const size = { w: bitmap.width, h: bitmap.height };
+      bitmap.close?.();
+      if (size.w > 0 && size.h > 0) return size;
+    } catch {
+      /* svg 등 일부 브라우저 미지원 — 아래 <img> 폴백 */
+    }
+  }
+  // 크기 없는 svg 등 createImageBitmap이 실패한 경우만 <img>로 naturalWidth를 읽는다.
+  // 그 외(jsdom처럼 createImageBitmap 자체가 없는 환경)는 여기서 포기 — Image 로드가
+  // 일어나지 않으면 onload도 onerror도 오지 않아 매달린다. 타임아웃으로도 방어한다.
+  if (file.type === "image/svg+xml" && typeof Image !== "undefined" && typeof URL !== "undefined") {
+    let url: string | null = null;
+    try {
+      url = URL.createObjectURL(file);
+      const size = await new Promise<{ w: number; h: number } | null>((resolve) => {
+        const img = new Image();
+        const done = (v: { w: number; h: number } | null) => resolve(v);
+        const timer = setTimeout(() => done(null), 1000);
+        img.onload = () => {
+          clearTimeout(timer);
+          done({ w: img.naturalWidth, h: img.naturalHeight });
+        };
+        img.onerror = () => {
+          clearTimeout(timer);
+          done(null);
+        };
+        img.src = url!;
+      });
+      if (size && size.w > 0 && size.h > 0) return size;
+    } catch {
+      /* 크기 못 읽음 — {0,0} */
+    } finally {
+      if (url) URL.revokeObjectURL(url);
+    }
+  }
+  return { w: 0, h: 0 };
+}
+
+/**
+ * FEAT-photo-card: 이미지 파일을 OPFS에 저장하고 사진 카드 생성에 필요한 정보를
+ * 돌려준다. 형식·용량이 거부되면 토스트 후 null(storeImageBlock과 같은 한도).
+ * 캡션은 여기서 만들지 않는다 — 카드는 빈 캡션(그냥 사진)으로 시작한다.
+ */
+export async function storePhoto(file: File): Promise<StoredPhoto | null> {
+  if (!SUPPORTED_IMAGE_TYPES.has(file.type)) {
+    warn(t("capture.canvas.imageUnsupported", { type: file.type || t("capture.canvas.unknownType") }));
+    return null;
+  }
+  if (file.size > MAX_IMAGE_BYTES) {
+    const mb = Math.round(MAX_IMAGE_BYTES / (1024 * 1024));
+    warn(t("capture.canvas.imageTooBig", { mb }));
+    return null;
+  }
+  try {
+    const ref = await storeAttachment(
+      useWorkspace.getState().currentBoardId,
+      makeAttachmentFilename(file.type),
+      file,
+    );
+    const { w, h } = await readNaturalSize(file);
+    return { ref, mediaType: file.type, naturalW: w, naturalH: h };
+  } catch (err) {
+    console.warn("canvasCapture: 사진 저장 실패", err);
+    warn(t("capture.canvas.saveImageFailed"));
+    return null;
+  }
+}
+
 /**
  * 이미지 파일을 OPFS에 저장하고 이미지 블록 마크다운(`![](opfs://…)`)을 반환한다.
  * 형식·용량이 거부되면 토스트를 띄우고 null.

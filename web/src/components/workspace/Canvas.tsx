@@ -1,7 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { useWorkspace, SYSTEM_BOARD_ID, widthForKind } from "@/state/workspace";
+import {
+  useWorkspace,
+  SYSTEM_BOARD_ID,
+  widthForKind,
+  PHOTO_DEFAULT_WIDTH,
+} from "@/state/workspace";
 import { useToasts } from "@/state/notifications";
 import { useT } from "@/i18n/Provider";
 import { DraggableCard } from "./DraggableCard";
@@ -30,7 +35,7 @@ import {
   extractFilesFromDrop,
   extractImageFilesFromClipboard,
   storeFileBlock,
-  storeImageBlock,
+  storePhoto,
   warnDropLimitExceeded,
 } from "./canvasCapture";
 
@@ -102,6 +107,8 @@ export function Canvas() {
   const addCardAtViewportCenter = useWorkspace((s) => s.addCardAtViewportCenter);
   // FEAT-sticky-redesign n6: 파일 드롭 — 놓은 좌표에 블록 든 메모를 만든다.
   const addCardAt = useWorkspace((s) => s.addCardAt);
+  // FEAT-photo-card: 이미지 드롭·붙여넣기는 메모 대신 사진 카드를 만든다.
+  const addPhotoAt = useWorkspace((s) => s.addPhotoAt);
   // 무소속 토스트와 함께 임시 숨김(2026-09-22).
   // const promoteCardToNewBoard = useWorkspace((s) => s.promoteCardToNewBoard);
   const setContent = useWorkspace((s) => s.setContent);
@@ -245,12 +252,18 @@ export function Canvas() {
       if (imageFiles.length > 0) {
         e.preventDefault();
         void (async () => {
+          // FEAT-photo-card: 붙여넣은 이미지는 사진 카드 1장(feat 2). 놓는 자리는
+          // addCardAtViewportCenter와 같은 화면 중앙의 월드 좌표.
+          const size = centerSize();
+          const v = useWorkspace.getState().viewport;
+          const cw = size?.width ?? (typeof window !== "undefined" ? window.innerWidth : 1100);
+          const ch = size?.height ?? (typeof window !== "undefined" ? window.innerHeight : 700);
+          const px = (cw / 2 - v.x) / v.scale - PHOTO_DEFAULT_WIDTH / 2;
+          const py = (ch / 2 - v.y) / v.scale - 20;
           for (const file of imageFiles) {
-            const block = await storeImageBlock(file);
-            if (!block) continue;
-            const id = addCardAtViewportCenter("text", centerSize());
-            setEditing(null);
-            setContent(id, block);
+            const photo = await storePhoto(file);
+            if (!photo) continue;
+            addPhotoAt(px, py, photo);
           }
         })();
         return;
@@ -284,7 +297,7 @@ export function Canvas() {
     };
     window.addEventListener("paste", onPaste);
     return () => window.removeEventListener("paste", onPaste);
-  }, [canvasRect, addCardAtViewportCenter, setContent, setEditing]);
+  }, [canvasRect, addCardAtViewportCenter, addPhotoAt, setContent, setEditing]);
 
   /* ─ 캔버스 파일 드롭(FEAT-sticky-redesign n6, spec AC-6·AC-7·§4):
    *   이미지 파일 → 이미지 블록, 그 외 → 파일 블록. 파일마다 메모 1개, 놓은
@@ -320,15 +333,28 @@ export function Canvas() {
       // 파일마다가 아니라 이 드롭 배치당 1번만 — 만든 카드 id를 모아뒀다가 한 번에.
       const createdOnSystemBoard: string[] = [];
       for (const file of accepted) {
-        const block = file.type.startsWith("image/")
-          ? await storeImageBlock(file)
-          : await storeFileBlock(file);
+        const wx = baseWx + i * DROP_STACK_OFFSET_PX;
+        const wy = baseWy + i * DROP_STACK_OFFSET_PX;
+        // FEAT-photo-card: 이미지는 메모 없이 사진 카드, 그 외는 지금처럼 파일 블록 메모.
+        // 쌓기 인덱스(i)는 두 경우가 공유한다(spec 15: 이미지 5 + pdf 1 → 24px씩 쌓임).
+        if (file.type.startsWith("image/")) {
+          const photo = await storePhoto(file);
+          if (!photo) {
+            i += 1;
+            continue;
+          }
+          const id = addPhotoAt(wx, wy, photo);
+          if (useWorkspace.getState().currentBoardId === SYSTEM_BOARD_ID) {
+            createdOnSystemBoard.push(id);
+          }
+          i += 1;
+          continue;
+        }
+        const block = await storeFileBlock(file);
         if (!block) {
           i += 1;
           continue;
         }
-        const wx = baseWx + i * DROP_STACK_OFFSET_PX;
-        const wy = baseWy + i * DROP_STACK_OFFSET_PX;
         const id = addCardAt("text", wx, wy);
         setEditing(null);
         setContent(id, block);

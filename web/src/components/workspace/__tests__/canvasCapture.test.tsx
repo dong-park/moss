@@ -4,7 +4,7 @@ import { I18nProvider } from "@/i18n/Provider";
 import { Canvas } from "@/components/workspace/Canvas";
 import { SYSTEM_BOARD_ID, useWorkspace, type Card } from "@/state/workspace";
 import { useToasts } from "@/state/notifications";
-import { countBlocks, parseBlock } from "@/state/blocks";
+import { parseBlock } from "@/state/blocks";
 
 /* FEAT-sticky-redesign n6 — 캔버스 붙여넣기·드롭이 블록 든 text 메모를 만든다
  * (spec AC-6·AC-7). image·link·file 종류 행은 늘지 않는다. */
@@ -192,13 +192,19 @@ function pasteEventWith(transfer: Partial<DataTransfer>): void {
   window.dispatchEvent(event);
 }
 
-function dropFilesOn(el: Element, files: File[]) {
+function dropFilesOn(el: Element, files: File[], clientX = 100, clientY = 100) {
   const dataTransfer = {
     files,
     types: ["Files"],
     items: files.map((f) => ({ kind: "file", type: f.type, getAsFile: () => f })),
   } as unknown as DataTransfer;
-  fireEvent.drop(el, { dataTransfer, clientX: 100, clientY: 100 });
+  // jsdom의 DragEvent 생성자는 clientX/clientY를 받지 않는다 — 좌표가 필요한 드롭
+  // 테스트(쌓기 간격)를 위해 네이티브 이벤트에 직접 정의해 dispatch한다.
+  const ev = new Event("drop", { bubbles: true, cancelable: true }) as DragEvent;
+  Object.defineProperty(ev, "dataTransfer", { value: dataTransfer });
+  Object.defineProperty(ev, "clientX", { value: clientX });
+  Object.defineProperty(ev, "clientY", { value: clientY });
+  el.dispatchEvent(ev);
 }
 
 function cardsByKind(kind: string): Card[] {
@@ -206,19 +212,23 @@ function cardsByKind(kind: string): Card[] {
 }
 
 describe("FEAT-sticky-redesign n6 · 캔버스 붙여넣기", () => {
-  it("AC-6: PNG 붙여넣기 → notes(text) +1, 이미지 블록 본문, image 행 +0", async () => {
+  it("PNG 붙여넣기 → photo 카드 +1, 메모(text) +0 (FEAT-photo-card 성공 기준 2)", async () => {
     mount();
-    expect(cardsByKind("text")).toHaveLength(0);
+    expect(cardsByKind("photo")).toHaveLength(0);
 
     pasteEventWith({ files: [pngFile()] as never, getData: () => "" });
     await flush();
 
-    expect(cardsByKind("text")).toHaveLength(1);
+    expect(cardsByKind("photo")).toHaveLength(1);
+    expect(cardsByKind("text")).toHaveLength(0);
     expect(cardsByKind("image")).toHaveLength(0);
-    const card = cardsByKind("text")[0];
-    const counts = countBlocks(card.content);
-    expect(counts.image).toBe(1);
-    expect(parseBlock(card.content.trim())?.type).toBe("image");
+    const card = cardsByKind("photo")[0];
+    expect(card.attachmentRef).toMatch(/^opfs:/);
+    expect(card.mediaType).toBe("image/png");
+    expect(card.width).toBe(240);
+    // 캡션 없는 사진 — content는 비어 있고 편집 모드가 아니다.
+    expect(card.content).toBe("");
+    expect(useWorkspace.getState().editingId).toBeNull();
   });
 
   it("AC-7: URL 붙여넣기 → text 메모 + 링크 블록, link 행 +0", async () => {
@@ -267,15 +277,39 @@ describe("FEAT-sticky-redesign n6 · 캔버스 파일 드롭", () => {
     if (block?.type === "file") expect(block.filename).toBe("doc.pdf");
   });
 
-  it("이미지 파일 드롭 → 이미지 블록", async () => {
+  it("이미지 파일 드롭 → photo 카드 (성공 기준 1)", async () => {
     const { container } = mount();
     const root = container.querySelector("[data-canvas-root='true']")!;
 
     dropFilesOn(root, [pngFile()]);
     await flush();
 
-    const block = parseBlock(cardsByKind("text")[0].content.trim());
-    expect(block?.type).toBe("image");
+    expect(cardsByKind("photo")).toHaveLength(1);
+    expect(cardsByKind("text")).toHaveLength(0);
+    expect(cardsByKind("photo")[0].attachmentRef).toMatch(/^opfs:/);
+  });
+
+  it("이미지 5장 + pdf 1개 드롭 → photo 5 + text 1, 24px 간격 (성공 기준 15)", async () => {
+    const { container } = mount();
+    const root = container.querySelector("[data-canvas-root='true']")!;
+
+    const files = [
+      ...Array.from({ length: 5 }, (_, i) => pngFile(`p${i}.png`)),
+      pdfFile(),
+    ];
+    dropFilesOn(root, files);
+    await flush();
+
+    const photos = cardsByKind("photo");
+    const texts = cardsByKind("text");
+    expect(photos).toHaveLength(5);
+    expect(texts).toHaveLength(1);
+    // 놓은 자리에서 24px씩 비켜 쌓인다 — 연속 두 카드의 (x, y) 차이가 24.
+    const sorted = [...photos, ...texts].sort((a, b) => a.x - b.x);
+    for (let i = 1; i < sorted.length; i++) {
+      expect(sorted[i].x - sorted[i - 1].x).toBe(24);
+      expect(sorted[i].y - sorted[i - 1].y).toBe(24);
+    }
   });
 
   it("21개 드롭 → 20개만 생성 + 토스트", async () => {
