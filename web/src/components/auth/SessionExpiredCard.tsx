@@ -1,9 +1,8 @@
 "use client";
 
-import { useState } from "react";
 import { useT } from "@/i18n/Provider";
 import { useAuth } from "@/state/auth";
-import { GoogleButton } from "./GoogleButton";
+import { LoginActions } from "./LoginOnboarding";
 
 /**
  * 리프레시 토큰이 만료됐을 때 보드 위에 뜨는 로그인 카드 (AC-12).
@@ -12,20 +11,8 @@ import { GoogleButton } from "./GoogleButton";
 export function AuthSessionOverlay() {
   const t = useT();
   const status = useAuth((s) => s.status);
-  const [busy, setBusy] = useState(false);
 
   if (status !== "expired") return null;
-
-  const handleLogin = async () => {
-    setBusy(true);
-    try {
-      await useAuth.getState().loginWithGoogle();
-    } catch {
-      // 실패하면 카드를 남긴다.
-    } finally {
-      setBusy(false);
-    }
-  };
 
   return (
     <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center">
@@ -43,7 +30,7 @@ export function AuthSessionOverlay() {
           {t("collab.auth.expired.title")}
         </h3>
         <p className="text-[12px] text-[#8e8e93]">{t("collab.auth.expired.body")}</p>
-        <GoogleButton onClick={handleLogin} disabled={busy} />
+        <LoginActions />
       </div>
     </div>
   );

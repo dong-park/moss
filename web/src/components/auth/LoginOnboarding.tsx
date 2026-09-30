@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useT } from "@/i18n/Provider";
 import type { Translator } from "@/i18n";
-import { AuthRequestError, useAuth } from "@/state/auth";
+import { AuthRequestError, GoogleUnavailableError, useAuth } from "@/state/auth";
 import { useOnlineStatus } from "@/state/network";
 import { GoogleButton } from "./GoogleButton";
 
@@ -63,6 +63,40 @@ function errorMessage(err: unknown, t: Translator): string {
 /** `context`: 초대 링크처럼 로그인 이유가 있을 때 제목 위에 한 줄로 보여 준다. */
 export function LoginOnboarding({ context }: { context?: React.ReactNode } = {}) {
   const t = useT();
+  return (
+    <div className="fixed inset-0 z-[var(--z-panel)] flex items-center justify-center bg-[var(--color-bg)]">
+      <div
+        role="dialog"
+        aria-label={t("collab.auth.onboarding.title")}
+        className="w-[320px] rounded-[18px] bg-white/85 p-[26px_24px_20px] text-center shadow-[0_12px_40px_rgba(0,0,0,.08),0_0_0_.5px_rgba(0,0,0,.05)]"
+      >
+        {context ? <div className="mb-3">{context}</div> : null}
+        <h1 className="mb-1 text-[18px] font-semibold">
+          {t("collab.auth.onboarding.title")}
+        </h1>
+        <p className="text-[12px] text-[#8e8e93]">
+          {t("collab.auth.onboarding.intro")}
+        </p>
+        <ul className="mt-4 space-y-1.5 text-left text-[12px] text-[#2c2e33]">
+          <li>{t("collab.auth.onboarding.feature1")}</li>
+          <li>{t("collab.auth.onboarding.feature2")}</li>
+          <li>{t("collab.auth.onboarding.feature3")}</li>
+        </ul>
+        <LoginActions />
+        <p className="mt-2 text-[11px] text-[#9a9ca2]">
+          {t("collab.auth.onboarding.loginHint")}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Google 버튼 + "메일로 계속" 폼. 온보딩과 세션 만료 카드가 같이 쓴다 —
+ * 만료 카드에 Google만 있으면 메일 계정은 다시 들어올 길이 없다.
+ */
+export function LoginActions() {
+  const t = useT();
   const online = useOnlineStatus();
   const [busy, setBusy] = useState(false);
   const [mode, setMode] = useState<Mode>("closed");
@@ -71,13 +105,18 @@ export function LoginOnboarding({ context }: { context?: React.ReactNode } = {})
   const [name, setName] = useState("");
   const [errors, setErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
+  const [googleError, setGoogleError] = useState<string | null>(null);
 
   const handleLogin = async () => {
     setBusy(true);
+    setGoogleError(null);
     try {
       await useAuth.getState().loginWithGoogle();
-    } catch {
-      // 실패하면 온보딩을 남긴다.
+    } catch (err) {
+      // 실패를 삼키면 버튼이 아무 일도 안 하는 것처럼 보인다.
+      setGoogleError(
+        err instanceof GoogleUnavailableError ? err.message : t("collab.auth.email.failed"),
+      );
       setBusy(false);
     }
   };
@@ -111,136 +150,119 @@ export function LoginOnboarding({ context }: { context?: React.ReactNode } = {})
   const disabled = busy || !online;
 
   return (
-    <div className="fixed inset-0 z-[var(--z-panel)] flex items-center justify-center bg-[var(--color-bg)]">
-      <div
-        role="dialog"
-        aria-label={t("collab.auth.onboarding.title")}
-        className="w-[320px] rounded-[18px] bg-white/85 p-[26px_24px_20px] text-center shadow-[0_12px_40px_rgba(0,0,0,.08),0_0_0_.5px_rgba(0,0,0,.05)]"
-      >
-        {context ? <div className="mb-3">{context}</div> : null}
-        <h1 className="mb-1 text-[18px] font-semibold">
-          {t("collab.auth.onboarding.title")}
-        </h1>
-        <p className="text-[12px] text-[#8e8e93]">
-          {t("collab.auth.onboarding.intro")}
+    <>
+      <GoogleButton onClick={handleLogin} disabled={disabled} />
+      {googleError && (
+        <p role="alert" className="mt-1.5 text-[11px] text-[#c0392b]">
+          {googleError}
         </p>
-        <ul className="mt-4 space-y-1.5 text-left text-[12px] text-[#2c2e33]">
-          <li>{t("collab.auth.onboarding.feature1")}</li>
-          <li>{t("collab.auth.onboarding.feature2")}</li>
-          <li>{t("collab.auth.onboarding.feature3")}</li>
-        </ul>
-        <GoogleButton onClick={handleLogin} disabled={disabled} />
+      )}
 
-        {mode === "closed" ? (
-          <button
-            type="button"
-            onClick={() => switchMode("login")}
-            className="mt-2 text-[12px] text-[#2c2e33] underline"
-          >
-            {t("collab.auth.email.continue")}
-          </button>
-        ) : (
-          <form onSubmit={submit} noValidate className="mt-3 space-y-2 text-left">
-            <div>
-              <label htmlFor="moss-auth-email" className="text-[11px] text-[#8e8e93]">
-                {t("collab.auth.email.emailLabel")}
-              </label>
-              <input
-                id="moss-auth-email"
-                type="email"
-                autoComplete="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                aria-invalid={errors.email ? true : undefined}
-                className="mt-0.5 w-full rounded-[8px] border border-black/10 px-2 py-1.5 text-[13px]"
-              />
-              {errors.email && (
-                <p role="alert" className="mt-0.5 text-[11px] text-[#c0392b]">
-                  {errors.email}
-                </p>
-              )}
-            </div>
-
-            <div>
-              <label htmlFor="moss-auth-password" className="text-[11px] text-[#8e8e93]">
-                {t("collab.auth.email.passwordLabel")}
-              </label>
-              <input
-                id="moss-auth-password"
-                type="password"
-                autoComplete={mode === "signup" ? "new-password" : "current-password"}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                aria-invalid={errors.password ? true : undefined}
-                className="mt-0.5 w-full rounded-[8px] border border-black/10 px-2 py-1.5 text-[13px]"
-              />
-              {errors.password && (
-                <p role="alert" className="mt-0.5 text-[11px] text-[#c0392b]">
-                  {errors.password}
-                </p>
-              )}
-            </div>
-
-            {mode === "signup" && (
-              <div>
-                <label htmlFor="moss-auth-name" className="text-[11px] text-[#8e8e93]">
-                  {t("collab.auth.email.nameLabel")}
-                </label>
-                <input
-                  id="moss-auth-name"
-                  type="text"
-                  autoComplete="name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  aria-invalid={errors.name ? true : undefined}
-                  className="mt-0.5 w-full rounded-[8px] border border-black/10 px-2 py-1.5 text-[13px]"
-                />
-                {errors.name && (
-                  <p role="alert" className="mt-0.5 text-[11px] text-[#c0392b]">
-                    {errors.name}
-                  </p>
-                )}
-              </div>
-            )}
-
-            {formError && (
-              <p role="alert" className="text-[11px] text-[#c0392b]">
-                {formError}
+      {mode === "closed" ? (
+        <button
+          type="button"
+          onClick={() => switchMode("login")}
+          className="mt-2 text-[12px] text-[#2c2e33] underline"
+        >
+          {t("collab.auth.email.continue")}
+        </button>
+      ) : (
+        <form onSubmit={submit} noValidate className="mt-3 space-y-2 text-left">
+          <div>
+            <label htmlFor="moss-auth-email" className="text-[11px] text-[#8e8e93]">
+              {t("collab.auth.email.emailLabel")}
+            </label>
+            <input
+              id="moss-auth-email"
+              type="email"
+              autoComplete="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              aria-invalid={errors.email ? true : undefined}
+              className="mt-0.5 w-full rounded-[8px] border border-black/10 px-2 py-1.5 text-[13px]"
+            />
+            {errors.email && (
+              <p role="alert" className="mt-0.5 text-[11px] text-[#c0392b]">
+                {errors.email}
               </p>
             )}
+          </div>
 
-            <button
-              type="submit"
-              disabled={disabled}
-              className="w-full rounded-[10px] bg-[#1d1d1f] px-4 py-2.5 text-[13px] font-medium text-white disabled:opacity-60"
-            >
-              {mode === "signup"
-                ? t("collab.auth.email.signupButton")
-                : t("collab.auth.email.loginButton")}
-            </button>
+          <div>
+            <label htmlFor="moss-auth-password" className="text-[11px] text-[#8e8e93]">
+              {t("collab.auth.email.passwordLabel")}
+            </label>
+            <input
+              id="moss-auth-password"
+              type="password"
+              autoComplete={mode === "signup" ? "new-password" : "current-password"}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              aria-invalid={errors.password ? true : undefined}
+              className="mt-0.5 w-full rounded-[8px] border border-black/10 px-2 py-1.5 text-[13px]"
+            />
+            {errors.password && (
+              <p role="alert" className="mt-0.5 text-[11px] text-[#c0392b]">
+                {errors.password}
+              </p>
+            )}
+          </div>
 
-            <button
-              type="button"
-              onClick={() => switchMode(mode === "signup" ? "login" : "signup")}
-              className="w-full text-center text-[11px] text-[#2c2e33] underline"
-            >
-              {mode === "signup"
-                ? t("collab.auth.email.toLogin")
-                : t("collab.auth.email.toSignup")}
-            </button>
-          </form>
-        )}
+          {mode === "signup" && (
+            <div>
+              <label htmlFor="moss-auth-name" className="text-[11px] text-[#8e8e93]">
+                {t("collab.auth.email.nameLabel")}
+              </label>
+              <input
+                id="moss-auth-name"
+                type="text"
+                autoComplete="name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                aria-invalid={errors.name ? true : undefined}
+                className="mt-0.5 w-full rounded-[8px] border border-black/10 px-2 py-1.5 text-[13px]"
+              />
+              {errors.name && (
+                <p role="alert" className="mt-0.5 text-[11px] text-[#c0392b]">
+                  {errors.name}
+                </p>
+              )}
+            </div>
+          )}
 
-        {!online && (
-          <p role="alert" className="mt-2 text-[11px] text-[#9a9ca2]">
-            {t("collab.auth.email.offline")}
-          </p>
-        )}
+          {formError && (
+            <p role="alert" className="text-[11px] text-[#c0392b]">
+              {formError}
+            </p>
+          )}
 
-        <p className="mt-2 text-[11px] text-[#9a9ca2]">
-          {t("collab.auth.onboarding.loginHint")}
+          <button
+            type="submit"
+            disabled={disabled}
+            className="w-full rounded-[10px] bg-[#1d1d1f] px-4 py-2.5 text-[13px] font-medium text-white disabled:opacity-60"
+          >
+            {mode === "signup"
+              ? t("collab.auth.email.signupButton")
+              : t("collab.auth.email.loginButton")}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => switchMode(mode === "signup" ? "login" : "signup")}
+            className="w-full text-center text-[11px] text-[#2c2e33] underline"
+          >
+            {mode === "signup"
+              ? t("collab.auth.email.toLogin")
+              : t("collab.auth.email.toSignup")}
+          </button>
+        </form>
+      )}
+
+      {!online && (
+        <p role="alert" className="mt-2 text-[11px] text-[#9a9ca2]">
+          {t("collab.auth.email.offline")}
         </p>
-      </div>
-    </div>
+      )}
+    </>
   );
 }
