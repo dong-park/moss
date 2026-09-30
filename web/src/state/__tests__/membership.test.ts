@@ -116,6 +116,7 @@ beforeEach(async () => {
       const { deleteBoardDoc } = await import("@/state/ydoc/activeDoc");
       await deleteBoardDoc(boardId);
     },
+    uploadDoc: vi.fn(async () => {}),
     notify: (message) => notified.push(message),
   });
   useAuth.setState({
@@ -533,5 +534,26 @@ describe("파일함을 다른 보드로 옮김 (spec/share-subboards.md)", () =>
 
     expect(share).not.toHaveBeenCalled();
     expect(unshare).not.toHaveBeenCalled();
+  });
+
+  it("등록한 파일함마다 로컬 내용을 서버로 올린다", async () => {
+    await useStorage.getState().init();
+    await getDB().boards.bulkPut([
+      makeBoard("root"),
+      makeBoard("child", { parentBoardId: "root" }),
+      makeBoard("grand", { parentBoardId: "child" }),
+    ]);
+    const uploadDoc = vi.fn(async () => {});
+    configureMembership({
+      api: fakeShareApi({ myBoards: vi.fn(async () => [summary("root", "owner")]) }),
+      uploadDoc,
+    });
+
+    await syncMyBoards();
+
+    expect(uploadDoc.mock.calls).toEqual([
+      ["child", session.accessToken],
+      ["grand", session.accessToken],
+    ]);
   });
 });

@@ -14,7 +14,12 @@ import type * as Y from "yjs";
 import { t } from "@/i18n";
 import { useAuth } from "@/state/auth";
 import { useToasts } from "@/state/notifications";
-import { getActiveBoardDoc } from "@/state/ydoc/activeDoc";
+import {
+  closeBoardDoc,
+  getActiveBoardDoc,
+  getOrOpenBoardDoc,
+  isActiveBoard,
+} from "@/state/ydoc/activeDoc";
 import { realShareApi } from "@/state/share/api";
 import type { BoardToken } from "@/state/share/types";
 import { createThrottle, type Throttled } from "@/state/presence/throttle";
@@ -300,6 +305,60 @@ export const useCollab = create<CollabState>((set) => ({
 
   publishDragging: (state) => draggingThrottle(state),
 }));
+
+/** 업로드용 일회 연결이 sync를 기다리는 상한. 넘으면 그냥 끊는다. */
+export const UPLOAD_SYNC_TIMEOUT_MS = 10_000;
+
+/**
+ * spec/share-subboards.md — 사용자가 열지 않은 보드의 로컬 Y.Doc을 서버에 한 번
+ * 올린다. 활성 문서가 아닌 파일함은 provider를 임시로 붙여 첫 sync에서 로컬
+ * 업데이트를 밀어 넣고, synced(또는 실패·시간 초과) 뒤 바로 끊는다.
+ *
+ * 활성 보드는 건드리지 않는다 — 이미 화면이 붙였거나 붙일 예정이고(CollabSession),
+ * 여기서 두 번째 provider를 만들면 그 연결을 깨뜨린다.
+ */
+export async function uploadBoardDoc(boardId: string, accessToken: string): Promise<void> {
+  if (active?.boardId === boardId || isActiveBoard(boardId)) return;
+  const handle = getOrOpenBoardDoc(boardId);
+  try {
+    await handle.whenLoaded;
+    const initial = await deps.fetchBoardToken(boardId, accessToken);
+    const cached = {
+      value: initial.boardToken,
+      expiresAt: deps.now() + initial.expiresInSeconds * 1000,
+    };
+    await new Promise<void>((resolve) => {
+      let done = false;
+      let provider: CollabProviderHandle | null = null;
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        if (timer !== null) clearTimeout(timer);
+        try {
+          provider?.destroy();
+        } catch {
+          /* 이미 닫힌 provider */
+        }
+        resolve();
+      };
+      provider = deps.providerFactory.create({
+        url: deps.syncUrl(),
+        name: boardId,
+        document: handle.doc,
+        token: async () => cached.value,
+        onStatus: () => {},
+        onAuthenticationFailed: finish,
+        onClose: finish,
+        onSynced: finish,
+      });
+      timer = setTimeout(finish, UPLOAD_SYNC_TIMEOUT_MS);
+      provider.connect();
+    });
+  } finally {
+    closeBoardDoc(boardId);
+  }
+}
 
 /** 테스트 격리용 — deps·모듈 상태·스토어를 초기화한다. */
 export function resetCollabStore(): void {

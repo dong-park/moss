@@ -39,6 +39,11 @@ export interface CollabProviderConfig {
   onAuthenticationFailed(reason: string): void;
   /** 서버가 연결을 끊은 close code. 4403이면 해제·내보내기. */
   onClose(code: number): void;
+  /**
+   * 첫 핸드셰이크가 끝났을 때. 업로드용 일회 연결이 이 신호로 끝을 잡는다.
+   * 활성 세션은 쓰지 않는다.
+   */
+  onSynced?(): void;
 }
 
 export interface CollabProviderHandle {
@@ -73,6 +78,7 @@ export const realProviderFactory: CollabProviderFactory = {
       onStatus: ({ status }) => config.onStatus(mapStatus(status)),
       onAuthenticationFailed: ({ reason }) => config.onAuthenticationFailed(reason),
       onClose: ({ event }) => config.onClose(event.code),
+      onSynced: () => config.onSynced?.(),
     });
     return {
       awareness: (provider.awareness as unknown as CollabAwareness | null) ?? null,
