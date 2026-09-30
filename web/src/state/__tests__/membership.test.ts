@@ -436,7 +436,7 @@ describe("공유 보드 안 파일함 (spec/share-subboards.md)", () => {
       makeBoard("grand", { parentBoardId: "child" }),
       makeBoard("loose", { parentBoardId: "other" }),
     ]);
-    const share = vi.fn(async (id: string) => summary(id, "owner"));
+    const share = vi.fn<ShareApi["share"]>(async (id) => summary(id, "owner"));
     configureMembership({
       api: fakeShareApi({ share, myBoards: vi.fn(async () => [summary("root", "owner")]) }),
     });

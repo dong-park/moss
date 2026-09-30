@@ -47,7 +47,8 @@ export function MemoTableToolbar() {
 
   const boardOptions = [
     { key: SYSTEM_BOARD_KEY, label: t("workspace.boardPicker.system") },
-    ...boards.map((b) => ({
+    // 시스템 보드는 UUID 행으로 boards에도 있다 — 위 고정 항목과 겹치지 않게 뺀다.
+    ...boards.filter((b) => b.id !== SYSTEM_BOARD_KEY).map((b) => ({
       key: b.id,
       label: b.name || t("workspace.boardPicker.unnamed"),
     })),
