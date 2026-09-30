@@ -187,6 +187,11 @@ class BoardRepository(
         dbQuery { Boards.update({ Boards.id eq boardId }) { it[Boards.name] = name } }
     }
 
+    /** 파일함을 다른 부모 아래로 옮긴다. parent_id만 바꾼다. */
+    suspend fun reparentBoard(boardId: String, parentId: String) {
+        dbQuery { Boards.update({ Boards.id eq boardId }) { it[Boards.parentId] = parentId } }
+    }
+
     /** 이 보드나 부모 체인에서 처음 만나는 멤버 역할. 파일함은 공유 루트의 멤버십을 물려받는다. */
     suspend fun roleOf(boardId: String, userId: UUID): String? = dbQuery {
         var id: String? = boardId

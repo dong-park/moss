@@ -15,6 +15,7 @@ import {
   openSharedBoard,
   purgeLocalBoardCopy,
   resetMembershipDeps,
+  syncMovedBoard,
   syncMyBoards,
 } from "@/state/membership";
 import { useShare } from "@/state/share";
@@ -448,5 +449,66 @@ describe("공유 보드 안 파일함 (spec/share-subboards.md)", () => {
       ["grand", "child"],
     ]);
     expect(useShare.getState().byBoard.grand.status).toBe("shared");
+  });
+});
+
+describe("파일함을 다른 보드로 옮김 (spec/share-subboards.md)", () => {
+  it("새 부모가 공유 중이면 새 parentId로 다시 등록한다", async () => {
+    await useStorage.getState().init();
+    await getDB().boards.bulkPut([
+      makeBoard("old"),
+      makeBoard("newParent"),
+      makeBoard("moved", { parentBoardId: "old" }),
+    ]);
+    const share = vi.fn<ShareApi["share"]>(async (id) => summary(id, "editor"));
+    configureMembership({ api: fakeShareApi({ share }) });
+    useShare.setState({
+      byBoard: {
+        newParent: { status: "shared", inviteToken: null },
+        moved: { status: "shared", inviteToken: null },
+      },
+    });
+
+    await syncMovedBoard("moved", "newParent");
+
+    expect(share.mock.calls.map((c) => [c[0], c[1], c[3]])).toEqual([
+      ["moved", "보드 moved", "newParent"],
+    ]);
+    expect(useShare.getState().byBoard.moved.status).toBe("shared");
+  });
+
+  it("공유 밖으로 나가면 서버에서 해제하고 혼자 쓰기로 되돌린다", async () => {
+    await useStorage.getState().init();
+    await getDB().boards.bulkPut([
+      makeBoard("old"),
+      makeBoard("localParent"),
+      makeBoard("moved", { parentBoardId: "old" }),
+    ]);
+    const unshare = vi.fn<ShareApi["unshare"]>(async () => undefined);
+    configureMembership({ api: fakeShareApi({ unshare }) });
+    useShare.setState({
+      byBoard: {
+        moved: { status: "shared", inviteToken: null },
+        old: { status: "shared", inviteToken: null },
+      },
+    });
+
+    await syncMovedBoard("moved", "localParent");
+
+    expect(unshare.mock.calls.map((c) => [c[0]])).toEqual([["moved"]]);
+    expect(useShare.getState().byBoard.moved.status).toBe("local");
+  });
+
+  it("공유 상태가 아니면 네트워크를 부르지 않는다", async () => {
+    await useStorage.getState().init();
+    await getDB().boards.bulkPut([makeBoard("moved", { parentBoardId: "old" })]);
+    const share = vi.fn<ShareApi["share"]>(async (id) => summary(id, "editor"));
+    const unshare = vi.fn<ShareApi["unshare"]>(async () => undefined);
+    configureMembership({ api: fakeShareApi({ share, unshare }) });
+
+    await syncMovedBoard("moved", "localParent");
+
+    expect(share).not.toHaveBeenCalled();
+    expect(unshare).not.toHaveBeenCalled();
   });
 });
