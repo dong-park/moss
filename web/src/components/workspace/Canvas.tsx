@@ -262,9 +262,12 @@ export function Canvas() {
           const py = (ch / 2 - v.y) / v.scale - 20;
           // 저장·크기 읽기는 병렬, 카드는 드롭처럼 24px씩 비켜 쌓는다.
           const photos = await Promise.all(imageFiles.map((f) => storePhoto(f)));
-          photos.forEach((photo, i) => {
-            if (photo) addPhotoAt(px + i * DROP_STACK_OFFSET_PX, py + i * DROP_STACK_OFFSET_PX, photo);
-          });
+          let i = 0;
+          for (const photo of photos) {
+            if (!photo) continue; // 거부된 사진은 자리를 차지하지 않는다.
+            addPhotoAt(px + i * DROP_STACK_OFFSET_PX, py + i * DROP_STACK_OFFSET_PX, photo);
+            i += 1;
+          }
         })();
         return;
       }

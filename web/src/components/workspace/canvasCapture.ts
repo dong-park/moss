@@ -134,8 +134,33 @@ function acceptImage(file: File): boolean {
  * 돌려준다. 형식·용량이 거부되면 토스트 후 null(storeImageBlock과 같은 한도).
  * 캡션은 여기서 만들지 않는다 — 카드는 빈 캡션(그냥 사진)으로 시작한다.
  */
+/**
+ * 동시에 원본 디코드를 도는 사진 수 상한. 20장을 한꺼번에 풀면 장당 50~80MB 비트맵이
+ * 겹쳐 1GB를 넘는다. ponytail: 헤더 파싱으로 크기만 읽게 되면 이 상한은 필요 없다.
+ */
+const PHOTO_DECODE_CONCURRENCY = 3;
+let decoding = 0;
+const decodeQueue: (() => void)[] = [];
+
+async function withDecodeSlot<T>(job: () => Promise<T>): Promise<T> {
+  if (decoding >= PHOTO_DECODE_CONCURRENCY) {
+    await new Promise<void>((resolve) => decodeQueue.push(resolve));
+  }
+  decoding += 1;
+  try {
+    return await job();
+  } finally {
+    decoding -= 1;
+    decodeQueue.shift()?.();
+  }
+}
+
 export async function storePhoto(file: File): Promise<StoredPhoto | null> {
   if (!acceptImage(file)) return null;
+  return withDecodeSlot(() => storeAcceptedPhoto(file));
+}
+
+async function storeAcceptedPhoto(file: File): Promise<StoredPhoto | null> {
   try {
     const ref = await storeAttachment(
       useWorkspace.getState().currentBoardId,
