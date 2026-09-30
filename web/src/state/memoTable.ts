@@ -207,9 +207,13 @@ export function buildMemoRows(
   const boardMap = new Map(boards.map((b) => [b.id, b]));
   const rows: MemoRow[] = [];
   for (const note of notes) {
-    if (note.kind !== "text") continue;
+    // FEAT-photo-card: 사진은 캡션(content)이 있을 때만 표에 오른다(성공 기준 11).
+    // 캡션 없는 사진은 content가 비어 제외한다.
+    if (note.kind === "photo" && !note.content.trim()) continue;
+    if (note.kind !== "text" && note.kind !== "photo") continue;
     // plainTextRaw를 한 번만 파싱해 preview·searchText에 함께 쓴다(P1-6).
-    const raw = plainTextRaw(note.content);
+    // 사진의 content는 캡션 평문이라 마크다운 환원이 필요 없다.
+    const raw = note.kind === "photo" ? note.content : plainTextRaw(note.content);
     rows.push({
       id: note.id,
       title: note.title ?? "",
@@ -221,7 +225,11 @@ export function buildMemoRows(
       frameName: note.frameId ? frames.get(note.frameId) : undefined,
       createdAt: note.createdAt,
       updatedAt: note.updatedAt,
-      badgeCounts: countBlocks(note.content),
+      // 사진은 본문에 이미지 블록이 없으므로 배지를 직접 image 1로 센다(성공 기준 10).
+      badgeCounts:
+        note.kind === "photo"
+          ? { image: 1, link: 0, audio: 0, file: 0 }
+          : countBlocks(note.content),
       match: null,
     });
   }

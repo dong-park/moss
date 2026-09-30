@@ -67,7 +67,8 @@ export function computeNowStayingCards(
 
   const candidates = cards
     // FEAT-text-tool: textbox는 주석/라벨이라 "머무는 생각" 큐레이팅에서 제외한다(가정).
-    .filter((c) => c.kind !== "textbox")
+    // FEAT-photo-card: 사진도 큐레이팅 대상이 아니다 — 캡션은 사진의 부가 정보다.
+    .filter((c) => c.kind !== "textbox" && c.kind !== "photo")
     .filter((c) => (c.content?.trim().length ?? 0) > 0)
     .filter((c) => typeof c.lastVisitedAt === "number")
     .slice()

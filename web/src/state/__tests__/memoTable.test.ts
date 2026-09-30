@@ -574,3 +574,29 @@ describe("memoTable store — 로드·편집·휴지통·실시간", () => {
     loadSpy.mockRestore();
   });
 });
+
+describe("FEAT-photo-card — 표 행", () => {
+  function photo(id: string, caption: string): Note {
+    return mkNote({
+      id,
+      kind: "photo",
+      content: caption,
+      attachmentRef: "opfs:x.png",
+      mediaType: "image/png",
+      width: 240,
+      height: 180,
+    });
+  }
+
+  it("캡션 있는 사진은 표에 오르고 이미지 배지 1개", () => {
+    const rows = buildMemoRows([photo("p", "제주 바다")], [], "시스템");
+    expect(rows).toHaveLength(1);
+    expect(rows[0].preview).toBe("제주 바다");
+    expect(rows[0].badgeCounts.image).toBe(1);
+  });
+
+  it("캡션 없는 사진은 표에 오르지 않는다", () => {
+    const rows = buildMemoRows([photo("p", "")], [], "시스템");
+    expect(rows).toHaveLength(0);
+  });
+});

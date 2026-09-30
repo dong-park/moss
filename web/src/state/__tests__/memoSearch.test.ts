@@ -142,3 +142,28 @@ describe("AC-4 — 수백 장 검색 성능(< 16ms)", () => {
     expect(elapsed).toBeLessThan(16);
   });
 });
+
+describe("FEAT-photo-card — 사진 캡션 검색", () => {
+  function photo(id: string, caption: string): Card {
+    return {
+      id,
+      kind: "photo",
+      x: 0,
+      y: 0,
+      width: 240,
+      height: 180,
+      content: caption,
+      attachmentRef: "opfs:x.png",
+    };
+  }
+
+  it("캡션 '제주 바다'는 '제주'로 찾힌다", () => {
+    const hits = searchMemos([photo("p", "제주 바다")], "제주");
+    expect(hits.map((h) => h.id)).toEqual(["p"]);
+  });
+
+  it("캡션 없는 사진은 검색에 오르지 않는다", () => {
+    const hits = searchMemos([photo("p", "")], "제주");
+    expect(hits).toHaveLength(0);
+  });
+});
