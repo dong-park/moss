@@ -95,6 +95,16 @@ describe("searchMemos — 매칭·랭킹 (AC-1)", () => {
     expect(r.map((x) => x.id)).toEqual(["text"]);
   });
 
+  it("textbox도 검색 대상 — 원문 그대로 매칭(마크다운 벗기기 없음) (P2-3)", () => {
+    expect(
+      searchMemos([card("tb", "구역 회고", "textbox")], "회고").map((x) => x.id),
+    ).toEqual(["tb"]);
+    // plainText를 썼다면 '*'가 지워져 "ab"가 되어 매칭되지 않는다.
+    expect(
+      searchMemos([card("tb", "a*b", "textbox")], "a*b").map((x) => x.id),
+    ).toEqual(["tb"]);
+  });
+
   it("빈 query는 빈 결과(검색 비활성)", () => {
     const cards = [card("a", "회고")];
     expect(searchMemos(cards, "")).toEqual([]);

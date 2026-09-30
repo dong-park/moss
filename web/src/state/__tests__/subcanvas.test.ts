@@ -465,6 +465,49 @@ describe("함 삭제 5초 undo (#1)", () => {
     expect(useWorkspace.getState().pendingSubcanvasUndo).toBeNull();
   });
 
+  it("함에 닿은 선(incident)도 undo로 DB·스토어에 함께 복원된다", async () => {
+    await useStorage.getState().init();
+    await useWorkspace.getState().createBoard("부모");
+    const funnelId = useWorkspace.getState().createSubcanvas(0, 0);
+    const childRef = useWorkspace.getState().cards.find((c) => c.id === funnelId)
+      ?.boardRef as string;
+    await waitFor(() =>
+      useWorkspace.getState().boards.some((b) => b.id === childRef),
+    );
+
+    // 부모 보드에 메모 A를 만들고 A→함 B 선을 긋는다.
+    const memoId = useWorkspace.getState().addCardAt("text", 400, 0);
+    await new Promise((r) => setTimeout(r, 30));
+    const connId = useWorkspace.getState().connectCards(
+      memoId,
+      "right",
+      funnelId,
+      "left",
+    );
+    expect(connId).not.toBeNull();
+    await vi.waitFor(async () => {
+      expect(await getDB().connections.get(connId!)).toBeDefined();
+    });
+
+    // 함 삭제 → 선이 DB·스토어에서 사라진다.
+    useWorkspace.getState().remove(funnelId);
+    await waitFor(() => useWorkspace.getState().pendingSubcanvasUndo !== null);
+    expect(await getDB().connections.get(connId!)).toBeUndefined();
+    expect(
+      useWorkspace.getState().connections.some((c) => c.id === connId),
+    ).toBe(false);
+
+    // undo → 선이 DB·스토어 모두 복원된다.
+    await useWorkspace.getState().undoSubcanvasRemove();
+    expect(await getDB().connections.get(connId!)).toMatchObject({
+      sourceNoteId: memoId,
+      targetNoteId: funnelId,
+    });
+    expect(
+      useWorkspace.getState().connections.some((c) => c.id === connId),
+    ).toBe(true);
+  });
+
   it("blob 삭제는 undo 만료까지 연기 — 삭제 직후엔 purge 안 하고, clear(포기) 시 purge", async () => {
     await useStorage.getState().init();
     await useWorkspace.getState().createBoard("부모");

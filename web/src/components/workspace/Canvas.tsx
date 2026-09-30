@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useWorkspace, SYSTEM_BOARD_ID, widthForKind } from "@/state/workspace";
 import { useToasts } from "@/state/notifications";
 import { useT } from "@/i18n/Provider";
@@ -20,6 +20,8 @@ import { PenToolbar } from "./PenToolbar";
 import { MemoSearchLayer } from "./MemoSearchLayer";
 import { TrashPanel } from "./TrashPanel";
 import { useVirtualizedCards } from "./useVirtualizedCards";
+import { ConnectorLayer } from "./connectors/ConnectorLayer";
+import { ConnectionHandlesLayer } from "./connectors/ConnectionHandles";
 import { fetchLinkPreview, isUrlOnly } from "@/state/cardContent";
 import { serializeBlock } from "@/state/blocks";
 import {
@@ -93,6 +95,9 @@ export function Canvas() {
   const panBy = useWorkspace((s) => s.panBy);
   const zoomAt = useWorkspace((s) => s.zoomAt);
   const fitToCards = useWorkspace((s) => s.fitToCards);
+  // P2-4: 최초 fit 여부를 스토어가 들고 있다 — panToCard(programmatic 이동)와
+  // 경쟁하지 않는다(모듈 전역이던 기존 플래그 제거).
+  const canvasHasFitted = useWorkspace((s) => s.canvasHasFitted);
   // 캔버스 붙여넣기 — clipboard가 URL만일 때 link 위젯을 바로 생성.
   const addCardAtViewportCenter = useWorkspace((s) => s.addCardAtViewportCenter);
   // FEAT-sticky-redesign n6: 파일 드롭 — 놓은 좌표에 블록 든 메모를 만든다.
@@ -101,6 +106,9 @@ export function Canvas() {
   // const promoteCardToNewBoard = useWorkspace((s) => s.promoteCardToNewBoard);
   const setContent = useWorkspace((s) => s.setContent);
   const setEditing = useWorkspace((s) => s.setEditing);
+  // FEAT-text-tool AC-2: T 배치 모드 — 캔버스 클릭 지점에 textbox를 만든다.
+  const textPlacementArmed = useWorkspace((s) => s.textPlacementArmed);
+  const disarmTextPlacement = useWorkspace((s) => s.disarmTextPlacement);
   // FEAT-markdown-memo-pen: 펜 모드 — 전역 커서 변경 + E/[/]/Esc 키.
   const penMode = useWorkspace((s) => s.penMode);
   const setPenMode = useWorkspace((s) => s.setPenMode);
@@ -192,11 +200,17 @@ export function Canvas() {
   const didFitRef = useRef(false);
   useEffect(() => {
     if (didFitRef.current) return;
+    // 표에서 돌아온 재마운트·programmatic panToCard 이후면 이미 자리 잡았다 —
+    // 사용자가 보던/지정한 뷰포트를 보존한다(P2-4).
+    if (canvasHasFitted) {
+      didFitRef.current = true;
+      return;
+    }
     if (cards.length === 0) return;
     if (canvasRect.width <= 0 || canvasRect.height <= 0) return;
     didFitRef.current = true;
     fitToCards({ width: canvasRect.width, height: canvasRect.height });
-  }, [cards.length, canvasRect.width, canvasRect.height, fitToCards]);
+  }, [cards.length, canvasRect.width, canvasRect.height, fitToCards, canvasHasFitted]);
 
   /* ─ FEAT-canvas AC-3: 200 임계 도달 시 1회 안내 토스트 ─ */
   const toastFiredRef = useRef(false);
@@ -350,6 +364,9 @@ export function Canvas() {
     };
 
     const onDown = (e: KeyboardEvent) => {
+      // FEAT-connectors: 연결 드래그 중이면 이 핸들러가 Escape를 먼저 잡아 부모 보드로
+      // 튕기는 일이 없도록 모든 캔버스 단축키를 양보한다(dragSession이 취소를 처리).
+      if (useWorkspace.getState().connectionDraft) return;
       if (e.code === "Space" && !isTyping()) {
         e.preventDefault();
         setSpaceDown(true);
@@ -384,6 +401,18 @@ export function Canvas() {
       }
       if (editingId) return;
       if (isTyping()) return;
+      // FEAT-connectors: 선 선택 중엔 Delete로 삭제, Esc로 선택 해제 (AC-5).
+      const selectedConnectionId = useWorkspace.getState().selectedConnectionId;
+      if (selectedConnectionId) {
+        if (e.key === "Delete" || e.key === "Backspace") {
+          e.preventDefault();
+          useWorkspace.getState().removeConnection(selectedConnectionId);
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          useWorkspace.getState().selectConnection(null);
+        }
+        return;
+      }
       if (selectedIds.length === 0) {
         // FEAT-subcanvas: 선택이 없으면 Esc로 부모 캔버스로 올라간다(루트면 no-op).
         // 단, 모달(펼치기·템플릿·삭제 다이얼로그)이 열려 있으면 그쪽 Esc에 양보한다.
@@ -478,6 +507,40 @@ export function Canvas() {
     return () =>
       el.removeEventListener("mousedown", onMouseDownCapture, true);
   }, [spaceDown, panBy]);
+
+  /* ─ FEAT-text-tool AC-2: 배치 모드는 capture 단계에서 잡는다 ─
+   * 카드(메모판 포함)의 onMouseDown이 stopPropagation으로 버블을 막아, 판 위 클릭은
+   * 버블 onMouseDown까지 오지 않는다. 배치 모드일 때만 capture에서 먼저 처리한다.
+   * 판(frame)·빈 영역 위 클릭은 클릭 지점에 textbox를 만들고(판이면 frameId 소속),
+   * 메모·함 카드 위 클릭은 모드만 풀고 그 카드 기본 동작에 양보한다(P1-3). */
+  const onMouseDownCapture = (e: React.MouseEvent) => {
+    if (!textPlacementArmed || e.button !== 0 || spaceDown) return;
+    const target = e.target as HTMLElement;
+    if (target.matches?.("input, textarea, [contenteditable='true']")) return;
+    const cardEl = target.closest<HTMLElement>("[data-card-id]");
+    if (cardEl) {
+      const card = useWorkspace
+        .getState()
+        .cards.find((c) => c.id === cardEl.dataset.cardId);
+      if (!card || card.kind !== "frame") {
+        // 메모·함 등 카드 위 — 배치 대신 모드를 풀고 카드 기본 동작 유지.
+        disarmTextPlacement();
+        return;
+      }
+    } else if (target !== e.currentTarget) {
+      // 캔버스 UI(검색·툴바 등) 위 — 배치 대상이 아니다.
+      return;
+    }
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const v = useWorkspace.getState().viewport;
+    const wx = (e.clientX - rect.left - v.x) / v.scale;
+    const wy = (e.clientY - rect.top - v.y) / v.scale;
+    addCardAt("textbox", wx, wy);
+    disarmTextPlacement();
+  };
 
   /* ─ 빈 캔버스 좌클릭 → rubber-band 박스 시작 (modifier 없으면 선택 치환, 있으면 합집합) ─ */
   const onMouseDown = (e: React.MouseEvent) => {
@@ -577,12 +640,15 @@ export function Canvas() {
     ? "cursor-grabbing"
     : spaceDown
       ? "cursor-grab"
-      : "cursor-default";
+      : textPlacementArmed
+        ? "cursor-text"
+        : "cursor-default";
 
   return (
     <div
       ref={canvasRef}
       data-canvas-root="true"
+      onMouseDownCapture={onMouseDownCapture}
       onMouseDown={onMouseDown}
       onMouseMove={onCanvasMouseMove}
       onDragOver={onCanvasDragOver}
@@ -601,11 +667,17 @@ export function Canvas() {
           transformOrigin: "0 0",
           willChange: "transform, opacity",
           opacity: boardTransitioning ? 0 : 1,
-        }}
+          // FEAT-frame-skins §8: 줌·팬 중 칸 배경은 React로 다시 그리지 않는다.
+          // 이름표 크기는 이 변수만으로 바뀐다 — 화면 11px 하한 역보정에 쓴다.
+          "--frame-zoom": String(viewport.scale),
+        } as CSSProperties}
       >
         {visibleCards.map((card) => (
           <DraggableCard key={card.id} card={card} />
         ))}
+        {/* FEAT-connectors: 연결선(카드 아래) + hover/드래그 연결점(카드 위 오버레이). */}
+        <ConnectorLayer />
+        <ConnectionHandlesLayer cards={cards} />
         {/* FEAT-collab-auth n7: 원격 드래그 잔상 → 선택 테두리 → 커서 순서. */}
         <DragGhostLayer />
         <RemoteSelectionLayer />

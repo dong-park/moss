@@ -7,11 +7,12 @@ import {
   CARD_MIN_HEIGHT,
   CARD_MIN_WIDTH,
   FRAME_MIN_HEIGHT,
-  FRAME_MIN_WIDTH,
   aspectForKind,
   useWorkspace,
   type Card,
 } from "@/state/workspace";
+import { readFrameContent } from "@/state/frameContent";
+import { clampFrameWidth } from "@/state/frameSkins";
 
 type HandleDir = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
 
@@ -59,7 +60,15 @@ export function ResizeHandles({
   const resizeCard = useWorkspace((s) => s.resizeCard);
   const resizeFrame = useWorkspace((s) => s.resizeFrame);
   const resolveMembership = useWorkspace((s) => s.resolveMembership);
+  const setTextWidth = useWorkspace((s) => s.setTextWidth);
+  const moveCard = useWorkspace((s) => s.moveCard);
   const isFrame = card.kind === "frame";
+  // FEAT-text-tool §2: textbox는 좌우(e/w) 핸들만 — 끌면 고정 폭 전환(AC-4),
+  // 높이는 항상 내용에 맞춘다(핸들 대상 아님).
+  const isTextbox = card.kind === "textbox";
+  const visibleHandles = isTextbox
+    ? HANDLES.filter((h) => h.dir === "e" || h.dir === "w")
+    : HANDLES;
 
   const dragRef = useRef<{
     dir: HandleDir;
@@ -85,10 +94,49 @@ export function ResizeHandles({
     e.stopPropagation();
     e.preventDefault();
 
+    // FEAT-text-tool: textbox 좌우 핸들 — 고정 폭 전환. 높이는 손대지 않는다(내용 높이).
+    if (isTextbox) {
+      const onMove = (ev: MouseEvent) => {
+        const d = dragRef.current;
+        if (!d) return;
+        const scale = useWorkspace.getState().viewport.scale;
+        const dx = (ev.clientX - d.startX) / scale;
+        const raw = d.dir === "e" ? d.originW + dx : d.originW - dx;
+        const w = clamp(raw, CARD_MIN_WIDTH, CARD_MAX_WIDTH);
+        setTextWidth(card.id, w);
+        // 왼쪽 핸들은 오른쪽 가장자리를 고정 — x를 함께 민다.
+        if (d.dir === "w") {
+          moveCard(card.id, d.originCardX + (d.originW - w), d.originCardY);
+        }
+      };
+      const cleanup = () => {
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+      };
+      const onUp = () => {
+        dragRef.current = null;
+        cleanup();
+      };
+      dragRef.current = {
+        dir,
+        startX: e.clientX,
+        startY: e.clientY,
+        originW: card.width,
+        originH: 0,
+        originCardX: card.x,
+        originCardY: card.y,
+        cleanup,
+      };
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
+      return;
+    }
+
     // 메모(text)는 정사각 — 시작 높이는 실측이 아니라 폭. 그 외는 명시 높이/실측.
     const startH =
       card.kind === "text" ? card.width : (card.height ?? measuredHeight);
 
+    const frameCfg = isFrame ? readFrameContent(card.content) : undefined;
     const ratio = aspectForKind(card.kind);
     // 비율 유지 조건에서 width의 유효 범위 — 두 축 min/max 모두를 만족시키도록 좁힌다.
     const minW = Math.max(CARD_MIN_WIDTH, CARD_MIN_HEIGHT * ratio);
@@ -110,13 +158,15 @@ export function ResizeHandles({
         if (d.dir.includes("w")) w = d.originW - dx;
         if (d.dir.includes("s")) h = d.originH + dy;
         if (d.dir.includes("n")) h = d.originH - dy;
-        w = clamp(w, FRAME_MIN_WIDTH, CARD_MAX_WIDTH);
+        // FEAT-frame-skins: 폭 한계는 스킨이 정한다(AC-9·AC-10). 핸들을 잡는 순간
+        // 시작 폭이 자유 판 상한이 되어 튀지 않는다. 설정은 mousedown에 한 번만 읽는다.
+        w = clampFrameWidth(frameCfg!, d.originW, w);
         h = clamp(h, FRAME_MIN_HEIGHT, CARD_MAX_HEIGHT);
         let x = d.originCardX;
         let y = d.originCardY;
         if (d.dir.includes("w")) x = d.originCardX + (d.originW - w);
         if (d.dir.includes("n")) y = d.originCardY + (d.originH - h);
-        resizeFrame(card.id, { width: w, height: h, x, y });
+        resizeFrame(card.id, { width: w, height: h, x, y, baseWidth: d.originW });
         return;
       }
 
@@ -177,7 +227,7 @@ export function ResizeHandles({
 
   return (
     <>
-      {HANDLES.map(({ dir, cursor, hitStyle }) => (
+      {visibleHandles.map(({ dir, cursor, hitStyle }) => (
         <span
           key={dir}
           data-resize-handle={dir}

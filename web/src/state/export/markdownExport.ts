@@ -118,7 +118,7 @@ export function markdownZipPath(
   return `${folder}/${finalName}`;
 }
 
-/** Markdown zip Blob 생성. text·comment·board·frame만 포함. */
+/** Markdown zip Blob 생성. text·comment·board·frame·textbox만 포함. */
 export async function exportMarkdownZip(
   notes: Note[],
   boards: Board[],
@@ -127,7 +127,9 @@ export async function exportMarkdownZip(
     (n) =>
       n.kind === "text" ||
       n.kind === "board" ||
-      n.kind === "frame",
+      n.kind === "frame" ||
+      // FEAT-text-tool AC-7: textbox는 보드 문서 안 평문 단락으로.
+      n.kind === "textbox",
   );
   const ctx = buildMarkdownExportContext(notes, boards);
   const zip = new JSZip();

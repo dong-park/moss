@@ -51,10 +51,11 @@ export function isMemoCard(card: Card): boolean {
 }
 
 /**
- * 카드 표시 제목 — 본문 마크다운 첫 비공백 줄에서 머리기호·강조 문자를 벗긴 것.
+ * 본문 마크다운 첫 비공백 줄에서 머리기호·강조 문자를 벗긴 것.
  * 레거시 블록 JSON 카드는 blocksToMarkdown으로 정규화 후 추출한다.
+ * 제목이 없는 메모의 표시 이름 폴백 — 표시 이름 해석·백링크가 같은 규칙을 쓴다.
  */
-export function cardTitle(card: Card): string {
+function bodyFirstLine(card: Card): string {
   const md = blocksToMarkdown(card.content ?? "");
   for (const raw of md.split("\n")) {
     const line = raw.trim();
@@ -63,7 +64,24 @@ export function cardTitle(card: Card): string {
   return "";
 }
 
-/** 토큰이 가리키는 카드를 찾는다. id 토큰은 id로, 제목 토큰은 제목(대소문자 무시)으로. */
+/**
+ * 카드 표시 이름 — 제목이 있으면 제목, 없으면 본문 첫 줄.
+ * 해석·백링크·chip·자동완성 목록·삽입 라벨이 모두 이 함수를 쓴다.
+ * 제목은 저장 시 이미 trim되지만, 레거시/직접 주입 값의 공백만 제목도
+ * 빈 것으로 보기 위해 trim 후 판정한다(경계 조건: 제목이 공백만이면 폴백).
+ */
+export function cardTitle(card: Card): string {
+  const title = (card.title ?? "").trim();
+  if (title) return title;
+  return bodyFirstLine(card);
+}
+
+/** 토큰이 가리키는 카드를 찾는다. id 토큰은 id로, 제목 토큰은 표시 이름으로.
+ *
+ * 제목 토큰 해석은 두 단계다(경계 조건): 먼저 모든 메모의 표시 이름(제목,
+ * 없으면 본문 첫 줄)에서 찾고, 못 찾으면 본문 첫 줄에서 한 번 더 찾는다.
+ * 그래야 메모에 제목을 단 뒤에도 옛 `[[본문 첫 줄]]` 링크가 살아남는다.
+ */
 export function resolveWikilinkTarget(
   token: WikiToken,
   cards: Card[],
@@ -73,8 +91,11 @@ export function resolveWikilinkTarget(
   }
   const want = token.title.toLowerCase();
   if (!want) return null;
+  const memos = cards.filter(isMemoCard);
   return (
-    cards.find((c) => isMemoCard(c) && cardTitle(c).toLowerCase() === want) ?? null
+    memos.find((c) => cardTitle(c).toLowerCase() === want) ??
+    memos.find((c) => bodyFirstLine(c).toLowerCase() === want) ??
+    null
   );
 }
 
@@ -87,34 +108,34 @@ export function extractWikilinkTokens(content: string): WikiToken[] {
   return out;
 }
 
-/** content가 targetId(또는 그 제목)를 위키링크로 가리키는가. */
-function contentLinksTo(
-  content: string,
-  targetId: string,
-  targetTitleLower: string,
-): boolean {
-  for (const token of extractWikilinkTokens(content)) {
-    if ("id" in token) {
-      if (token.id === targetId) return true;
-    } else if (targetTitleLower && token.title.toLowerCase() === targetTitleLower) {
-      return true;
-    }
-  }
-  return false;
-}
-
 /**
  * 백링크 셀렉터(AC-4) — cardId를 위키링크로 가리키는 카드들.
  * id 우선 매칭이라 대상 제목이 바뀌어도 역참조가 끊기지 않는다(AC-5).
+ * 제목 링크는 resolveWikilinkTarget과 같은 두 단계 규칙(표시 이름 → 본문 첫 줄)으로
+ * 풀어서 그 결과가 이 카드일 때만 센다. 이름이 겹치면 앞으로 가는 링크가 가리키는
+ * 카드와 백링크 패널이 어긋나지 않게 하기 위해서다.
  * 파생 인덱스: 호출 시점 cards에서 즉시 계산(persist 안 함, spec §5).
  */
 export function backlinksOf(cards: Card[], cardId: string): Card[] {
-  const target = cards.find((c) => c.id === cardId);
-  if (!target) return [];
-  const titleLower = cardTitle(target).toLowerCase();
-  return cards.filter(
-    (c) => c.id !== cardId && contentLinksTo(c.content ?? "", cardId, titleLower),
-  );
+  if (!cards.some((c) => c.id === cardId)) return [];
+  // 해석 규칙을 이름→id 맵으로 한 번만 만든다(각 단계의 첫 매치가 이긴다 = find와 같다).
+  const byName = new Map<string, string>();
+  const byBody = new Map<string, string>();
+  for (const c of cards) {
+    if (!isMemoCard(c)) continue;
+    const name = cardTitle(c).toLowerCase();
+    if (name && !byName.has(name)) byName.set(name, c.id);
+    const body = bodyFirstLine(c).toLowerCase();
+    if (body && !byBody.has(body)) byBody.set(body, c.id);
+  }
+  const linksHere = (content: string) =>
+    extractWikilinkTokens(content).some((token) => {
+      if ("id" in token) return token.id === cardId;
+      const want = token.title.toLowerCase();
+      if (!want) return false;
+      return (byName.get(want) ?? byBody.get(want)) === cardId;
+    });
+  return cards.filter((c) => c.id !== cardId && linksHere(c.content ?? ""));
 }
 
 /**
@@ -348,12 +369,21 @@ class AutocompleteController {
     if (!item) return this.close();
     let insert: string;
     if (item.kind === "create") {
-      // 새 메모 생성(AC-3): 현재 뷰포트 중앙에 글 카드를 만들고 질의를 제목으로 채운다.
+      // 새 메모 생성(AC-3): 현재 뷰포트 중앙에 글 카드를 만들고 질의를 **제목**으로
+      // 넣는다. 본문 저장(setContent) 대신 제목 저장 경로를 타야 정규화(80자·trim)와
+      // 즉시 영속이 캔버스 제목 입력과 같아진다(기술 결정 §"새 메모는 제목 저장 경로").
+      const ws = useWorkspace.getState();
       const newId = this.view.editable
-        ? useWorkspace.getState().addCardAtViewportCenter("text")
+        ? ws.addCardAtViewportCenter("text")
         : "";
-      if (newId) useWorkspace.getState().setContent(newId, item.query);
-      insert = newId ? `[[${newId}|${item.query}]]` : `[[${item.query}]]`;
+      let label = item.query;
+      if (newId) {
+        ws.setTitle(newId, item.query);
+        ws.commitTitle(newId);
+        // 확정된 제목을 다시 읽어 삽입 라벨과 80자 정규화를 맞춘다.
+        label = useWorkspace.getState().cards.find((c) => c.id === newId)?.title ?? item.query;
+      }
+      insert = newId ? `[[${newId}|${label}]]` : `[[${item.query}]]`;
     } else {
       insert = `[[${item.card.id}|${cardTitle(item.card)}]]`;
     }

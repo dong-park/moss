@@ -172,6 +172,32 @@ export function initLiveSync(): () => void {
   return dispose;
 }
 
+/* ── 노트 변경 알림 (FEAT-memo-table-view AC-8) ─────────────────
+ * 표 뷰(state/memoTable)가 다른 탭·다른 사람의 변경을 반영할 수 있게 알린다.
+ * 원격 반영은 workspace의 문서 observer가 하므로 거기서 notifyNoteChanges를 부른다.
+ * 이 모듈은 표 스토어를 import 하지 않는다 — 역방향 구독만.
+ */
+const noteChangeListeners = new Set<() => void>();
+
+/** 노트 변경 구독. 해제 함수를 반환한다. */
+export function subscribeNoteChanges(cb: () => void): () => void {
+  noteChangeListeners.add(cb);
+  return () => {
+    noteChangeListeners.delete(cb);
+  };
+}
+
+/** 구독자에게 알린다. 구독자가 자체 디바운스로 병합하고, 오류는 삼킨다. */
+export function notifyNoteChanges(): void {
+  for (const cb of [...noteChangeListeners]) {
+    try {
+      cb();
+    } catch {
+      /* 구독자 오류는 동기화 자체를 막지 않는다. */
+    }
+  }
+}
+
 /* ── 테스트 헬퍼 ───────────────────────────────────────────────── */
 
 /** 테스트용 — 모듈 상태를 초기화한다(채널/문서/리스너). */
@@ -184,6 +210,7 @@ export function __resetLiveSyncForTest(): void {
   channel = null;
   started = false;
   dispose = null;
+  noteChangeListeners.clear();
 }
 
 /** 테스트용 — 이 탭의 id. 자기 발신 무시 검증에 쓴다. */

@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Canvas } from "@/components/workspace/Canvas";
+import { MemoTable } from "@/components/workspace/table/MemoTable";
+import { ViewToggle } from "@/components/workspace/table/ViewToggle";
 import { Breadcrumb } from "@/components/workspace/Breadcrumb";
 import { SubcanvasUndoToast } from "@/components/workspace/SubcanvasUndoToast";
 import { MemoExpandDialog } from "@/components/workspace/cards/MemoExpandDialog";
@@ -165,6 +167,9 @@ export function useBoardIdFromPath(): string | undefined {
 export function WorkspaceShell() {
   const boardId = useBoardIdFromPath();
   const [signalsOpen, setSignalsOpen] = useState(false);
+  // FEAT-memo-table-view: 캔버스 ↔ 표. 표 모드에선 Canvas·Dock·캔버스 단축키를
+  // 숨긴다(spec §4 — 표에서 캔버스 단축키가 먹지 않게).
+  const isCanvas = useWorkspace((s) => s.view) === "canvas";
 
   return (
     // FEAT-sticky-redesign n8: 사이드바 DOM 제거 — 캔버스가 화면 왼쪽 끝부터 시작한다(AC-1).
@@ -175,23 +180,29 @@ export function WorkspaceShell() {
         {boardId ? (
           <>
             <RouteBoardSync boardId={boardId} />
-            <Canvas />
-            {/* FEAT-subcanvas: 서브 캔버스 경로 — 캔버스 좌상단 고정 오버레이(중첩 시에만 렌더). */}
-            <div className="fixed top-3 left-3 z-[var(--z-panel)]">
-              <Breadcrumb />
-            </div>
-            {/* FEAT-collab-auth n7: 우상단 오프라인 표시 + 공유 아이콘. */}
+            {isCanvas ? <Canvas /> : <MemoTable />}
+            {/* FEAT-collab-auth n7: 우상단 오프라인 표시 + 공유 아이콘.
+                FEAT-memo-table-view AC-1: 캔버스 ↔ 표 토글도 같은 줄에 둔다. */}
             <div className="fixed top-3 right-3 z-[var(--z-panel)] flex items-center gap-2">
               <OfflineBadge />
               <ShareControlMount />
+              <ViewToggle />
             </div>
             <CollabSession />
-            <Dock
-              onSignalsClick={() => setSignalsOpen((v) => !v)}
-              signalsOpen={signalsOpen}
-            />
-            <DockDragPreview />
-            <ShortcutsBinder />
+            {isCanvas && (
+              <>
+                {/* FEAT-subcanvas: 서브 캔버스 경로 — 캔버스 좌상단 고정 오버레이(중첩 시에만 렌더). */}
+                <div className="fixed top-3 left-3 z-[var(--z-panel)]">
+                  <Breadcrumb />
+                </div>
+                <Dock
+                  onSignalsClick={() => setSignalsOpen((v) => !v)}
+                  signalsOpen={signalsOpen}
+                />
+                <DockDragPreview />
+                <ShortcutsBinder />
+              </>
+            )}
             <AICallPreview />
             <SignalsPanel open={signalsOpen} onClose={() => setSignalsOpen(false)} />
             <MemoExpandDialog />

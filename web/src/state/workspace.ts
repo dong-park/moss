@@ -9,9 +9,11 @@ import {
   makeFrameNote,
   type Board,
   type Connection,
+  type ConnectionSide,
   type EmbeddingCacheEntry,
   type Note,
   type NoteKind,
+  type TextSize,
 } from "./db/schema";
 import { migratedContent } from "./markdownMigration";
 import { enqueueEmbed as enqueueEmbedRaw } from "./ai/embeddingQueue";
@@ -21,7 +23,7 @@ import {
   flushCard,
   flushAll,
 } from "./cardPersist";
-import { initLiveSync, attachLiveDoc, broadcastDocWrite } from "./db/liveSync"; // W8/n3: 다중 탭 동기화
+import { initLiveSync, attachLiveDoc, broadcastDocWrite, notifyNoteChanges } from "./db/liveSync"; // W8/n3: 다중 탭 동기화
 import {
   activateBoardDoc,
   getActiveBoardDoc,
@@ -44,6 +46,7 @@ import {
   readNote,
   readNotes,
   readConnection,
+  readConnections,
   readBoard,
   toSharedNote,
   type SharedNote,
@@ -63,7 +66,18 @@ import {
   serializeBlocks,
   type CardBlock,
 } from "./cardContent";
-import { encodeFrameContent } from "./frameContent";
+import {
+  defaultFrameColumns,
+  encodeFrameContent,
+  FRAME_COLUMN_COUNT_MAX,
+  FRAME_COLUMN_COUNT_MIN,
+  newFrameColumnId,
+  normalizeFrameColumns,
+  readFrameContent,
+  type FrameContentJson,
+  type FrameSkinId,
+} from "./frameContent";
+import { clampFrameWidth } from "./frameSkins";
 // FEAT-memo-fulltext-search (W4): 본문 평문 검색 — 셀렉터/액션이 위임.
 import { searchMemos as searchMemosImpl } from "./memoSearch";
 import { normalizeTitle, normalizeTitleTyping } from "./memoTitle";
@@ -74,6 +88,10 @@ import {
   PEN_MAX_WIDTH,
   PEN_DEFAULT_WIDTH,
 } from "@/components/workspace/cards/_shared/useDrawing";
+import {
+  anchorPoint,
+  nearestSide,
+} from "@/components/workspace/connectors/geometry";
 
 /**
  * 시스템 보드 "머무는 생각"의 가상 id. DB에는 row를 두지 않고
@@ -82,6 +100,12 @@ import {
  */
 export { SYSTEM_BOARD_ID };
 export type CurrentBoardId = string;
+
+/**
+ * FEAT-memo-table-view: 워크스페이스 표시 모드. 캔버스 ↔ 전체 메모 표 전환(spec §5).
+ * 표 모드에서는 Canvas·Dock·캔버스 단축키를 숨긴다(spec §4 영향).
+ */
+export type WorkspaceView = "canvas" | "table";
 
 /**
  * 캔버스 카드 종류.
@@ -106,6 +130,8 @@ export type ToolId =
   | "audio"
   | "file"
   | "code"
+  // FEAT-text-tool: 평문 텍스트 도구 — 카드 생성이지만 capture 10종과 별개(독 항목).
+  | "textbox"
   // non-capture (다른 FEAT)
   | "line"
   | "board"
@@ -141,6 +167,18 @@ export interface Card {
   /** 사용자가 리사이즈한 높이. 미정의면 콘텐츠 자동 높이. */
   height?: number;
   content: string;
+  /**
+   * FEAT-text-tool: textbox 사용자 색. 미지정이면 기본 잉크 톤.
+   * 메모(text)는 해시 색조(memoVariety)를 쓰므로 이 칸을 쓰지 않는다.
+   */
+  color?: string;
+  /** FEAT-text-tool: textbox 글자 크기. 없으면 "m". */
+  textSize?: TextSize;
+  /**
+   * FEAT-text-tool: textbox 폭 모드. true(기본)면 width는 측정값 캐시,
+   * false면 사용자 고정 폭. 다른 kind에는 의미 없다.
+   */
+  autoWidth?: boolean;
   attachmentRef?: string;
   mediaType?: string;
   /**
@@ -184,6 +222,20 @@ export interface Viewport {
   x: number;
   y: number;
   scale: number;
+}
+
+/**
+ * FEAT-connectors: 연결점에서 끌어 선을 잇는 동안의 휘발 상태.
+ * pointer는 월드 좌표 — 미리보기 곡선이 포인터를 따라간다.
+ */
+export interface ConnectionDraft {
+  sourceId: string;
+  sourceSide: ConnectionSide;
+  pointer: { x: number; y: number };
+  /** 포인터 아래 연결 대상 카드(자기 자신 제외). */
+  targetId: string | null;
+  /** 대상 위에 놓이면 강조할 변. */
+  targetSide: ConnectionSide | null;
 }
 
 /**
@@ -243,6 +295,45 @@ export const FRAME_DEFAULT_WIDTH = 320;
 export const FRAME_DEFAULT_HEIGHT = 220;
 
 /**
+ * FEAT-text-tool §5: textbox 글자 크기 4단의 px. spec의 14/18/28/44.
+ * Content·TextStyleToolbar·자동 폭 측정이 공유하는 단일 소스.
+ */
+export const TEXT_SIZE_PX: Record<TextSize, number> = {
+  s: 14,
+  m: 18,
+  l: 28,
+  xl: 44,
+};
+
+/** textbox 기본 글자 크기. */
+export const TEXT_DEFAULT_SIZE: TextSize = "m";
+
+/**
+ * FEAT-text-tool: textbox 생성 시 자동 폭의 시작 폭. 내용이 없을 때 커서가 설
+ * 최소 자리 — 편집하며 측정 폭으로 늘어난다. 고정 폭 핸들의 하한은 CARD_MIN_WIDTH.
+ */
+export const TEXTBOX_DEFAULT_WIDTH = 60;
+
+/**
+ * textbox 자동 폭의 하한(px) — 한 글자만 있어도 담기는 작은 값. 짧은 라벨을
+ * CARD_MIN_WIDTH(120)로 부풀리지 않기 위해 고정 폭 리사이즈 하한과 분리한다(§0).
+ */
+export const TEXTBOX_MIN_AUTO_WIDTH = 16;
+
+/** textbox 자동 폭 좌우 여백(px) — 측정 글자 폭에 더한다(Content와 동일 값). */
+export const TEXTBOX_PADDING_X = 4;
+
+/**
+ * FEAT-text-tool §7: 독 "텍스트" 아이콘 — "T" 글리프. 별도 PNG 에셋 대신 데이터 URI
+ * SVG를 쓴다(독 Image·드래그 프리뷰 배경 공용). 색은 기본 잉크 톤과 맞춘다.
+ */
+const TEXT_GLYPH_SVG =
+  "<svg xmlns='http://www.w3.org/2000/svg' width='96' height='96' viewBox='0 0 96 96'>" +
+  "<text x='48' y='70' font-family='Pretendard, sans-serif' font-size='64' " +
+  "font-weight='700' text-anchor='middle' fill='#334155'>T</text></svg>";
+export const TEXT_GLYPH_ICON = `data:image/svg+xml,${encodeURIComponent(TEXT_GLYPH_SVG)}`;
+
+/**
  * FEAT-pen-drawing-engine: 펜 굵기 한계·기본값. 단일 소스는 [[useDrawing]]
  * (handwriting 카드와 메모 overlay 공통). 기존 import 경로 호환을 위해 재노출한다.
  */
@@ -265,6 +356,8 @@ const CARD_ASPECT_BY_KIND: Record<CardKind, number> = {
   board: 1,
   // FEAT-sticky-redesign: 메모판 틀 — PNG 없음, 정사각 비율로 폴백.
   frame: 1,
+  // FEAT-text-tool: 텍스트는 종이가 없다 — 비율 강제하지 않음(정사각 폴백은 미사용).
+  textbox: 1,
 };
 
 export function aspectForKind(kind: CardKind): number {
@@ -290,6 +383,20 @@ interface WorkspaceState {
    * inline 편집(editingId)과 상호배타 — 모달 진입 시 editingId를 닫는다.
    */
   expandedCardId: string | null;
+  /**
+   * FEAT-connectors: 현재 보드 카드에 닿은 active 연결선. 보드 로드 시
+   * `storage.loadConnections(cardIds)`로 채운다.
+   */
+  connections: Connection[];
+  /**
+   * FEAT-connectors: 선택된 연결선 id. 카드 선택(selectedIds)과 상호 배타 —
+   * 한쪽을 고르면 다른 쪽은 비운다.
+   */
+  selectedConnectionId: string | null;
+  /** FEAT-connectors: hover 중인 연결 가능 카드 — 연결점을 띄울 대상. transient. */
+  hoveredCardId: string | null;
+  /** FEAT-connectors: 연결 드래그 세션 중 미리보기 상태. null이면 드래그 아님. */
+  connectionDraft: ConnectionDraft | null;
   viewport: Viewport;
   pendingAIGate: PendingAIGate | null;
   /** FEAT-capture T-6: Cmd+Shift+N에서 사용할 마지막 도구. addCardAt마다 갱신. */
@@ -315,6 +422,21 @@ interface WorkspaceState {
    * 이전이 끝난 뒤에만 보드를 열도록 하는 신호 — 이전 중 열면 빈/낡은 문서를 읽는다.
    */
   bootstrapComplete: boolean;
+  /** FEAT-memo-table-view: 현재 표시 모드. 기본 캔버스. */
+  view: WorkspaceView;
+  /**
+   * FEAT-memo-table-view D1: 표 진입 시점의 보드. 행 클릭이 보드를 바꾼 뒤
+   * 메모창을 닫거나 캔버스로 돌아갈 때 이 보드로 복원한다(뷰포트는
+   * viewportByBoard가 이미 복원). "캔버스에서 보기"는 의도적 이동이라 비운다.
+   */
+  tableReturnBoardId: CurrentBoardId | null;
+  /**
+   * FEAT-memo-table-view P2-4: 캔버스가 한 번이라도 자리 잡았는지(최초 fit 또는
+   * programmatic panToCard). 표↔캔버스 재마운트에서 최초 fit이 사용자가 보던/
+   * panToCard가 잡은 뷰포트를 덮지 않게 한다. 기존엔 Canvas 모듈 전역 플래그라
+   * panToCard와 경쟁했다.
+   */
+  canvasHasFitted: boolean;
   /** TemplatePicker 모달 열림 상태 — Cmd+N / "+ 새 보드" 진입점이 공유. */
   templatePickerOpen: boolean;
   /**
@@ -336,7 +458,14 @@ interface WorkspaceState {
   requestRenameBoard: (boardId: string) => Promise<void>;
   /** BoardPicker가 편집 모드 진입을 확인했음을 알리는 acknowledge. */
   clearRenameRequest: () => void;
-  setCurrentBoard: (id: CurrentBoardId) => Promise<void>;
+  /**
+   * 보드 전환. opts.touchLastOpened=false면 lastOpenedAt을 갱신하지 않는다 —
+   * 표 행 열기처럼 맥락 점프일 때 "최근 연 보드" 순서를 흔들지 않기 위함(D1).
+   */
+  setCurrentBoard: (
+    id: CurrentBoardId,
+    opts?: { touchLastOpened?: boolean },
+  ) => Promise<void>;
   /**
    * n3 D8: 보드 전환 "요청". URL이 원본이라 스토어는 라우터 sink로 push만 하고,
    * 실제 상태 반영은 `/b/[boardId]` 페이지의 effect가 setCurrentBoard로 한다.
@@ -370,6 +499,19 @@ interface WorkspaceState {
   clearBoardUndo: () => void;
   /** 시스템 보드 ↔ 마지막 사용자 보드 토글. 사용자 보드가 없으면 no-op. */
   toggleSystemBoard: () => Promise<void>;
+
+  /* ─────────── FEAT-memo-table-view: 전체 메모 표 ─────────── */
+  /** 캔버스 ↔ 표 전환. 표 진입 시 보드를 기억하고, 캔버스 복귀 시 복원한다(D1). */
+  setView: (view: WorkspaceView) => void;
+  /** 표 진입 시점 보드로 복원(메모창 닫힘·캔버스 복귀). 없으면 no-op. */
+  restoreTableReturn: () => Promise<void>;
+  /** P2-4: 캔버스가 자리 잡았음을 표시 — 재마운트 시 최초 fit을 건너뛰게 한다. */
+  markCanvasFitted: () => void;
+  /**
+   * 표에서 메모로 점프(AC-6) — 메모가 속한 보드로 전환하고 그 카드를 화면 중앙에
+   * 선택 상태로 놓은 뒤 캔버스 뷰로 돌아간다. 메모가 없으면 no-op.
+   */
+  openCardOnCanvas: (noteId: string) => Promise<void>;
 
   addCardAt: (toolId: ToolId, x: number, y: number) => string;
   /** 화면 중앙의 world 좌표에 카드 생성 (단축키 진입). viewport 크기는 인자로 주입. */
@@ -413,13 +555,30 @@ interface WorkspaceState {
    * DB 반영은 판+멤버를 한 Dexie 트랜잭션으로 쓰는 그룹 쓰기를 각 카드 키로 디바운스 예약한다(동시성 §: 일부만 저장 금지).
    */
   moveFrame: (frameId: string, dx: number, dy: number) => void;
-  /** 판 리사이즈. [[FRAME_MIN_WIDTH]]~[[CARD_MAX_WIDTH]], [[FRAME_MIN_HEIGHT]]~[[CARD_MAX_HEIGHT]]로 클램프. */
+  /** 판 리사이즈. 폭은 스킨 규칙([[clampFrameWidth]]), 높이는 [[FRAME_MIN_HEIGHT]]~[[CARD_MAX_HEIGHT]]로 클램프. */
   resizeFrame: (
     id: string,
-    next: { width: number; height: number; x?: number; y?: number },
+    /**
+     * baseWidth: 자유 판 상한 계산에 쓸 기준 폭. 핸들 드래그는 시작 폭을 넘긴다 —
+     * 드래그 중 바뀌는 현재 폭을 쓰면 좁혔다 넓힐 때 상한이 내려가 반대편 모서리가 튄다.
+     */
+    next: { width: number; height: number; x?: number; y?: number; baseWidth?: number },
   ) => void;
   /** 판 이름 변경. 1~40자, trim 후 빈 문자열이면 "새 메모판"으로 되돌린다. */
   renameFrame: (id: string, name: string) => void;
+  /* ─────────── FEAT-frame-skins: 스킨·세로 칸 ─────────── */
+  /**
+   * 판 스킨을 바꾼다. 세로 칸으로 바뀌면 칸 목록이 없을 때 기본 3칸을 만들고,
+   * 폭이 칸 수 × 240보다 좁으면 그만큼 오른쪽으로 넓힌 뒤 소속 판을 다시 판정한다(AC-4).
+   * 자유로 바꿔도 칸 목록은 지우지 않는다(AC-3).
+   */
+  setFrameSkin: (id: string, skin: FrameSkinId) => void;
+  /** 오른쪽 끝에 이름 빈 칸을 더한다. 최대 8개. 폭이 좁으면 (N+1)×240까지 넓힌다(AC-6). */
+  addFrameColumn: (id: string) => void;
+  /** 칸 이름을 바꾼다. trim 후 최대 20자, 빈 이름 허용(AC-7). */
+  renameFrameColumn: (id: string, columnId: string, name: string) => void;
+  /** 칸을 지운다. 최소 2개. 판 폭·메모 좌표·소속은 그대로다(AC-8). */
+  removeFrameColumn: (id: string, columnId: string) => void;
   /** 판을 지운다. 속한 메모는 제자리에 남고 frameId만 해제한다(메모 자체는 안 지운다). */
   deleteFrame: (id: string) => void;
 
@@ -428,6 +587,33 @@ interface WorkspaceState {
   setTitle: (id: string, title: string) => void;
   /** FEAT-memo-title-front-edit AC-7: 편집 종료 시 제목 확정 — 앞뒤 공백을 자르고 즉시 영속. */
   commitTitle: (id: string) => void;
+
+  /* ─────────── FEAT-text-tool: 평문 텍스트(textbox) ─────────── */
+  /** textbox 글자 크기·색 변경. 지정한 항목만 갱신한다(AC-5). */
+  setTextStyle: (id: string, style: { textSize?: TextSize; color?: string }) => void;
+  /**
+   * textbox 폭 변경. number면 autoWidth=false(고정 폭, 줄바꿈), "auto"면 자동 폭.
+   * 고정 폭은 CARD_MIN_WIDTH~CARD_MAX_WIDTH로 클램프한다(AC-4).
+   */
+  setTextWidth: (id: string, width: number | "auto") => void;
+  /**
+   * 자동 폭 textbox가 내용 측정값으로 width 캐시를 갱신한다 — autoWidth는 유지한다
+   * (§5 "true면 width는 측정값 캐시"). 사용자 리사이즈([[setTextWidth]])와 구분된다.
+   */
+  setTextMeasuredWidth: (id: string, width: number) => void;
+  /**
+   * FEAT-text-tool AC-2: T 키 텍스트 배치 모드. 켜지면 캔버스 커서가 바뀌고
+   * 다음 캔버스 클릭에서 textbox를 만든 뒤 한 번만 풀린다(1회성).
+   */
+  textPlacementArmed: boolean;
+  armTextPlacement: () => void;
+  disarmTextPlacement: () => void;
+  /**
+   * FEAT-text-tool AC-6: 편집 종료 시 비어 있는 textbox를 휴지통 없이 즉시 삭제.
+   * 휴지통·되돌리기를 우회한다(스펙 §2 "되돌리기 대상 아님").
+   */
+  hardDeleteNote: (id: string) => void;
+
   setAttachment: (
     id: string,
     ref: string | undefined,
@@ -440,6 +626,31 @@ interface WorkspaceState {
   setEditing: (id: string | null) => void;
   /** FEAT-memo-expand: 펼치기 모달을 연다(id) / 닫는다(null). */
   setExpandedCard: (id: string | null) => void;
+
+  /* ─────────── FEAT-connectors: 카드 연결선 ─────────── */
+  /** 연결선 새로 만들기. 같은 방향 중복이면 이미 있는 id를 반환하고 그 선을 선택. */
+  connectCards: (
+    sourceId: string,
+    sourceSide: ConnectionSide,
+    targetId: string,
+    targetSide: ConnectionSide,
+  ) => string | null;
+  /** 빈 곳 드롭 — (x,y) 중심에 새 메모를 만들고 sourceSide↔마주보는 변으로 잇는다. */
+  connectToNewMemo: (
+    sourceId: string,
+    sourceSide: ConnectionSide,
+    x: number,
+    y: number,
+  ) => string;
+  removeConnection: (id: string) => void;
+  /** 라벨 갱신. trim 후 빈 문자열이면 label 제거. */
+  setConnectionLabel: (id: string, label: string) => void;
+  /** 선 선택. 카드 선택은 해제한다. null이면 선택 해제. */
+  selectConnection: (id: string | null) => void;
+  /** 연결점 노출 대상 카드 hover 갱신(카드 본체·연결점 공용). */
+  setHoveredCard: (id: string | null) => void;
+  /** 연결 드래그 세션 갱신/종료(null). */
+  setConnectionDraft: (draft: ConnectionDraft | null) => void;
 
   /**
    * FEAT-markdown-memo-pen: 펜 모드 — 사이드바 펜 도구로 켜는 전역 그리기 모드.
@@ -551,6 +762,20 @@ interface WorkspaceState {
    */
   dropTargetTrash: boolean;
   setDropTargetTrash: (v: boolean) => void;
+  /**
+   * FEAT-frame-feel T2: 메모 한 장 드래그 중 "놓으면 속하게 될 판" id — 판 테두리
+   * 강조용. transient. 소속 판정과 같은 [[findOwningFrame]]·[[cardCenter]]로 계산한다.
+   * 묶음·판 드래그에서는 켜지 않는다(D2).
+   */
+  dropTargetFrameId: string | null;
+  setDropTargetFrame: (id: string | null) => void;
+  /**
+   * FEAT-frame-feel T4: 판 단독 드래그 중인 판 id — 그 판 멤버들이 흔들림용
+   * transform(`--tilt` 기반)을 쓸지 정한다. transient. 드래그 시작·끝에 한 번씩만
+   * 쓰고, 각도 갱신은 멤버 DOM의 CSS 변수에 직접 쓴다(스토어 카드 배열 불변, AC-10).
+   */
+  wobbleFrameId: string | null;
+  setWobbleFrame: (id: string | null) => void;
   /** 현재 보드의 함 카드들에 대한 카드 수를 다시 집계해 subcanvasCounts 갱신. */
   refreshSubcanvasCounts: () => Promise<void>;
   /**
@@ -652,6 +877,9 @@ export function kindForTool(toolId: ToolId): CardKind {
     case "file":
     case "code":
       return toolId;
+    // FEAT-text-tool: 독 "텍스트" 도구 → textbox.
+    case "textbox":
+      return "textbox";
     // FEAT-subcanvas: board 도구 → 함 카드.
     case "board":
       return "board";
@@ -687,6 +915,9 @@ export function widthForKind(kind: CardKind): number {
     // FEAT-sticky-redesign: 메모판 기본 폭. addFrameAt은 실제로 이 값을 직접 쓴다.
     case "frame":
       return FRAME_DEFAULT_WIDTH;
+    // FEAT-text-tool: 자동 폭 시작 폭 — 내용이 없을 때의 최소 자리.
+    case "textbox":
+      return TEXTBOX_DEFAULT_WIDTH;
     case "text":
     default:
       return 240;
@@ -804,6 +1035,7 @@ export function needsFirstBoard(boards: Board[], cards: Card[]): boolean {
 
 let counter = 1;
 const nextId = () => `c-${Date.now().toString(36)}-${counter++}`;
+let connCounter = 1;
 
 const clamp = (n: number, lo: number, hi: number) =>
   Math.max(lo, Math.min(hi, n));
@@ -898,6 +1130,10 @@ function decodeNoteToCard(note: Note): Card {
     // width로 정규화한다.
     height: kind === "text" ? note.width : note.height,
     content,
+    // FEAT-text-tool: textbox 색·크기·폭 모드. 다른 kind는 이 칸을 쓰지 않는다.
+    color: note.color,
+    textSize: note.textSize,
+    autoWidth: note.autoWidth,
     attachmentRef: note.attachmentRef,
     mediaType: note.mediaType,
     overlay: note.overlay,
@@ -916,8 +1152,28 @@ function decodeNoteToCard(note: Note): Card {
  */
 const FRAME_MEMBERSHIP_DEFAULT_HEIGHT = 160;
 
+/**
+ * FEAT-text-tool P2-2: 보드 로드 시 빈(trim) textbox 행을 걷어낸다. 생성 즉시
+ * persist되고 빈 삭제가 onBlur에만 있어 새로고침·탭 닫기에서 빈 행이 남는 문제를 막는다.
+ * 제거 대상 id는 호출자가 DB에서 영구 삭제(hardDeleteNotes)한다.
+ */
+export function pruneEmptyTextboxes(cards: Card[]): {
+  cards: Card[];
+  removedIds: string[];
+} {
+  const removedIds: string[] = [];
+  const kept = cards.filter((c) => {
+    if (c.kind === "textbox" && c.content.trim() === "") {
+      removedIds.push(c.id);
+      return false;
+    }
+    return true;
+  });
+  return { cards: kept, removedIds };
+}
+
 /** 카드의 중심점(world 좌표). height 미지정이면 보수적 기본값으로 근사. */
-function cardCenter(card: Card): { x: number; y: number } {
+export function cardCenter(card: Card): { x: number; y: number } {
   const h = card.height ?? FRAME_MEMBERSHIP_DEFAULT_HEIGHT;
   return { x: card.x + card.width / 2, y: card.y + h / 2 };
 }
@@ -942,7 +1198,7 @@ function frameContainsPoint(
  * 만든 판 — loadCards가 createdAt 오름차순 정렬을 보장하고, addFrameAt은 배열
  * 끝에 append하므로 순서가 곧 생성 순서다) 판이 이긴다.
  */
-function findOwningFrame(
+export function findOwningFrame(
   frames: Card[],
   pt: { x: number; y: number },
 ): Card | undefined {
@@ -1010,7 +1266,8 @@ function persistCardDexie(card: Card, boardId: string | null): Promise<Note> {
   // 비교로 cache hit이면 skip하므로 안전(AC-4).
   // FEAT-subcanvas: 함 카드 content는 boardRef JSON일 뿐이라 임베딩 대상 아님 — skip.
   // FEAT-sticky-redesign: 메모판(frame) content는 {name} JSON이라 역시 skip.
-  if (card.kind !== "board" && card.kind !== "frame") {
+  // FEAT-text-tool: textbox는 AI 파이프라인 대상 아님(spec §2) — enqueue하지 않는다.
+  if (card.kind !== "board" && card.kind !== "frame" && card.kind !== "textbox") {
     // FEAT-memo-title: 임베딩 입력은 "제목 + 빈 줄 + 본문". 해시가 입력 전체로 계산되므로
     // 제목만 바뀌어도 다시 임베딩된다(AC-9). 제목 없으면 본문만.
     const embedInput = card.title ? `${card.title}\n\n${content}` : content;
@@ -1025,6 +1282,11 @@ function persistCardDexie(card: Card, boardId: string | null): Promise<Note> {
     width: card.width,
     height: memoHeight(card.kind, card.width, card.height),
     content,
+    // FEAT-text-tool: textbox 색·크기·폭 모드 영속. undefined를 patch에 실으면
+    // mergeNote 스프레드가 기존 값을 지우므로 정의된 항목만 싣는다.
+    ...(card.color !== undefined ? { color: card.color } : {}),
+    ...(card.textSize !== undefined ? { textSize: card.textSize } : {}),
+    ...(card.autoWidth !== undefined ? { autoWidth: card.autoWidth } : {}),
     attachmentRef: card.attachmentRef,
     mediaType: card.mediaType,
     overlay: card.overlay,
@@ -1096,6 +1358,10 @@ function initialNoteFromCard(card: Card, boardId: string | null): Note {
     height: memoHeight(card.kind, card.width, card.height),
     rotation: 0,
     content: encodeCardContent(card),
+    // FEAT-text-tool: textbox 색·크기·폭 모드도 공유 필드다. 없으면 싣지 않는다.
+    ...(card.color !== undefined ? { color: card.color } : {}),
+    ...(card.textSize !== undefined ? { textSize: card.textSize } : {}),
+    ...(card.autoWidth !== undefined ? { autoWidth: card.autoWidth } : {}),
     attachmentRef: card.attachmentRef,
     mediaType: card.mediaType,
     overlay: card.overlay,
@@ -1226,7 +1492,7 @@ function bindActiveDocReflection(doc: Y.Doc, storageBoardId: string | null): voi
           dirty = true;
           // 원격·다른 탭 삭제는 휴지통으로만 옮긴다. removeNote는 purge까지 해서
           // 삭제한 탭이 만든 휴지통 행을 지워 버린다(n3 리뷰 P0).
-          void useStorage.getState().trashNote(id);
+          void useStorage.getState().trashNote(id).then(notifyNoteChanges);
         }
         continue;
       }
@@ -1239,7 +1505,11 @@ function bindActiveDocReflection(doc: Y.Doc, storageBoardId: string | null): voi
       dirty = true;
       // 6(d): 원격 반영의 Dexie 파생 쓰기는 디바운스로 합친다 — 키 입력 1자마다
       // 전행 get+put 하던 비용을 제거. 문서는 원격이 이미 원본이라 쓰지 않는다.
-      persistCardDebounced(card, storageBoardId, { doc: false });
+      // FEAT-memo-table-view: 표는 미러를 읽으므로 미러 쓰기가 끝난 뒤에 알린다.
+      schedulePersist(card.id, async () => {
+        await persistCardDexie(card, storageBoardId);
+        notifyNoteChanges();
+      });
     }
     if (dirty) useWorkspace.setState({ cards: nextCards });
   };
@@ -1299,6 +1569,26 @@ function bindActiveDocReflection(doc: Y.Doc, storageBoardId: string | null): voi
     if (changed.size === 0) return;
     for (const id of changed) pendingConnIds.add(id);
     if (connTimer === null) connTimer = setTimeout(flushConnections, CONNECTION_MIRROR_DEBOUNCE_MS);
+    // FEAT-connectors: 화면의 연결선도 바로 맞춘다. 양 끝이 현재 카드인 active 선만 그린다.
+    const state = useWorkspace.getState();
+    const cardIds = new Set(state.cards.map((c) => c.id));
+    const next = state.connections.filter((c) => !changed.has(c.id));
+    for (const id of changed) {
+      const conn = readConnection(doc, id);
+      if (
+        conn &&
+        conn.status === "active" &&
+        cardIds.has(conn.sourceNoteId) &&
+        cardIds.has(conn.targetNoteId)
+      ) {
+        next.push(conn);
+      }
+    }
+    const selected = state.selectedConnectionId;
+    useWorkspace.setState({
+      connections: next,
+      selectedConnectionId: selected && next.some((c) => c.id === selected) ? selected : null,
+    });
   };
   connectionsMap(doc).observeDeep(reflectConnections);
 
@@ -1454,6 +1744,19 @@ async function cascadeDeleteFunnels(
     const fnote = await db.notes.get(fc.id);
     if (fnote) funnelNotes.push(fnote);
     await db.notes.delete(fc.id);
+    // FEAT-connectors: 함 카드에 닿은 선(현재 보드)은 고아로 남기지 않고 지운다.
+    // 5초 undo는 서브 보드 안쪽 연결만 복원한다 — 함 카드 자체의 선은 복원 대상 아님.
+    const incident = await db.connections
+      .where("sourceNoteId")
+      .equals(fc.id)
+      .or("targetNoteId")
+      .equals(fc.id)
+      .toArray();
+    if (incident.length > 0) {
+      await db.connections.bulkDelete(incident.map((c) => c.id));
+      // undo 스냅샷에도 넣어야 5초 undo 시 선이 영구 유실되지 않는다.
+      connections.push(...incident);
+    }
     const snap = await storage.removeBoardCascade(fc.boardRef);
     boards.push(...snap.boards);
     notes.push(...snap.notes);
@@ -1510,11 +1813,36 @@ export function __resetBoardNavigatorForTest(): void {
   boardNavigator = null;
 }
 
+/**
+ * FEAT-connectors: 현재 보드 카드에 닿은 active 연결만 골라 온다. loadConnections는
+ * 한쪽 끝만 닿아도 돌려주므로, 보드 밖 카드가 낀 연결은 화면에 못 그린다 —
+ * 양 끝이 모두 현재 카드일 때만 남긴다.
+ */
+async function loadBoardConnections(cardIds: string[]): Promise<Connection[]> {
+  const storage = useStorage.getState();
+  if (!storage.initialized) return [];
+  const ids = new Set(cardIds);
+  if (ids.size === 0) return [];
+  // 원본은 보드 문서다. 양 끝이 현재 보드면 source도 현재 보드라 활성 문서가 그 선을 가진다.
+  const doc = getActiveBoardDoc()?.doc;
+  const all = doc ? readConnections(doc) : await storage.loadConnections(cardIds);
+  return all.filter(
+    (c) =>
+      c.status === "active" &&
+      ids.has(c.sourceNoteId) &&
+      ids.has(c.targetNoteId),
+  );
+}
+
 export const useWorkspace = create<WorkspaceState>((set, get) => ({
   cards: [],
   selectedIds: [],
   editingId: null,
   expandedCardId: null,
+  connections: [],
+  selectedConnectionId: null,
+  hoveredCardId: null,
+  connectionDraft: null,
   penMode: false,
   penTool: "pen",
   penWidth: PEN_DEFAULT_WIDTH,
@@ -1531,6 +1859,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   boardTransitioning: false,
   migrationPending: false,
   bootstrapComplete: false,
+  view: "canvas",
+  tableReturnBoardId: null,
+  canvasHasFitted: false,
   templatePickerOpen: false,
   pendingBoardUndo: null,
   deleteDialogBoardId: null,
@@ -1540,6 +1871,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   dropTargetFunnelId: null,
   dropTargetCrumbId: null,
   dropTargetTrash: false,
+  dropTargetFrameId: null,
+  wobbleFrameId: null,
   pendingSubcanvasUndo: null,
   draggingId: null,
   draggingMulti: false,
@@ -1589,17 +1922,23 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       }));
       await Promise.all(seeds.map((card) => persistCard(card, SYSTEM_BOARD_ID)));
       await storage.updateSettings({ installPromptShown: true });
-      set({ cards: seeds, boards });
+      set({ cards: seeds, boards, connections: [] });
       return;
     }
 
-    const cards = await loadBoardCards(storageBid);
-    set({ cards, boards });
+    // FEAT-text-tool: 빈 textbox는 불러올 때 지운다. 원본 문서와 미러 모두에서.
+    const pruned = pruneEmptyTextboxes(await loadBoardCards(storageBid));
+    if (pruned.removedIds.length > 0) {
+      await storage.hardDeleteNotes(pruned.removedIds, storageBid);
+    }
+    const cards = pruned.cards;
+    const connections = await loadBoardConnections(cards.map((c) => c.id));
+    set({ cards, boards, connections, selectedConnectionId: null });
     void get().refreshSubcanvasCounts();
     void get().refreshTrashCount();
   },
 
-  setCurrentBoard: async (id) => {
+  setCurrentBoard: async (id, opts) => {
     // n23 재심사 2R-1: 이전이 백그라운드면 보드를 바꾸지 않는다. 전환 대상과 이전
     // 완료 뒤 재로드 대상이 어긋나 편집이 유실된다. 오버레이는 이제 표시 전용이라
     // 단축키·함수 호출 모두 이 가드 하나로 막힌다.
@@ -1628,7 +1967,13 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     if (!storage.initialized) await storage.init();
     const storageBid = id;
     const docHandle = await activateBoard(storageBid);
-    const cards = await loadBoardCards(storageBid);
+    // FEAT-text-tool: 빈 textbox는 불러올 때 지운다. 원본 문서와 미러 모두에서.
+    const pruned = pruneEmptyTextboxes(await loadBoardCards(storageBid));
+    if (pruned.removedIds.length > 0) {
+      await storage.hardDeleteNotes(pruned.removedIds, storageBid);
+    }
+    const cards = pruned.cards;
+    const connections = await loadBoardConnections(cards.map((c) => c.id));
 
     // 3-1) 보드 메타도 문서가 원본 — 목록의 이 보드 이름을 문서 값으로 맞춘다.
     if (storageBid !== null) {
@@ -1650,19 +1995,27 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const lastNonSystem = id === SYSTEM_BOARD_ID ? get().lastNonSystemBoardId : id;
     set({
       cards,
+      connections,
       selectedIds: [],
+      selectedConnectionId: null,
       editingId: null,
       expandedCardId: null,
       currentBoardId: id,
       lastNonSystemBoardId: lastNonSystem,
       viewport: restored,
     });
+    // 표 행 열기·표 복귀처럼 URL을 거치지 않은 전환도 주소를 따라오게 한다.
+    // URL에서 온 전환이면 경로가 이미 같아 navigator가 아무것도 안 한다.
+    boardNavigator?.(id);
 
     // 5) lastOpenedAt 업데이트 — `/`(RootBoardRedirect)가 "마지막 연 보드"로 돌아가려면
     // 시스템 보드도 평범한 행인 지금 방문 시각을 남겨야 한다(n1 이후).
-    await storage.saveBoard({ id, lastOpenedAt: Date.now() });
-    const fresh = await storage.loadBoards();
-    set({ boards: fresh });
+    // 표 맥락 점프는 opts로 끈다(FEAT-memo-table-view D1).
+    if (opts?.touchLastOpened !== false) {
+      await storage.saveBoard({ id, lastOpenedAt: Date.now() });
+      const fresh = await storage.loadBoards();
+      set({ boards: fresh });
+    }
 
     // 6) 페이드인 — BOARD_FADE_MS 후 transitioning 해제
     setTimeout(() => set({ boardTransitioning: false }), BOARD_FADE_MS);
@@ -1897,10 +2250,53 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     }
   },
 
+  setView: (view) => {
+    if (view === "table") {
+      // 표 진입 시점의 보드를 기억한다(D1). 이미 표면(=행 클릭으로 보드가 바뀐
+      // 상태) 덮어쓰지 않는다.
+      set((s) =>
+        s.view === "table"
+          ? { view }
+          : { view, tableReturnBoardId: s.currentBoardId },
+      );
+      return;
+    }
+    set({ view });
+    // 캔버스 복귀 — 표 행 클릭으로 보드가 바뀌었으면 진입 시점 보드로 되돌린다(D1).
+    void get().restoreTableReturn();
+  },
+
+  restoreTableReturn: async () => {
+    const ret = get().tableReturnBoardId;
+    set({ tableReturnBoardId: null });
+    if (ret && get().currentBoardId !== ret) {
+      // 맥락 점프 복원이므로 lastOpenedAt은 갱신하지 않는다(D1).
+      await get().setCurrentBoard(ret, { touchLastOpened: false });
+    }
+  },
+
+  openCardOnCanvas: async (noteId) => {
+    // 표에 없는(다른 보드) 메모도 열 수 있어야 한다 — DB에서 소속 보드를 읽는다.
+    const note = await getDB().notes.get(noteId);
+    if (!note) return;
+    const boardId = note.boardId ?? SYSTEM_BOARD_ID;
+    // 의도적 이동 — 표 복귀 대상이 아니다(D1).
+    set({ view: "canvas", tableReturnBoardId: null });
+    await get().setCurrentBoard(boardId);
+    get().panToCard(noteId);
+  },
+
+  markCanvasFitted: () => set({ canvasHasFitted: true }),
+
   addCardAt: (toolId, x, y) => {
     const kind = kindForTool(toolId);
     const width = widthForKind(kind);
-    const height = clamp(width / aspectForKind(kind), CARD_MIN_HEIGHT, CARD_MAX_HEIGHT);
+    const isTextbox = kind === "textbox";
+    // FEAT-text-tool §5: textbox는 높이를 저장하지 않는다(항상 내용 높이). 다른 kind는
+    // 종이 비율로 기본 높이를 채운다.
+    const height = isTextbox
+      ? undefined
+      : clamp(width / aspectForKind(kind), CARD_MIN_HEIGHT, CARD_MAX_HEIGHT);
     const id = nextId();
     const card: Card = {
       id,
@@ -1911,7 +2307,19 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       height,
       content: "",
       lastVisitedAt: Date.now(),
+      // FEAT-text-tool §6: AI 파이프라인 대상 제외(주석이라서) + 자동 폭 + 기본 크기.
+      ...(isTextbox
+        ? { aiOptOut: true, autoWidth: true, textSize: TEXT_DEFAULT_SIZE }
+        : {}),
     };
+    // FEAT-text-tool §0/§10: 메모판 안에 생성하면 소속(frameId)을 바로 잡는다.
+    if (isTextbox) {
+      const owner = findOwningFrame(
+        get().cards.filter((c) => c.kind === "frame"),
+        cardCenter(card),
+      );
+      if (owner) card.frameId = owner.id;
+    }
     const isCapture = isCaptureKind(kind);
     const isCaptureTool = (CAPTURE_TOOLS as readonly ToolId[]).includes(toolId);
     set((s) => ({
@@ -2156,7 +2564,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     set((s) => ({
       cards: s.cards.map((c) => {
         if (c.id !== id || c.kind !== "frame") return c;
-        const w = clamp(next.width, FRAME_MIN_WIDTH, CARD_MAX_WIDTH);
+        // FEAT-frame-skins: 폭 한계는 스킨이 정한다(AC-9·AC-10). 자유 판 상한은
+        // "지금 폭까지" — 세로 칸(1920)을 자유로 바꿔도 튀지 않고 더 넓히지 못한다.
+        const w = clampFrameWidth(readFrameContent(c.content), next.baseWidth ?? c.width, next.width);
         const h = clamp(next.height, FRAME_MIN_HEIGHT, CARD_MAX_HEIGHT);
         updated = {
           ...c,
@@ -2174,12 +2584,112 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   renameFrame: (id, name) => {
-    // "새 메모판" 기본값·trim·40자 규약은 frameContent.ts(encodeFrameContent) 단일 소스.
+    // AC-11: renameFrame이 내용을 통째로 덮어쓰면 스킨·칸이 사라진다 — 원래 설정을
+    // 읽어 이름만 갈아 끼운다. "새 메모판" 기본값·trim·40자 규약은 frameContent.ts 단일 소스.
     let updated: Card | undefined;
     set((s) => ({
       cards: s.cards.map((c) => {
         if (c.id !== id || c.kind !== "frame") return c;
-        updated = { ...c, content: encodeFrameContent(name) };
+        const cfg = readFrameContent(c.content);
+        updated = { ...c, content: encodeFrameContent({ ...cfg, name }) };
+        return updated;
+      }),
+    }));
+    if (updated) persistCardDebounced(updated, get().currentBoardId);
+  },
+
+  setFrameSkin: (id, skin) => {
+    let updated: Card | undefined;
+    set((s) => ({
+      cards: s.cards.map((c) => {
+        if (c.id !== id || c.kind !== "frame") return c;
+        const cfg = readFrameContent(c.content);
+        // 칸 목록이 있으면 스킨과 무관하게 보관한다. 세로 칸으로 처음 바뀔 때만 기본 3칸.
+        const columns =
+          cfg.columns !== undefined
+            ? normalizeFrameColumns(cfg.columns)
+            : skin === "columns"
+              ? defaultFrameColumns()
+              : undefined;
+        const nextCfg: FrameContentJson = { ...cfg, skin };
+        if (columns !== undefined) nextCfg.columns = columns;
+        // AC-4: 폭이 칸 수 × 240보다 좁으면 그만큼 오른쪽으로 넓힌다. 왼쪽 위 모서리는 그대로.
+        // 자유로 바꿀 때는 지금 폭이 상한이 되므로 폭이 그대로다(AC-10).
+        const width = clampFrameWidth(nextCfg, c.width, c.width);
+        updated = { ...c, width, content: encodeFrameContent(nextCfg) };
+        return updated;
+      }),
+    }));
+    if (!updated) return;
+    persistCardDebounced(updated, get().currentBoardId);
+    if (skin === "columns") {
+      // AC-4: 넓힌 뒤 소속 판을 다시 판정한다. 결과는 손으로 같은 크기로 늘렸을 때와 같다.
+      get().resolveMembership(
+        get()
+          .cards.filter((c) => c.kind !== "frame")
+          .map((c) => c.id),
+      );
+    }
+  },
+
+  addFrameColumn: (id) => {
+    let updated: Card | undefined;
+    let widened = false;
+    set((s) => ({
+      cards: s.cards.map((c) => {
+        if (c.id !== id || c.kind !== "frame") return c;
+        const cfg = readFrameContent(c.content);
+        const cols = normalizeFrameColumns(cfg.columns);
+        if (cols.length >= FRAME_COLUMN_COUNT_MAX) return c;
+        const next = [...cols, { id: newFrameColumnId(), name: "" }];
+        // AC-6: 폭이 (N+1) × 240보다 좁으면 그만큼 오른쪽으로 넓어진다. 메모는 움직이지 않는다.
+        const width = clampFrameWidth({ ...cfg, columns: next }, c.width, c.width);
+        widened = widened || width > c.width;
+        updated = { ...c, width, content: encodeFrameContent({ ...cfg, columns: next }) };
+        return updated;
+      }),
+    }));
+    if (!updated) return;
+    persistCardDebounced(updated, get().currentBoardId);
+    if (widened) {
+      get().resolveMembership(
+        get()
+          .cards.filter((c) => c.kind !== "frame")
+          .map((c) => c.id),
+      );
+    }
+  },
+
+  renameFrameColumn: (id, columnId, name) => {
+    let updated: Card | undefined;
+    set((s) => ({
+      cards: s.cards.map((c) => {
+        if (c.id !== id || c.kind !== "frame") return c;
+        const cfg = readFrameContent(c.content);
+        const cols = normalizeFrameColumns(cfg.columns);
+        if (!cols.some((col) => col.id === columnId)) return c;
+        const next = normalizeFrameColumns(
+          cols.map((col) => (col.id === columnId ? { ...col, name } : col)),
+        );
+        updated = { ...c, content: encodeFrameContent({ ...cfg, columns: next }) };
+        return updated;
+      }),
+    }));
+    if (updated) persistCardDebounced(updated, get().currentBoardId);
+  },
+
+  removeFrameColumn: (id, columnId) => {
+    let updated: Card | undefined;
+    set((s) => ({
+      cards: s.cards.map((c) => {
+        if (c.id !== id || c.kind !== "frame") return c;
+        const cfg = readFrameContent(c.content);
+        const cols = normalizeFrameColumns(cfg.columns);
+        if (cols.length <= FRAME_COLUMN_COUNT_MIN) return c;
+        if (!cols.some((col) => col.id === columnId)) return c;
+        // AC-8: 칸만 줄고 판 폭은 그대로다. 메모 좌표·소속도 건드리지 않는다.
+        const next = cols.filter((col) => col.id !== columnId);
+        updated = { ...c, content: encodeFrameContent({ ...cfg, columns: next }) };
         return updated;
       }),
     }));
@@ -2280,6 +2790,94 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     }
   },
 
+  /* ─────────── FEAT-text-tool: 평문 텍스트(textbox) ─────────── */
+
+  setTextStyle: (id, style) => {
+    let updated: Card | undefined;
+    set((s) => ({
+      cards: s.cards.map((c) => {
+        if (c.id !== id || c.kind !== "textbox") return c;
+        updated = {
+          ...c,
+          textSize: style.textSize ?? c.textSize,
+          color: style.color ?? c.color,
+        };
+        return updated;
+      }),
+    }));
+    // AC-5: 새로고침 후에도 유지 — 디바운스가 아니라 즉시 영속(툴바 클릭은 드묾).
+    if (updated) {
+      cancelPersist(id);
+      void persistCard(updated, get().currentBoardId);
+    }
+  },
+
+  setTextWidth: (id, width) => {
+    let updated: Card | undefined;
+    set((s) => ({
+      cards: s.cards.map((c) => {
+        if (c.id !== id || c.kind !== "textbox") return c;
+        if (width === "auto") {
+          updated = { ...c, autoWidth: true };
+        } else {
+          updated = {
+            ...c,
+            autoWidth: false,
+            width: clamp(width, CARD_MIN_WIDTH, CARD_MAX_WIDTH),
+          };
+        }
+        return updated;
+      }),
+    }));
+    if (updated) persistCardDebounced(updated, get().currentBoardId);
+  },
+
+  setTextMeasuredWidth: (id, width) => {
+    if (!Number.isFinite(width)) return;
+    // 고정 폭 하한(CARD_MIN_WIDTH)과 달리 자동 폭은 작은 라벨을 허용한다(§0).
+    const next = Math.max(TEXTBOX_MIN_AUTO_WIDTH, Math.round(width));
+    let updated: Card | undefined;
+    set((s) => ({
+      cards: s.cards.map((c) => {
+        // autoWidth가 아닌 카드는 측정값을 무시한다(고정 폭 우선).
+        if (c.id !== id || c.kind !== "textbox" || c.autoWidth === false) return c;
+        if (c.width === next) return c;
+        updated = { ...c, width: next };
+        return updated;
+      }),
+    }));
+    if (updated) persistCardDebounced(updated, get().currentBoardId);
+  },
+
+  textPlacementArmed: false,
+  armTextPlacement: () => {
+    // 펜 모드와 상호배타 — 배치 모드 진입 시 펜 모드를 끈다.
+    set({ textPlacementArmed: true, penMode: false, editingId: null });
+  },
+  disarmTextPlacement: () => set({ textPlacementArmed: false }),
+
+  hardDeleteNote: (id) => {
+    // FEAT-text-tool AC-6: 휴지통·되돌리기 우회 삭제. 빈 textbox 전용이라
+    // 다른 kind가 이 경로로 들어오면 지우지 않는다(휴지통 경로를 써야 한다).
+    const card = get().cards.find((c) => c.id === id);
+    if (!card || card.kind !== "textbox") return;
+    set((s) => ({
+      cards: s.cards.filter((c) => c.id !== id),
+      selectedIds: s.selectedIds.filter((x) => x !== id),
+      editingId: s.editingId === id ? null : s.editingId,
+      expandedCardId: s.expandedCardId === id ? null : s.expandedCardId,
+    }));
+    cancelPersist(id);
+    forgetSharedSnapshot(id);
+    const storage = useStorage.getState();
+    if (!storage.initialized) return;
+    // 원본 문서와 미러에서 연결선·임베딩까지 정리한다. 막 만든 상자는 미러에 없을
+    // 수 있어 보드를 넘긴다.
+    void storage
+      .hardDeleteNotes([id], get().currentBoardId)
+      .catch(() => undefined);
+  },
+
   setAttachment: (id, ref, meta) => {
     let updated: Card | undefined;
     set((s) => ({
@@ -2299,11 +2897,12 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     }
   },
 
-  selectOne: (id) => set({ selectedIds: id ? [id] : [] }),
+  selectOne: (id) => set({ selectedIds: id ? [id] : [], selectedConnectionId: null }),
   toggleSelect: (id) =>
     set((s) => {
       const has = s.selectedIds.includes(id);
       return {
+        selectedConnectionId: null,
         selectedIds: has
           ? s.selectedIds.filter((x) => x !== id)
           : [...s.selectedIds, id],
@@ -2311,7 +2910,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     }),
   selectMany: (ids, additive = false) =>
     set((s) => {
-      if (!additive) return { selectedIds: ids };
+      if (!additive) return { selectedIds: ids, selectedConnectionId: null };
       const seen = new Set(s.selectedIds);
       const merged = [...s.selectedIds];
       for (const id of ids) {
@@ -2320,13 +2919,107 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
           merged.push(id);
         }
       }
-      return { selectedIds: merged };
+      return { selectedIds: merged, selectedConnectionId: null };
     }),
-  clearSelection: () => set({ selectedIds: [] }),
+  clearSelection: () => set({ selectedIds: [], selectedConnectionId: null }),
   setEditing: (id) => set({ editingId: id }),
   // FEAT-memo-expand: 모달 진입 시 inline 편집을 닫아 같은 카드 이중 에디터를 막는다.
-  setExpandedCard: (id) =>
-    set(id ? { expandedCardId: id, editingId: null } : { expandedCardId: null }),
+  setExpandedCard: (id) => {
+    set(id ? { expandedCardId: id, editingId: null } : { expandedCardId: null });
+    // 표에서 행을 열어 보드가 바뀌었던 경우, 메모창을 닫으면 진입 시점 보드로
+    // 복원한다(D1). 캔버스 뷰에서는 no-op(tableReturnBoardId 없음).
+    if (!id && get().view === "table") void get().restoreTableReturn();
+  },
+
+  /* ─────────── FEAT-connectors: 카드 연결선 ─────────── */
+  connectCards: (sourceId, sourceSide, targetId, targetSide) => {
+    if (sourceId === targetId) return null;
+    const existing = get().connections.find(
+      (c) =>
+        c.sourceNoteId === sourceId &&
+        c.targetNoteId === targetId &&
+        c.status === "active",
+    );
+    if (existing) {
+      // AC-8: 같은 방향 중복은 새 행 없이 기존 선을 선택.
+      set({ selectedConnectionId: existing.id, selectedIds: [] });
+      return existing.id;
+    }
+    const connection: Connection = {
+      id: `conn-${Date.now().toString(36)}-${connCounter++}`,
+      sourceNoteId: sourceId,
+      targetNoteId: targetId,
+      source: "manual",
+      status: "active",
+      sourceSide,
+      targetSide,
+      createdAt: Date.now(),
+    };
+    set((s) => ({
+      connections: [...s.connections, connection],
+      selectedConnectionId: connection.id,
+      selectedIds: [],
+    }));
+    const storage = useStorage.getState();
+    if (storage.initialized) void storage.saveConnection(connection);
+    return connection.id;
+  },
+
+  connectToNewMemo: (sourceId, sourceSide, x, y) => {
+    const source = get().cards.find((c) => c.id === sourceId);
+    const w = widthForKind("text");
+    // 놓은 지점이 새 메모 중심이 되도록 좌상단을 되돌린다.
+    const id = get().addCardAt("text", x - w / 2, y - w / 2);
+    const card = get().cards.find((c) => c.id === id);
+    const targetSide: ConnectionSide =
+      source && card
+        ? nearestSide(card, anchorPoint(source, sourceSide))
+        : "top";
+    get().connectCards(sourceId, sourceSide, id, targetSide);
+    // connectCards가 선택을 비우므로 새 메모 선택·편집 진입(addCardAt이 켠 editingId)을
+    // 유지하도록 카드 선택을 되돌린다(AC-3: 제목 입력 포커스).
+    set({ selectedIds: [id], selectedConnectionId: null });
+    return id;
+  },
+
+  removeConnection: (id) => {
+    set((s) => ({
+      connections: s.connections.filter((c) => c.id !== id),
+      selectedConnectionId:
+        s.selectedConnectionId === id ? null : s.selectedConnectionId,
+    }));
+    const storage = useStorage.getState();
+    if (storage.initialized) void storage.removeConnection(id);
+  },
+
+  setConnectionLabel: (id, label) => {
+    const trimmed = label.trim();
+    let updated: Connection | undefined;
+    set((s) => ({
+      connections: s.connections.map((c) => {
+        if (c.id !== id) return c;
+        const next = { ...c };
+        if (trimmed) next.label = trimmed;
+        else delete next.label;
+        updated = next;
+        return next;
+      }),
+    }));
+    if (!updated) return;
+    const storage = useStorage.getState();
+    if (storage.initialized)
+      // label 없는 객체를 patch로 보내면 mergeConnection이 옛 값을 남긴다 —
+      // undefined를 명시해 지운다(AC-6: 빈 문자열이면 label 제거).
+      void storage.saveConnection(trimmed ? updated : { ...updated, label: undefined });
+  },
+
+  selectConnection: (id) => set({ selectedConnectionId: id, selectedIds: [] }),
+
+  setHoveredCard: (id) => {
+    if (id === get().hoveredCardId) return;
+    set({ hoveredCardId: id });
+  },
+  setConnectionDraft: (draft) => set({ connectionDraft: draft }),
 
   // FEAT-markdown-memo-pen: 펜 모드. 진입 시 열린 편집을 닫아 상호배타 보장.
   setPenMode: (on) =>
@@ -2440,6 +3133,17 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       selectedIds: s.selectedIds.filter((x) => x !== id),
       editingId: s.editingId === id ? null : s.editingId,
       expandedCardId: s.expandedCardId === id ? null : s.expandedCardId,
+      // AC-7: 카드를 지우면 닿은 선도 화면에서 사라진다(DB는 trashConnections로 이동).
+      connections: s.connections.filter(
+        (c) => c.sourceNoteId !== id && c.targetNoteId !== id,
+      ),
+      selectedConnectionId: s.connections.some(
+        (c) =>
+          c.id === s.selectedConnectionId &&
+          (c.sourceNoteId === id || c.targetNoteId === id),
+      )
+        ? null
+        : s.selectedConnectionId,
     }));
     cancelPersist(id);
     // n3: 카드를 문서에서도 지운다(휴지통 스냅샷은 Dexie 미러에서 읽는다).
@@ -2481,6 +3185,17 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         s.expandedCardId && idSet.has(s.expandedCardId)
           ? null
           : s.expandedCardId,
+      // AC-7: 지운 카드에 닿은 선도 화면에서 사라진다.
+      connections: s.connections.filter(
+        (c) => !idSet.has(c.sourceNoteId) && !idSet.has(c.targetNoteId),
+      ),
+      selectedConnectionId: s.connections.some(
+        (c) =>
+          c.id === s.selectedConnectionId &&
+          (idSet.has(c.sourceNoteId) || idSet.has(c.targetNoteId)),
+      )
+        ? null
+        : s.selectedConnectionId,
     }));
     for (const id of remainingIds) cancelPersist(id);
     // n23 재심사 2R-2: 삭제한 메모의 스냅샷을 버린다(누수 방지).
@@ -2538,6 +3253,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       // n23 재심사 2R-2: 복구도 문서 쓰기 — 스냅샷을 맞춘다.
       setSharedSnapshot(note.id, toSharedNote(note));
     }
+    // AC-7: 복원으로 양 끝이 다시 살아난 선(trashConnections → connections)을 화면에 반영.
+    set({ connections: await loadBoardConnections(get().cards.map((c) => c.id)) });
     void get().refreshTrashCount();
   },
 
@@ -2549,7 +3266,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       return null;
     }
     // 캡처 카드가 아니면 next-card 흐름 자체가 의미 없음 — 편집만 종료.
-    if (!isCaptureKind(current.kind)) {
+    // FEAT-text-tool: textbox도 양산 의미가 없어 편집만 종료한다.
+    if (!isCaptureKind(current.kind) || current.kind === "textbox") {
       if (get().editingId === currentCardId) set({ editingId: null });
       return null;
     }
@@ -2669,6 +3387,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   setDropTargetFunnel: (id) => set({ dropTargetFunnelId: id }),
   setDropTargetCrumb: (id) => set({ dropTargetCrumbId: id }),
   setDropTargetTrash: (v) => set({ dropTargetTrash: v }),
+  setDropTargetFrame: (id) => set({ dropTargetFrameId: id }),
+  setWobbleFrame: (id) => set({ wobbleFrameId: id }),
 
   refreshSubcanvasCounts: async () => {
     const refs = get()
@@ -2897,6 +3617,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     if (get().currentBoardId === pending.boardAtDeletion) {
       set((s) => ({ cards: [...s.cards, ...pending.funnelCards] }));
     }
+    // DB에서 되돌린 선(서브 보드 안쪽 + 함 카드에 닿은 incident)을 스토어에 다시 싣는다.
+    set({ connections: await loadBoardConnections(get().cards.map((c) => c.id)) });
     await get().refreshSubcanvasCounts();
   },
 
@@ -2930,6 +3652,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   panToCard: (id, viewportSize) => {
     const card = get().cards.find((c) => c.id === id);
     if (!card) return;
+    // programmatic 이동도 "자리 잡음"으로 본다 — 재마운트 fit이 이 위치를 덮지 않게(P2-4).
+    set({ canvasHasFitted: true });
     const v = get().viewport;
     // addCardAtViewportCenter와 동일한 화면 크기 폴백 규약(FEAT-sticky-redesign n8:
     // 사이드바가 걷혀 캔버스가 window 전체 폭이라 폭 차감 없음).
@@ -2985,6 +3709,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const cx = (minX + maxX) / 2;
     const cy = (minY + maxY) / 2;
     set({
+      canvasHasFitted: true,
       viewport: {
         x: w / 2 - cx * scale,
         y: h / 2 - cy * scale,

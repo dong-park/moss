@@ -3,6 +3,7 @@
 import { BoardCardContent } from "./board/Content";
 import { FrameCardContent } from "./frame/Content";
 import { TextCardContent } from "./text/Content";
+import { TextboxCardContent } from "./textbox/Content";
 import type { CardContentProps } from "./_shared/types";
 
 /**
@@ -23,6 +24,16 @@ export function CardContent({
     // FEAT-sticky-redesign: 메모판. 이름 더블클릭 편집은 FrameCardContent 자체가 처리.
     case "frame":
       return <FrameCardContent card={card} />;
+    // FEAT-text-tool: 캔버스 평문 텍스트.
+    case "textbox":
+      return (
+        <TextboxCardContent
+          card={card}
+          editing={editing}
+          onChange={onChange}
+          onCommitEdit={onCommitEdit}
+        />
+      );
     // FEAT-sticky-redesign n10: 메모는 한 종류(text) — image/link/audio/file/mindmap/
     // handwriting/code/checklist/highlight 전용 화면은 삭제했다. 레거시 행(가져오기 등으로
     // 유입될 경우)은 decodeNoteToCard가 code/handwriting은 text 블록으로, 나머지는

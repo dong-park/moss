@@ -17,6 +17,14 @@ import type { Card } from "./workspace";
  *  - 공백 정규화 + 소문자화 → 대소문자·기호 무시 매칭(AC-1).
  */
 export function plainText(markdown: string): string {
+  return plainTextRaw(markdown).toLowerCase();
+}
+
+/**
+ * markdown(또는 블록 JSON) → 검색·미리보기용 평문. 대소문자는 보존한다
+ * ([[plainText]]는 검색용으로 소문자화한 결과를 돌려준다).
+ */
+export function plainTextRaw(markdown: string): string {
   const md = blocksToMarkdown(markdown ?? "");
   if (!md) return "";
   let s = md;
@@ -36,8 +44,8 @@ export function plainText(markdown: string): string {
   s = s.replace(/^[ \t]*(?:[-*+]|\d+\.)[ \t]+/gm, "");
   // 강조·취소선 마커 제거
   s = s.replace(/[*_~]/g, "");
-  // 공백 정규화 + 소문자화
-  return s.replace(/\s+/g, " ").trim().toLowerCase();
+  // 공백 정규화(대소문자 보존)
+  return s.replace(/\s+/g, " ").trim();
 }
 
 /**
@@ -98,9 +106,14 @@ export function searchMemos(
   const results: { id: string; score: number }[] = [];
   for (const card of cards) {
     // 메모는 글(text) 카드 — 그 외(image/board/comment 등)는 본문 검색 대상 아님.
-    if (card.kind !== "text") continue;
+    // FEAT-text-tool: textbox도 평문이라 검색 대상에 포함한다.
+    if (card.kind !== "text" && card.kind !== "textbox") continue;
     // FEAT-memo-title: 제목도 검색 대상. "제목 + 공백 + 본문 평문"에서 매칭한다(AC-8).
-    const text = cachedPlainText(card.content);
+    // textbox는 마크다운이 아니라 원문 그대로 매칭한다(P2-3).
+    const text =
+      card.kind === "textbox"
+        ? (card.content ?? "").toLowerCase()
+        : cachedPlainText(card.content);
     const haystack =
       card.title && text ? `${card.title} ${text}` : (card.title ?? text);
     if (!haystack) continue;

@@ -16,7 +16,12 @@ export const LEGACY_NOTE_KINDS: ReadonlySet<NoteKind> = new Set([
 ]);
 
 /** 현재 쓰는 논리 종류. */
-export const ACCEPTED_LOGICAL_KINDS = ["text", "board", "frame"] as const;
+export const ACCEPTED_LOGICAL_KINDS = [
+  "text",
+  "board",
+  "frame",
+  "textbox",
+] as const;
 export type AcceptedLogicalKind = (typeof ACCEPTED_LOGICAL_KINDS)[number];
 
 /** import 리포트·partition용 논리 종류. */
@@ -41,4 +46,5 @@ export const ALL_NOTE_KINDS: readonly NoteKind[] = [
   "code",
   "board",
   "frame",
+  "textbox",
 ];

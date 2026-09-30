@@ -23,7 +23,14 @@ import {
 import {
   deleteConnectionRecord,
   writeConnectionRecord,
+  writeToBoardDoc,
 } from "@/state/ydoc/writeThrough";
+import {
+  deleteConnection as deleteConnectionDoc,
+  deleteNote as deleteNoteDoc,
+  readConnections as readConnectionsDoc,
+  updateNoteField,
+} from "@/state/ydoc/model";
 import {
   SYSTEM_BOARD_ID,
   isSystemBoardNote,
@@ -52,8 +59,27 @@ interface StorageState {
    * 카드 본문·좌표는 Y.Doc이 원본이라 Dexie에서 Note 전체를 재구성할 필요가 없다.
    */
   loadLastVisitedAt: (boardId: string | null) => Promise<Record<string, number>>;
+  /**
+   * FEAT-memo-table-view: 모든 보드의 노트를 한 번에 읽는다. 현재 스토어 `cards`는
+   * 현재 보드만 들고 있으므로 표 뷰는 이 별도 쿼리를 쓴다(spec §4 의존). createdAt
+   * 오름차순으로 안정 정렬해 돌려준다. Dexie 미러를 읽는다 — 보드 문서를 다 열지 않는다.
+   */
+  loadAllNotes: () => Promise<Note[]>;
   saveNote: (patch: Partial<Note> & { id: string }) => Promise<Note>;
+  /**
+   * FEAT-memo-table-view P1-2: 표 인라인 제목 확정 전용. 없는 노트는 만들지 않고
+   * (`db.notes.update` — 없으면 no-op), 값이 같으면 updatedAt도 건드리지 않는다.
+   * saveNote의 mergeNote가 무변경/없는 노트도 새로 만들며 updatedAt을 올리는 문제 회피.
+   * 미러를 고친 뒤 그 노트의 보드 문서에도 쓴다 — 원본은 Y.Doc이다.
+   */
+  updateNoteTitle: (id: string, title: string | undefined) => Promise<void>;
   removeNote: (id: string) => Promise<void>;
+
+  /**
+   * FEAT-text-tool: 휴지통을 거치지 않고 즉시 영구 삭제한다(연결선·임베딩 포함,
+   * 한 트랜잭션). "빈 텍스트 자동 소멸"처럼 되돌리기 대상이 아닌 행 전용.
+   */
+  hardDeleteNotes: (ids: string[], boardId?: string | null) => Promise<void>;
 
   /**
    * FEAT-trash: 메모를 영구 삭제 대신 휴지통으로 보낸다. 한 트랜잭션에서 연결선·보드
@@ -274,6 +300,13 @@ export const useStorage = create<StorageState>((set, get) => ({
     return out;
   },
 
+  loadAllNotes: async () => {
+    const db = getDB();
+    const notes = await db.notes.toArray();
+    notes.sort((a, b) => a.createdAt - b.createdAt);
+    return notes;
+  },
+
   saveNote: async (patch) => {
     const db = getDB();
     const prev = await db.notes.get(patch.id);
@@ -285,10 +318,61 @@ export const useStorage = create<StorageState>((set, get) => ({
     return next;
   },
 
+  updateNoteTitle: async (id, title) => {
+    const db = getDB();
+    const prev = await db.notes.get(id);
+    if (!prev) return; // 없는 노트는 새로 만들지 않는다(P1-2).
+    const next = title || undefined;
+    if ((prev.title ?? "") === (next ?? "")) return; // 무변경 — updatedAt 무갱신.
+    const updatedAt = Date.now();
+    await db.notes.update(id, { title: next, updatedAt });
+    // 원본은 보드 문서다. 제목·updatedAt 두 키만 바꿔 미러의 낡은 본문으로 덮지 않는다.
+    await writeToBoardDoc(prev.boardId ?? null, (doc) => {
+      updateNoteField(doc, id, "title", next);
+      updateNoteField(doc, id, "updatedAt", updatedAt);
+    });
+  },
+
   removeNote: async (id) => {
     // 영구 삭제 = 휴지통에 넣고 바로 비우기. 정리 규칙을 trashNotes 한 곳에 둔다.
     await get().trashNotes([id]);
     await get().purgeTrash([id]);
+  },
+
+  hardDeleteNotes: async (ids, boardId) => {
+    if (ids.length === 0) return;
+    const db = getDB();
+    // 원본 문서에서 먼저 지운다. 보드를 모르면 미러 행의 boardId로 찾는다.
+    const byBoard = new Map<string | null, string[]>();
+    for (const id of ids) {
+      const bid =
+        boardId !== undefined ? boardId : ((await db.notes.get(id))?.boardId ?? null);
+      byBoard.set(bid, [...(byBoard.get(bid) ?? []), id]);
+    }
+    for (const [bid, noteIds] of byBoard) {
+      const gone = new Set(noteIds);
+      await writeToBoardDoc(bid, (doc) => {
+        for (const c of readConnectionsDoc(doc)) {
+          if (gone.has(c.sourceNoteId) || gone.has(c.targetNoteId)) deleteConnectionDoc(doc, c.id);
+        }
+        for (const id of noteIds) deleteNoteDoc(doc, id);
+      });
+    }
+    await db.transaction(
+      "rw",
+      [db.notes, db.connections, db.embeddings],
+      async () => {
+        const incident = await db.connections
+          .where("sourceNoteId")
+          .anyOf(ids)
+          .or("targetNoteId")
+          .anyOf(ids)
+          .toArray();
+        await db.connections.bulkDelete(incident.map((c) => c.id));
+        await db.embeddings.bulkDelete(ids);
+        await db.notes.bulkDelete(ids);
+      },
+    );
   },
 
   trashNote: (id) => get().trashNotes([id]),
@@ -343,7 +427,8 @@ export const useStorage = create<StorageState>((set, get) => ({
 
   restoreNote: async (id, fallback) => {
     const db = getDB();
-    return db.transaction(
+    let back: Connection[] = [];
+    const restored = await db.transaction(
       "rw",
       [db.notes, db.connections, db.trash, db.trashConnections, db.boards],
       async () => {
@@ -383,12 +468,15 @@ export const useStorage = create<StorageState>((set, get) => ({
             c.sourceNoteId === id ? c.targetNoteId : c.sourceNoteId,
           ),
         );
-        const back = parked.filter((_, i) => others[i]);
+        back = parked.filter((_, i) => others[i]);
         await db.connections.bulkPut(back);
         await db.trashConnections.bulkDelete(back.map((c) => c.id));
         return restored;
       },
     );
+    // 되돌린 연결선을 원본 문서에도 쓴다. 소유 문서는 source 메모의 보드다.
+    for (const c of back) await writeConnectionRecord(c);
+    return restored;
   },
 
   purgeTrash: async (ids) => {

@@ -1,5 +1,5 @@
 import JSZip from "jszip";
-import type { Board, Connection, Note } from "../db/schema";
+import type { Board, Connection, ConnectionSide, Note } from "../db/schema";
 import { decodeFrameContent } from "../frameContent";
 import { isSystemBoardId, normalizeBoardId } from "../boardIds";
 
@@ -20,6 +20,8 @@ export interface JsonCanvasEdge {
   id: string;
   fromNode: string;
   toNode: string;
+  fromSide?: ConnectionSide;
+  toSide?: ConnectionSide;
   label?: string;
 }
 
@@ -58,7 +60,8 @@ export function buildJsonCanvas(
       });
       continue;
     }
-    if (note.kind === "text" || note.kind === "board") {
+    // FEAT-text-tool AC-7: textbox도 평문 text 노드로 내보낸다(JSON Canvas type:"text").
+    if (note.kind === "text" || note.kind === "board" || note.kind === "textbox") {
       nodes.push({
         id: note.id,
         type: "text",
@@ -66,7 +69,10 @@ export function buildJsonCanvas(
         y: note.y,
         width: note.width,
         height: noteHeight(note),
-        text: note.kind === "board" ? `[board:${note.id}]` : noteTextContent(note),
+        text:
+          note.kind === "board"
+            ? `[board:${note.id}]`
+            : noteTextContent(note),
       });
     }
   }
@@ -79,6 +85,9 @@ export function buildJsonCanvas(
       id: c.id,
       fromNode: c.sourceNoteId,
       toNode: c.targetNoteId,
+      // FEAT-connectors: JSON Canvas 스펙과 동일한 필드명으로 붙는 변을 내보낸다.
+      ...(c.sourceSide ? { fromSide: c.sourceSide } : {}),
+      ...(c.targetSide ? { toSide: c.targetSide } : {}),
       ...(c.label ? { label: c.label } : {}),
     }));
 

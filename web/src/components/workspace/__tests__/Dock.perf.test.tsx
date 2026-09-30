@@ -24,7 +24,7 @@ beforeEach(() => {
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (
     this: HTMLElement,
   ) {
-    const order = ["메모판", "메모", "파일함", "휴지통"];
+    const order = ["메모판", "메모", "텍스트", "파일함", "휴지통"];
     const i = order.indexOf(this.getAttribute("aria-label") ?? "");
     const left = i < 0 ? 0 : i * 48;
     const width = i < 0 ? 260 : 40;

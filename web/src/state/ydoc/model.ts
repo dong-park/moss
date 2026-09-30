@@ -40,10 +40,11 @@ const NOTE_KEYS: Record<keyof SharedNote, true> = {
   id: true, boardId: true, kind: true, x: true, y: true, width: true, height: true,
   rotation: true, content: true, attachmentRef: true, mediaType: true, color: true,
   overlay: true, frameId: true, title: true, aiOptOut: true, createdAt: true, updatedAt: true,
+  textSize: true, autoWidth: true,
 };
 const CONNECTION_KEYS: Record<keyof Connection, true> = {
   id: true, sourceNoteId: true, targetNoteId: true, source: true, status: true, label: true,
-  createdAt: true,
+  createdAt: true, sourceSide: true, targetSide: true,
 };
 const BOARD_KEYS: Record<keyof SharedBoard, true> = {
   id: true, name: true, isSystem: true, templateId: true, parentBoardId: true, createdAt: true,
