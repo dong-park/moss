@@ -9,7 +9,7 @@ import type { Card } from "@/state/workspace";
  * ───────────────────────────────────────────────────────────── */
 
 const resolveAttachment = vi.fn();
-const onFilesMapChange = vi.fn(() => () => {});
+const onFilesMapChange = vi.fn<(...args: unknown[]) => () => void>(() => () => {});
 
 vi.mock("@/state/share/attachments", () => ({
   resolveAttachment: (...args: unknown[]) => resolveAttachment(...args),

@@ -3,8 +3,11 @@ import {
   __internal,
   BOARD_FADE_MS,
   CAPTURE_TOOLS,
+  CARD_MAX_HEIGHT,
+  CARD_MIN_HEIGHT,
   MAX_SCALE,
   MIN_SCALE,
+  PHOTO_DEFAULT_WIDTH,
   SYSTEM_BOARD_ID,
   useWorkspace,
   type Card,
@@ -801,6 +804,87 @@ describe("FEAT-trash · 삭제 경로와 복구", () => {
     expect(
       (await useStorage.getState().loadCards("b1")).map((n) => n.id),
     ).toEqual(["other"]);
+  });
+});
+
+describe("FEAT-photo-card — addPhotoAt", () => {
+  async function setup() {
+    await useStorage.getState().init();
+    await useWorkspace.getState().loadFromStorage();
+  }
+
+  function cardById(id: string) {
+    return useWorkspace.getState().cards.find((c) => c.id === id);
+  }
+
+  it("폭 240, 높이는 원본 비율(800×600 → 180)로 만들고 편집 모드에 들지 않는다", async () => {
+    await setup();
+    const id = useWorkspace.getState().addPhotoAt(10, 20, {
+      ref: "opfs:x.png",
+      mediaType: "image/png",
+      naturalW: 800,
+      naturalH: 600,
+    });
+
+    const card = cardById(id);
+    expect(card?.kind).toBe("photo");
+    expect(card?.x).toBe(10);
+    expect(card?.y).toBe(20);
+    expect(card?.width).toBe(PHOTO_DEFAULT_WIDTH);
+    expect(card?.width).toBe(240);
+    expect(card?.height).toBe(180);
+    expect(card?.content).toBe("");
+    expect(card?.attachmentRef).toBe("opfs:x.png");
+    expect(card?.mediaType).toBe("image/png");
+    expect(useWorkspace.getState().editingId).toBeNull();
+    expect(useWorkspace.getState().selectedIds).toEqual([id]);
+  });
+
+  it("원본 크기를 못 읽으면 정사각형(1:1)", async () => {
+    await setup();
+    const id = useWorkspace.getState().addPhotoAt(0, 0, { ref: "opfs:no-size.png" });
+    const card = cardById(id);
+    expect(card?.width).toBe(240);
+    expect(card?.height).toBe(240);
+  });
+
+  it("높이는 CARD_MIN_HEIGHT~CARD_MAX_HEIGHT로 클램프", async () => {
+    await setup();
+    const tall = useWorkspace.getState().addPhotoAt(0, 0, {
+      ref: "opfs:tall.png",
+      naturalW: 100,
+      naturalH: 10000,
+    });
+    const flat = useWorkspace.getState().addPhotoAt(0, 0, {
+      ref: "opfs:flat.png",
+      naturalW: 10000,
+      naturalH: 10,
+    });
+    expect(cardById(tall)?.height).toBe(CARD_MAX_HEIGHT);
+    expect(cardById(flat)?.height).toBe(CARD_MIN_HEIGHT);
+  });
+
+  it("영속 — 새로고침 뒤에도 attachmentRef·mediaType·비율 유지", async () => {
+    await setup();
+    const id = useWorkspace.getState().addPhotoAt(0, 0, {
+      ref: "opfs:persist.png",
+      mediaType: "image/webp",
+      naturalW: 800,
+      naturalH: 600,
+    });
+    await new Promise((r) => setTimeout(r, 10));
+
+    useStorage.setState({ initialized: false, settings: null, quota: null });
+    useWorkspace.setState({ cards: [], selectedIds: [], editingId: null });
+    await useStorage.getState().init();
+    await useWorkspace.getState().loadFromStorage();
+
+    const restored = cardById(id);
+    expect(restored?.kind).toBe("photo");
+    expect(restored?.attachmentRef).toBe("opfs:persist.png");
+    expect(restored?.mediaType).toBe("image/webp");
+    expect(restored?.width).toBe(240);
+    expect(restored?.height).toBe(180);
   });
 });
 
