@@ -7,6 +7,7 @@ import {
   SYSTEM_BOARD_ID,
 } from "@/state/workspace";
 import { useT } from "@/i18n/Provider";
+import { useShare } from "@/state/share";
 
 /**
  * FEAT-subcanvas — 서브 캔버스 경로 브레드크럼.
@@ -27,9 +28,13 @@ export function Breadcrumb() {
     [boards, currentBoardId],
   );
 
-  // 현재 보드를 제외한 조상들만 클릭 가능한 조각으로.
+  const shared = useShare((s) => s.byBoard[currentBoardId]?.status === "shared");
+
+  // 조상은 클릭 가능한 조각, 마지막 조각은 지금 보드 이름이다.
+  // 헤더(BoardPicker)가 마운트되지 않아 이름을 여기서 안 그리면 "홈 ›"에서 끊겨 보인다.
   const ancestors = chain.slice(0, -1);
-  if (ancestors.length === 0) return null;
+  const current = chain.at(-1);
+  if (ancestors.length === 0 || !current) return null;
 
   const labelOf = (id: string, name: string) =>
     id === SYSTEM_BOARD_ID
@@ -60,6 +65,14 @@ export function Breadcrumb() {
           <span className="text-text-soft">›</span>
         </span>
       ))}
+      <span aria-current="page" className="flex items-center gap-1.5 px-1.5 py-1 text-text">
+        {labelOf(current.id, current.name)}
+        {shared ? (
+          <span className="rounded-full bg-accent-lime/30 px-1.5 text-[11px] text-text">
+            {t("workspace.subcanvas.breadcrumb.shared")}
+          </span>
+        ) : null}
+      </span>
     </nav>
   );
 }

@@ -253,7 +253,8 @@
     },
     "subcanvas": {
       "breadcrumb": {
-        "label": "캔버스 경로"
+        "label": "캔버스 경로",
+        "shared": "공유"
       },
       "deletedToast": "파일함을 지웠습니다",
       "eject": {
