@@ -260,11 +260,11 @@ export function Canvas() {
           const ch = size?.height ?? (typeof window !== "undefined" ? window.innerHeight : 700);
           const px = (cw / 2 - v.x) / v.scale - PHOTO_DEFAULT_WIDTH / 2;
           const py = (ch / 2 - v.y) / v.scale - 20;
-          for (const file of imageFiles) {
-            const photo = await storePhoto(file);
-            if (!photo) continue;
-            addPhotoAt(px, py, photo);
-          }
+          // 저장·크기 읽기는 병렬, 카드는 드롭처럼 24px씩 비켜 쌓는다.
+          const photos = await Promise.all(imageFiles.map((f) => storePhoto(f)));
+          photos.forEach((photo, i) => {
+            if (photo) addPhotoAt(px + i * DROP_STACK_OFFSET_PX, py + i * DROP_STACK_OFFSET_PX, photo);
+          });
         })();
         return;
       }
@@ -332,13 +332,15 @@ export function Canvas() {
       // 2단계 리뷰 P2: 시스템 보드에 여러 파일을 떨어뜨려도 "새 보드로 승격" 토스트는
       // 파일마다가 아니라 이 드롭 배치당 1번만 — 만든 카드 id를 모아뒀다가 한 번에.
       const createdOnSystemBoard: string[] = [];
-      for (const file of accepted) {
+      // 이미지 저장·디코드를 먼저 병렬로 시작한다. 카드는 아래 루프가 드롭 순서대로 놓는다.
+      const photoJobs = accepted.map((f) => (f.type.startsWith("image/") ? storePhoto(f) : null));
+      for (const [idx, file] of accepted.entries()) {
         const wx = baseWx + i * DROP_STACK_OFFSET_PX;
         const wy = baseWy + i * DROP_STACK_OFFSET_PX;
         // FEAT-photo-card: 이미지는 메모 없이 사진 카드, 그 외는 지금처럼 파일 블록 메모.
         // 쌓기 인덱스(i)는 두 경우가 공유한다(spec 15: 이미지 5 + pdf 1 → 24px씩 쌓임).
         if (file.type.startsWith("image/")) {
-          const photo = await storePhoto(file);
+          const photo = await photoJobs[idx];
           if (!photo) {
             i += 1;
             continue;

@@ -115,21 +115,27 @@ async function readNaturalSize(file: File): Promise<{ w: number; h: number }> {
   return { w: 0, h: 0 };
 }
 
+/** 이미지 형식·용량 검사. 거부하면 토스트를 띄우고 false — 사진 카드와 이미지 블록이 같은 한도를 쓴다. */
+function acceptImage(file: File): boolean {
+  if (!SUPPORTED_IMAGE_TYPES.has(file.type)) {
+    warn(t("capture.canvas.imageUnsupported", { type: file.type || t("capture.canvas.unknownType") }));
+    return false;
+  }
+  if (file.size > MAX_IMAGE_BYTES) {
+    const mb = Math.round(MAX_IMAGE_BYTES / (1024 * 1024));
+    warn(t("capture.canvas.imageTooBig", { mb }));
+    return false;
+  }
+  return true;
+}
+
 /**
  * FEAT-photo-card: 이미지 파일을 OPFS에 저장하고 사진 카드 생성에 필요한 정보를
  * 돌려준다. 형식·용량이 거부되면 토스트 후 null(storeImageBlock과 같은 한도).
  * 캡션은 여기서 만들지 않는다 — 카드는 빈 캡션(그냥 사진)으로 시작한다.
  */
 export async function storePhoto(file: File): Promise<StoredPhoto | null> {
-  if (!SUPPORTED_IMAGE_TYPES.has(file.type)) {
-    warn(t("capture.canvas.imageUnsupported", { type: file.type || t("capture.canvas.unknownType") }));
-    return null;
-  }
-  if (file.size > MAX_IMAGE_BYTES) {
-    const mb = Math.round(MAX_IMAGE_BYTES / (1024 * 1024));
-    warn(t("capture.canvas.imageTooBig", { mb }));
-    return null;
-  }
+  if (!acceptImage(file)) return null;
   try {
     const ref = await storeAttachment(
       useWorkspace.getState().currentBoardId,
@@ -150,15 +156,7 @@ export async function storePhoto(file: File): Promise<StoredPhoto | null> {
  * 형식·용량이 거부되면 토스트를 띄우고 null.
  */
 export async function storeImageBlock(file: File): Promise<string | null> {
-  if (!SUPPORTED_IMAGE_TYPES.has(file.type)) {
-    warn(t("capture.canvas.imageUnsupported", { type: file.type || t("capture.canvas.unknownType") }));
-    return null;
-  }
-  if (file.size > MAX_IMAGE_BYTES) {
-    const mb = Math.round(MAX_IMAGE_BYTES / (1024 * 1024));
-    warn(t("capture.canvas.imageTooBig", { mb }));
-    return null;
-  }
+  if (!acceptImage(file)) return null;
   try {
     const storageRef = await storeAttachment(
       useWorkspace.getState().currentBoardId,

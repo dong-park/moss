@@ -22,14 +22,21 @@ export function usePhotoUrl(ref: string | undefined): PhotoResolution {
   useEffect(() => {
     if (!ref) return;
     let cancelled = false;
+    let ready = false;
     const apply = (next: AttachmentResolution) => {
-      if (cancelled) return;
+      // 언마운트 뒤 도착한 결과의 URL도 회수한다 — 안 하면 blob이 붙들린다.
+      if (cancelled) {
+        if (next.url) URL.revokeObjectURL(next.url);
+        return;
+      }
+      ready = next.state === "ready";
       if (urlRef.current && urlRef.current !== next.url) URL.revokeObjectURL(urlRef.current);
       urlRef.current = next.url;
       setRes(next);
     };
+    // files 맵 변화는 모든 카드를 깨운다. 이미 그린 사진은 다시 풀지 않는다.
     const run = () => {
-      void resolveAttachment(ref).then(apply);
+      if (!ready) void resolveAttachment(ref).then(apply);
     };
     run();
     const off = onFilesMapChange(run);
