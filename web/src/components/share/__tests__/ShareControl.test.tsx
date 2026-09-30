@@ -242,6 +242,19 @@ describe("n8a 리뷰 2 · 새로고침 복원 — 링크가 없으면 명시 버
     await waitFor(() => expect(shareApi.reissueInvite).toHaveBeenCalledWith("b1", session.accessToken));
     expect(await screen.findByText("링크 복사")).toBeTruthy();
   });
+
+  test("편집자에게는 '링크 새로 만들기'가 없다 — 서버가 403으로 막는 동작이다", async () => {
+    configureShare({ api: fakeShareApi() });
+    configureAuth({ api: fakeAuthApi(), googleIdToken: vi.fn(async () => "id-token") });
+    await loginState();
+    useShare.setState({
+      byBoard: { b1: { status: "shared", inviteToken: null, role: "editor" } },
+    });
+    mount({ role: "editor" });
+
+    await openPopover();
+    expect(screen.queryByRole("button", { name: "링크 새로 만들기" })).toBeNull();
+  });
 });
 
 describe("n8a 리뷰 보안 P1 — 역할을 모르면 소유자 메뉴를 숨긴다", () => {

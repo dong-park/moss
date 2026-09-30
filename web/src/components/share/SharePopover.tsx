@@ -71,9 +71,10 @@ export function SharePopover({
               <span aria-hidden>🔗</span>
               {copied ? t("collab.share.copied") : t("collab.share.copyLink")}
             </button>
-          ) : (
+          ) : viewerRole === "owner" ? (
             // 서버는 초대 토큰 해시만 저장해 옛 링크를 다시 보여줄 수 없다 —
             // 이전 링크가 없으면 재발급을 명시 버튼으로 받는다(n8a 리뷰 2).
+            // 링크 발급은 소유자만 된다 — 편집자에게 보이면 누르는 순간 403이다.
             <button
               type="button"
               onClick={onReissue}
@@ -83,7 +84,7 @@ export function SharePopover({
               <span aria-hidden>🔗</span>
               {t("collab.share.createLink")}
             </button>
-          )}
+          ) : null}
 
           <div className="flex flex-col">
             {members.map((member) => (

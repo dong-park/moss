@@ -5,6 +5,7 @@
  * 모듈 로드 시점에 fetch하지 않는다.
  */
 import { apiBaseUrl, AuthRequestError, type BoardSummary } from "@/state/auth";
+import { readErrorMessage } from "@/state/auth/api";
 import type { BoardMember, BoardToken } from "./types";
 
 export interface ShareApi {
@@ -40,7 +41,9 @@ async function request<T>({ method, path, accessToken, body }: RequestInit_): Pr
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (!res.ok) {
-    throw new AuthRequestError(`${method} ${path} ${res.status}`, res.status);
+    // 서버 문구("소유자만 링크를 만들 수 있어요")가 팝오버에 그대로 뜬다 — 없을 때만 기계 문구.
+    const message = (await readErrorMessage(res)) ?? `${method} ${path} ${res.status}`;
+    throw new AuthRequestError(message, res.status);
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;

@@ -64,7 +64,7 @@ export interface AuthApi {
  * 문구를 그대로 쓰고, 없으면(비JSON·프록시 오류) null을 돌려준다 — 호출자가 상태 코드별
  * 기본 문구를 살릴 수 있게 한다. "/auth/login 401" 같은 기계 문구를 만들지 않는다.
  */
-async function readErrorMessage(res: Response): Promise<string | null> {
+export async function readErrorMessage(res: Response): Promise<string | null> {
   try {
     const body = (await res.json()) as { message?: unknown };
     if (typeof body?.message === "string" && body.message) return body.message;
