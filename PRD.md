@@ -101,7 +101,6 @@ moss는 저장된 정보를 관리하는 툴이 아니라:
 
 ### 4-2. 제외 사항 (MVP에서 명시적으로 제외)
 
-- 팀 협업 / 여러 사용자 동시 편집
 - 업무·태스크 관리 (할일, 마감, 담당자)
 - 캘린더 / 프로젝트 관리
 - AI 글쓰기·콘텐츠 자동 생성 (대필)
@@ -1001,7 +1000,7 @@ moss/
 │  Backend Proxy (Stateless, edge-deployed)                │
 │  - AI key holder (Claude / OpenAI)                       │
 │  - Quota / rate limit per user                           │
-│  - Auth (Supabase Auth or Clerk)                         │
+│  - Auth (Ktor 자체, Google OAuth)                        │
 │  - Stripe webhook                                        │
 │  - Optional: y-websocket sync for Pro                    │
 └─────────────────────────────────────────────────────────┘
@@ -1023,7 +1022,7 @@ moss/
 
 ### 20-3. 데이터 흐름 원칙
 
-1. **메모 본문은 기본적으로 서버를 통과하지 않는다.** AI 호출 시점에만, 옵트인된 메모만 일시적으로 통과.
+1. **메모 본문은 기본적으로 서버를 통과하지 않는다.** 단, 공유 보드는 서버에 평문으로 저장한다. AI 호출 시점에만, 옵트인된 메모만 일시적으로 통과.
 2. **백엔드 proxy는 stateless를 지향.** 영구 상태는 인증/결제/(Pro) sync 릴레이뿐.
 3. **클라이언트가 오프라인이어도 AI 외 모든 기능이 작동해야 한다.**
 
@@ -1173,8 +1172,9 @@ type User = {
 
 ### 23-3. 암호화
 
-- 동기화 채널의 데이터는 **클라이언트에서 암호화 후 전송**. 서버는 암호문만 본다.
-- 키 도출: PBKDF2(사용자 비밀번호 + 기기 솔트). 비밀번호 분실 시 복구 불가 (사용자에게 명시).
+- **공유 보드는 서버에 평문으로 저장한다.** Yjs 문서를 Hocuspocus로 병합·스냅샷하려면 서버가 내용을 읽어야 하므로, 첫 버전에서는 종단간 암호화를 쓰지 않는다.
+- 혼자 쓰는 보드는 기기에만 남고 서버를 통과하지 않는다.
+- 종단간 암호화는 Pro 단계로 미룬다.
 
 ---
 
@@ -1284,7 +1284,7 @@ score(a, b) = cos(emb_a, emb_b) × temporal_decay × user_signal
 
 ### 27-1. 인증
 
-- **Supabase Auth** (이메일 매직 링크 + Google OAuth)
+- **Ktor 자체 인증** (Google OAuth, Ktor가 액세스·리프레시 JWT를 직접 서명)
 - Free 사용자도 선택적으로 가입 가능(백업·AI 쿼터 추적용) 또는 익명 사용 가능
 - 익명 → 로그인 시 로컬 데이터 보존
 
@@ -1387,7 +1387,7 @@ score(a, b) = cos(emb_a, emb_b) × temporal_decay × user_signal
 | 저장소 | **Dexie** (IndexedDB) + **OPFS** | §22-1 |
 | 캔버스 | DOM + `react-window` (MVP) | §26-1 |
 | 백엔드 | **Next.js Route Handlers** on **Vercel Edge** | 지연 최소화 |
-| 인증 | **Supabase Auth** | 매직 링크 + OAuth |
+| 인증 | **Ktor 자체 인증** | Google OAuth, JWT 직접 서명 (FEAT-collab-auth D5·D7) |
 | 결제 | **Stripe** | — |
 | AI | **Anthropic SDK** + **OpenAI SDK** | 이중 공급자 |
 | 분석 | **PostHog** | 셀프 호스팅 가능 |
@@ -1430,7 +1430,6 @@ score(a, b) = cos(emb_a, emb_b) × temporal_decay × user_signal
 ### 34-2. 제외
 
 - 여러 기기 동기화 (Pro 기능으로 분리, MVP 이후)
-- 팀 협업 / 실시간 공동 편집
 - 네이티브 데스크톱 / 모바일 앱
 - 업무·태스크 관리 / 캘린더 / 프로젝트 관리
 - AI 글 대필 생성
@@ -1502,7 +1501,7 @@ score(a, b) = cos(emb_a, emb_b) × temporal_decay × user_signal
 | 3 | text-embedding-3-small 1024d | 3-large, Voyage | 비용·성능 절충, 한국어 충분 | 2026-05-19 |
 | 4 | 요약은 Claude Haiku 4.5 | GPT-5 mini, Sonnet | 톤 + 비용 + 응답 속도 | 2026-05-19 |
 | 5 | DOM 렌더러 (MVP) | Canvas2D, WebGL | 접근성 + 디버깅 + 메모 200개까지 충분 | 2026-05-19 |
-| 6 | Supabase Auth | Clerk, Auth.js | 가격 + 셀프 호스팅 옵션 | 2026-05-19 |
+| 6 | Ktor 자체 인증 (Google OAuth) | Supabase Auth, Clerk, Auth.js | 공동 편집 백엔드를 한 스택으로, 외부 의존 없음 | 2026-09-28 (2026-05-19 Supabase에서 변경) |
 | 7 | Stripe 우선 | 토스, Paddle | 글로벌 우선, 국내는 2단계에서 | 2026-05-19 |
 | 8 | 한국어 단독 v1 | 한·영 동시 | 톤 손실 위험 | 2026-05-19 |
 | 9 | Markdown + JSON Canvas + .moss | 자체 포맷만 | 표준 호환성 + 무손실, 둘 다 만족 | 2026-05-19 |

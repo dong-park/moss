@@ -46,6 +46,9 @@
   /* color — etc */
   --color-dot: #d8d2c4;
 
+  /* FEAT-collab-auth n7: 참여자 색 8개의 단일 출처는
+   * src/state/presence/colors.ts(SYSTEM_COLORS). CSS 변수로 중복 정의하지 않는다. */
+
   /* font family */
   --font-sans:
     "Pretendard Variable", Pretendard, "Apple SD Gothic Neo", system-ui,

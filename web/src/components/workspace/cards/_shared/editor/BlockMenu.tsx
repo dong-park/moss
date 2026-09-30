@@ -31,9 +31,11 @@ import { editorViewCtx, parserCtx } from "@milkdown/core";
 import { useT } from "@/i18n/Provider";
 import { useToasts } from "@/state/notifications";
 import { storeFileBlock, storeImageBlock } from "@/components/workspace/canvasCapture";
-import { makeAttachmentFilename, putBlob } from "@/state/db/opfs";
+import { makeAttachmentFilename } from "@/state/db/opfs";
 import { serializeBlock } from "@/state/blocks";
 import { MAX_ATTACHMENT_BYTES } from "@/state/attachmentLimits";
+import { storeAttachment } from "@/state/share/attachments";
+import { useWorkspace } from "@/state/workspace";
 
 function pickAudioMimeType(): string | undefined {
   if (typeof MediaRecorder === "undefined") return undefined;
@@ -213,7 +215,11 @@ export function BlockMenu() {
         return;
       }
       try {
-        const ref = await putBlob(makeAttachmentFilename(blob.type), blob);
+        const ref = await storeAttachment(
+          useWorkspace.getState().currentBoardId,
+          makeAttachmentFilename(blob.type),
+          blob,
+        );
         insertBlockMarkdown(serializeBlock({ type: "audio", ref }));
       } catch {
         push({ tone: "warn", title: t("workspace.memoEditor.blockMenu.saveFailed") });

@@ -20,6 +20,31 @@ import {
   quotaUsage,
   type QuotaInfo,
 } from "@/state/db/opfs";
+import {
+  deleteConnectionRecord,
+  writeConnectionRecord,
+  writeToBoardDoc,
+} from "@/state/ydoc/writeThrough";
+import {
+  deleteConnection as deleteConnectionDoc,
+  deleteNote as deleteNoteDoc,
+  readConnections as readConnectionsDoc,
+  updateNoteField,
+} from "@/state/ydoc/model";
+import {
+  SYSTEM_BOARD_ID,
+  isSystemBoardNote,
+  normalizeBoardId,
+} from "@/state/boardIds";
+
+/**
+ * n1: 시스템 보드 주소의 메모를 고르는 필터. 마이그레이션 전 레거시 행(boardId=null)도
+ * 함께 포함한다 — 중단·재개 경계에서 잠깐 공존할 수 있다.
+ */
+function systemBoardNoteFilter(db: MossDB) {
+  return db.notes.filter(isSystemBoardNote);
+}
+
 
 interface StorageState {
   initialized: boolean;
@@ -30,16 +55,22 @@ interface StorageState {
 
   loadCards: (boardId: string | null) => Promise<Note[]>;
   /**
+   * n23 P2-12: 보드의 기기 로컬 필드(lastVisitedAt)만 id→값으로 읽는다.
+   * 카드 본문·좌표는 Y.Doc이 원본이라 Dexie에서 Note 전체를 재구성할 필요가 없다.
+   */
+  loadLastVisitedAt: (boardId: string | null) => Promise<Record<string, number>>;
+  /**
    * FEAT-memo-table-view: 모든 보드의 노트를 한 번에 읽는다. 현재 스토어 `cards`는
    * 현재 보드만 들고 있으므로 표 뷰는 이 별도 쿼리를 쓴다(spec §4 의존). createdAt
-   * 오름차순으로 안정 정렬해 돌려준다.
+   * 오름차순으로 안정 정렬해 돌려준다. Dexie 미러를 읽는다 — 보드 문서를 다 열지 않는다.
    */
   loadAllNotes: () => Promise<Note[]>;
-  saveNote: (patch: Partial<Note> & { id: string }) => Promise<void>;
+  saveNote: (patch: Partial<Note> & { id: string }) => Promise<Note>;
   /**
    * FEAT-memo-table-view P1-2: 표 인라인 제목 확정 전용. 없는 노트는 만들지 않고
    * (`db.notes.update` — 없으면 no-op), 값이 같으면 updatedAt도 건드리지 않는다.
    * saveNote의 mergeNote가 무변경/없는 노트도 새로 만들며 updatedAt을 올리는 문제 회피.
+   * 미러를 고친 뒤 그 노트의 보드 문서에도 쓴다 — 원본은 Y.Doc이다.
    */
   updateNoteTitle: (id: string, title: string | undefined) => Promise<void>;
   removeNote: (id: string) => Promise<void>;
@@ -48,7 +79,7 @@ interface StorageState {
    * FEAT-text-tool: 휴지통을 거치지 않고 즉시 영구 삭제한다(연결선·임베딩 포함,
    * 한 트랜잭션). "빈 텍스트 자동 소멸"처럼 되돌리기 대상이 아닌 행 전용.
    */
-  hardDeleteNotes: (ids: string[]) => Promise<void>;
+  hardDeleteNotes: (ids: string[], boardId?: string | null) => Promise<void>;
 
   /**
    * FEAT-trash: 메모를 영구 삭제 대신 휴지통으로 보낸다. 한 트랜잭션에서 연결선·보드
@@ -77,6 +108,10 @@ interface StorageState {
   loadBoards: () => Promise<Board[]>;
   saveBoard: (patch: Partial<Board> & { id: string }) => Promise<void>;
   removeBoard: (id: string) => Promise<void>;
+  /** P1 AC-8: 지운 보드 id를 settings.deletedBoardIds에 남긴다(최근 200개). */
+  rememberDeletedBoards: (ids: string[]) => Promise<void>;
+  /** P1 AC-8: 휴지통 복원으로 보드가 돌아오면 목록에서 뺀다. */
+  forgetDeletedBoards: (ids: string[]) => Promise<void>;
   /** FEAT-subcanvas: boardId별 카드 수 — 함 카드의 "카드 N개" 표시용. */
   countCardsByBoard: (boardIds: string[]) => Promise<Record<string, number>>;
   /**
@@ -110,6 +145,21 @@ async function ensureSettings(db: MossDB): Promise<Settings> {
   if (existing) return existing;
   await db.settings.put({ ...DEFAULT_SETTINGS });
   return { ...DEFAULT_SETTINGS };
+}
+
+/** P1 AC-8: 지운 보드 id 목록의 최근 보관 상한. 오래된 것부터 밀려난다. */
+const DELETED_BOARD_IDS_LIMIT = 200;
+
+/** deletedBoardIds를 덮어쓰고 settings 상태를 갱신한다. */
+async function putDeletedBoardIds(db: MossDB, ids: string[]): Promise<Settings> {
+  const current = (await db.settings.get("singleton")) ?? { ...DEFAULT_SETTINGS };
+  const next: Settings = {
+    ...current,
+    id: "singleton",
+    deletedBoardIds: ids.slice(-DELETED_BOARD_IDS_LIMIT),
+  };
+  await db.settings.put(next);
+  return next;
 }
 
 function mergeNote(
@@ -226,13 +276,28 @@ export const useStorage = create<StorageState>((set, get) => ({
 
   loadCards: async (boardId) => {
     const db = getDB();
+    const bid = normalizeBoardId(boardId);
     const coll =
-      boardId === null
-        ? db.notes.filter((n) => n.boardId === null)
-        : db.notes.where("boardId").equals(boardId);
+      bid === SYSTEM_BOARD_ID
+        ? systemBoardNoteFilter(db)
+        : db.notes.where("boardId").equals(bid);
     const notes = await coll.toArray();
     notes.sort((a, b) => a.createdAt - b.createdAt);
     return notes;
+  },
+
+  loadLastVisitedAt: async (boardId) => {
+    const db = getDB();
+    const bid = normalizeBoardId(boardId);
+    const coll =
+      bid === SYSTEM_BOARD_ID
+        ? systemBoardNoteFilter(db)
+        : db.notes.where("boardId").equals(bid);
+    const out: Record<string, number> = {};
+    await coll.each((n) => {
+      if (typeof n.lastVisitedAt === "number") out[n.id] = n.lastVisitedAt;
+    });
+    return out;
   },
 
   loadAllNotes: async () => {
@@ -248,6 +313,9 @@ export const useStorage = create<StorageState>((set, get) => ({
     const next = mergeNote(prev, patch);
     await db.notes.put(next);
     // 빈번한 saveNote 후마다 quota 호출은 비싸므로 호출자가 refreshQuota를 명시적으로 부른다.
+    // n23 P1-5: 정규화된 Note를 돌려준다 — 호출자(브리지)가 Dexie read-back 없이
+    // 그대로 Y.Doc에 쓸 수 있게. read-back이 비면 쓰기를 조용히 건너뛰던 경로 제거.
+    return next;
   },
 
   updateNoteTitle: async (id, title) => {
@@ -256,7 +324,13 @@ export const useStorage = create<StorageState>((set, get) => ({
     if (!prev) return; // 없는 노트는 새로 만들지 않는다(P1-2).
     const next = title || undefined;
     if ((prev.title ?? "") === (next ?? "")) return; // 무변경 — updatedAt 무갱신.
-    await db.notes.update(id, { title: next, updatedAt: Date.now() });
+    const updatedAt = Date.now();
+    await db.notes.update(id, { title: next, updatedAt });
+    // 원본은 보드 문서다. 제목·updatedAt 두 키만 바꿔 미러의 낡은 본문으로 덮지 않는다.
+    await writeToBoardDoc(prev.boardId ?? null, (doc) => {
+      updateNoteField(doc, id, "title", next);
+      updateNoteField(doc, id, "updatedAt", updatedAt);
+    });
   },
 
   removeNote: async (id) => {
@@ -265,9 +339,25 @@ export const useStorage = create<StorageState>((set, get) => ({
     await get().purgeTrash([id]);
   },
 
-  hardDeleteNotes: async (ids) => {
+  hardDeleteNotes: async (ids, boardId) => {
     if (ids.length === 0) return;
     const db = getDB();
+    // 원본 문서에서 먼저 지운다. 보드를 모르면 미러 행의 boardId로 찾는다.
+    const byBoard = new Map<string | null, string[]>();
+    for (const id of ids) {
+      const bid =
+        boardId !== undefined ? boardId : ((await db.notes.get(id))?.boardId ?? null);
+      byBoard.set(bid, [...(byBoard.get(bid) ?? []), id]);
+    }
+    for (const [bid, noteIds] of byBoard) {
+      const gone = new Set(noteIds);
+      await writeToBoardDoc(bid, (doc) => {
+        for (const c of readConnectionsDoc(doc)) {
+          if (gone.has(c.sourceNoteId) || gone.has(c.targetNoteId)) deleteConnectionDoc(doc, c.id);
+        }
+        for (const id of noteIds) deleteNoteDoc(doc, id);
+      });
+    }
     await db.transaction(
       "rw",
       [db.notes, db.connections, db.embeddings],
@@ -337,7 +427,8 @@ export const useStorage = create<StorageState>((set, get) => ({
 
   restoreNote: async (id, fallback) => {
     const db = getDB();
-    return db.transaction(
+    let back: Connection[] = [];
+    const restored = await db.transaction(
       "rw",
       [db.notes, db.connections, db.trash, db.trashConnections, db.boards],
       async () => {
@@ -377,12 +468,15 @@ export const useStorage = create<StorageState>((set, get) => ({
             c.sourceNoteId === id ? c.targetNoteId : c.sourceNoteId,
           ),
         );
-        const back = parked.filter((_, i) => others[i]);
+        back = parked.filter((_, i) => others[i]);
         await db.connections.bulkPut(back);
         await db.trashConnections.bulkDelete(back.map((c) => c.id));
         return restored;
       },
     );
+    // 되돌린 연결선을 원본 문서에도 쓴다. 소유 문서는 source 메모의 보드다.
+    for (const c of back) await writeConnectionRecord(c);
+    return restored;
   },
 
   purgeTrash: async (ids) => {
@@ -439,9 +533,37 @@ export const useStorage = create<StorageState>((set, get) => ({
   removeBoard: async (id) => {
     const db = getDB();
     await db.transaction("rw", db.boards, db.notes, async () => {
-      await db.notes.where("boardId").equals(id).modify({ boardId: null });
+      // n1: 보드 삭제 후 메모는 시스템 보드로 옮긴다. 이제 그 id는 UUID다.
+      await db.notes
+        .where("boardId")
+        .equals(id)
+        .modify({ boardId: SYSTEM_BOARD_ID });
       await db.boards.delete(id);
     });
+    // P1 AC-8: 지운 사실을 남겨 `/b/<id>` 재진입이 "찾을 수 없는 보드예요"가 되게 한다.
+    await get().rememberDeletedBoards([id]);
+  },
+
+  rememberDeletedBoards: async (ids) => {
+    if (ids.length === 0) return;
+    const db = getDB();
+    const current = (await db.settings.get("singleton")) ?? { ...DEFAULT_SETTINGS };
+    const drop = new Set(ids);
+    const prev = (current.deletedBoardIds ?? []).filter((x) => !drop.has(x));
+    const next = await putDeletedBoardIds(db, [...prev, ...ids]);
+    set({ settings: next });
+  },
+
+  forgetDeletedBoards: async (ids) => {
+    if (ids.length === 0) return;
+    const db = getDB();
+    const current = (await db.settings.get("singleton")) ?? { ...DEFAULT_SETTINGS };
+    const drop = new Set(ids);
+    const next = await putDeletedBoardIds(
+      db,
+      (current.deletedBoardIds ?? []).filter((x) => !drop.has(x)),
+    );
+    set({ settings: next });
   },
 
   countCardsByBoard: async (boardIds) => {
@@ -511,6 +633,8 @@ export const useStorage = create<StorageState>((set, get) => ({
       },
     );
     // OPFS blob은 의도적으로 보존 — undo 만료 시 purgeAttachments가 정리.
+    // P1 AC-8: 지운 보드(트리 전체) id를 남긴다 — 함 카드 삭제 뒤 주소 재진입 안내.
+    await get().rememberDeletedBoards(toDelete);
     return snapshot;
   },
 
@@ -539,10 +663,20 @@ export const useStorage = create<StorageState>((set, get) => ({
     const prev = await db.connections.get(patch.id);
     const next = mergeConnection(prev, patch);
     await db.connections.put(next);
+    // n23 P1-1: 연결선의 Y.Doc 쓰기는 writeThrough 단일 경로(소유=source 메모 보드)만
+    // 담당한다. 여기서 활성 문서에 쓰면 활성 보드가 아닌 소유 보드에도 실려 비공개
+    // 보드 정보가 공유 문서로 샌다.
+    // n23 재심사 2R-6: 저장은 Dexie 미러 + 소유 문서를 storage 한 액션으로 합친다.
+    // 소유 보드는 원본 문서의 source 메모에서 판정한다(미러는 locate 힌트일 뿐).
+    await writeConnectionRecord(next);
   },
 
   removeConnection: async (id) => {
-    await getDB().connections.delete(id);
+    const db = getDB();
+    const conn = await db.connections.get(id);
+    await db.connections.delete(id);
+    // n23 재심사 2R-6: 삭제도 한 액션에서 소유 문서까지 지운다.
+    if (conn) await deleteConnectionRecord(id, conn.sourceNoteId);
   },
 
   updateSettings: async (patch) => {

@@ -7,6 +7,8 @@ import {
 import { useStorage } from "@/state/storage";
 import { resetDB, type Connection, type Note } from "@/state/db/schema";
 import { buildJsonCanvas } from "@/state/export/jsonCanvasExport";
+import { destroyBoardDocs, getOrOpenBoardDoc } from "@/state/ydoc/activeDoc";
+import { putConnection, putNote } from "@/state/ydoc/model";
 
 let originalStorage: PropertyDescriptor | undefined;
 
@@ -25,6 +27,7 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+  await destroyBoardDocs();
   await resetDB();
   useStorage.setState({ initialized: false, settings: null, quota: null });
   useWorkspace.setState({
@@ -177,8 +180,8 @@ describe("FEAT-connectors · store", () => {
     });
     useWorkspace.getState().connectCards("a", "bottom", "b", "top");
     // DB에도 카드가 있어야 trash/restore가 동작.
-    await storage.saveNote({ id: "a", boardId: null, content: "" });
-    await storage.saveNote({ id: "b", boardId: null, content: "" });
+    await storage.saveNote({ id: "a", boardId: SYSTEM_BOARD_ID, content: "" });
+    await storage.saveNote({ id: "b", boardId: SYSTEM_BOARD_ID, content: "" });
 
     useWorkspace.getState().remove("a");
     await Promise.resolve();
@@ -198,20 +201,33 @@ describe("FEAT-connectors · store", () => {
   it("loadFromStorage: 양 끝이 현재 보드 카드인 active 연결만 싣는다", async () => {
     const storage = useStorage.getState();
     await storage.init();
-    await storage.saveNote({ id: "a", boardId: null, content: "" });
-    await storage.saveNote({ id: "b", boardId: null, content: "" });
-    await storage.saveNote({ id: "c", boardId: "other", content: "" });
-    await storage.saveConnection({
+    // 원본은 보드 문서다. 선은 source 메모(a)의 보드 문서가 가진다.
+    const note = (id: string, boardId: string): Note => ({
+      id, boardId, kind: "text", x: 0, y: 0, width: 240, rotation: 0, content: "",
+      aiOptOut: false, createdAt: 1, updatedAt: 1, lastVisitedAt: 1,
+    });
+    const handle = getOrOpenBoardDoc(SYSTEM_BOARD_ID);
+    await handle.whenLoaded;
+    putNote(handle.doc, note("a", SYSTEM_BOARD_ID));
+    putNote(handle.doc, note("b", SYSTEM_BOARD_ID));
+    putConnection(handle.doc, {
       id: "c1",
       sourceNoteId: "a",
       targetNoteId: "b",
+      source: "manual",
+      status: "active",
+      createdAt: 1,
       sourceSide: "right",
       targetSide: "left",
     });
-    await storage.saveConnection({
+    // 다른 보드 메모(c)에 닿은 선은 그리지 않는다.
+    putConnection(handle.doc, {
       id: "c2",
       sourceNoteId: "a",
       targetNoteId: "c",
+      source: "manual",
+      status: "active",
+      createdAt: 1,
     });
 
     await useWorkspace.getState().loadFromStorage();

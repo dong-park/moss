@@ -22,10 +22,8 @@ import { useToasts } from "@/state/notifications";
 import { useWorkspace, SYSTEM_BOARD_ID, type Card } from "@/state/workspace";
 import { getDB, resetDB, type Board, type Note } from "@/state/db/schema";
 import {
-  handleIncoming,
-  broadcastCardChange,
+  notifyNoteChanges,
   __resetLiveSyncForTest,
-  __getTabId,
 } from "@/state/db/liveSync";
 
 let originalStorage: PropertyDescriptor | undefined;
@@ -100,7 +98,7 @@ describe("memoTable 파생 — boardPath", () => {
   const boards = [
     mkBoard({ id: "root", name: "루트" }),
     mkBoard({ id: "sub", name: "함", parentBoardId: "root" }),
-    mkBoard({ id: "sysSub", name: "시스템함", parentBoardId: "system" }),
+    mkBoard({ id: "sysSub", name: "시스템함", parentBoardId: SYSTEM_BOARD_ID }),
   ];
 
   it("시스템 보드(null)는 시스템 라벨", () => {
@@ -203,7 +201,7 @@ describe("memoTable 파생 — 필터", () => {
   it("시스템 보드 키로 무소속 메모를 고른다", () => {
     const sys = applyFilters(
       rows,
-      { ...defaultFilters("root"), boardFilter: ["system"] },
+      { ...defaultFilters("root"), boardFilter: [SYSTEM_BOARD_ID] },
       boards,
     ).map((r) => r.id);
     expect(sys).toEqual(["n-sys"]);
@@ -479,13 +477,8 @@ describe("memoTable store — 로드·편집·휴지통·실시간", () => {
     await s.saveNote({ id: "n2", boardId: null, content: "다른 탭 메모" });
     expect(useMemoTable.getState().notes.some((n) => n.id === "n2")).toBe(false);
 
-    await handleIncoming({
-      type: "card-upsert",
-      id: "n2",
-      boardId: null,
-      updatedAt: Date.now() + 10,
-      origin: "other-tab",
-    });
+    // 원격 반영(문서 observer)이 미러를 쓴 뒤 알린다.
+    notifyNoteChanges();
 
     // 반영은 디바운스 후 비동기 reload로 이뤄진다(P1-5).
     await vi.waitFor(() => {
@@ -496,6 +489,8 @@ describe("memoTable store — 로드·편집·휴지통·실시간", () => {
   it("D1: 행 열기는 lastOpenedAt을 갱신하지 않고, 메모창 닫힘 시 진입 보드·뷰포트로 복원한다", async () => {
     const s = await setup();
     await s.saveBoard({ id: "b1", name: "함1", lastOpenedAt: 111 });
+    // 온보딩 뒤 setCurrentBoard는 로컬에 없는 보드를 열지 않는다 — 복귀 대상도 만들어 둔다.
+    await s.saveBoard({ id: "b2", name: "보드2" });
     await s.saveNote({ id: "n1", boardId: "b1", content: "메모" });
     useWorkspace.setState({
       currentBoardId: "b2",
@@ -562,47 +557,17 @@ describe("memoTable store — 로드·편집·휴지통·실시간", () => {
     expect(useWorkspace.getState().tableReturnBoardId).toBeNull();
   });
 
-  it("P1-5: 자기 발신·stale은 표 재조회를 유발하지 않는다", async () => {
+  it("P1-5: 원격 반영 알림이 없으면 표를 재조회하지 않는다", async () => {
     const s = await setup();
     await s.saveNote({ id: "n1", boardId: null, content: "메모" });
     await useMemoTable.getState().ensureLoaded();
 
-    // n1의 최신 관측 updatedAt을 5000으로 세워 둔다(발신 훅이 하는 일과 동일).
-    broadcastCardChange({
-      type: "card-upsert",
-      id: "n1",
-      boardId: null,
-      updatedAt: 5000,
-    });
-
     const loadSpy = vi.spyOn(useStorage.getState(), "loadAllNotes");
-    // 자기 탭 발신 — origin이 이 탭.
-    await handleIncoming({
-      type: "card-upsert",
-      id: "n1",
-      boardId: null,
-      updatedAt: 6000,
-      origin: __getTabId(),
-    });
-    // stale — 이미 본 updatedAt 이하.
-    await handleIncoming({
-      type: "card-upsert",
-      id: "n1",
-      boardId: null,
-      updatedAt: 4000,
-      origin: "other-tab",
-    });
     await new Promise((r) => setTimeout(r, 300));
     expect(loadSpy).not.toHaveBeenCalled();
 
-    // 실제 반영되는 메시지는 재조회를 유발한다.
-    await handleIncoming({
-      type: "card-upsert",
-      id: "n1",
-      boardId: null,
-      updatedAt: 7000,
-      origin: "other-tab",
-    });
+    // 원격 반영 알림은 재조회를 유발한다.
+    notifyNoteChanges();
     await vi.waitFor(() => {
       expect(loadSpy).toHaveBeenCalled();
     });

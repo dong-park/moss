@@ -12,6 +12,10 @@ import { resetDB } from "@/state/db/schema";
 import { countBlocks } from "@/state/blocks";
 import { flushCard } from "@/state/cardPersist";
 import { putBlob } from "@/state/db/opfs";
+import { configureAttachments, resetAttachments } from "@/state/share/attachments";
+import { resetShareStore, useShare } from "@/state/share/store";
+import { useAuth } from "@/state/auth";
+import type { BoardFile, FilesApi } from "@/state/share/files";
 import { dispatchOp, type BridgeNote } from "@/state/bridge/mossBridge";
 
 // 1x1 PNG.
@@ -441,6 +445,8 @@ describe("dispatchOp", () => {
     });
     afterEach(async () => {
       await resetDB();
+      resetShareStore();
+      resetAttachments();
       useStorage.setState({ initialized: false, settings: null, quota: null });
     });
 
@@ -551,10 +557,13 @@ describe("dispatchOp", () => {
       expect(boards.find((b) => b.id === r.boardRef)?.parentBoardId).toBe("b-host");
     });
 
-    it('boardId "system"은 현재가 사용자 보드여도 시스템 보드(null)를 타겟', async () => {
+    it("boardId SYSTEM_BOARD_ID는 현재가 사용자 보드여도 시스템 보드를 타겟", async () => {
       useWorkspace.setState({ currentBoardId: "b-user" });
-      await dispatchOp("notes.create", { content: "시스템행", boardId: "system" });
-      const sys = await useStorage.getState().loadCards(null);
+      await dispatchOp("notes.create", {
+        content: "시스템행",
+        boardId: SYSTEM_BOARD_ID,
+      });
+      const sys = await useStorage.getState().loadCards(SYSTEM_BOARD_ID);
       expect(sys.map((n) => n.content)).toContain("시스템행");
     });
 
@@ -564,6 +573,52 @@ describe("dispatchOp", () => {
       );
       const all = await useStorage.getState().loadCards(null);
       expect(all).toHaveLength(0);
+    });
+
+    // n10w P1-1 — 첨부는 "현재 보드"가 아니라 op의 대상 보드로 올라가야 한다.
+    it("notes.create boardId(공유 보드) blocks[image] → 대상 보드로 업로드", async () => {
+      const upload = vi.fn<
+        (boardId: string, file: Blob, filename: string, token: string) => Promise<BoardFile>
+      >();
+      upload.mockResolvedValue({ id: "f-1", name: "a.png", size: 3, contentType: "image/png" });
+      configureAttachments({ files: { upload, download: vi.fn() } as unknown as FilesApi });
+      const sessionSpy = vi
+        .spyOn(useAuth.getState(), "ensureSession")
+        .mockResolvedValue({ accessToken: "tok" } as never);
+      useShare.setState({ byBoard: { "b-shared": { status: "shared", inviteToken: null } } });
+
+      await dispatchOp("notes.create", {
+        content: "",
+        boardId: "b-shared",
+        blocks: [{ type: "image", dataBase64: PNG_B64, mimeType: "image/png" }],
+      });
+
+      await vi.waitFor(() => expect(upload).toHaveBeenCalledTimes(1));
+      expect(upload.mock.calls[0]![0]).toBe("b-shared");
+      sessionSpy.mockRestore();
+    });
+
+    it("notes.create boardId(비공유) blocks[image] → 현재 보드가 공유여도 업로드하지 않는다", async () => {
+      const upload = vi.fn<
+        (boardId: string, file: Blob, filename: string, token: string) => Promise<BoardFile>
+      >();
+      upload.mockResolvedValue({ id: "f-1", name: "a.png", size: 3, contentType: "image/png" });
+      configureAttachments({ files: { upload, download: vi.fn() } as unknown as FilesApi });
+      const sessionSpy = vi
+        .spyOn(useAuth.getState(), "ensureSession")
+        .mockResolvedValue({ accessToken: "tok" } as never);
+      useWorkspace.setState({ currentBoardId: "b-current" });
+      // 현재 보드만 공유 상태 — 대상 비공유 보드의 첨부가 여기로 새면 안 된다.
+      useShare.setState({ byBoard: { "b-current": { status: "shared", inviteToken: null } } });
+
+      await dispatchOp("notes.create", {
+        content: "",
+        boardId: "b-target",
+        blocks: [{ type: "image", dataBase64: PNG_B64, mimeType: "image/png" }],
+      });
+
+      expect(upload).not.toHaveBeenCalled();
+      sessionSpy.mockRestore();
     });
   });
 });

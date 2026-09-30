@@ -130,7 +130,8 @@ function boardPathLabelFromMap(
   boardId: string | null,
   systemLabel: string,
 ): string {
-  if (boardId === null) return systemLabel;
+  // 온보딩 뒤 시스템 보드는 평범한 보드 행이다. 행 이름 대신 시스템 라벨을 쓴다.
+  if (boardId === null || boardId === SYSTEM_BOARD_ID) return systemLabel;
   const chain: string[] = [];
   const guard = new Set<string>();
   let id: string | null | undefined = boardId;

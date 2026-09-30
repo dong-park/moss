@@ -7,9 +7,11 @@
  * 않고 같은 제한(용량·형식)만 독립적으로 반영한다(spec §4 경계 조건).
  * ───────────────────────────────────────────────────────────── */
 
-import { makeAttachmentFilename, putBlob } from "@/state/db/opfs";
+import { makeAttachmentFilename } from "@/state/db/opfs";
 import { serializeBlock } from "@/state/blocks";
 import { useToasts } from "@/state/notifications";
+import { storeAttachment } from "@/state/share/attachments";
+import { useWorkspace } from "@/state/workspace";
 // FEAT-sticky-redesign 2단계 리뷰 P1-6 — 한도·지원 형식은 attachmentLimits.ts가 유일한
 // 출처(imagePaste.ts·BlockMenu.tsx와 공유). MAX_ATTACHMENT_BYTES는 기존 이름을 유지한 채
 // MAX_ATTACHMENT_BYTES를 재노출한다(호출부 하위 호환).
@@ -72,7 +74,11 @@ export async function storeImageBlock(file: File): Promise<string | null> {
     return null;
   }
   try {
-    const storageRef = await putBlob(makeAttachmentFilename(file.type), file);
+    const storageRef = await storeAttachment(
+      useWorkspace.getState().currentBoardId,
+      makeAttachmentFilename(file.type),
+      file,
+    );
     return serializeBlock({ type: "image", ref: storageRef });
   } catch (err) {
     console.warn("canvasCapture: 이미지 저장 실패", err);
@@ -92,7 +98,8 @@ export async function storeFileBlock(file: File): Promise<string | null> {
     return null;
   }
   try {
-    const storageRef = await putBlob(
+    const storageRef = await storeAttachment(
+      useWorkspace.getState().currentBoardId,
       makeAttachmentFilename(file.type || undefined),
       file,
     );

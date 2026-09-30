@@ -566,7 +566,7 @@ describe("FEAT-boards · 보드 store", () => {
     ).rejects.toThrow();
   });
 
-  it("removeBoard — 메모는 boardId=null로 보존됨 (시스템 보드로 이관)", async () => {
+  it("removeBoard — 메모는 시스템 보드 UUID로 보존됨", async () => {
     const id = await useWorkspace.getState().createBoard("temp");
     await waitFade();
     const cardId = useWorkspace.getState().addCardAt("text", 10, 20);
@@ -578,7 +578,7 @@ describe("FEAT-boards · 보드 store", () => {
 
     const note = await getDB().notes.get(cardId);
     expect(note).toBeDefined();
-    expect(note?.boardId).toBeNull();
+    expect(note?.boardId).toBe(SYSTEM_BOARD_ID);
     expect(useWorkspace.getState().currentBoardId).toBe(SYSTEM_BOARD_ID);
   });
 

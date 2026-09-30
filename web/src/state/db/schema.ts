@@ -122,6 +122,11 @@ export interface Board {
    * 브레드크럼·사이클 검사를 수행한다.
    */
   parentBoardId?: string | null;
+  /**
+   * FEAT-collab-auth n9: `/me/boards`가 이 기기에 열어 준 공유 보드(편집자·다른 기기).
+   * true 면 이 기기에 원본이 없고 서버에서 사라지면 로컬 사본을 지운다. 비인덱스 optional.
+   */
+  remote?: boolean;
   createdAt: number;
   updatedAt: number;
   lastOpenedAt: number;
@@ -175,6 +180,45 @@ export interface Settings {
   storageQuotaShown: { at80: boolean; at95: boolean };
   uiLocale: "ko";
   installPromptShown: boolean;
+  /**
+   * FEAT-collab-auth n2: Dexie → Yjs 이전을 이미 마친 문서 키. 부트마다 이전이
+   * 다시 돌지 않게 한다. 키는 문서 이름 규칙과 같다 — 보드 id, 시스템 보드는
+   * "system"(SYSTEM_BOARD_ID). 스키마 변경 없이 기존 settings 행에 얹는다.
+   */
+  migratedDocs?: string[];
+  /**
+   * FEAT-collab-auth n2: 문서별 이전 실패 횟수(문서 키 → 연속 실패 수).
+   * `MIGRATION_FAILURE_LIMIT`에 닿으면 자동 재시도를 멈추고 내보내기 버튼 대상이 된다.
+   */
+  migrationFailures?: Record<string, number>;
+  /**
+   * FEAT-collab-auth n2: 이전을 끝낸 스키마 버전(`MIGRATION_VERSION`). 같으면
+   * 부팅 시 Dexie 스캔(toArray)을 건너뛴다. 문서 쓰기 경로가 바뀌어 이미 이전된
+   * 보드도 다시 옮겨야 하면 `MIGRATION_VERSION`을 올린다.
+   */
+  dexieMigrationVersion?: number;
+  /**
+   * FEAT-onboarding-routes n1: 시스템 보드의 UUID id. 4절 D3 — 시스템 보드도
+   * 예외 없는 보드 행이다. 마이그레이션이 이 값을 채우고, 라우팅·문서 키가 쓴다.
+   */
+  systemBoardId?: string;
+  /**
+   * FEAT-onboarding-routes n1: 시스템 보드 UUID 이전을 끝낸 시각. 있으면 다시 돌지 않는다.
+   * 중간에 끊기면 없으므로 다음 부팅에 재개된다(멱등).
+   */
+  systemBoardMigratedAt?: number;
+  /**
+   * FEAT-onboarding-routes n2: 이 기기 로컬 데이터의 주인 계정 id. 처음 로그인한
+   * 계정으로 한 번 기록하고, 다른 계정이 로그인하면 안내 카드를 띄운다 (D5-2).
+   * 계정별 저장소 분리는 미룬 질문이라 여기서는 소유자 표시만 남긴다.
+   */
+  ownerUserId?: string | null;
+  /**
+   * P1 AC-8: 이 기기에서 지운 보드 id(최근 순, 상한 있음). 보드 행을 지우는 순간
+   * 남겨, `/b/<id>`로 다시 들어올 때 "찾을 수 없는 보드예요"를 띄운다. 휴지통
+   * 복원으로 보드가 돌아오면 목록에서 뺀다. optional — 없으면 판정에 영향 없다.
+   */
+  deletedBoardIds?: string[];
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -184,6 +228,7 @@ export const DEFAULT_SETTINGS: Settings = {
   storageQuotaShown: { at80: false, at95: false },
   uiLocale: "ko",
   installPromptShown: false,
+  ownerUserId: null,
 };
 
 export class MossDB extends Dexie {

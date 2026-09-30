@@ -4,7 +4,6 @@ import { useMemo, useRef } from "react";
 import { blocksToMarkdown } from "@/state/cardContent";
 import { useWorkspace } from "@/state/workspace";
 import { MemoSaveGuard } from "../_shared/editor/MemoSaveGuard"; // W1 자동저장 유실 가드
-import { MultitabConflictBanner } from "../_shared/MultitabConflictBanner"; // W8
 import { MemoTitleRow } from "../_shared/MemoTitleRow"; // FEAT-memo-title
 import { isFocusInSameCard } from "../_shared/memoTitleFocus"; // FEAT-memo-title-front-edit
 import { useAutoFocusOnEdit } from "../_shared/useAutoFocusOnEdit"; // ponytail: 기존 파일 재사용, import 누락만 보강
@@ -133,7 +132,6 @@ export function TextCardContent({ card, editing, onCommitEdit }: CardContentProp
           mask: MEMO_PAPER,
         }}
       />
-      <MultitabConflictBanner cardId={card.id} /> {/* W8: 다른 탭 변경 배너 */}
       {/* 2026-09-22 사용자 결정: 메모지 앞면은 제목 하나만 정가운데에 보여준다.
         * 본문·펜 overlay·백링크는 더블클릭으로 여는 메모 창이 맡는다. */}
       <div className="absolute inset-0 flex items-center justify-center">

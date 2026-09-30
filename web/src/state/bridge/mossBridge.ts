@@ -22,14 +22,20 @@
 import {
   useWorkspace,
   type Card,
-  SYSTEM_BOARD_ID,
   encodeSubcanvas,
   __internal,
 } from "@/state/workspace";
+import { newBoardId } from "@/state/boardIds";
 import { useStorage } from "@/state/storage";
 import { getDB } from "@/state/db/schema";
+import {
+  deleteNoteRecord,
+  writeBoardRecord,
+  writeNoteRecord,
+} from "@/state/ydoc";
 import { serializeBlock } from "@/state/blocks";
-import { putBlob, makeAttachmentFilename } from "@/state/db/opfs";
+import { makeAttachmentFilename } from "@/state/db/opfs";
+import { storeAttachment } from "@/state/share/attachments";
 import {
   MAX_ATTACHMENT_BYTES,
   MAX_IMAGE_BYTES,
@@ -51,18 +57,18 @@ export interface BridgeNote {
 }
 
 /**
- * boardId 파라미터를 storage용 boardId(null=시스템)와 "현재 보드인가"로 해석한다.
- * raw가 없으면 현재 보드를 대상으로 본다.
+ * boardId 파라미터를 "현재 보드인가"로 해석한다. raw가 없으면 현재 보드를 대상으로
+ * 본다. n1: 시스템 보드도 UUID id 그대로 저장 id가 된다(null 매핑 제거).
  */
 function resolveBoard(raw: unknown): {
-  storageId: string | null;
+  storageId: string;
   isCurrent: boolean;
   target: string;
 } {
   const current = useWorkspace.getState().currentBoardId;
   const target = typeof raw === "string" && raw ? raw : current;
   return {
-    storageId: target === SYSTEM_BOARD_ID ? null : target,
+    storageId: target,
     isCurrent: target === current,
     target,
   };
@@ -125,7 +131,10 @@ function replacePlaceholdersOutsideFences(
   return lines.join("\n");
 }
 
-async function blockToMarkdown(raw: unknown): Promise<{ md: string; placeholder: string }> {
+async function blockToMarkdown(
+  raw: unknown,
+  boardId: string | null,
+): Promise<{ md: string; placeholder: string }> {
   const b = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   const placeholder = typeof b.placeholder === "string" ? b.placeholder : "";
   if (placeholder && !/^[a-zA-Z0-9_-]+$/.test(placeholder)) {
@@ -147,7 +156,11 @@ async function blockToMarkdown(raw: unknown): Promise<{ md: string; placeholder:
       if (blob.size > MAX_IMAGE_BYTES) {
         throw new Error(`이미지가 너무 큽니다(${blob.size} bytes > ${MAX_IMAGE_BYTES}).`);
       }
-      const ref = await putBlob(makeAttachmentFilename(mimeType), blob);
+      const ref = await storeAttachment(
+        boardId,
+        makeAttachmentFilename(mimeType),
+        blob,
+      );
       return { md: serializeBlock({ type: "image", ref }), placeholder };
     }
     case "audio": {
@@ -158,7 +171,11 @@ async function blockToMarkdown(raw: unknown): Promise<{ md: string; placeholder:
       if (blob.size > MAX_ATTACHMENT_BYTES) {
         throw new Error(`녹음이 너무 큽니다(${blob.size} bytes > ${MAX_ATTACHMENT_BYTES}).`);
       }
-      const ref = await putBlob(makeAttachmentFilename(mimeType), blob);
+      const ref = await storeAttachment(
+        boardId,
+        makeAttachmentFilename(mimeType),
+        blob,
+      );
       return { md: serializeBlock({ type: "audio", ref }), placeholder };
     }
     case "file": {
@@ -167,7 +184,11 @@ async function blockToMarkdown(raw: unknown): Promise<{ md: string; placeholder:
       if (blob.size > MAX_ATTACHMENT_BYTES) {
         throw new Error(`파일이 너무 큽니다(${blob.size} bytes > ${MAX_ATTACHMENT_BYTES}).`);
       }
-      const ref = await putBlob(makeAttachmentFilename(mimeType || undefined), blob);
+      const ref = await storeAttachment(
+        boardId,
+        makeAttachmentFilename(mimeType || undefined),
+        blob,
+      );
       const filename =
         typeof b.filename === "string" && b.filename.trim() ? b.filename : DEFAULT_FILE_LABEL;
       return { md: serializeBlock({ type: "file", ref, filename }), placeholder };
@@ -190,14 +211,18 @@ async function blockToMarkdown(raw: unknown): Promise<{ md: string; placeholder:
  * 블록은 "자기 문단에 단독"일 때만 블록이므로(`blocks.ts:isolatedBlockLines`)
  * 치환·append 모두 `\n\n…\n\n` 경계를 지킨다(§12 /hate).
  */
-async function embedInlineBlocks(content: string, blocks: unknown): Promise<string> {
+async function embedInlineBlocks(
+  content: string,
+  blocks: unknown,
+  boardId: string | null,
+): Promise<string> {
   if (!Array.isArray(blocks) || blocks.length === 0) return content;
 
   const replacements: { token: string; md: string }[] = [];
   const append: string[] = [];
 
   for (const raw of blocks) {
-    const { md, placeholder } = await blockToMarkdown(raw);
+    const { md, placeholder } = await blockToMarkdown(raw, boardId);
     const token = placeholder ? `{{${placeholder}}}` : "";
     if (token && contentIncludesTokenOutsideFences(content, token)) {
       // 같은 토큰은 blocks[] 순서상 첫 블록만 치환한다.
@@ -291,12 +316,14 @@ export async function dispatchOp(
       // 우측이 잘린다. 블록이 있으면 width 미지정이어도 720을 기본으로 넓힌다.
       const width = typeof params.width === "number" ? params.width : undefined;
       const blocks = Array.isArray(params.blocks) ? params.blocks : [];
+      // 대상 보드를 먼저 정한다 — 첨부 저장/업로드가 "현재 보드"가 아니라 이 보드
+      // 기준이어야 한다(신뢰 경계: 다른 보드 op가 현재 보드 저장소로 새지 않게).
+      const { storageId, isCurrent } = resolveBoard(params.boardId);
       // 블록을 먼저 전부 처리한다 — 하나라도 실패하면 throw로 빠져 카드를 만들지 않는다.
-      const finalContent = await embedInlineBlocks(raw, blocks);
+      const finalContent = await embedInlineBlocks(raw, blocks, storageId);
       const effWidth = width !== undefined ? width : blocks.length > 0 ? 720 : undefined;
       // 메모는 항상 정사각형 — 브리지가 넘긴 height는 무시하고 폭에 맞춘다.
       const square = effWidth;
-      const { storageId, isCurrent } = resolveBoard(params.boardId);
       if (isCurrent) {
         const id = ws.addCardAt("text", x, y);
         if (square !== undefined) {
@@ -313,17 +340,22 @@ export async function dispatchOp(
         return { id, kind: "text" };
       }
       const id = newNoteId();
-      await useStorage.getState().saveNote({
+      const note = {
         id,
         boardId: storageId,
-        kind: "text",
+        kind: "text" as const,
         x,
         y,
         ...(square !== undefined ? { width: square, height: square } : {}),
         content: finalContent,
         aiOptOut: false,
         rotation: 0,
-      });
+      };
+      const storage = useStorage.getState();
+      // n23 P1-5: saveNote가 정규화된 Note를 돌려준다 — Dexie read-back이 비어
+      // Y.Doc 쓰기를 조용히 건너뛰던 경로가 없다.
+      const saved = await storage.saveNote(note);
+      await writeNoteRecord(saved);
       return { id, kind: "text", boardId: storageId };
     }
 
@@ -338,7 +370,9 @@ export async function dispatchOp(
       // 다른 보드 카드 — 존재 확인 후 content만 병합 저장(없으면 junk 생성 방지).
       const note = await getDB().notes.get(id);
       if (!note) throw new Error(`카드를 찾을 수 없습니다: ${id}`);
-      await useStorage.getState().saveNote({ id, content });
+      // n23 P1-5: saveNote가 정규화된 Note를 돌려준다.
+      const saved = await useStorage.getState().saveNote({ id, content });
+      await writeNoteRecord(saved);
       return { id };
     }
 
@@ -354,6 +388,7 @@ export async function dispatchOp(
       // 판은 휴지통 대상이 아니다(spec §2) — 지금처럼 즉시 삭제.
       if (note.kind === "frame") await useStorage.getState().removeNote(id);
       else await useStorage.getState().trashNote(id);
+      await deleteNoteRecord(id, note.boardId ?? null);
       void ws.refreshTrashCount();
       return { id };
     }
@@ -371,7 +406,7 @@ export async function dispatchOp(
         ws.clearSelection();
         return { id, kind: "board", boardRef: card?.boardRef };
       }
-      const childBoardId = `b-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6)}`;
+      const childBoardId = newBoardId();
       const storage = useStorage.getState();
       await storage.saveBoard({
         id: childBoardId,
@@ -380,18 +415,22 @@ export async function dispatchOp(
         parentBoardId: target,
       });
       const id = newNoteId();
-      await storage.saveNote({
+      const note = {
         id,
         boardId: storageId,
-        kind: "board",
+        kind: "board" as const,
         content: encodeSubcanvas(childBoardId),
         x,
         y,
         aiOptOut: false,
         rotation: 0,
-      });
-      return { id, kind: "board", boardRef: childBoardId, boardId: storageId };
-    }
+      };
+      // n23 P1-5: saveNote가 정규화된 Note를 돌려준다.
+      const savedNote = await storage.saveNote(note);
+      const savedBoard = await getDB().boards.get(childBoardId);
+      if (savedBoard) await writeBoardRecord(savedBoard);
+      await writeNoteRecord(savedNote);
+      return { id, kind: "board", boardRef: childBoardId, boardId: storageId };    }
 
     case "ai.preview": {
       // /api/preview는 same-origin만 허용한다(SSRF 가드). in-page fetch는 정당하게 통과.
@@ -436,8 +475,10 @@ export async function dispatchOp(
     case "boards.switch": {
       const id = String(params.id ?? "");
       if (!id) throw new Error("id가 필요합니다");
-      await ws.setCurrentBoard(id);
-      return { currentBoardId: useWorkspace.getState().currentBoardId };
+      // n3 D8: URL이 원본 — 라우터가 있으면 push하고, 상태 반영은 라우트 effect가 한다.
+      // 요청한 보드로의 전환이므로 결과는 요청 id를 돌려준다(라우터 반영은 비동기).
+      await ws.navigateToBoard(id);
+      return { currentBoardId: id };
     }
 
     /* ── connections: 캔버스 렌더 대상 아님 → storage(Dexie) 데이터 경로 ── */
@@ -456,6 +497,7 @@ export async function dispatchOp(
       const label = typeof params.label === "string" ? params.label : undefined;
       const id = `cx-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6)}`;
       // mergeConnection이 source="manual"/status="active"/createdAt을 채운다.
+      // n23 재심사 2R-6: Dexie 미러와 소유 문서 쓰기는 saveConnection 한 액션이 함께 한다.
       await useStorage.getState().saveConnection({ id, sourceNoteId, targetNoteId, label });
       return { id };
     }
@@ -463,6 +505,7 @@ export async function dispatchOp(
     case "connections.delete": {
       const id = String(params.id ?? "");
       if (!id) throw new Error("id가 필요합니다");
+      // n23 재심사 2R-6: 미러 삭제와 소유 문서 삭제를 한 액션이 함께 한다.
       await useStorage.getState().removeConnection(id);
       return { id };
     }

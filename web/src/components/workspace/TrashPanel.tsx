@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useWorkspace } from "@/state/workspace";
 import { useStorage } from "@/state/storage";
+import { isSystemBoardNote } from "@/state/boardIds";
 import type { TrashEntry } from "@/state/db/schema";
 import { plainText } from "@/state/memoSearch";
 import { useT } from "@/i18n/Provider";
@@ -202,7 +203,7 @@ export function TrashPanel() {
                   {labels.get(entry.id) || "—"}
                 </div>
                 <div className="truncate text-[11px] text-text-muted">
-                  {entry.note.boardId === null
+                  {isSystemBoardNote(entry.note)
                     ? t("workspace.boardPicker.system")
                     : (entry.boardName ??
                       t("workspace.trash.deletedBoard"))}{" "}

@@ -481,6 +481,22 @@
       "unlinkedFrames": "지워진 메모판 참조 {count}개를 풀었어요."
     }
   },
+  "boardAccess": {
+    "notFound": {
+      "title": "찾을 수 없는 보드예요",
+      "body": "지워졌거나 주소가 잘못됐어요.",
+      "goLast": "마지막 보드로"
+    },
+    "noAccess": {
+      "title": "이 보드를 볼 수 없어요",
+      "body": "멤버가 아니거나 공유가 끝난 보드예요."
+    },
+    "offline": {
+      "title": "연결되면 다시 시도할게요",
+      "body": "오프라인이라 이 보드를 열 수 없어요.",
+      "retry": "다시 시도"
+    }
+  },
   "signals": {
     "sidebar": {
       "label": "시그널스"
@@ -504,6 +520,95 @@
     },
     "upcoming": {
       "label": "다음에 도착 — 군집·흐름 요약"
+    }
+  },
+  "onboarding": {
+    "firstBoard": {
+      "title": "첫 보드를 골라 주세요",
+      "intro": "예제 메모로 시작하거나 빈 보드로 시작할 수 있어요.",
+      "example": "예제로 시작",
+      "empty": "빈 보드로 시작"
+    }
+  },
+  "collab": {
+    "auth": {
+      "google": "Google로 계속하기",
+      "googleAria": "Google 계정으로 로그인",
+      "email": {
+        "continue": "메일로 계속",
+        "emailLabel": "메일",
+        "passwordLabel": "비밀번호",
+        "nameLabel": "이름",
+        "loginButton": "로그인",
+        "signupButton": "가입하기",
+        "toSignup": "처음이에요? 가입하기",
+        "toLogin": "이미 계정이 있어요",
+        "invalidEmail": "메일 주소를 확인해 주세요",
+        "passwordTooShort": "비밀번호는 8자 이상이에요",
+        "passwordRequired": "비밀번호를 입력해 주세요",
+        "passwordTooLong": "비밀번호는 72바이트 이하여야 해요",
+        "nameRequired": "이름을 입력해 주세요",
+        "nameTooLong": "이름은 40자 이하예요",
+        "conflict": "이미 가입된 메일이에요",
+        "loginFailed": "메일이나 비밀번호가 맞지 않아요",
+        "rateLimited": "잠시 뒤 다시 시도해 주세요",
+        "failed": "잠시 뒤 다시 시도해 주세요",
+        "offline": "연결되면 다시 시도해 주세요"
+      },
+      "invite": {
+        "title": "보드에 초대받았어요",
+        "ownerInvite": "{name}님의 초대",
+        "boardFallback": "공유 보드",
+        "checking": "초대를 확인하는 중…",
+        "join": "참여하기",
+        "expired": "만료된 초대예요",
+        "expiredHint": "새 초대 링크를 받아 주세요.",
+        "full": "이 보드는 자리가 다 찼어요",
+        "error": "초대를 받지 못했어요",
+        "retry": "다시 시도",
+        "joined": "이제 함께 편집할 수 있어요",
+        "open": "보드 열기"
+      },
+      "expired": {
+        "title": "다시 로그인해 주세요",
+        "body": "로그인하면 보던 자리로 돌아와요."
+      },
+      "onboarding": {
+        "title": "moss에 오신 것을 환영해요",
+        "intro": "생각을 붙이면 연결이 보이는 캔버스예요.",
+        "feature1": "메모를 자유롭게 붙이고 옮겨요",
+        "feature2": "연결선이 아이디어 사이를 이어 줘요",
+        "feature3": "링크로 동료와 함께 편집해요",
+        "loginHint": "로그인하면 바로 시작할 수 있어요."
+      },
+      "account": {
+        "title": "다른 계정의 보드가 이 기기에 있어요",
+        "body": "이 기기에는 다른 계정으로 만든 보드가 있어요. 이대로 계속하면 그 보드는 이 계정에 올라가지 않아요.",
+        "logout": "로그아웃",
+        "continue": "이대로 계속"
+      }
+    },
+    "offline": "오프라인",
+    "tooLarge": "보드가 너무 커요",
+    "attachment": {
+      "uploading": "올리는 중"
+    },
+    "share": {
+      "aria": "공유",
+      "title": "함께 쓰기",
+      "sub": "이 보드만 서버에 올라가요.",
+      "start": "공유 시작",
+      "copyLink": "링크 복사",
+      "createLink": "링크 새로 만들기",
+      "copied": "링크를 복사했어요",
+      "revoked": "공유가 끝난 보드예요",
+      "owner": "소유자",
+      "memberMenuAria": "{name} 멤버 메뉴",
+      "reissue": "링크 재발급",
+      "remove": "내보내기",
+      "unshare": "공유 해제",
+      "leave": "나가기",
+      "full": "이 보드는 자리가 다 찼어요"
     }
   }
 }

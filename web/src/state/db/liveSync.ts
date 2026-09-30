@@ -1,51 +1,39 @@
 "use client";
 
 /* ─────────────────────────────────────────────────────────────
- * FEAT-memo-multitab-sync (W8) — 다중 탭 동기화.
+ * FEAT-collab-auth n3 — 탭 간 동기화를 Yjs 업데이트 브로드캐스트로 전환.
  *
- * 두 탭이 같은 보드를 열었을 때 한쪽 편집이 다른 쪽을 조용히 덮어쓰지 않도록,
- * 카드 변경을 BroadcastChannel로 탭 간 전파한다.
+ * 기존 FEAT-memo-multitab-sync의 카드 단위 충돌 처리(updatedAt 비교·편집 보호·
+ * 충돌 배너)는 걷어낸다(spec §7). 같은 기기의 탭 2개가 같은 보드를 열면
+ * Yjs 업데이트를 BroadcastChannel로 그대로 주고받아 문서가 수렴한다.
  *
- *  - 발신: Dexie 테이블 훅(creating/updating/deleting)을 걸어 notes 쓰기가
- *    "트랜잭션 커밋 완료" 시점에 {card-upsert|card-delete} 메시지를 방송한다.
- *    persistCard/storage.saveNote 본문은 건드리지 않는다(seam 불필요 — 훅으로 가로챔).
- *  - 수신: 메시지의 origin이 자기 탭이면 무시(자기 발신), updatedAt이 이미 본 것보다
- *    오래되면 무시(stale). 편집 중(editingId/expandedCardId)인 카드는 덮어쓰지 않고
- *    충돌 플래그만 세워 배너로 알린다(커서 보호). 그 외에는 DB에서 최신 노트를 읽어
- *    store(cards)에 반영한다.
+ *  - 발신: 활성 보드 Y.Doc의 `update` 이벤트 중 로컬 origin(LOCAL_ORIGIN)만
+ *    방송한다. y-indexeddb 복원·원격 적용은 재방송하지 않는다(origin이 다르다).
+ *  - 수신: 같은 보드 키의 업데이트를 채널 origin으로 적용한다. 그 origin은
+ *    LOCAL_ORIGIN이 아니라서 스토어 반영 observer(n3의 bindActiveDocReflection)가
+ *    정상적으로 통과시킨다.
  *
- * 단일 탭에서는 BroadcastChannel이 자기 발신 메시지를 자기 인스턴스에 돌려주지
- * 않으므로 수신 이벤트 0 (AC-4).
- *
- * 메시지 모델은 spec §5: { type, boardId, id, updatedAt } (+ origin 탭 id).
+ * 단일 탭에서는 BroadcastChannel이 자기 발신을 자기에게 돌려주지 않아 수신 0.
  * ───────────────────────────────────────────────────────────── */
 
-import { type Transaction } from "dexie";
-import { getDB, type MossDB, type Note } from "./schema";
-import { migratedContent } from "../markdownMigration";
-import {
-  parseCode,
-  parseHandwriting,
-  serializeBlocks,
-  type CardBlock,
-} from "../cardContent";
-import {
-  useWorkspace,
-  SYSTEM_BOARD_ID,
-  type Card,
-  type CardKind,
-} from "../workspace";
+import * as Y from "yjs";
+import { LOCAL_ORIGIN } from "../ydoc/origin";
 
-const CHANNEL_NAME = "moss-card-sync";
+const CHANNEL_NAME = "moss-ydoc-sync";
 
-export type CardSyncMsg = {
-  type: "card-upsert" | "card-delete";
-  /** storage 기준 boardId (시스템 보드는 null). */
-  boardId: string | null;
-  id: string;
-  updatedAt: number;
-  /** 발신 탭 id — 자기 발신 무시용. broadcastCardChange가 채운다. */
-  origin?: string;
+/** 수신 업데이트 크기 상한(spec 한도: 문서 10MB). 넘으면 신뢰 경계 밖으로 보고 버린다. */
+export const MAX_UPDATE_BYTES = 10 * 1024 * 1024;
+
+/** 채널로 적용한 업데이트의 origin — 로컬이 아님을 표시(재방송·반영 구분). */
+const CHANNEL_ORIGIN: unique symbol = Symbol("moss-channel-origin");
+
+export type YDocSyncMsg = {
+  type: "ydoc-update";
+  /** 보드 문서 키(`moss-board-<key>`의 key). */
+  key: string;
+  update: Uint8Array;
+  /** 발신 탭 id — 자기 발신 무시용. */
+  origin: string;
 };
 
 /** 탭별 고유 id — 자기 발신 메시지 식별. 탭(문서) 수명 동안 불변. */
@@ -62,329 +50,79 @@ function makeTabId(): string {
   return `tab-${Date.now()}-${Math.floor(Math.random() * 1e9)}`;
 }
 
-/** id별 마지막으로 관측한 updatedAt — 단조 증가만 수용해 stale 메시지 무시. */
-const lastSeen = new Map<string, number>();
-
-function bumpSeen(id: string, updatedAt: number): void {
-  const prev = lastSeen.get(id) ?? 0;
-  if (updatedAt > prev) lastSeen.set(id, updatedAt);
-}
-
-/* ── 충돌 배너 store (편집 중 외부 변경 발생) ───────────────────── */
-
-const conflicts = new Set<string>();
-const conflictListeners = new Set<() => void>();
-
-function emitConflicts(): void {
-  for (const l of conflictListeners) l();
-}
-
-function setConflict(id: string): void {
-  if (conflicts.has(id)) return;
-  conflicts.add(id);
-  emitConflicts();
-}
-
-function clearConflictInternal(id: string): void {
-  if (!conflicts.delete(id)) return;
-  emitConflicts();
-}
-
-/* ── 노트 변경 알림 (FEAT-memo-table-view AC-8) ─────────────────
- * 표 뷰(state/memoTable)가 다른 탭의 변경을 반영할 수 있게, 수신 처리 후
- * 구독자에게 알린다. 이 모듈은 표 스토어를 import 하지 않는다 — 역방향 구독만.
- */
-const noteChangeListeners = new Set<() => void>();
-
-/** 노트 변경(다른 탭 반영 완료) 구독. 해제 함수를 반환한다. */
-export function subscribeNoteChanges(cb: () => void): () => void {
-  noteChangeListeners.add(cb);
-  return () => {
-    noteChangeListeners.delete(cb);
-  };
-}
-
-/**
- * 구독자에게 알린다. await 하지 않는다 — 표 재조회가 수신 처리를 막으면
- * 안 되고(P1-5), 구독자가 자체 디바운스로 병합한다.
- */
-function notifyNoteChanges(): void {
-  for (const cb of [...noteChangeListeners]) {
-    try {
-      cb();
-    } catch {
-      /* 구독자 오류는 동기화 자체를 막지 않는다. */
-    }
-  }
-}
-
-/** 충돌 상태 구독(useSyncExternalStore용). 변경 시 cb 호출. */
-export function subscribeConflict(cb: () => void): () => void {
-  conflictListeners.add(cb);
-  return () => {
-    conflictListeners.delete(cb);
-  };
-}
-
-/** 해당 카드가 "다른 탭에서 변경됨" 충돌 상태인지. */
-export function isCardConflicted(id: string): boolean {
-  return conflicts.has(id);
-}
-
-/**
- * 충돌 해소("새로고침") — DB의 최신 버전을 store에 강제 반영하고 편집을 닫는다.
- * 노트가 사라졌으면(다른 탭에서 삭제) store에서도 제거한다.
- */
-export async function resolveConflict(id: string): Promise<void> {
-  const ws = useWorkspace.getState();
-  const note = await getDB().notes.get(id);
-  if (!note) {
-    // 다른 탭에서 삭제됨 — store에서 제거 + 편집 종료.
-    if (ws.cards.some((c) => c.id === id)) {
-      useWorkspace.setState({
-        cards: ws.cards.filter((c) => c.id !== id),
-      });
-    }
-    if (ws.editingId === id) useWorkspace.setState({ editingId: null });
-    if (ws.expandedCardId === id) {
-      useWorkspace.setState({ expandedCardId: null });
-    }
-    bumpSeen(id, Date.now());
-    clearConflictInternal(id);
-    return;
-  }
-  bumpSeen(id, note.updatedAt);
-  // 편집 종료 후 카드 교체 — 에디터가 새 content로 재마운트되도록.
-  if (ws.editingId === id) useWorkspace.setState({ editingId: null });
-  if (currentStorageBoardId() === note.boardId) {
-    replaceCard(note);
-  } else if (ws.cards.some((c) => c.id === id)) {
-    // 다른 보드로 이동됨 — 현재 보드 뷰에서 제거.
-    useWorkspace.setState({
-      cards: useWorkspace.getState().cards.filter((c) => c.id !== id),
-    });
-  }
-  clearConflictInternal(id);
-}
-
-/* ── 현재 보드 매핑 ─────────────────────────────────────────────── */
-
-/** 현재 열린 보드의 storage boardId(시스템 보드는 null). */
-function currentStorageBoardId(): string | null {
-  const id = useWorkspace.getState().currentBoardId;
-  return id === SYSTEM_BOARD_ID ? null : id;
-}
-
-function isEditing(id: string): boolean {
-  const ws = useWorkspace.getState();
-  return ws.editingId === id || ws.expandedCardId === id;
-}
-
-/* ── 발신 ──────────────────────────────────────────────────────── */
-
 let channel: BroadcastChannel | null = null;
 
-/** 카드 변경을 다른 탭에 방송한다. origin(자기 탭 id)을 실어 보낸다. */
-export function broadcastCardChange(msg: CardSyncMsg): void {
-  bumpSeen(msg.id, msg.updatedAt);
+/** 현재 활성 문서 — attachLiveDoc이 교체한다. */
+let currentDoc: Y.Doc | null = null;
+let currentKey: string | null = null;
+let detachDoc: (() => void) | null = null;
+
+/** 로컬 쓰기만 방송한다. */
+function postUpdate(key: string, update: Uint8Array): void {
   if (!channel) return;
   try {
-    channel.postMessage({ ...msg, origin: tabId });
+    channel.postMessage({ type: "ydoc-update", key, update, origin: tabId } satisfies YDocSyncMsg);
   } catch {
     /* 직렬화/전송 실패는 동기화 best-effort라 무시 */
   }
 }
 
-/* ── 수신 / 반영 ───────────────────────────────────────────────── */
-
-/** notes row → 캔버스 Card. workspace.decodeNoteToCard의 충실한 포트.
- * (live 쓰기 content는 이미 마이그레이션 후라 레거시 분기는 방어용이다.) */
-function noteToCard(note: Note): Card {
-  if (note.kind === "board") {
-    let boardRef: string | undefined;
-    try {
-      const parsed = JSON.parse(note.content) as {
-        __moss_subcanvas_v1__?: boolean;
-        boardRef?: string;
-      };
-      if (parsed.__moss_subcanvas_v1__) boardRef = parsed.boardRef || undefined;
-    } catch {
-      /* 손상된 content — boardRef 없음 */
+/**
+ * 활성 문서에 발신 리스너를 건다. 보드 전환마다 새 문서로 교체한다.
+ * 이전 문서 리스너는 해제한다.
+ */
+export function attachLiveDoc(doc: Y.Doc, key: string): void {
+  detachDoc?.();
+  currentDoc = doc;
+  currentKey = key;
+  const onUpdate = (update: Uint8Array, origin: unknown) => {
+    // 로컬 origin만 방송 — y-indexeddb 복원·채널 적용은 재방송하지 않는다.
+    if (origin !== LOCAL_ORIGIN) return;
+    postUpdate(key, update);
+  };
+  doc.on("update", onUpdate);
+  detachDoc = () => {
+    doc.off("update", onUpdate);
+    detachDoc = null;
+    if (currentDoc === doc) {
+      currentDoc = null;
+      currentKey = null;
     }
-    return {
-      id: note.id,
-      kind: "board",
-      x: note.x,
-      y: note.y,
-      width: note.width,
-      height: note.height,
-      content: "",
-      boardRef,
-      lastVisitedAt: note.lastVisitedAt,
-    };
-  }
-
-  let kind: CardKind = note.kind;
-  let content = note.content;
-
-  if (note.kind === "code") {
-    const { code, lang } = parseCode(content);
-    const block: CardBlock = lang
-      ? { type: "code", code, lang }
-      : { type: "code", code };
-    kind = "text";
-    content = serializeBlocks([block]);
-  } else if (note.kind === "handwriting") {
-    const { paths } = parseHandwriting(content);
-    kind = "text";
-    content = serializeBlocks([{ type: "handwriting", paths }]);
-  } else {
-    const md = migratedContent(note.kind, content);
-    if (md !== null) {
-      kind = "text";
-      content = serializeBlocks([{ type: "text", text: md }]);
-    }
-  }
-
-  return {
-    id: note.id,
-    kind,
-    x: note.x,
-    y: note.y,
-    width: note.width,
-    height: note.height,
-    content,
-    attachmentRef: note.attachmentRef,
-    mediaType: note.mediaType,
-    overlay: note.overlay,
-    // FEAT-memo-title: 여러 탭 동기화 변환에도 제목이 실린다.
-    title: note.title,
-    aiOptOut: note.aiOptOut || undefined,
-    lastVisitedAt: note.lastVisitedAt,
   };
 }
 
-function replaceCard(note: Note): boolean {
-  const card = noteToCard(note);
-  const cards = useWorkspace.getState().cards;
-  const exists = cards.some((c) => c.id === card.id);
-  useWorkspace.setState({
-    cards: exists
-      ? cards.map((c) => (c.id === card.id ? card : c))
-      : [...cards, card],
-  });
-  return true;
-}
-
-function removeCard(id: string): boolean {
-  const cards = useWorkspace.getState().cards;
-  if (!cards.some((c) => c.id === id)) return false;
-  useWorkspace.setState({ cards: cards.filter((c) => c.id !== id) });
-  return true;
+/** 다른 탭에서 온 업데이트를 적용한다. 테스트에서도 직접 호출한다. */
+export function applyIncoming(msg: YDocSyncMsg): void {
+  if (!msg || msg.origin === tabId) return; // 자기 발신
+  if (!currentDoc || !currentKey || msg.key !== currentKey) return; // 다른 보드/문서 없음
+  // (n3 리뷰 P1) wire 입력은 타입·크기를 신뢰하지 않는다. 임의 값·거대 payload가
+  // applyUpdate로 들어가면 문서가 오염되거나 메모리·쿼터가 소진된다.
+  if (!(msg.update instanceof Uint8Array) || msg.update.byteLength > MAX_UPDATE_BYTES) return;
+  try {
+    Y.applyUpdate(currentDoc, msg.update, CHANNEL_ORIGIN);
+  } catch {
+    /* 잘린/손상 바이트 — 부분 적용을 막기 위해 조용히 버린다. */
+  }
 }
 
 /**
- * 다른 탭에서 온 메시지를 처리한다. 자기 발신·stale은 무시, 편집 중이면 보호.
- * 채널 수신뿐 아니라 단위 테스트에서도 직접 호출한다.
- *
- * 실제로 store/DB 상태가 반영됐을 때만 구독자에게 알린다(P1-5) — 자기 발신·stale·
- * 편집 보호(배너만)는 재조회를 유발하지 않는다.
+ * 활성 문서가 아닌 문서의 로컬 변경을 그 문서 키로 방송한다(6(a)).
+ * `write`가 만든 변경분만 계산해 보낸다 — y-indexeddb 저장·원격 적용은 origin이
+ * 달라 이 경로로 새지 않는다.
  */
-export async function handleIncoming(msg: CardSyncMsg): Promise<void> {
-  let reflected = false;
+export function broadcastDocWrite(key: string, doc: Y.Doc, write: () => void): void {
+  if (!channel) {
+    write();
+    return;
+  }
+  const before = Y.encodeStateVector(doc);
+  write();
   try {
-    reflected = await handleIncomingInner(msg);
-  } finally {
-    if (reflected) notifyNoteChanges();
+    const update = Y.encodeStateAsUpdate(doc, before);
+    if (update.byteLength > 2) postUpdate(key, update);
+  } catch {
+    /* 상태 벡터 계산 실패는 방송만 포기 — 로컬 쓰기는 이미 끝났다. */
   }
-}
-
-async function handleIncomingInner(msg: CardSyncMsg): Promise<boolean> {
-  if (!msg || msg.origin === tabId) return false; // 자기 발신
-  const seen = lastSeen.get(msg.id) ?? 0;
-  if (msg.updatedAt <= seen) return false; // stale
-  bumpSeen(msg.id, msg.updatedAt);
-
-  if (msg.type === "card-delete") {
-    if (isEditing(msg.id)) {
-      setConflict(msg.id);
-      return false;
-    }
-    clearConflictInternal(msg.id);
-    return removeCard(msg.id);
-  }
-
-  // card-upsert — 최신 노트를 DB(커밋 완료된 상태)에서 읽는다.
-  const note = await getDB().notes.get(msg.id);
-  if (!note) return false; // 경쟁 상태로 사라짐
-  const onCurrentBoard = note.boardId === currentStorageBoardId();
-  if (!onCurrentBoard) {
-    // 다른 보드로 이동/생성 — 현재 뷰에 있으면 제거(이동), 없으면 무시.
-    if (isEditing(msg.id)) {
-      setConflict(msg.id);
-      return false;
-    }
-    clearConflictInternal(msg.id);
-    return removeCard(msg.id);
-  }
-  if (isEditing(msg.id)) {
-    setConflict(msg.id); // 편집 중 — 덮어쓰기 금지, 배너만
-    return false;
-  }
-  clearConflictInternal(msg.id);
-  return replaceCard(note);
-}
-
-/* ── Dexie 훅: notes 쓰기 → 커밋 완료 시 방송 ────────────────────── */
-
-let hookDispose: (() => void) | null = null;
-
-function registerHooks(db: MossDB): () => void {
-  const onCreate = (_primKey: string, obj: Note, trans: Transaction) => {
-    const { id, boardId, updatedAt } = obj;
-    trans.on("complete", () =>
-      broadcastCardChange({ type: "card-upsert", id, boardId, updatedAt }),
-    );
-  };
-
-  const onUpdate = (
-    mods: object,
-    _primKey: string,
-    obj: Note,
-    trans: Transaction,
-  ) => {
-    const next = { ...obj, ...(mods as Partial<Note>) };
-    trans.on("complete", () =>
-      broadcastCardChange({
-        type: "card-upsert",
-        id: next.id,
-        boardId: next.boardId,
-        updatedAt: next.updatedAt,
-      }),
-    );
-  };
-
-  const onDelete = (_primKey: string, obj: Note, trans: Transaction) => {
-    const { id, boardId } = obj;
-    trans.on("complete", () =>
-      broadcastCardChange({
-        type: "card-delete",
-        id,
-        boardId,
-        updatedAt: Date.now(),
-      }),
-    );
-  };
-
-  db.notes.hook("creating", onCreate);
-  db.notes.hook("updating", onUpdate);
-  db.notes.hook("deleting", onDelete);
-
-  return () => {
-    db.notes.hook.creating.unsubscribe(onCreate);
-    db.notes.hook.updating.unsubscribe(onUpdate);
-    db.notes.hook.deleting.unsubscribe(onDelete);
-  };
 }
 
 /* ── 수명 ──────────────────────────────────────────────────────── */
@@ -394,15 +132,11 @@ let dispose: (() => void) | null = null;
 
 /**
  * 다중 탭 동기화 시작. store init 1곳에서 호출한다(멱등 — 한 번만 시작).
- * BroadcastChannel 미지원 환경에서는 발신 훅만 걸고 수신은 no-op.
- * dispose를 반환한다(테스트/언마운트용).
+ * BroadcastChannel 미지원 환경에서는 수신 없이 발신만 no-op.
  */
 export function initLiveSync(): () => void {
   if (started) return dispose ?? (() => {});
   started = true;
-
-  const db = getDB();
-  const unhook = registerHooks(db);
 
   let onMessage: ((ev: MessageEvent) => void) | null = null;
   if (typeof BroadcastChannel !== "undefined") {
@@ -411,7 +145,11 @@ export function initLiveSync(): () => void {
       // Node(테스트)에서 핸들이 프로세스 종료를 막지 않도록.
       (channel as unknown as { unref?: () => void }).unref?.();
       onMessage = (ev: MessageEvent) => {
-        void handleIncoming(ev.data as CardSyncMsg);
+        try {
+          applyIncoming(ev.data as YDocSyncMsg);
+        } catch {
+          /* 신뢰 경계 밖 메시지 — 수신 루프를 죽이지 않게 삼킨다. */
+        }
       };
       channel.addEventListener("message", onMessage);
     } catch {
@@ -420,7 +158,7 @@ export function initLiveSync(): () => void {
   }
 
   dispose = () => {
-    unhook();
+    detachDoc?.();
     if (channel && onMessage) channel.removeEventListener("message", onMessage);
     try {
       channel?.close();
@@ -428,30 +166,51 @@ export function initLiveSync(): () => void {
       /* noop */
     }
     channel = null;
-    hookDispose = null;
     started = false;
     dispose = null;
   };
-  hookDispose = unhook;
   return dispose;
+}
+
+/* ── 노트 변경 알림 (FEAT-memo-table-view AC-8) ─────────────────
+ * 표 뷰(state/memoTable)가 다른 탭·다른 사람의 변경을 반영할 수 있게 알린다.
+ * 원격 반영은 workspace의 문서 observer가 하므로 거기서 notifyNoteChanges를 부른다.
+ * 이 모듈은 표 스토어를 import 하지 않는다 — 역방향 구독만.
+ */
+const noteChangeListeners = new Set<() => void>();
+
+/** 노트 변경 구독. 해제 함수를 반환한다. */
+export function subscribeNoteChanges(cb: () => void): () => void {
+  noteChangeListeners.add(cb);
+  return () => {
+    noteChangeListeners.delete(cb);
+  };
+}
+
+/** 구독자에게 알린다. 구독자가 자체 디바운스로 병합하고, 오류는 삼킨다. */
+export function notifyNoteChanges(): void {
+  for (const cb of [...noteChangeListeners]) {
+    try {
+      cb();
+    } catch {
+      /* 구독자 오류는 동기화 자체를 막지 않는다. */
+    }
+  }
 }
 
 /* ── 테스트 헬퍼 ───────────────────────────────────────────────── */
 
-/** 테스트용 — 모듈 상태를 초기화한다(채널/훅/충돌/seen). */
+/** 테스트용 — 모듈 상태를 초기화한다(채널/문서/리스너). */
 export function __resetLiveSyncForTest(): void {
-  if (dispose) dispose();
-  if (hookDispose) {
-    hookDispose();
-    hookDispose = null;
-  }
-  conflicts.clear();
-  conflictListeners.clear();
-  noteChangeListeners.clear();
-  lastSeen.clear();
+  dispose?.();
+  detachDoc?.();
+  detachDoc = null;
+  currentDoc = null;
+  currentKey = null;
   channel = null;
   started = false;
   dispose = null;
+  noteChangeListeners.clear();
 }
 
 /** 테스트용 — 이 탭의 id. 자기 발신 무시 검증에 쓴다. */
