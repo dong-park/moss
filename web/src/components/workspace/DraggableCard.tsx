@@ -1154,12 +1154,17 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
         {cardNode}
       </ContextMenu.Trigger>
       <ContextMenu.Portal>
-        <ContextMenu.Content className="z-[var(--z-panel)] min-w-44 rounded-lg border border-border bg-bg p-1 shadow-card-lift">
+        <ContextMenu.Content
+          className="z-[var(--z-panel)] min-w-44 rounded-lg border border-border bg-bg p-1 shadow-card-lift"
+          // "캡션 달기"·"이름 바꾸기" 입력칸 포커스를 지킨다. 열린 메뉴는 포커스를 가둬서 입력칸이 곧바로
+          // blur·저장되므로 편집 진입은 다음 프레임으로 미루고, 닫힐 때 카드로 되돌리는 포커스도 끈다.
+          onCloseAutoFocus={(e) => e.preventDefault()}
+        >
           {isBoardCard && (
             <ContextMenu.Item
               data-board-rename
               className="cursor-pointer rounded-md px-3 py-1.5 text-sm text-text outline-none transition-colors data-[highlighted]:bg-panel"
-              onSelect={() => setEditing(card.id)}
+              onSelect={() => requestAnimationFrame(() => setEditing(card.id))}
             >
               {t("cards.board.rename")}
             </ContextMenu.Item>
@@ -1168,7 +1173,7 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
             <ContextMenu.Item
               data-photo-caption-menu
               className="cursor-pointer rounded-md px-3 py-1.5 text-sm text-text outline-none transition-colors data-[highlighted]:bg-panel"
-              onSelect={() => setEditing(card.id)}
+              onSelect={() => requestAnimationFrame(() => setEditing(card.id))}
             >
               {card.content.trim()
                 ? t("cards.photo.caption.edit")

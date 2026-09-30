@@ -223,3 +223,26 @@ describe("파일함 우클릭 → 이름 바꾸기", () => {
     useWorkspace.setState({ renameBoard: realRename });
   });
 });
+
+describe("사진 우클릭 → 캡션 달기", () => {
+  it("메뉴가 닫힌 뒤에도 포커스가 캡션 입력칸에 있다", async () => {
+    useWorkspace.setState({
+      boards: [{ id: "P", name: "부모보드", parentBoardId: null }] as Board[],
+      currentBoardId: "P",
+      editingId: null,
+      penMode: false,
+    });
+    const card: Card = {
+      id: "p1", kind: "photo", x: 0, y: 0, width: 240, height: 180, content: "",
+      attachmentRef: "opfs:x.png", mediaType: "image/png",
+    };
+    const { container } = wrap(<DraggableCard card={card} />);
+
+    fireEvent.contextMenu(container.querySelector("[data-card-id='p1']")!);
+    fireEvent.click(await screen.findByText("캡션 달기"));
+
+    const input = await screen.findByPlaceholderText("캡션 한 줄");
+    await new Promise((r) => setTimeout(r, 50));
+    expect(document.activeElement).toBe(input);
+  });
+});
