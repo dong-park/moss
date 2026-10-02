@@ -35,7 +35,7 @@ export function MemberAvatar({
   member,
   className = "h-[22px] w-[22px] text-[10px]",
 }: {
-  member: BoardMember;
+  member: Pick<BoardMember, "id" | "name">;
   className?: string;
 }) {
   return (

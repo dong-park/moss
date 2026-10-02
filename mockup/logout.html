@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>moss 로그아웃 — 화면 3장</title>
+<style>
+  /* 실제 캡처를 깔고 새 요소만 얹는다. ?s=1|2|3 이면 그 화면 한 장만 1440×900 으로 보인다. */
+  html, body { margin: 0; background: #ebecee; font-family: Pretendard, "Pretendard Variable", -apple-system, sans-serif; }
+  .stage { position: relative; width: 1440px; height: 900px; overflow: hidden; background: #ebecee center/1440px 900px no-repeat; margin: 0 auto 24px; }
+  .ws { background-image: url("../../docs/1-life/canvas/moss/moss-logout-screens/now-workspace.png"); }
+  .login { background-image: url("../../docs/1-life/canvas/moss/moss-logout-screens/now-login.png"); }
+  /* 공유 버튼+토글 묶음을 캡처 픽셀 그대로 40px 왼쪽으로. 먼저 빈 배경으로 지운다 옮긴다 */
+  .patch { position: absolute; background-image: url("../../docs/1-life/canvas/moss/moss-logout-screens/now-workspace.png"); background-size: 1440px 900px; }
+  .cluster { left: 1254px; top: 6px; width: 132px; height: 44px; background-position: -1294px -6px; }
+  .edge { left: 1250px; top: 0; width: 190px; height: 56px; background-position: -1250px -60px; }
+  .avatar { position: absolute; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: #5e5ce6; color: #fff; font-weight: 600; border: 0; padding: 0; font-family: inherit; }
+  .me { left: 1396px; top: 12px; width: 32px; height: 32px; font-size: 14px; box-shadow: 0 0 0 2px #fff, 0 1px 3px rgba(42,39,34,.12); }
+  .menu { position: absolute; right: 12px; top: 52px; width: 200px; box-sizing: border-box; padding: 6px; background: #fff; border-radius: 10px; box-shadow: 0 8px 32px rgba(42,39,34,.16); border: 1px solid #dadbde; color: #2c2e33; font-size: 14px; }
+  .row { display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 10px; border-radius: 6px; }
+  .row .avatar { position: static; width: 22px; height: 22px; font-size: 10px; flex: none; }
+  .name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sep { height: 1px; background: #dadbde; margin: 6px 4px; }
+  .hover { background: rgba(0,0,0,.04); }
+  body.one .stage { display: none; margin: 0; }
+  body.one .stage.on { display: block; }
+</style>
+</head>
+<body>
+<div class="stage ws" id="s1">
+  <div class="patch edge"></div><div class="patch cluster"></div>
+  <button class="avatar me" aria-label="계정">동</button>
+</div>
+<div class="stage ws" id="s2">
+  <div class="patch edge"></div><div class="patch cluster"></div>
+  <button class="avatar me" aria-label="계정" aria-expanded="true">동</button>
+  <div class="menu" role="menu">
+    <div class="row"><span class="avatar">동</span><span class="name">박동환</span></div>
+    <div class="sep"></div>
+    <div class="row hover" role="menuitem">로그아웃</div>
+  </div>
+</div>
+<div class="stage login" id="s3"></div>
+<script>
+  const s = new URLSearchParams(location.search).get("s");
+  if (s) { document.body.classList.add("one"); document.getElementById("s" + s).classList.add("on"); }
+</script>
+</body>
+</html>

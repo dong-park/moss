@@ -20,6 +20,7 @@ import { AuthSessionOverlay } from "@/components/auth/SessionExpiredCard";
 import { WorkspaceGate } from "@/components/auth/WorkspaceGate";
 import { CollabSession } from "@/components/collab/CollabSession";
 import { ShareControlMount } from "@/components/share/ShareControlMount";
+import { AccountMenu } from "@/components/auth/AccountMenu";
 import { OfflineBadge } from "@/components/presence/OfflineBadge";
 import { FirstBoardChooser } from "./FirstBoardChooser";
 import { needsFirstBoard, setBoardNavigator, useWorkspace } from "@/state/workspace";
@@ -187,6 +188,7 @@ export function WorkspaceShell() {
               <OfflineBadge />
               <ShareControlMount />
               <ViewToggle />
+              <AccountMenu />
             </div>
             <CollabSession />
             {isCanvas && (
