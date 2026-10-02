@@ -355,7 +355,7 @@ export function MemoTable() {
                     <div role="gridcell" className="flex items-center justify-center">
                       <span
                         className="h-3 w-3 rounded-full border border-border"
-                        style={{ background: memoTint(row.id) }}
+                        style={{ background: memoTint(row.id, row.color) }}
                         aria-hidden
                       />
                     </div>

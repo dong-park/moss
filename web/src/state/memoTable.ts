@@ -61,6 +61,8 @@ export interface MemoRow {
   createdAt: number;
   updatedAt: number;
   badgeCounts: BlockCounts;
+  /** 사용자가 고른 메모 색 이름(없으면 기본 노랑). */
+  color?: string;
   /** 검색어가 미리보기에서 처음 매칭된 위치(없으면 null). AC-3 강조용. */
   match: { start: number; length: number } | null;
 }
@@ -216,6 +218,7 @@ export function buildMemoRows(
     const raw = note.kind === "photo" ? note.content : plainTextRaw(note.content);
     rows.push({
       id: note.id,
+      color: note.color,
       title: note.title ?? "",
       preview: previewFromRaw(raw),
       searchText: raw,

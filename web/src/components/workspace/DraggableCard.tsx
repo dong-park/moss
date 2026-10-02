@@ -18,8 +18,12 @@ import { decodeFrameConfig, type FrameSkinId } from "@/state/frameContent";
 import {
   cardRotationDeg,
   formatDeg,
+  isMemoColor,
+  MEMO_COLORS,
+  MEMO_TINTS,
   memoBaseTransform,
   memoLiftedTransform,
+  type MemoColor,
 } from "./memoVariety"; // FEAT-memo-variety
 import { AIOptOutBadge } from "@/components/privacy/AIOptOutBadge";
 import { ExpandIcon, LockIcon } from "@/components/icons";
@@ -132,6 +136,7 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
   const setWobbleFrame = useWorkspace((s) => s.setWobbleFrame);
   // FEAT-frame-skins: 판 우클릭 → 판 모양 전환.
   const setFrameSkin = useWorkspace((s) => s.setFrameSkin);
+  const setMemoColor = useWorkspace((s) => s.setMemoColor);
   const boards = useWorkspace((s) => s.boards);
   const currentBoardId = useWorkspace((s) => s.currentBoardId);
   // 드래그 grab/drop 손맛: 들어올린 카드에 lift 시각효과(scale/shadow/z).
@@ -1137,7 +1142,9 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
   const isBoardCard = card.kind === "board" && !!card.boardRef;
   // FEAT-photo-card: 사진은 어디서든 우클릭으로 캡션을 단다(시스템 보드 포함).
   const isPhoto = card.kind === "photo";
-  if (ancestors.length === 0 && !isFrame && !isBoardCard && !isPhoto) return cardNode;
+  // 메모는 어디서든 우클릭으로 색을 고른다 (spec/memo-color.md).
+  const isMemo = card.kind === "text";
+  if (ancestors.length === 0 && !isFrame && !isBoardCard && !isPhoto && !isMemo) return cardNode;
 
   const parent = ancestors[ancestors.length - 1];
   const crumbLabel = (id: string, name: string) =>
@@ -1243,8 +1250,60 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
               </ContextMenu.Portal>
             </ContextMenu.Sub>
           )}
+          {/* 메모 색 하위 메뉴 — 여러 장을 선택했고 이 메모가 그 안에 있으면 선택 전부에 적용. */}
+          {isMemo && (
+            <ContextMenu.Sub>
+              <ContextMenu.SubTrigger
+                data-memo-color-menu="true"
+                className="flex cursor-pointer items-center justify-between rounded-md px-3 py-1.5 text-sm text-text outline-none transition-colors data-[highlighted]:bg-panel data-[state=open]:bg-panel"
+              >
+                <span>{t("workspace.memoColor.menu")}</span>
+                <span className="text-text-soft">›</span>
+              </ContextMenu.SubTrigger>
+              <ContextMenu.Portal>
+                <ContextMenu.SubContent className="z-[var(--z-panel)] min-w-40 rounded-lg border border-border bg-bg p-1 shadow-card-lift">
+                  {MEMO_COLOR_MENU.map((item) => {
+                    const current = isMemoColor(card.color) ? card.color : null;
+                    return (
+                      <ContextMenu.Item
+                        key={item.id ?? "default"}
+                        data-memo-color-item={item.id ?? "default"}
+                        className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-1.5 text-sm text-text outline-none transition-colors data-[highlighted]:bg-panel"
+                        onSelect={() => {
+                          const { selectedIds } = useWorkspace.getState();
+                          setMemoColor(selectedIds.includes(card.id) ? selectedIds : [card.id], item.id);
+                        }}
+                      >
+                        <span
+                          aria-hidden="true"
+                          className="h-3 w-3 flex-none rounded-full border border-border"
+                          style={{ background: item.swatch }}
+                        />
+                        <span className="flex-1">{t(item.labelKey)}</span>
+                        {current === item.id && (
+                          <span aria-hidden="true" className="text-text-soft">
+                            ✓
+                          </span>
+                        )}
+                      </ContextMenu.Item>
+                    );
+                  })}
+                </ContextMenu.SubContent>
+              </ContextMenu.Portal>
+            </ContextMenu.Sub>
+          )}
         </ContextMenu.Content>
       </ContextMenu.Portal>
     </ContextMenu.Root>
   );
 });
+
+/** 메모 색 메뉴 — 기본 노랑(저장 안 함) + MEMO_COLORS 순서. */
+const MEMO_COLOR_MENU: { id: MemoColor | null; labelKey: string; swatch: string }[] = [
+  { id: null, labelKey: "workspace.memoColor.default", swatch: MEMO_TINTS[1] },
+  ...(Object.keys(MEMO_COLORS) as MemoColor[]).map((id) => ({
+    id,
+    labelKey: `workspace.memoColor.${id}`,
+    swatch: MEMO_COLORS[id],
+  })),
+];

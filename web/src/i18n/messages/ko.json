@@ -262,6 +262,14 @@
         "toAncestor": "조상으로 내보내기"
       }
     },
+    "memoColor": {
+      "menu": "색",
+      "default": "기본",
+      "blue": "파랑",
+      "lime": "연두",
+      "purple": "보라",
+      "pink": "분홍"
+    },
     "frameSkin": {
       "menu": "판 모양",
       "free": "자유",

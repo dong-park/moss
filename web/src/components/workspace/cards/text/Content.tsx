@@ -124,7 +124,7 @@ export function TextCardContent({ card, editing, onCommitEdit }: CardContentProp
         data-memo-tint
         className="pointer-events-none absolute inset-0"
         style={{
-          background: memoTint(card.id),
+          background: memoTint(card.id, card.color),
           mixBlendMode: "multiply",
           zIndex: -1,
           borderRadius: 6,

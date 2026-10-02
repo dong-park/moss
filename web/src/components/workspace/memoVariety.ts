@@ -3,8 +3,8 @@ import { layout } from "@/design/tokens";
 /* ─────────────────────────────────────────────────────────────
  * FEAT-memo-variety — 메모마다 조금씩 다른 생김새.
  *
- * 각도와 색조를 메모 id 해시로 정한다. DB(`rotation`·`color` 칸)에는 아무것도
- * 쓰지 않는다 — 같은 id면 새로고침·다른 기기에서도 같은 값이 나온다.
+ * 각도와 기본 색조를 메모 id 해시로 정한다. DB `rotation` 칸에는 아무것도
+ * 쓰지 않는다. `color` 칸은 사용자가 고른 메모 색(MEMO_COLORS)만 담는다 — 같은 id면 새로고침·다른 기기에서도 같은 값이 나온다.
  *
  * - 각도: ±tokens.card.rotation(1.5)도, 소수 둘째 자리까지.
  * - 색조: 노랑 계열 6단계 중 하나. 종이 위에 multiply로 얹는다(Content.tsx).
@@ -68,8 +68,26 @@ export function memoRotationDeg(id: string): number {
   return cardRotationDeg(id, "text");
 }
 
-/** 색조 — 노랑 6단계 중 하나. */
-export function memoTint(id: string): string {
+/**
+ * 사용자가 고르는 메모 색 (spec/memo-color.md). 저장 값은 hex가 아니라 이름이다 —
+ * 톤을 다듬어도 저장된 데이터를 고칠 필요가 없다. 기본 노랑은 저장하지 않는다(빈 칸 = 기본).
+ */
+export const MEMO_COLORS = {
+  blue: "#e5edf2",
+  lime: "#e8eee0",
+  purple: "#ece5f0",
+  pink: "#f3e3e3",
+} as const;
+
+export type MemoColor = keyof typeof MEMO_COLORS;
+
+export function isMemoColor(value: unknown): value is MemoColor {
+  return typeof value === "string" && Object.hasOwn(MEMO_COLORS, value);
+}
+
+/** 색조 — 고른 색이 있으면 그 단색, 없거나 모르는 값이면 노랑 6단계 중 하나(id 해시). */
+export function memoTint(id: string, color?: string): string {
+  if (isMemoColor(color)) return MEMO_COLORS[color];
   return MEMO_TINTS[hashMemoId(`${id}#tint`) % MEMO_TINT_COUNT];
 }
 

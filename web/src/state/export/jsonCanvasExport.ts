@@ -2,6 +2,7 @@ import JSZip from "jszip";
 import type { Board, Connection, ConnectionSide, Note } from "../db/schema";
 import { decodeFrameContent } from "../frameContent";
 import { isSystemBoardId, normalizeBoardId } from "../boardIds";
+import { isMemoColor, MEMO_COLORS } from "@/components/workspace/memoVariety";
 
 /** Obsidian JSON Canvas — https://jsoncanvas.org */
 export interface JsonCanvasNode {
@@ -73,6 +74,8 @@ export function buildJsonCanvas(
           note.kind === "board"
             ? `[board:${note.id}]`
             : noteTextContent(note),
+        // 고른 메모 색만 hex로 싣는다. 기본 노랑은 싣지 않는다 (spec/memo-color.md).
+        ...(note.kind === "text" && isMemoColor(note.color) ? { color: MEMO_COLORS[note.color] } : {}),
       });
     }
   }

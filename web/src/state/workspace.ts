@@ -52,6 +52,7 @@ import {
   type SharedNote,
 } from "./ydoc/model";
 import { isRemoteTransaction, transactLocal } from "./ydoc/origin";
+import type { MemoColor } from "@/components/workspace/memoVariety";
 import {
   clearSharedSnapshots,
   forgetSharedSnapshot,
@@ -612,6 +613,11 @@ interface WorkspaceState {
   /* ─────────── FEAT-text-tool: 평문 텍스트(textbox) ─────────── */
   /** textbox 글자 크기·색 변경. 지정한 항목만 갱신한다(AC-5). */
   setTextStyle: (id: string, style: { textSize?: TextSize; color?: string }) => void;
+  /**
+   * 메모(kind "text") 색을 바꾼다 (spec/memo-color.md). null이면 기본 노랑으로 되돌린다.
+   * 메모가 아닌 카드와 이미 그 색인 메모는 건드리지 않는다.
+   */
+  setMemoColor: (ids: string[], color: MemoColor | null) => void;
   /**
    * textbox 폭 변경. number면 autoWidth=false(고정 폭, 줄바꿈), "auto"면 자동 폭.
    * 고정 폭은 CARD_MIN_WIDTH~CARD_MAX_WIDTH로 클램프한다(AC-4).
@@ -2865,6 +2871,24 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       cancelPersist(id);
       void persistCard(updated, get().currentBoardId);
     }
+  },
+
+  setMemoColor: (ids, color) => {
+    const want = color ?? undefined;
+    const targets = new Set(ids);
+    const changed: Card[] = [];
+    set((s) => ({
+      cards: s.cards.map((c) => {
+        if (!targets.has(c.id) || c.kind !== "text" || c.color === want) return c;
+        const next: Card = { ...c, color: want };
+        if (want === undefined) delete next.color;
+        changed.push(next);
+        return next;
+      }),
+    }));
+    // ponytail: 카드마다 디바운스 영속 — 여러 장이어도 상태 갱신은 한 번이다. 수백 장이 느리면 일괄 쓰기로.
+    const boardId = get().currentBoardId;
+    for (const card of changed) persistCardDebounced(card, boardId);
   },
 
   /* ─────────── FEAT-text-tool: 평문 텍스트(textbox) ─────────── */
