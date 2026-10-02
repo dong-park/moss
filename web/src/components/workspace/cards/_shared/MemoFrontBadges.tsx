@@ -22,6 +22,17 @@ const BADGE_ORDER: { type: keyof Omit<BlockCounts, "image">; icon: string; key: 
   { type: "file", icon: "📎", key: "workspace.memoFront.badge.file" },
 ];
 
+/** 본문 체크박스 개수 — gfm 작업 항목 `- [ ]`·`- [x]`. 할 일 메모 앞면 진행률 배지용. */
+export function countTasks(markdown: string): { done: number; total: number } {
+  let done = 0;
+  let total = 0;
+  for (const m of markdown.matchAll(/^\s*[-*+] \[([ xX])\]/gm)) {
+    total += 1;
+    if (m[1] !== " ") done += 1;
+  }
+  return { done, total };
+}
+
 export function MemoFrontBadges({
   markdown,
   onActivate,
@@ -33,14 +44,33 @@ export function MemoFrontBadges({
   // 2단계 리뷰 P1-3: 카드 수백 장이 렌더될 때마다 정규식 스캔을 반복하지 않도록
   // markdown이 바뀔 때만 다시 센다.
   const counts = useMemo(() => countBlocks(markdown), [markdown]);
+  const tasks = useMemo(() => countTasks(markdown), [markdown]);
   const badges = BADGE_ORDER.filter((b) => counts[b.type] > 0);
-  if (badges.length === 0) return null;
+  if (badges.length === 0 && tasks.total === 0) return null;
 
   return (
     <div
       className="pointer-events-none absolute inset-x-0 bottom-1 z-20 flex justify-end gap-1 px-2"
       data-moss-front-badges
     >
+      {tasks.total > 0 && (
+        <button
+          type="button"
+          data-moss-front-badge="todo"
+          aria-label={t("workspace.memoFront.badge.todo", { done: tasks.done, total: tasks.total })}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            onActivate();
+          }}
+          className="pointer-events-auto flex cursor-pointer items-center gap-1 rounded-full border border-border bg-bg/90 px-2 py-0.5 text-[11px] text-text-soft shadow-card"
+        >
+          <span aria-hidden="true">☑</span>
+          <span>
+            {tasks.done}/{tasks.total}
+          </span>
+        </button>
+      )}
       {badges.map((b) => (
         <button
           key={b.type}

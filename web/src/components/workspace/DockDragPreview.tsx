@@ -8,6 +8,7 @@ import {
   TEXT_GLYPH_ICON,
   useWorkspace,
   widthForKind,
+  PHOTO_DEFAULT_WIDTH,
 } from "@/state/workspace";
 
 /**
@@ -38,6 +39,8 @@ const PREVIEW_IMAGE_OVERRIDE: Partial<Record<string, string>> = {
   frame: "/icons/dock/memoboard.png",
   // FEAT-text-tool: 종이가 없으므로 "T" 글리프만 커서에 띄운다.
   textbox: TEXT_GLYPH_ICON,
+  // 도크 사진 버튼 — 아직 고른 사진이 없으니 사진 아이콘을 띄운다.
+  image: "/icons/sidebar/image-v2.png",
 };
 
 export function DockDragPreview() {
@@ -46,7 +49,8 @@ export function DockDragPreview() {
   if (!drag) return null;
 
   const kind = kindForTool(drag.toolId);
-  const baseW = widthForKind(kind);
+  // 도크 사진 버튼은 사진 카드 폭으로 놓인다(Dock tryDrop과 같은 값).
+  const baseW = kind === "image" ? PHOTO_DEFAULT_WIDTH : widthForKind(kind);
   const baseH = Math.min(
     CARD_MAX_HEIGHT,
     Math.max(CARD_MIN_HEIGHT, baseW / aspectForKind(kind)),

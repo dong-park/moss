@@ -9,6 +9,7 @@ import { ExpandedMarkdownEditor } from "./_shared/MarkdownEditor";
 import { DrawingLayer, type DrawingTool } from "./_shared/DrawingLayer";
 import { BlockMenu } from "./_shared/editor/BlockMenu";
 import { MemoExpandTitleSlot } from "./_shared/MemoExpandTitleSlot"; // FEAT-memo-title
+import { ChecklistSeed } from "./_shared/editor/ChecklistSeed";
 import { PhotoLightbox } from "./photo/PhotoLightbox"; // FEAT-photo-card
 
 /* ─────────────────────────────────────────────────────────────
@@ -102,6 +103,7 @@ export function MemoExpandDialog() {
               </Dialog.Title>
               <div className="flex items-center gap-1">
                 <BlockMenu />
+                {card && <ChecklistSeed cardId={card.id} />}
                 <span aria-hidden className="mx-1 h-4 w-px bg-border" />
                 <button
                   type="button"

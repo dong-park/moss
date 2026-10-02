@@ -27,7 +27,8 @@ import { TrashPanel } from "./TrashPanel";
 import { useVirtualizedCards } from "./useVirtualizedCards";
 import { ConnectorLayer } from "./connectors/ConnectorLayer";
 import { ConnectionHandlesLayer } from "./connectors/ConnectionHandles";
-import { fetchLinkPreview, isUrlOnly } from "@/state/cardContent";
+import { isUrlOnly } from "@/state/cardContent";
+import { createLinkMemo } from "./linkMemo";
 import { serializeBlock } from "@/state/blocks";
 import {
   DROP_STACK_OFFSET_PX,
@@ -103,8 +104,6 @@ export function Canvas() {
   // P2-4: 최초 fit 여부를 스토어가 들고 있다 — panToCard(programmatic 이동)와
   // 경쟁하지 않는다(모듈 전역이던 기존 플래그 제거).
   const canvasHasFitted = useWorkspace((s) => s.canvasHasFitted);
-  // 캔버스 붙여넣기 — clipboard가 URL만일 때 link 위젯을 바로 생성.
-  const addCardAtViewportCenter = useWorkspace((s) => s.addCardAtViewportCenter);
   // FEAT-sticky-redesign n6: 파일 드롭 — 놓은 좌표에 블록 든 메모를 만든다.
   const addCardAt = useWorkspace((s) => s.addCardAt);
   // FEAT-photo-card: 이미지 드롭·붙여넣기는 메모 대신 사진 카드를 만든다.
@@ -273,34 +272,15 @@ export function Canvas() {
       }
 
       const text = e.clipboardData?.getData("text/plain") ?? "";
-      const url = text.trim();
-      if (!isUrlOnly(url)) return;
-
-      const block = serializeBlock({ type: "link", url });
-      // 허용 스킴(http/https/mailto) 밖이면 null — 기존 일반 텍스트 붙여넣기로 떨어뜨린다
+      // 주소 하나만 붙여넣으면 링크 메모. 허용 스킴 밖이면 일반 붙여넣기로 떨어뜨린다
       // (1단계 리뷰: javascript: 등 링크 저장형 XSS 차단, blocks.ts 참고).
-      if (!block) return;
-
+      if (!isUrlOnly(text.trim()) || !serializeBlock({ type: "link", url: text.trim() })) return;
       e.preventDefault();
-      const id = addCardAtViewportCenter("text", centerSize());
-      // 위젯(표시 형태)으로 바로 보이게 — 편집 모드 진입 없이 링크 블록만 채운다.
-      setEditing(null);
-      setContent(id, block);
-      // OG 메타는 비동기로 채운다. 실패해도 url만으로 블록 유지.
-      // 2단계 리뷰 P2: 도착 시점에 사용자가 이미 내용을 편집했다면(방금 심은
-      // 블록과 다르면) 덮어쓰지 않는다 — 레이스로 사용자 편집을 지우는 사고 방지.
-      void fetchLinkPreview(url).then((meta) => {
-        if (!meta) return;
-        const withTitle = serializeBlock({ type: "link", url, title: meta.title });
-        if (!withTitle) return;
-        const current = useWorkspace.getState().cards.find((c) => c.id === id)?.content;
-        if (current !== block) return;
-        setContent(id, withTitle);
-      });
+      createLinkMemo(text, { centerSize: centerSize() });
     };
     window.addEventListener("paste", onPaste);
     return () => window.removeEventListener("paste", onPaste);
-  }, [canvasRect, addCardAtViewportCenter, addPhotoAt, setContent, setEditing]);
+  }, [canvasRect, addPhotoAt]);
 
   /* ─ 캔버스 파일 드롭(FEAT-sticky-redesign n6, spec AC-6·AC-7·§4):
    *   이미지 파일 → 이미지 블록, 그 외 → 파일 블록. 파일마다 메모 1개, 놓은

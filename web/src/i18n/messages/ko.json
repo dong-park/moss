@@ -78,6 +78,7 @@
     },
     "memoFront": {
       "badge": {
+          "todo": "할 일 {total}개 중 {done}개 완료",
         "audio": "녹음 {count}개",
         "link": "링크 {count}개",
         "file": "파일 {count}개"
@@ -151,6 +152,11 @@
       }
     },
     "tool": {
+      "todo": "할 일",
+      "link": "링크",
+      "photo": "사진",
+      "linkPlaceholder": "주소를 붙여넣고 Enter",
+      "linkInvalid": "http·https·mailto 주소만 넣을 수 있어요",
       "line": "선",
       "board": "파일함",
       "column": "컬럼",

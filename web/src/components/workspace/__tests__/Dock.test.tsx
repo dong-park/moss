@@ -135,7 +135,7 @@ describe("AC-1: 독 버튼 (펜·시그널스 임시 숨김 + 휴지통)", () =>
     const buttons = screen.getAllByRole("button");
     const labels = buttons.map((b) => b.getAttribute("aria-label"));
     // FEAT-text-tool: 메모 다음에 텍스트(T) 도구가 추가됐다.
-    expect(labels).toEqual(["메모판", "메모", "텍스트", "파일함", "휴지통"]);
+    expect(labels).toEqual(["메모판", "메모", "할 일", "링크", "사진", "텍스트", "파일함", "휴지통"]);
     // 구분선 — 펜·시그널스와 함께 숨김.
     expect(toolbar.querySelector("[aria-hidden]")).toBeNull();
   });

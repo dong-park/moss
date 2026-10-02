@@ -28,6 +28,7 @@ import { imagePasteHandler, opfsImagePlugin } from "./imagePaste";
 import { memoBlockDecorations } from "./blockView"; // (FEAT-sticky-redesign n4) 링크·녹음·파일 블록
 import { memoBubbleItems } from "./BubbleToolbar"; // (W3) 인카드 버블 서식 항목
 import { memoTitleArrowUpPlugin } from "./titleArrowUp"; // (f4) 맨 앞 ArrowUp → 제목 줄
+import { taskTogglePlugin } from "./taskToggle"; // 체크리스트 상자 클릭 토글
 
 /* ── ② paste 슬롯 ──────────────────────────────────────────────
  * true 반환 시 기본 동작 차단(소비). 등록 순서대로 시도, 첫 true에서 중단.
@@ -142,4 +143,5 @@ export const editorPlugins: MilkdownPlugin[] = [
   ...wikilink, // (W5) [[위키링크]] — 데코레이션 + 자동완성
   ...autolink, // (W10) URL 자동 링크화
   memoTitleArrowUpPlugin, // (f4) 본문 맨 앞 ArrowUp → 제목 줄 (앞면·창 공통)
+  taskTogglePlugin, // 체크리스트 항목 왼쪽 상자 클릭 → 체크 토글
 ].flat();
