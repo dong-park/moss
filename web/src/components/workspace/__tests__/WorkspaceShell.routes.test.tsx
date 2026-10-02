@@ -297,7 +297,7 @@ describe("로그인 게이트와 /b/[boardId] 복귀 (AC-4)", () => {
         </WorkspaceGate>
       </I18nProvider>,
     );
-    expect(screen.getByText("moss에 오신 것을 환영해요")).toBeTruthy();
+    expect(screen.getByText("생각을 붙이면,\n연결이 보여요", { normalizer: (s) => s })).toBeTruthy();
 
     // 로그인 완료 — 게이트가 워크스페이스로 바뀌고 URL의 보드가 열린다.
     useAuth.setState({
@@ -306,7 +306,7 @@ describe("로그인 게이트와 /b/[boardId] 복귀 (AC-4)", () => {
       user: { id: "u1", name: "동환", avatar: null },
     });
     await waitFor(() => expect(useWorkspace.getState().currentBoardId).toBe(id));
-    expect(screen.queryByText("moss에 오신 것을 환영해요")).toBeNull();
+    expect(screen.queryByText("생각을 붙이면,\n연결이 보여요", { normalizer: (s) => s })).toBeNull();
   });
 });
 

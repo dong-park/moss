@@ -47,10 +47,7 @@ describe("AC-4 · 로그인 온보딩", () => {
   test("소개·기능 3개·Google 버튼이 보인다", () => {
     configureAuth({ api: fakeApi(), googleIdToken: vi.fn() });
     mount();
-    expect(screen.getByText("moss에 오신 것을 환영해요")).toBeTruthy();
-    expect(screen.getByText("메모를 자유롭게 붙이고 옮겨요")).toBeTruthy();
-    expect(screen.getByText("연결선이 아이디어 사이를 이어 줘요")).toBeTruthy();
-    expect(screen.getByText("링크로 동료와 함께 편집해요")).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("생각을 붙이면,\n연결이 보여요");
     expect(screen.getByRole("button", { name: "Google 계정으로 로그인" })).toBeTruthy();
   });
 

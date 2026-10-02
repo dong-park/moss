@@ -1,0 +1,1524 @@
+<meta charset="utf-8">
+<title>moss 로그인 전 첫 화면 — 떠다니는 카드 히어로</title>
+<style>
+/* ── 토큰 8개. 이름을 여기서 고정한다. 파일마다 새로 찍지 않는다 ── */
+:root{
+  --bg:#fbfaf7; --panel:#fff; --ink:#1a1a18; --dim:#6b6862; --line:#e5e0d5;
+  --ok:#1a5c3a; --bad:#8f2d20; --warn:#8a3a12;
+  --ok-bg:#e3f0e8; --bad-bg:#fbeae7; --warn-bg:#fdefe4; --panel2:#f4f2ec;
+  --mark:#d92f21;
+  /* 글자 넷·반경 셋. 위계는 크기가 아니라 색으로 만든다 — 보조 텍스트는 --dim 이다 */
+  --fs-label:12px; --fs-body:15px; --fs-head:17px; --fs-title:22px;
+  --r-sm:6px; --r-md:10px;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#16161a; --panel:#1e1e23; --ink:#eceae5; --dim:#98948c; --line:#33323a;
+  --ok:#7dd6a4; --bad:#f0968a; --warn:#f0a877;
+  --ok-bg:#1d3a2b; --bad-bg:#3a201c; --warn-bg:#3a2416; --panel2:#26262c;
+  --mark:#ff6a5a;
+}}
+:root[data-theme="dark"]{
+  --bg:#16161a; --panel:#1e1e23; --ink:#eceae5; --dim:#98948c; --line:#33323a;
+  --ok:#7dd6a4; --bad:#f0968a; --warn:#f0a877;
+  --ok-bg:#1d3a2b; --bad-bg:#3a201c; --warn-bg:#3a2416; --panel2:#26262c;
+  --mark:#ff6a5a;
+}
+*{box-sizing:border-box}
+*{scrollbar-width:thin;scrollbar-color:var(--line) transparent}
+*::-webkit-scrollbar{width:8px;height:8px}
+*::-webkit-scrollbar-track{background:transparent}
+*::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px;
+  border:2px solid transparent;background-clip:content-box}
+*::-webkit-scrollbar-corner{background:transparent}
+:focus-visible{outline:2px solid var(--warn);outline-offset:2px}
+.tbox:focus,.tbox:focus-visible,.dstage:focus,.dstage:focus-visible{outline:none}
+body{margin:0;background:var(--bg);color:var(--ink);line-height:1.65;
+  font-family:"Pretendard Variable",Pretendard,-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo",sans-serif;
+  font-size:var(--fs-body);
+  -webkit-font-smoothing:antialiased}
+.wrap{margin:0 auto;padding:20px 24px 80px}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.92em}
+
+/* ── 머리말·꼬리말·테마 스위치 ── */
+/* 상단 바 — 화면 폭을 꽉 채우고 늘 붙어 있다 */
+.top{position:fixed;top:0;left:0;right:0;z-index:20;height:44px;background:var(--panel);
+  border-bottom:1px solid var(--line);opacity:0;transition:opacity .15s}
+.top:hover,.top:focus-within{opacity:1}
+.top > .in{margin:0 auto;padding:0 24px;height:100%;
+  display:flex;align-items:center;gap:12px}
+.top h1{font-size:var(--fs-body);font-weight:600;margin:0;letter-spacing:-.01em;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.top .grow{flex:1 1 auto}
+.seg{display:flex;border:1px solid var(--line);border-radius:var(--r-sm);overflow:hidden;flex:0 0 auto}
+.seg button{border:0;background:var(--panel);color:var(--dim);font:inherit;font-size:var(--fs-label);
+  padding:4px 10px;cursor:pointer;border-right:1px solid var(--line);white-space:nowrap}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+.themesw{display:flex;align-items:center;gap:10px;flex:0 0 auto}
+.themesw button{border:0;background:transparent;color:var(--dim);font:inherit;font-size:14px;
+  line-height:1;padding:2px;cursor:pointer;transition:color .1s}
+.themesw button:hover{color:var(--ink)}
+.themesw button[aria-pressed="true"]{color:var(--ink)}
+.sub{color:var(--dim);font-size:var(--fs-body);margin:0 0 4px}
+footer{margin-top:44px;padding-top:14px;border-top:1px solid var(--line);color:var(--dim);font-size:var(--fs-label)}
+
+/* ── 공통 컴포넌트 넷 ── */
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-md);padding:14px 15px}
+.chip{display:inline-block;font-size:var(--fs-label);font-weight:700;padding:2px 7px;border-radius:var(--r-sm);
+  white-space:nowrap;background:var(--panel2);color:var(--dim)}
+.chip.ok{background:var(--ok-bg);color:var(--ok)}
+.chip.bad{background:var(--bad-bg);color:var(--bad)}
+.chip.warn{background:var(--warn-bg);color:var(--warn)}
+.bar{background:var(--panel2);border-bottom:1px solid var(--line);padding:7px 12px;font-size:var(--fs-label);
+  color:var(--dim);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.bar .grow{flex:1 1 auto}
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+
+.block{margin-top:34px}
+.block > h2{font-size:var(--fs-head);margin:0 0 3px;letter-spacing:-.01em}
+.block > .cap{color:var(--dim);font-size:var(--fs-body);margin:0 0 12px}
+
+/* ── 편집 ── */
+.editbar{position:sticky;top:44px;z-index:5;display:none;gap:9px;align-items:center;flex-wrap:wrap;
+  margin:0 0 16px;padding:9px 13px;background:var(--warn-bg);border:1px solid var(--warn);
+  border-radius:var(--r-md);font-size:var(--fs-label);color:var(--warn)}
+.editbar.on{display:flex}
+.editbar .grow{flex:1 1 auto}
+.editbar button{border:1px solid var(--warn);background:var(--panel);color:var(--warn);font:inherit;
+  font-size:var(--fs-label);padding:3px 11px;border-radius:var(--r-sm);cursor:pointer}
+[data-edit] [contenteditable]{outline:0;box-shadow:inset 0 -1px 0 var(--line)}
+[data-edit] [contenteditable]:hover{box-shadow:inset 0 -1px 0 var(--warn)}
+[data-edit] [contenteditable]:focus{background:var(--warn-bg);box-shadow:inset 0 0 0 2px var(--warn)}
+[data-edit] .changed{color:var(--warn);font-weight:600}
+[data-edit] td.changed{box-shadow:inset 3px 0 0 var(--warn)}
+[data-edit] [contenteditable].changed{background:var(--warn-bg)}
+
+/* ── 슬롯 1 · 표 ── */
+.tbox{border:1px solid var(--line);border-radius:var(--r-md);overflow:hidden;background:var(--panel)}
+.ttools{display:flex;gap:8px;padding:8px 10px;border-bottom:1px solid var(--line);background:var(--panel2)}
+.ttools input{flex:1 1 auto;min-width:0;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--panel);
+  color:var(--ink);font:inherit;font-size:var(--fs-body);padding:4px 9px}
+.ttools .n{flex:0 0 auto;color:var(--dim);font-size:var(--fs-label);align-self:center}
+.tscroll{overflow:auto;max-height:70vh}
+table{border-collapse:collapse;width:100%}
+th,td{user-select:none;-webkit-user-select:none}
+td[contenteditable="true"]{user-select:text;-webkit-user-select:text;
+  box-shadow:inset 0 0 0 2px var(--warn);background:var(--warn-bg)}
+th,td{padding:8px 10px;text-align:left;border-bottom:1px solid var(--line);font-size:var(--fs-body)}
+thead th{position:sticky;top:0;z-index:1;background:var(--panel2);font-size:var(--fs-label);color:var(--dim);
+  font-weight:600;cursor:pointer;user-select:none;white-space:nowrap}
+thead th::after{content:"";opacity:.45;font-size:var(--fs-label)}
+thead th[data-dir="1"]::after{content:" ▲";opacity:1}
+thead th[data-dir="-1"]::after{content:" ▼";opacity:1}
+tbody tr{content-visibility:auto;contain-intrinsic-size:auto 37px}
+tbody tr:last-child td{border-bottom:0}
+td.sel{background:color-mix(in srgb, var(--ok) 20%, transparent)}
+td.cur{box-shadow:inset 0 0 0 2px var(--ink)}
+.tstat{display:flex;gap:10px;align-items:center;padding:6px 11px;border-top:1px solid var(--line);
+  background:var(--panel2);font-size:var(--fs-label);color:var(--dim);min-height:29px}
+.tstat .grow{flex:1 1 auto}
+.tstat .sel{font-family:ui-monospace,Menlo,monospace}
+.tstat .sel b{color:var(--ink);font-weight:600}
+.tstat .hint{opacity:.7}
+td.num{text-align:right;font-family:ui-monospace,Menlo,monospace;font-size:var(--fs-body);white-space:nowrap}
+
+
+/* ── 슬롯 2 · 장표 ── */
+.deck{border:1px solid var(--line);border-radius:var(--r-md);overflow:hidden;background:var(--panel)}
+.dstage{display:flex;aspect-ratio:16/9;overflow-x:auto;overflow-y:hidden;
+  scroll-snap-type:x mandatory;scrollbar-width:none;cursor:grab;touch-action:pan-y}
+.dstage.drag{cursor:grabbing;scroll-snap-type:none;user-select:none}
+.dstage::-webkit-scrollbar{display:none}
+.slide{flex:0 0 100%;scroll-snap-align:start;padding:clamp(20px,4.5%,44px);overflow-y:auto;
+  display:flex;flex-direction:column;justify-content:center;
+  }
+.slide h3,.slide p,.slide .sbody,.slide .card{user-select:none;-webkit-user-select:none}
+.slide [contenteditable="true"]{user-select:text;-webkit-user-select:text}
+.slide [contenteditable="true"] *{user-select:text;-webkit-user-select:text}
+.slide h3{margin:0 0 clamp(10px,2.2%,20px);font-size:clamp(var(--fs-title),3.4vw,32px);
+  line-height:1.3;letter-spacing:-.02em}
+.slide p{font-size:clamp(var(--fs-body),1.9vw,20px);line-height:1.6;margin:0 0 .55em}
+.slide p:last-child{margin-bottom:0}
+.slide .card{padding:clamp(9px,1.6%,15px)}
+.dnav{display:flex;gap:10px;align-items:center;padding:7px 12px;border-top:1px solid var(--line);
+  background:var(--panel2);font-size:var(--fs-label);color:var(--dim)}
+.dnav .grow{flex:1 1 auto}
+.dnav button{border:1px solid var(--line);background:var(--panel);color:var(--dim);font:inherit;
+  font-size:var(--fs-body);padding:2px 11px;border-radius:var(--r-sm);cursor:pointer}
+.dnav button:disabled{opacity:.35;cursor:default}
+.dnav .dots{display:flex;gap:5px}
+.dnav .dots i{width:6px;height:6px;border-radius:50%;background:var(--line);display:block;
+  transition:background .15s}
+.dnav .dots i.on{background:var(--ink)}
+
+/* ── 슬롯 3 · 문서 ── */
+.doc{display:grid;gap:22px;grid-template-columns:1fr}
+@media(min-width:736px){.doc{grid-template-columns:1fr 172px}}
+.toc{order:2;align-self:start;position:sticky;top:14px;font-size:var(--fs-body);line-height:1.5}
+.toc a{display:block;color:var(--dim);text-decoration:none;padding:3px 9px 3px 0;text-wrap:pretty;
+  border-right:2px solid var(--line);text-align:right}
+.toc a[aria-current="true"]{color:var(--ink);border-right-color:var(--ink);font-weight:600}
+.docbody{max-width:62ch}
+.docbody h3{font-size:var(--fs-head);margin:26px 0 6px;scroll-margin-top:14px}
+.docbody h3:first-child{margin-top:0}
+.docbody p{margin:0 0 10px}
+.docbody details{border:1px solid var(--line);border-radius:var(--r-md);padding:9px 12px;margin:10px 0;
+  background:var(--panel)}
+.docbody summary{cursor:pointer;font-size:var(--fs-body);color:var(--dim)}
+@media(max-width:735px){.toc{display:none}}
+
+/* ── 슬롯 4 · 시안 비교 ── */
+.gal{display:grid;gap:12px;grid-template-columns:1fr}
+@media(min-width:736px){
+  .gal[data-cols="2"]{grid-template-columns:repeat(2,1fr)}
+  .gal[data-cols="3"]{grid-template-columns:repeat(3,1fr)}
+}
+.cand{border:1px solid var(--line);border-radius:var(--r-md);overflow:hidden;background:var(--panel);
+  display:flex;flex-direction:column}
+.cand > .bar{cursor:pointer}
+.cand .name{font-weight:600;color:var(--ink);font-size:var(--fs-body)}
+.cand .stage{padding:14px;flex:1 1 auto;overflow:auto;max-height:340px}
+.cand .cap2{padding:9px 13px;border-top:1px solid var(--line);font-size:var(--fs-label);color:var(--dim)}
+.cand .cap2 b{color:var(--ink);font-weight:600}
+.stagewrap{display:flex;flex:1 1 auto;min-width:0}
+.stagewrap .stage{min-width:0}
+.notes{flex:0 0 160px;padding:14px 14px 14px 0;overflow:auto;max-height:340px}
+.note{border-left:1px solid var(--line);padding:2px 0 2px 8px;color:var(--dim);font-size:var(--fs-label);margin-bottom:8px}
+.note:last-child{margin-bottom:0}
+@media(max-width:600px){
+  .stagewrap{flex-direction:column}
+  .notes{flex:0 0 auto;padding:0 14px 14px;max-height:none}
+}
+
+/* 주석 배치 — 시안 한 장을 가운데 두고 코멘트가 요소 옆에 붙는다 */
+.gal.annot{grid-template-columns:1fr}
+.annot .stagewrap{position:relative;align-items:flex-start;justify-content:center}
+.annot .stage{flex:0 0 auto;width:640px;max-width:100%;box-sizing:content-box}
+.annot .stage,.annot .notes{max-height:none;overflow:visible}
+.annot .notes{flex:0 0 240px;position:relative;padding:14px 0}
+.annot .notes.left{padding-left:14px}
+.annot .notes.right{padding-right:14px}
+.annot .note{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-sm);padding:9px 12px;margin:0 0 8px;
+  color:var(--ink);font-size:13px;line-height:1.55;word-break:keep-all}
+.annot .notes.left .note{text-align:left}
+.annot.placed .note{position:absolute;left:0;right:0;margin:0}
+.annot .lead{position:absolute;inset:0;overflow:visible;pointer-events:none}
+.annot .lead line{stroke:var(--mark);stroke-width:1}
+.mark{outline:1.5px solid var(--mark);outline-offset:1px;border-radius:2px}
+@media(max-width:700px){
+  .annot .stagewrap{flex-direction:column}
+  .annot .notes{flex:0 0 auto;padding:0 0 10px}
+  .annot .notes.left .note{text-align:left}
+  .annot .lead{display:none}
+}
+.gal.zoom .cand{display:none}
+.gal.zoom .cand.big{display:flex;grid-column:1/-1}
+.gal.zoom .cand.big .stage{max-height:none}
+
+@media print{
+  .themesw,.widthsw,.ttools,.dnav,.toc{display:none}
+  .gal.zoom .cand{display:flex}
+  .dstage{display:block;aspect-ratio:auto;overflow:visible}
+  .slide{page-break-after:always;display:block;border:0}
+  .slide:last-child{page-break-after:auto}
+  .tscroll{max-height:none}
+}
+</style>
+
+<div class="top"><div class="in">
+  <h1>moss 로그인 전 첫 화면 — 떠다니는 카드 히어로</h1>
+  <span class="grow"></span>
+  <div class="themesw" role="group" aria-label="테마">
+    <button data-t="light" aria-pressed="false" aria-label="라이트" title="라이트">☀︎</button>
+    <button data-t="dark" aria-pressed="false" aria-label="다크" title="다크">☾</button>
+    <button data-t="system" aria-pressed="true" aria-label="시스템" title="시스템">◐</button>
+  </div>
+</div></div>
+
+<div class="wrap">
+<p class="sub">시안 3개, 각 1440×900. 액자를 누르면 크게 보인다. 시안은 라이트 단일이다 — moss 토큰에 다크가 없어 스위치를 눌러도 시안 안은 안 바뀐다.</p>
+
+<div class="editbar">
+  <span>화면에서 고친 값이다. 이 브라우저에만 남는다.</span>
+  <span class="stat"></span>
+  <span class="grow"></span>
+  <button class="copy">명세 복사</button>
+  <button class="reset">되돌리기</button>
+</div>
+<section class="block" data-edit="1">
+<div class="gal" data-cols="3">
+  <div class="cand">
+    <div class="bar"><span class="name">A. 보기만 — 떠다니는 카드</span></div>
+    <div class="stage"><iframe title="시안 A" srcdoc="&lt;!doctype html&gt;
+&lt;html lang=&quot;ko&quot;&gt;&lt;head&gt;&lt;meta charset=&quot;utf-8&quot;&gt;
+&lt;link rel=&quot;stylesheet&quot; href=&quot;https://fonts.googleapis.com/css2?family=Caveat:wght@500&amp;family=Nanum+Pen+Script&amp;display=swap&quot;&gt;
+&lt;style&gt;
+html,body{margin:0;height:100%;overflow:hidden;background:#ebecee}
+#fit{position:absolute;left:0;top:0;width:1440px;height:900px;transform-origin:0 0;overflow:hidden;
+  background:#ebecee radial-gradient(#d8d2c4 1px,transparent 1.2px) 0 0/24px 24px;
+  font-family:&quot;Pretendard Variable&quot;,Pretendard,&quot;Apple SD Gothic Neo&quot;,system-ui,sans-serif;color:#2c2e33}
+#lines{position:absolute;inset:0;width:1440px;height:900px;pointer-events:none}
+#lines path{fill:none;stroke:#b4ab99;stroke-width:1.5;stroke-linecap:round}
+.lab{position:absolute;font:500 26px Caveat,&quot;Nanum Pen Script&quot;,cursive;color:#6a6c72;opacity:0;transition:opacity .6s;white-space:nowrap}
+.card{position:absolute;left:0;top:0;box-sizing:border-box;border-radius:6px;background:#fdfcfa;padding:12px 14px;
+  font-size:14px;line-height:1.5;user-select:none;
+  box-shadow:0 1px 1px rgba(42,39,34,.04),0 2px 4px rgba(42,39,34,.05),0 8px 20px rgba(42,39,34,.04);transition:box-shadow .2s,filter .3s}
+.card p{margin:0}
+.card.far{filter:blur(1.4px);opacity:.78}
+.yellow{background:#fbf5d8}.blue{background:#e5edf2}.lime{background:#e8eee0}.purple{background:#ece5f0}
+.hand p{font:500 25px/1.15 Caveat,&quot;Nanum Pen Script&quot;,cursive}
+.check b{display:block;font-size:13px;margin-bottom:6px}
+.check ul{list-style:none;margin:0;padding:0;font-size:13px}
+.check li{display:flex;gap:7px;align-items:center;margin:3px 0}
+.check li::before{content:&quot;&quot;;width:12px;height:12px;border:1.5px solid #9a968c;border-radius:3px;flex:none;box-sizing:border-box}
+.check li.on{color:#6a6c72;text-decoration:line-through}
+.check li.on::before{background:#2c2e33 url(&quot;data:image/svg+xml,%3Csvg xmlns=&#x27;http://www.w3.org/2000/svg&#x27; viewBox=&#x27;0 0 12 12&#x27;%3E%3Cpath d=&#x27;M3 6.2l2 2 4-4.4&#x27; stroke=&#x27;white&#x27; stroke-width=&#x27;1.6&#x27; fill=&#x27;none&#x27;/%3E%3C/svg%3E&quot;);border-color:#2c2e33}
+.photo{padding:6px 6px 8px}
+.photo .ph{height:118px;border-radius:3px}
+.photo span{display:block;font-size:12px;color:#6a6c72;margin:6px 4px 0}
+.link small,.board small{display:block;font-size:11px;color:#6a6c72}
+.link p{font-weight:600;font-size:13px;margin-top:3px}
+.link .fav{display:inline-grid;place-items:center;width:16px;height:16px;border-radius:4px;color:#fff;font-size:10px;font-weight:700;margin-right:6px;vertical-align:-3px}
+.board .bd{display:grid;grid-template-columns:1fr 1fr;gap:4px;height:62px;margin-bottom:8px}
+.board .bd i{border-radius:3px;background:#efeae0}
+.board .bd i:nth-child(2){background:#fbf5d8}.board .bd i:nth-child(3){background:#e8eee0}
+.board b{font-size:13px}
+.card.held{box-shadow:0 6px 12px rgba(42,39,34,.12),0 24px 48px rgba(42,39,34,.18);filter:none;opacity:1;cursor:grabbing}
+.drag .card{cursor:grab}
+#veil{position:absolute;inset:0;pointer-events:none;z-index:900;
+  background:radial-gradient(ellipse 380px 210px at 50% 50%,rgba(235,236,238,.94) 40%,rgba(235,236,238,0) 100%)}
+#hero{position:absolute;z-index:901;left:50%;top:50%;transform:translate(-50%,-50%);text-align:center;pointer-events:none;width:760px}
+#hero .wm{font-weight:700;font-size:19px;letter-spacing:-.02em;display:inline-flex;align-items:center;gap:7px}
+#hero .wm i{width:10px;height:10px;border-radius:50%;background:#a8b89c}
+#hero h1{font-size:58px;line-height:1.16;letter-spacing:-.035em;font-weight:700;margin:18px 0 30px}
+#hero .btn{pointer-events:auto;display:inline-flex;align-items:center;gap:10px;background:#2c2e33;color:#fdfcfa;border:0;
+  border-radius:999px;padding:15px 28px;font:600 16px inherit;font-family:inherit;cursor:pointer}
+#hero .btn .g{width:18px;height:18px;border-radius:50%;background:#fdfcfa;color:#2c2e33;display:grid;place-items:center;font-size:12px;font-weight:800}
+#hero .mail{pointer-events:auto;display:block;margin-top:16px;color:#6a6c72;font-size:14px;text-decoration:underline;text-underline-offset:3px}
+#hint{margin-top:22px;font:500 24px Caveat,&quot;Nanum Pen Script&quot;,cursive;color:#6a6c72;transition:opacity .5s}
+@media (prefers-reduced-motion:reduce){.card{transition:none}}
+&lt;/style&gt;&lt;/head&gt;&lt;body&gt;
+&lt;div id=&quot;fit&quot;&gt;
+  &lt;svg id=&quot;lines&quot; viewBox=&quot;0 0 1440 900&quot;&gt;&lt;/svg&gt;
+  &lt;div id=&quot;cards&quot;&gt;&lt;/div&gt;
+  &lt;div id=&quot;veil&quot;&gt;&lt;/div&gt;
+  &lt;div id=&quot;hero&quot;&gt;
+    &lt;div class=&quot;wm&quot;&gt;&lt;i&gt;&lt;/i&gt;moss&lt;/div&gt;
+    &lt;h1 id=&quot;h1&quot;&gt;&lt;/h1&gt;
+    &lt;button class=&quot;btn&quot;&gt;&lt;span class=&quot;g&quot;&gt;G&lt;/span&gt;Google로 계속&lt;/button&gt;
+    &lt;a class=&quot;mail&quot; href=&quot;#&quot;&gt;메일로 계속&lt;/a&gt;
+    &lt;div id=&quot;hint&quot; hidden&gt;카드를 끌어 보세요&lt;/div&gt;
+  &lt;/div&gt;
+&lt;/div&gt;
+&lt;script&gt;
+const MODE=&#x27;a&#x27;, W=1440, H=900;
+const fit=document.getElementById(&#x27;fit&#x27;); let S=1;
+function rescale(){S=innerWidth/W;fit.style.transform=&#x27;scale(&#x27;+S+&#x27;)&#x27;;}
+addEventListener(&#x27;resize&#x27;,rescale); rescale();
+
+document.getElementById(&#x27;h1&#x27;).innerHTML = MODE===&#x27;b&#x27;
+  ? &#x27;흩어 놓아도 괜찮아요.&lt;br&gt;연결은 moss가 이어 줄게요&#x27;
+  : &#x27;생각을 붙이면,&lt;br&gt;연결이 보여요&#x27;;
+if(MODE===&#x27;b&#x27;){document.getElementById(&#x27;hint&#x27;).hidden=false;fit.classList.add(&#x27;drag&#x27;);}
+
+// [그룹, 종류, 색, 내용...]  그룹은 C안에서 모이는 덩어리 번호다
+const D=[
+ [0,&#x27;photo&#x27;,&#x27;&#x27;,&#x27;제주 협재&#x27;,&#x27;linear-gradient(170deg,#dfe6dc 0 30%,#a9c2b6 30% 55%,#eadcbe 55%,#d6c09a)&#x27;],
+ [0,&#x27;check&#x27;,&#x27;&#x27;,&#x27;여행 짐&#x27;,[&#x27;여권&#x27;,1],[&#x27;충전기&#x27;,1],[&#x27;우산&#x27;,0]],
+ [0,&#x27;link&#x27;,&#x27;&#x27;,&#x27;제주 맛집 지도&#x27;,&#x27;map.naver.com&#x27;,&#x27;#5f9b6a&#x27;],
+ [0,&#x27;hand&#x27;,&#x27;yellow&#x27;,&#x27;렌터카 예약 잊지 말기&#x27;],
+ [0,&#x27;note&#x27;,&#x27;&#x27;,&#x27;비행기 금요일 7:10 출발&#x27;],
+ [1,&#x27;photo&#x27;,&#x27;&#x27;,&#x27;10월 산책 코스&#x27;,&#x27;linear-gradient(170deg,#f2d9a8,#d9914f 55%,#8b5a3c)&#x27;],
+ [1,&#x27;photo&#x27;,&#x27;&#x27;,&#x27;베란다 수국&#x27;,&#x27;radial-gradient(circle at 40% 40%,#ead0de,#c79dba 45%,#93a68c 80%)&#x27;],
+ [1,&#x27;hand&#x27;,&#x27;lime&#x27;,&#x27;아이디어는 산책할 때 온다&#x27;],
+ [1,&#x27;note&#x27;,&#x27;purple&#x27;,&#x27;좋아하는 단어: 윤슬&#x27;],
+ [2,&#x27;check&#x27;,&#x27;&#x27;,&#x27;이사 준비&#x27;,[&#x27;인터넷 이전 신청&#x27;,1],[&#x27;관리비 정산&#x27;,0],[&#x27;화분 옮기기&#x27;,0]],
+ [2,&#x27;note&#x27;,&#x27;&#x27;,&#x27;관리사무소 전화는 10시 이후&#x27;],
+ [2,&#x27;photo&#x27;,&#x27;&#x27;,&#x27;새 집 거실&#x27;,&#x27;linear-gradient(180deg,#f1eadf 0 58%,#cdb99c 58%)&#x27;],
+ [2,&#x27;board&#x27;,&#x27;&#x27;,&#x27;새 집 가구&#x27;,&#x27;카드 8장&#x27;],
+ [2,&#x27;hand&#x27;,&#x27;yellow&#x27;,&#x27;화분은 직접 옮기기&#x27;],
+ [3,&#x27;check&#x27;,&#x27;&#x27;,&#x27;읽을 책&#x27;,[&#x27;아주 작은 습관의 힘&#x27;,1],[&#x27;도둑맞은 집중력&#x27;,0]],
+ [3,&#x27;link&#x27;,&#x27;&#x27;,&#x27;기록하는 습관을 만드는 3가지 방법&#x27;,&#x27;brunch.co.kr&#x27;,&#x27;#2c2e33&#x27;],
+ [3,&#x27;note&#x27;,&#x27;lime&#x27;,&#x27;다음 분기 목표: 매주 글 1편&#x27;],
+ [3,&#x27;hand&#x27;,&#x27;&#x27;,&#x27;천천히, 그래도 매일&#x27;],
+ [3,&#x27;link&#x27;,&#x27;&#x27;,&#x27;회고 템플릿&#x27;,&#x27;notion.so&#x27;,&#x27;#6a6c72&#x27;],
+ [4,&#x27;note&#x27;,&#x27;&#x27;,&#x27;회의 끝나고 질문 2개 정리해서 보내기&#x27;],
+ [4,&#x27;note&#x27;,&#x27;blue&#x27;,&#x27;발표 슬라이드 7장을 5장으로&#x27;],
+ [4,&#x27;photo&#x27;,&#x27;&#x27;,&#x27;화이트보드 사진&#x27;,&#x27;repeating-linear-gradient(8deg,transparent 0 22px,rgba(90,110,90,.35) 22px 24px),linear-gradient(#f5f4f0,#e2dfd7)&#x27;],
+ [4,&#x27;board&#x27;,&#x27;&#x27;,&#x27;3분기 회고&#x27;,&#x27;카드 14장&#x27;],
+ [5,&#x27;note&#x27;,&#x27;yellow&#x27;,&#x27;토요일 장보기 전에 냉장고 먼저 확인&#x27;],
+ [5,&#x27;hand&#x27;,&#x27;&#x27;,&#x27;고양이 사료 주문&#x27;],
+ [5,&#x27;note&#x27;,&#x27;purple&#x27;,&#x27;엄마 생신 선물 — 스카프? 찻잔?&#x27;],
+ [5,&#x27;photo&#x27;,&#x27;&#x27;,&#x27;망원동 카페 메뉴판&#x27;,&#x27;linear-gradient(150deg,#6b4a36,#a87d5a 60%,#e8d5bb)&#x27;],
+ [5,&#x27;link&#x27;,&#x27;&#x27;,&#x27;15분 집밥 레시피&#x27;,&#x27;youtube.com&#x27;,&#x27;#c4544a&#x27;],
+];
+const WID={note:170,hand:168,check:188,photo:176,link:196,board:172};
+function inner(d){
+  const [, t,, a, b, c] = d;
+  if(t===&#x27;note&#x27;||t===&#x27;hand&#x27;) return &#x27;&lt;p&gt;&#x27;+a+&#x27;&lt;/p&gt;&#x27;;
+  if(t===&#x27;check&#x27;) return &#x27;&lt;b&gt;&#x27;+a+&#x27;&lt;/b&gt;&lt;ul&gt;&#x27;+d.slice(4).map(x=&gt;&#x27;&lt;li class=&quot;&#x27;+(x[1]?&#x27;on&#x27;:&#x27;&#x27;)+&#x27;&quot;&gt;&#x27;+x[0]+&#x27;&lt;/li&gt;&#x27;).join(&#x27;&#x27;)+&#x27;&lt;/ul&gt;&#x27;;
+  if(t===&#x27;photo&#x27;) return &#x27;&lt;div class=&quot;ph&quot; style=&quot;background:&#x27;+b+&#x27;&quot;&gt;&lt;/div&gt;&lt;span&gt;&#x27;+a+&#x27;&lt;/span&gt;&#x27;;
+  if(t===&#x27;link&#x27;) return &#x27;&lt;small&gt;&lt;span class=&quot;fav&quot; style=&quot;background:&#x27;+c+&#x27;&quot;&gt;&#x27;+b[0].toUpperCase()+&#x27;&lt;/span&gt;&#x27;+b+&#x27;&lt;/small&gt;&lt;p&gt;&#x27;+a+&#x27;&lt;/p&gt;&#x27;;
+  if(t===&#x27;board&#x27;) return &#x27;&lt;div class=&quot;bd&quot;&gt;&lt;i&gt;&lt;/i&gt;&lt;i&gt;&lt;/i&gt;&lt;i&gt;&lt;/i&gt;&lt;i&gt;&lt;/i&gt;&lt;/div&gt;&lt;b&gt;&#x27;+a+&#x27;&lt;/b&gt;&lt;small&gt;&#x27;+b+&#x27;&lt;/small&gt;&#x27;;
+}
+
+// 시드 고정 난수 — 세 안이 같은 흩어짐에서 출발한다
+let seed=7; const R=()=&gt;((seed=(seed*16807)%2147483647)/2147483647);
+const host=document.getElementById(&#x27;cards&#x27;); const cards_tmp=[];
+const cards=D.map((d,i)=&gt;{
+  const el=document.createElement(&#x27;div&#x27;);
+  el.className=&#x27;card &#x27;+d[1]+&#x27; &#x27;+d[2]; el.style.width=WID[d[1]]+&#x27;px&#x27;; el.innerHTML=inner(d);
+  host.appendChild(el);
+  let x,y,k=0;
+  do{ x=-30+R()*(W-150); y=-20+R()*(H-110); k++; }
+  while(((x+90-720)/470)**2+((y+70-450)/280)**2&lt;1 || (k&lt;300 &amp;&amp; placed(x,y)));
+  const z=0.66+R()*0.42;
+  if(z&lt;0.78) el.classList.add(&#x27;far&#x27;);
+  el.style.zIndex=Math.round(z*100);
+  const c={el,g:d[0],x,y,r:(R()-.5)*22,z,ph:R()*6.28,sp:.7+R()*.6,vx:0,vy:0};
+  cards_tmp.push([x,y]); return c;
+});
+function placed(x,y){return cards_tmp.some(p=&gt;Math.hypot(p[0]-x,p[1]-y)&lt;125);}
+cards.forEach(c=&gt;{c.w=c.el.offsetWidth;c.h=c.el.offsetHeight;});
+
+const reduce=matchMedia(&#x27;(prefers-reduced-motion: reduce)&#x27;).matches;
+function float(c,t,amp){
+  if(reduce) return [0,0,0];
+  return [Math.sin(t*.00023*c.sp+c.ph)*amp, Math.cos(t*.00029*c.sp+c.ph*1.3)*amp*1.3, Math.sin(t*.00019+c.ph)*2];
+}
+function put(c,x,y,r,s){c.el.style.transform=&#x27;translate(&#x27;+x+&#x27;px,&#x27;+y+&#x27;px) rotate(&#x27;+r+&#x27;deg) scale(&#x27;+s+&#x27;)&#x27;;}
+
+// ---- B: 집어 던지기
+let held=null, zTop=500, off=[0,0], last=[];
+if(MODE===&#x27;b&#x27;){
+  host.addEventListener(&#x27;pointerdown&#x27;,e=&gt;{
+    const el=e.target.closest(&#x27;.card&#x27;); if(!el) return;
+    held=cards.find(c=&gt;c.el===el); el.setPointerCapture(e.pointerId);
+    el.classList.add(&#x27;held&#x27;); el.style.zIndex=++zTop;
+    const p=pt(e); off=[p[0]-held.x,p[1]-held.y]; last=[[p[0],p[1],performance.now()]];
+    held.vx=held.vy=0;
+    document.getElementById(&#x27;hint&#x27;).style.opacity=0;
+  });
+  host.addEventListener(&#x27;pointermove&#x27;,e=&gt;{
+    if(!held) return; const p=pt(e);
+    held.x=p[0]-off[0]; held.y=p[1]-off[1];
+    last.push([p[0],p[1],performance.now()]); if(last.length&gt;5) last.shift();
+  });
+  const up=()=&gt;{
+    if(!held) return;
+    const a=last[0], b=last[last.length-1], dt=Math.max(16,b[2]-a[2]);
+    held.vx=(b[0]-a[0])/dt*16; held.vy=(b[1]-a[1])/dt*16;
+    held.el.classList.remove(&#x27;held&#x27;); held.el.classList.remove(&#x27;far&#x27;); held=null;
+  };
+  host.addEventListener(&#x27;pointerup&#x27;,up); host.addEventListener(&#x27;pointercancel&#x27;,up);
+}
+function pt(e){const b=fit.getBoundingClientRect();return [(e.clientX-b.left)/S,(e.clientY-b.top)/S];}
+
+// ---- C: 모였다 흩어진다
+const svg=document.getElementById(&#x27;lines&#x27;);
+const CL=[[250,185],[720,170],[1190,185],[250,720],[720,730],[1190,720]];
+const NAMES=[&#x27;여행 계획&#x27;,&#x27;산책&#x27;,&#x27;이사 준비&#x27;,&#x27;읽고 쓰기&#x27;,&#x27;회사&#x27;,&#x27;집&#x27;];
+const labs=NAMES.map((n,i)=&gt;{const l=document.createElement(&#x27;div&#x27;);l.className=&#x27;lab&#x27;;l.textContent=n;
+  l.style.left=(CL[i][0]-40)+&#x27;px&#x27;;l.style.top=CL[i][1]-150+&#x27;px&#x27;;fit.insertBefore(l,host);return l;});
+if(MODE===&#x27;c&#x27;){
+  const by={}; cards.forEach(c=&gt;(by[c.g]=by[c.g]||[]).push(c));
+  Object.values(by).forEach(list=&gt;list.forEach((c,j)=&gt;{
+    const col=j%3, row=Math.floor(j/3), n=Math.min(3,list.length-row*3);
+    c.tx=CL[c.g][0]+(col-(n-1)/2)*150-c.w/2; c.ty=CL[c.g][1]+(row-.5)*112-c.h/2+ (list.length&lt;=3?60:0);
+    c.tr=(R()-.5)*5;
+  }));
+  // 덩어리 안은 사슬로, 덩어리 사이는 둘만 잇는다
+  var links=[]; Object.values(by).forEach(l=&gt;{for(let j=1;j&lt;l.length;j++) links.push([l[j-1],l[j]]);});
+  links.push([by[1][0],by[0][0]],[by[4][0],by[3][1]],[by[2][4],by[1][2]]);
+  svg.innerHTML=links.map(()=&gt;&#x27;&lt;path pathLength=&quot;1&quot; stroke-dasharray=&quot;1&quot; stroke-dashoffset=&quot;1&quot;/&gt;&#x27;).join(&#x27;&#x27;);
+  var paths=[...svg.children];
+}
+const ease=p=&gt;p&lt;.5?4*p*p*p:1-Math.pow(-2*p+2,3)/2;
+const CYCLE=14000;
+
+function frame(t){
+  if(MODE===&#x27;c&#x27;){
+    const u=t%CYCLE;
+    // 0~2.5초 흩어짐, 2.5~4.3초 모임, 4.3~5.3초 선, 11초까지 머묾, 11~13초 다시 흩어짐
+    let g = u&lt;2500?0 : u&lt;4300?ease((u-2500)/1800) : u&lt;11000?1 : u&lt;13000?1-ease((u-11000)/2000) : 0;
+    cards.forEach((c,i)=&gt;{
+      const gi=Math.max(0,Math.min(1, u&lt;11000 ? (g*1.25-i*.009) : g));
+      const f=float(c,t,14*(1-gi)+2*gi);
+      const x=c.x+(c.tx-c.x)*gi+f[0], y=c.y+(c.ty-c.y)*gi+f[1];
+      c.cx=x+c.w/2; c.cy=y+c.h/2; c.el.classList.toggle(&#x27;far&#x27;, c.z&lt;0.78 &amp;&amp; gi&lt;.5);
+      c.el.style.zIndex = gi&gt;.5 ? 200+i : Math.round(c.z*100);
+      put(c,x,y,c.r+(c.tr-c.r)*gi+f[2]*(1-gi), c.z+(0.84-c.z)*gi);
+    });
+    const lp = u&lt;4300?0 : u&lt;5300?(u-4300)/1000 : u&lt;11000?1 : u&lt;11600?1-(u-11000)/600 : 0;
+    paths.forEach((p,k)=&gt;{const [a,b]=links[k];
+      const mx=(a.cx+b.cx)/2, my=(a.cy+b.cy)/2-Math.abs(a.cx-b.cx)*.12;
+      p.setAttribute(&#x27;d&#x27;,&#x27;M&#x27;+a.cx+&#x27; &#x27;+a.cy+&#x27; Q&#x27;+mx+&#x27; &#x27;+my+&#x27; &#x27;+b.cx+&#x27; &#x27;+b.cy);
+      p.setAttribute(&#x27;stroke-dashoffset&#x27;, u&gt;=11000 ? 0 : 1-Math.min(1,Math.max(0,lp*1.3-k*.012)));
+      p.style.opacity = u&gt;=11000 ? lp : 1;
+    });
+    labs.forEach(l=&gt;l.style.opacity = lp&gt;.6&amp;&amp;u&lt;11000 ? 1 : 0);
+  } else {
+    cards.forEach(c=&gt;{
+      if(MODE===&#x27;b&#x27; &amp;&amp; c!==held &amp;&amp; (Math.abs(c.vx)&gt;.05||Math.abs(c.vy)&gt;.05)){
+        c.x+=c.vx; c.y+=c.vy; c.vx*=.94; c.vy*=.94;
+        if(c.x&lt;-c.w*.4||c.x&gt;W-c.w*.6){c.vx*=-.6;c.x=Math.max(-c.w*.4,Math.min(W-c.w*.6,c.x));}
+        if(c.y&lt;-c.h*.4||c.y&gt;H-c.h*.6){c.vy*=-.6;c.y=Math.max(-c.h*.4,Math.min(H-c.h*.6,c.y));}
+      }
+      const isH=c===held, f=isH?[0,0,0]:float(c,t,14);
+      put(c,c.x+f[0],c.y+f[1],isH?c.r*.3:c.r+f[2],isH?c.z*1.06:c.z);
+    });
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+&lt;/script&gt;
+&lt;/body&gt;&lt;/html&gt;
+" style="display:block;width:100%;aspect-ratio:1440/900;border:0;border-radius:6px;background:#ebecee"></iframe></div>
+    <div class="cap2">장점: 28장이 천천히 떠서 첫눈에 메모 앱인 게 보인다. 걱정: 보기만 해서 &#x27;노는 재미&#x27;는 말로만 전해진다.</div>
+  </div>
+  <div class="cand">
+    <div class="bar"><span class="name">B. 직접 끌기 — 집어 던지는 카드</span></div>
+    <div class="stagewrap">
+      <div class="stage"><iframe title="시안 B" srcdoc="&lt;!doctype html&gt;
+&lt;html lang=&quot;ko&quot;&gt;&lt;head&gt;&lt;meta charset=&quot;utf-8&quot;&gt;
+&lt;link rel=&quot;stylesheet&quot; href=&quot;https://fonts.googleapis.com/css2?family=Caveat:wght@500&amp;family=Nanum+Pen+Script&amp;display=swap&quot;&gt;
+&lt;style&gt;
+html,body{margin:0;height:100%;overflow:hidden;background:#ebecee}
+#fit{position:absolute;left:0;top:0;width:1440px;height:900px;transform-origin:0 0;overflow:hidden;
+  background:#ebecee radial-gradient(#d8d2c4 1px,transparent 1.2px) 0 0/24px 24px;
+  font-family:&quot;Pretendard Variable&quot;,Pretendard,&quot;Apple SD Gothic Neo&quot;,system-ui,sans-serif;color:#2c2e33}
+#lines{position:absolute;inset:0;width:1440px;height:900px;pointer-events:none}
+#lines path{fill:none;stroke:#b4ab99;stroke-width:1.5;stroke-linecap:round}
+.lab{position:absolute;font:500 26px Caveat,&quot;Nanum Pen Script&quot;,cursive;color:#6a6c72;opacity:0;transition:opacity .6s;white-space:nowrap}
+.card{position:absolute;left:0;top:0;box-sizing:border-box;border-radius:6px;background:#fdfcfa;padding:12px 14px;
+  font-size:14px;line-height:1.5;user-select:none;
+  box-shadow:0 1px 1px rgba(42,39,34,.04),0 2px 4px rgba(42,39,34,.05),0 8px 20px rgba(42,39,34,.04);transition:box-shadow .2s,filter .3s}
+.card p{margin:0}
+.card.far{filter:blur(1.4px);opacity:.78}
+.yellow{background:#fbf5d8}.blue{background:#e5edf2}.lime{background:#e8eee0}.purple{background:#ece5f0}
+.hand p{font:500 25px/1.15 Caveat,&quot;Nanum Pen Script&quot;,cursive}
+.check b{display:block;font-size:13px;margin-bottom:6px}
+.check ul{list-style:none;margin:0;padding:0;font-size:13px}
+.check li{display:flex;gap:7px;align-items:center;margin:3px 0}
+.check li::before{content:&quot;&quot;;width:12px;height:12px;border:1.5px solid #9a968c;border-radius:3px;flex:none;box-sizing:border-box}
+.check li.on{color:#6a6c72;text-decoration:line-through}
+.check li.on::before{background:#2c2e33 url(&quot;data:image/svg+xml,%3Csvg xmlns=&#x27;http://www.w3.org/2000/svg&#x27; viewBox=&#x27;0 0 12 12&#x27;%3E%3Cpath d=&#x27;M3 6.2l2 2 4-4.4&#x27; stroke=&#x27;white&#x27; stroke-width=&#x27;1.6&#x27; fill=&#x27;none&#x27;/%3E%3C/svg%3E&quot;);border-color:#2c2e33}
+.photo{padding:6px 6px 8px}
+.photo .ph{height:118px;border-radius:3px}
+.photo span{display:block;font-size:12px;color:#6a6c72;margin:6px 4px 0}
+.link small,.board small{display:block;font-size:11px;color:#6a6c72}
+.link p{font-weight:600;font-size:13px;margin-top:3px}
+.link .fav{display:inline-grid;place-items:center;width:16px;height:16px;border-radius:4px;color:#fff;font-size:10px;font-weight:700;margin-right:6px;vertical-align:-3px}
+.board .bd{display:grid;grid-template-columns:1fr 1fr;gap:4px;height:62px;margin-bottom:8px}
+.board .bd i{border-radius:3px;background:#efeae0}
+.board .bd i:nth-child(2){background:#fbf5d8}.board .bd i:nth-child(3){background:#e8eee0}
+.board b{font-size:13px}
+.card.held{box-shadow:0 6px 12px rgba(42,39,34,.12),0 24px 48px rgba(42,39,34,.18);filter:none;opacity:1;cursor:grabbing}
+.drag .card{cursor:grab}
+#veil{position:absolute;inset:0;pointer-events:none;z-index:900;
+  background:radial-gradient(ellipse 380px 210px at 50% 50%,rgba(235,236,238,.94) 40%,rgba(235,236,238,0) 100%)}
+#hero{position:absolute;z-index:901;left:50%;top:50%;transform:translate(-50%,-50%);text-align:center;pointer-events:none;width:760px}
+#hero .wm{font-weight:700;font-size:19px;letter-spacing:-.02em;display:inline-flex;align-items:center;gap:7px}
+#hero .wm i{width:10px;height:10px;border-radius:50%;background:#a8b89c}
+#hero h1{font-size:58px;line-height:1.16;letter-spacing:-.035em;font-weight:700;margin:18px 0 30px}
+#hero .btn{pointer-events:auto;display:inline-flex;align-items:center;gap:10px;background:#2c2e33;color:#fdfcfa;border:0;
+  border-radius:999px;padding:15px 28px;font:600 16px inherit;font-family:inherit;cursor:pointer}
+#hero .btn .g{width:18px;height:18px;border-radius:50%;background:#fdfcfa;color:#2c2e33;display:grid;place-items:center;font-size:12px;font-weight:800}
+#hero .mail{pointer-events:auto;display:block;margin-top:16px;color:#6a6c72;font-size:14px;text-decoration:underline;text-underline-offset:3px}
+#hint{margin-top:22px;font:500 24px Caveat,&quot;Nanum Pen Script&quot;,cursive;color:#6a6c72;transition:opacity .5s}
+@media (prefers-reduced-motion:reduce){.card{transition:none}}
+&lt;/style&gt;&lt;/head&gt;&lt;body&gt;
+&lt;div id=&quot;fit&quot;&gt;
+  &lt;svg id=&quot;lines&quot; viewBox=&quot;0 0 1440 900&quot;&gt;&lt;/svg&gt;
+  &lt;div id=&quot;cards&quot;&gt;&lt;/div&gt;
+  &lt;div id=&quot;veil&quot;&gt;&lt;/div&gt;
+  &lt;div id=&quot;hero&quot;&gt;
+    &lt;div class=&quot;wm&quot;&gt;&lt;i&gt;&lt;/i&gt;moss&lt;/div&gt;
+    &lt;h1 id=&quot;h1&quot;&gt;&lt;/h1&gt;
+    &lt;button class=&quot;btn&quot;&gt;&lt;span class=&quot;g&quot;&gt;G&lt;/span&gt;Google로 계속&lt;/button&gt;
+    &lt;a class=&quot;mail&quot; href=&quot;#&quot;&gt;메일로 계속&lt;/a&gt;
+    &lt;div id=&quot;hint&quot; hidden&gt;카드를 끌어 보세요&lt;/div&gt;
+  &lt;/div&gt;
+&lt;/div&gt;
+&lt;script&gt;
+const MODE=&#x27;b&#x27;, W=1440, H=900;
+const fit=document.getElementById(&#x27;fit&#x27;); let S=1;
+function rescale(){S=innerWidth/W;fit.style.transform=&#x27;scale(&#x27;+S+&#x27;)&#x27;;}
+addEventListener(&#x27;resize&#x27;,rescale); rescale();
+
+document.getElementById(&#x27;h1&#x27;).innerHTML = MODE===&#x27;b&#x27;
+  ? &#x27;흩어 놓아도 괜찮아요.&lt;br&gt;연결은 moss가 이어 줄게요&#x27;
+  : &#x27;생각을 붙이면,&lt;br&gt;연결이 보여요&#x27;;
+if(MODE===&#x27;b&#x27;){document.getElementById(&#x27;hint&#x27;).hidden=false;fit.classList.add(&#x27;drag&#x27;);}
+
+// [그룹, 종류, 색, 내용...]  그룹은 C안에서 모이는 덩어리 번호다
+const D=[
+ [0,&#x27;photo&#x27;,&#x27;&#x27;,&#x27;제주 협재&#x27;,&#x27;linear-gradient(170deg,#dfe6dc 0 30%,#a9c2b6 30% 55%,#eadcbe 55%,#d6c09a)&#x27;],
+ [0,&#x27;check&#x27;,&#x27;&#x27;,&#x27;여행 짐&#x27;,[&#x27;여권&#x27;,1],[&#x27;충전기&#x27;,1],[&#x27;우산&#x27;,0]],
+ [0,&#x27;link&#x27;,&#x27;&#x27;,&#x27;제주 맛집 지도&#x27;,&#x27;map.naver.com&#x27;,&#x27;#5f9b6a&#x27;],
+ [0,&#x27;hand&#x27;,&#x27;yellow&#x27;,&#x27;렌터카 예약 잊지 말기&#x27;],
+ [0,&#x27;note&#x27;,&#x27;&#x27;,&#x27;비행기 금요일 7:10 출발&#x27;],
+ [1,&#x27;photo&#x27;,&#x27;&#x27;,&#x27;10월 산책 코스&#x27;,&#x27;linear-gradient(170deg,#f2d9a8,#d9914f 55%,#8b5a3c)&#x27;],
+ [1,&#x27;photo&#x27;,&#x27;&#x27;,&#x27;베란다 수국&#x27;,&#x27;radial-gradient(circle at 40% 40%,#ead0de,#c79dba 45%,#93a68c 80%)&#x27;],
+ [1,&#x27;hand&#x27;,&#x27;lime&#x27;,&#x27;아이디어는 산책할 때 온다&#x27;],
+ [1,&#x27;note&#x27;,&#x27;purple&#x27;,&#x27;좋아하는 단어: 윤슬&#x27;],
+ [2,&#x27;check&#x27;,&#x27;&#x27;,&#x27;이사 준비&#x27;,[&#x27;인터넷 이전 신청&#x27;,1],[&#x27;관리비 정산&#x27;,0],[&#x27;화분 옮기기&#x27;,0]],
+ [2,&#x27;note&#x27;,&#x27;&#x27;,&#x27;관리사무소 전화는 10시 이후&#x27;],
+ [2,&#x27;photo&#x27;,&#x27;&#x27;,&#x27;새 집 거실&#x27;,&#x27;linear-gradient(180deg,#f1eadf 0 58%,#cdb99c 58%)&#x27;],
+ [2,&#x27;board&#x27;,&#x27;&#x27;,&#x27;새 집 가구&#x27;,&#x27;카드 8장&#x27;],
+ [2,&#x27;hand&#x27;,&#x27;yellow&#x27;,&#x27;화분은 직접 옮기기&#x27;],
+ [3,&#x27;check&#x27;,&#x27;&#x27;,&#x27;읽을 책&#x27;,[&#x27;아주 작은 습관의 힘&#x27;,1],[&#x27;도둑맞은 집중력&#x27;,0]],
+ [3,&#x27;link&#x27;,&#x27;&#x27;,&#x27;기록하는 습관을 만드는 3가지 방법&#x27;,&#x27;brunch.co.kr&#x27;,&#x27;#2c2e33&#x27;],
+ [3,&#x27;note&#x27;,&#x27;lime&#x27;,&#x27;다음 분기 목표: 매주 글 1편&#x27;],
+ [3,&#x27;hand&#x27;,&#x27;&#x27;,&#x27;천천히, 그래도 매일&#x27;],
+ [3,&#x27;link&#x27;,&#x27;&#x27;,&#x27;회고 템플릿&#x27;,&#x27;notion.so&#x27;,&#x27;#6a6c72&#x27;],
+ [4,&#x27;note&#x27;,&#x27;&#x27;,&#x27;회의 끝나고 질문 2개 정리해서 보내기&#x27;],
+ [4,&#x27;note&#x27;,&#x27;blue&#x27;,&#x27;발표 슬라이드 7장을 5장으로&#x27;],
+ [4,&#x27;photo&#x27;,&#x27;&#x27;,&#x27;화이트보드 사진&#x27;,&#x27;repeating-linear-gradient(8deg,transparent 0 22px,rgba(90,110,90,.35) 22px 24px),linear-gradient(#f5f4f0,#e2dfd7)&#x27;],
+ [4,&#x27;board&#x27;,&#x27;&#x27;,&#x27;3분기 회고&#x27;,&#x27;카드 14장&#x27;],
+ [5,&#x27;note&#x27;,&#x27;yellow&#x27;,&#x27;토요일 장보기 전에 냉장고 먼저 확인&#x27;],
+ [5,&#x27;hand&#x27;,&#x27;&#x27;,&#x27;고양이 사료 주문&#x27;],
+ [5,&#x27;note&#x27;,&#x27;purple&#x27;,&#x27;엄마 생신 선물 — 스카프? 찻잔?&#x27;],
+ [5,&#x27;photo&#x27;,&#x27;&#x27;,&#x27;망원동 카페 메뉴판&#x27;,&#x27;linear-gradient(150deg,#6b4a36,#a87d5a 60%,#e8d5bb)&#x27;],
+ [5,&#x27;link&#x27;,&#x27;&#x27;,&#x27;15분 집밥 레시피&#x27;,&#x27;youtube.com&#x27;,&#x27;#c4544a&#x27;],
+];
+const WID={note:170,hand:168,check:188,photo:176,link:196,board:172};
+function inner(d){
+  const [, t,, a, b, c] = d;
+  if(t===&#x27;note&#x27;||t===&#x27;hand&#x27;) return &#x27;&lt;p&gt;&#x27;+a+&#x27;&lt;/p&gt;&#x27;;
+  if(t===&#x27;check&#x27;) return &#x27;&lt;b&gt;&#x27;+a+&#x27;&lt;/b&gt;&lt;ul&gt;&#x27;+d.slice(4).map(x=&gt;&#x27;&lt;li class=&quot;&#x27;+(x[1]?&#x27;on&#x27;:&#x27;&#x27;)+&#x27;&quot;&gt;&#x27;+x[0]+&#x27;&lt;/li&gt;&#x27;).join(&#x27;&#x27;)+&#x27;&lt;/ul&gt;&#x27;;
+  if(t===&#x27;photo&#x27;) return &#x27;&lt;div class=&quot;ph&quot; style=&quot;background:&#x27;+b+&#x27;&quot;&gt;&lt;/div&gt;&lt;span&gt;&#x27;+a+&#x27;&lt;/span&gt;&#x27;;
+  if(t===&#x27;link&#x27;) return &#x27;&lt;small&gt;&lt;span class=&quot;fav&quot; style=&quot;background:&#x27;+c+&#x27;&quot;&gt;&#x27;+b[0].toUpperCase()+&#x27;&lt;/span&gt;&#x27;+b+&#x27;&lt;/small&gt;&lt;p&gt;&#x27;+a+&#x27;&lt;/p&gt;&#x27;;
+  if(t===&#x27;board&#x27;) return &#x27;&lt;div class=&quot;bd&quot;&gt;&lt;i&gt;&lt;/i&gt;&lt;i&gt;&lt;/i&gt;&lt;i&gt;&lt;/i&gt;&lt;i&gt;&lt;/i&gt;&lt;/div&gt;&lt;b&gt;&#x27;+a+&#x27;&lt;/b&gt;&lt;small&gt;&#x27;+b+&#x27;&lt;/small&gt;&#x27;;
+}
+
+// 시드 고정 난수 — 세 안이 같은 흩어짐에서 출발한다
+let seed=7; const R=()=&gt;((seed=(seed*16807)%2147483647)/2147483647);
+const host=document.getElementById(&#x27;cards&#x27;); const cards_tmp=[];
+const cards=D.map((d,i)=&gt;{
+  const el=document.createElement(&#x27;div&#x27;);
+  el.className=&#x27;card &#x27;+d[1]+&#x27; &#x27;+d[2]; el.style.width=WID[d[1]]+&#x27;px&#x27;; el.innerHTML=inner(d);
+  host.appendChild(el);
+  let x,y,k=0;
+  do{ x=-30+R()*(W-150); y=-20+R()*(H-110); k++; }
+  while(((x+90-720)/470)**2+((y+70-450)/280)**2&lt;1 || (k&lt;300 &amp;&amp; placed(x,y)));
+  const z=0.66+R()*0.42;
+  if(z&lt;0.78) el.classList.add(&#x27;far&#x27;);
+  el.style.zIndex=Math.round(z*100);
+  const c={el,g:d[0],x,y,r:(R()-.5)*22,z,ph:R()*6.28,sp:.7+R()*.6,vx:0,vy:0};
+  cards_tmp.push([x,y]); return c;
+});
+function placed(x,y){return cards_tmp.some(p=&gt;Math.hypot(p[0]-x,p[1]-y)&lt;125);}
+cards.forEach(c=&gt;{c.w=c.el.offsetWidth;c.h=c.el.offsetHeight;});
+
+const reduce=matchMedia(&#x27;(prefers-reduced-motion: reduce)&#x27;).matches;
+function float(c,t,amp){
+  if(reduce) return [0,0,0];
+  return [Math.sin(t*.00023*c.sp+c.ph)*amp, Math.cos(t*.00029*c.sp+c.ph*1.3)*amp*1.3, Math.sin(t*.00019+c.ph)*2];
+}
+function put(c,x,y,r,s){c.el.style.transform=&#x27;translate(&#x27;+x+&#x27;px,&#x27;+y+&#x27;px) rotate(&#x27;+r+&#x27;deg) scale(&#x27;+s+&#x27;)&#x27;;}
+
+// ---- B: 집어 던지기
+let held=null, zTop=500, off=[0,0], last=[];
+if(MODE===&#x27;b&#x27;){
+  host.addEventListener(&#x27;pointerdown&#x27;,e=&gt;{
+    const el=e.target.closest(&#x27;.card&#x27;); if(!el) return;
+    held=cards.find(c=&gt;c.el===el); el.setPointerCapture(e.pointerId);
+    el.classList.add(&#x27;held&#x27;); el.style.zIndex=++zTop;
+    const p=pt(e); off=[p[0]-held.x,p[1]-held.y]; last=[[p[0],p[1],performance.now()]];
+    held.vx=held.vy=0;
+    document.getElementById(&#x27;hint&#x27;).style.opacity=0;
+  });
+  host.addEventListener(&#x27;pointermove&#x27;,e=&gt;{
+    if(!held) return; const p=pt(e);
+    held.x=p[0]-off[0]; held.y=p[1]-off[1];
+    last.push([p[0],p[1],performance.now()]); if(last.length&gt;5) last.shift();
+  });
+  const up=()=&gt;{
+    if(!held) return;
+    const a=last[0], b=last[last.length-1], dt=Math.max(16,b[2]-a[2]);
+    held.vx=(b[0]-a[0])/dt*16; held.vy=(b[1]-a[1])/dt*16;
+    held.el.classList.remove(&#x27;held&#x27;); held.el.classList.remove(&#x27;far&#x27;); held=null;
+  };
+  host.addEventListener(&#x27;pointerup&#x27;,up); host.addEventListener(&#x27;pointercancel&#x27;,up);
+}
+function pt(e){const b=fit.getBoundingClientRect();return [(e.clientX-b.left)/S,(e.clientY-b.top)/S];}
+
+// ---- C: 모였다 흩어진다
+const svg=document.getElementById(&#x27;lines&#x27;);
+const CL=[[250,185],[720,170],[1190,185],[250,720],[720,730],[1190,720]];
+const NAMES=[&#x27;여행 계획&#x27;,&#x27;산책&#x27;,&#x27;이사 준비&#x27;,&#x27;읽고 쓰기&#x27;,&#x27;회사&#x27;,&#x27;집&#x27;];
+const labs=NAMES.map((n,i)=&gt;{const l=document.createElement(&#x27;div&#x27;);l.className=&#x27;lab&#x27;;l.textContent=n;
+  l.style.left=(CL[i][0]-40)+&#x27;px&#x27;;l.style.top=CL[i][1]-150+&#x27;px&#x27;;fit.insertBefore(l,host);return l;});
+if(MODE===&#x27;c&#x27;){
+  const by={}; cards.forEach(c=&gt;(by[c.g]=by[c.g]||[]).push(c));
+  Object.values(by).forEach(list=&gt;list.forEach((c,j)=&gt;{
+    const col=j%3, row=Math.floor(j/3), n=Math.min(3,list.length-row*3);
+    c.tx=CL[c.g][0]+(col-(n-1)/2)*150-c.w/2; c.ty=CL[c.g][1]+(row-.5)*112-c.h/2+ (list.length&lt;=3?60:0);
+    c.tr=(R()-.5)*5;
+  }));
+  // 덩어리 안은 사슬로, 덩어리 사이는 둘만 잇는다
+  var links=[]; Object.values(by).forEach(l=&gt;{for(let j=1;j&lt;l.length;j++) links.push([l[j-1],l[j]]);});
+  links.push([by[1][0],by[0][0]],[by[4][0],by[3][1]],[by[2][4],by[1][2]]);
+  svg.innerHTML=links.map(()=&gt;&#x27;&lt;path pathLength=&quot;1&quot; stroke-dasharray=&quot;1&quot; stroke-dashoffset=&quot;1&quot;/&gt;&#x27;).join(&#x27;&#x27;);
+  var paths=[...svg.children];
+}
+const ease=p=&gt;p&lt;.5?4*p*p*p:1-Math.pow(-2*p+2,3)/2;
+const CYCLE=14000;
+
+function frame(t){
+  if(MODE===&#x27;c&#x27;){
+    const u=t%CYCLE;
+    // 0~2.5초 흩어짐, 2.5~4.3초 모임, 4.3~5.3초 선, 11초까지 머묾, 11~13초 다시 흩어짐
+    let g = u&lt;2500?0 : u&lt;4300?ease((u-2500)/1800) : u&lt;11000?1 : u&lt;13000?1-ease((u-11000)/2000) : 0;
+    cards.forEach((c,i)=&gt;{
+      const gi=Math.max(0,Math.min(1, u&lt;11000 ? (g*1.25-i*.009) : g));
+      const f=float(c,t,14*(1-gi)+2*gi);
+      const x=c.x+(c.tx-c.x)*gi+f[0], y=c.y+(c.ty-c.y)*gi+f[1];
+      c.cx=x+c.w/2; c.cy=y+c.h/2; c.el.classList.toggle(&#x27;far&#x27;, c.z&lt;0.78 &amp;&amp; gi&lt;.5);
+      c.el.style.zIndex = gi&gt;.5 ? 200+i : Math.round(c.z*100);
+      put(c,x,y,c.r+(c.tr-c.r)*gi+f[2]*(1-gi), c.z+(0.84-c.z)*gi);
+    });
+    const lp = u&lt;4300?0 : u&lt;5300?(u-4300)/1000 : u&lt;11000?1 : u&lt;11600?1-(u-11000)/600 : 0;
+    paths.forEach((p,k)=&gt;{const [a,b]=links[k];
+      const mx=(a.cx+b.cx)/2, my=(a.cy+b.cy)/2-Math.abs(a.cx-b.cx)*.12;
+      p.setAttribute(&#x27;d&#x27;,&#x27;M&#x27;+a.cx+&#x27; &#x27;+a.cy+&#x27; Q&#x27;+mx+&#x27; &#x27;+my+&#x27; &#x27;+b.cx+&#x27; &#x27;+b.cy);
+      p.setAttribute(&#x27;stroke-dashoffset&#x27;, u&gt;=11000 ? 0 : 1-Math.min(1,Math.max(0,lp*1.3-k*.012)));
+      p.style.opacity = u&gt;=11000 ? lp : 1;
+    });
+    labs.forEach(l=&gt;l.style.opacity = lp&gt;.6&amp;&amp;u&lt;11000 ? 1 : 0);
+  } else {
+    cards.forEach(c=&gt;{
+      if(MODE===&#x27;b&#x27; &amp;&amp; c!==held &amp;&amp; (Math.abs(c.vx)&gt;.05||Math.abs(c.vy)&gt;.05)){
+        c.x+=c.vx; c.y+=c.vy; c.vx*=.94; c.vy*=.94;
+        if(c.x&lt;-c.w*.4||c.x&gt;W-c.w*.6){c.vx*=-.6;c.x=Math.max(-c.w*.4,Math.min(W-c.w*.6,c.x));}
+        if(c.y&lt;-c.h*.4||c.y&gt;H-c.h*.6){c.vy*=-.6;c.y=Math.max(-c.h*.4,Math.min(H-c.h*.6,c.y));}
+      }
+      const isH=c===held, f=isH?[0,0,0]:float(c,t,14);
+      put(c,c.x+f[0],c.y+f[1],isH?c.r*.3:c.r+f[2],isH?c.z*1.06:c.z);
+    });
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+&lt;/script&gt;
+&lt;/body&gt;&lt;/html&gt;
+" style="display:block;width:100%;aspect-ratio:1440/900;border:0;border-radius:6px;background:#ebecee"></iframe></div>
+      <div class="notes"><div class="note">카피는 브리프 후보 &#x27;연결은 moss가 볼게요&#x27;를 &#x27;이어 줄게요&#x27;로 바꿨다.</div></div>
+    </div>
+    <div class="cap2">장점: 로그인 전에 카드를 직접 집어 던져 보며 재미를 손으로 느낀다. 걱정: 카피가 &#x27;연결을 이어 준다&#x27;고 약속해 실제 기능보다 앞설 수 있다.</div>
+  </div>
+  <div class="cand">
+    <div class="bar"><span class="name">C. 카드가 모인다 — 흩어졌다 보드로</span></div>
+    <div class="stagewrap">
+      <div class="stage"><iframe title="시안 C" srcdoc="&lt;!doctype html&gt;
+&lt;html lang=&quot;ko&quot;&gt;&lt;head&gt;&lt;meta charset=&quot;utf-8&quot;&gt;
+&lt;link rel=&quot;stylesheet&quot; href=&quot;https://fonts.googleapis.com/css2?family=Caveat:wght@500&amp;family=Nanum+Pen+Script&amp;display=swap&quot;&gt;
+&lt;style&gt;
+html,body{margin:0;height:100%;overflow:hidden;background:#ebecee}
+#fit{position:absolute;left:0;top:0;width:1440px;height:900px;transform-origin:0 0;overflow:hidden;
+  background:#ebecee radial-gradient(#d8d2c4 1px,transparent 1.2px) 0 0/24px 24px;
+  font-family:&quot;Pretendard Variable&quot;,Pretendard,&quot;Apple SD Gothic Neo&quot;,system-ui,sans-serif;color:#2c2e33}
+#lines{position:absolute;inset:0;width:1440px;height:900px;pointer-events:none}
+#lines path{fill:none;stroke:#b4ab99;stroke-width:1.5;stroke-linecap:round}
+.lab{position:absolute;font:500 26px Caveat,&quot;Nanum Pen Script&quot;,cursive;color:#6a6c72;opacity:0;transition:opacity .6s;white-space:nowrap}
+.card{position:absolute;left:0;top:0;box-sizing:border-box;border-radius:6px;background:#fdfcfa;padding:12px 14px;
+  font-size:14px;line-height:1.5;user-select:none;
+  box-shadow:0 1px 1px rgba(42,39,34,.04),0 2px 4px rgba(42,39,34,.05),0 8px 20px rgba(42,39,34,.04);transition:box-shadow .2s,filter .3s}
+.card p{margin:0}
+.card.far{filter:blur(1.4px);opacity:.78}
+.yellow{background:#fbf5d8}.blue{background:#e5edf2}.lime{background:#e8eee0}.purple{background:#ece5f0}
+.hand p{font:500 25px/1.15 Caveat,&quot;Nanum Pen Script&quot;,cursive}
+.check b{display:block;font-size:13px;margin-bottom:6px}
+.check ul{list-style:none;margin:0;padding:0;font-size:13px}
+.check li{display:flex;gap:7px;align-items:center;margin:3px 0}
+.check li::before{content:&quot;&quot;;width:12px;height:12px;border:1.5px solid #9a968c;border-radius:3px;flex:none;box-sizing:border-box}
+.check li.on{color:#6a6c72;text-decoration:line-through}
+.check li.on::before{background:#2c2e33 url(&quot;data:image/svg+xml,%3Csvg xmlns=&#x27;http://www.w3.org/2000/svg&#x27; viewBox=&#x27;0 0 12 12&#x27;%3E%3Cpath d=&#x27;M3 6.2l2 2 4-4.4&#x27; stroke=&#x27;white&#x27; stroke-width=&#x27;1.6&#x27; fill=&#x27;none&#x27;/%3E%3C/svg%3E&quot;);border-color:#2c2e33}
+.photo{padding:6px 6px 8px}
+.photo .ph{height:118px;border-radius:3px}
+.photo span{display:block;font-size:12px;color:#6a6c72;margin:6px 4px 0}
+.link small,.board small{display:block;font-size:11px;color:#6a6c72}
+.link p{font-weight:600;font-size:13px;margin-top:3px}
+.link .fav{display:inline-grid;place-items:center;width:16px;height:16px;border-radius:4px;color:#fff;font-size:10px;font-weight:700;margin-right:6px;vertical-align:-3px}
+.board .bd{display:grid;grid-template-columns:1fr 1fr;gap:4px;height:62px;margin-bottom:8px}
+.board .bd i{border-radius:3px;background:#efeae0}
+.board .bd i:nth-child(2){background:#fbf5d8}.board .bd i:nth-child(3){background:#e8eee0}
+.board b{font-size:13px}
+.card.held{box-shadow:0 6px 12px rgba(42,39,34,.12),0 24px 48px rgba(42,39,34,.18);filter:none;opacity:1;cursor:grabbing}
+.drag .card{cursor:grab}
+#veil{position:absolute;inset:0;pointer-events:none;z-index:900;
+  background:radial-gradient(ellipse 380px 210px at 50% 50%,rgba(235,236,238,.94) 40%,rgba(235,236,238,0) 100%)}
+#hero{position:absolute;z-index:901;left:50%;top:50%;transform:translate(-50%,-50%);text-align:center;pointer-events:none;width:760px}
+#hero .wm{font-weight:700;font-size:19px;letter-spacing:-.02em;display:inline-flex;align-items:center;gap:7px}
+#hero .wm i{width:10px;height:10px;border-radius:50%;background:#a8b89c}
+#hero h1{font-size:58px;line-height:1.16;letter-spacing:-.035em;font-weight:700;margin:18px 0 30px}
+#hero .btn{pointer-events:auto;display:inline-flex;align-items:center;gap:10px;background:#2c2e33;color:#fdfcfa;border:0;
+  border-radius:999px;padding:15px 28px;font:600 16px inherit;font-family:inherit;cursor:pointer}
+#hero .btn .g{width:18px;height:18px;border-radius:50%;background:#fdfcfa;color:#2c2e33;display:grid;place-items:center;font-size:12px;font-weight:800}
+#hero .mail{pointer-events:auto;display:block;margin-top:16px;color:#6a6c72;font-size:14px;text-decoration:underline;text-underline-offset:3px}
+#hint{margin-top:22px;font:500 24px Caveat,&quot;Nanum Pen Script&quot;,cursive;color:#6a6c72;transition:opacity .5s}
+@media (prefers-reduced-motion:reduce){.card{transition:none}}
+&lt;/style&gt;&lt;/head&gt;&lt;body&gt;
+&lt;div id=&quot;fit&quot;&gt;
+  &lt;svg id=&quot;lines&quot; viewBox=&quot;0 0 1440 900&quot;&gt;&lt;/svg&gt;
+  &lt;div id=&quot;cards&quot;&gt;&lt;/div&gt;
+  &lt;div id=&quot;veil&quot;&gt;&lt;/div&gt;
+  &lt;div id=&quot;hero&quot;&gt;
+    &lt;div class=&quot;wm&quot;&gt;&lt;i&gt;&lt;/i&gt;moss&lt;/div&gt;
+    &lt;h1 id=&quot;h1&quot;&gt;&lt;/h1&gt;
+    &lt;button class=&quot;btn&quot;&gt;&lt;span class=&quot;g&quot;&gt;G&lt;/span&gt;Google로 계속&lt;/button&gt;
+    &lt;a class=&quot;mail&quot; href=&quot;#&quot;&gt;메일로 계속&lt;/a&gt;
+    &lt;div id=&quot;hint&quot; hidden&gt;카드를 끌어 보세요&lt;/div&gt;
+  &lt;/div&gt;
+&lt;/div&gt;
+&lt;script&gt;
+const MODE=&#x27;c&#x27;, W=1440, H=900;
+const fit=document.getElementById(&#x27;fit&#x27;); let S=1;
+function rescale(){S=innerWidth/W;fit.style.transform=&#x27;scale(&#x27;+S+&#x27;)&#x27;;}
+addEventListener(&#x27;resize&#x27;,rescale); rescale();
+
+document.getElementById(&#x27;h1&#x27;).innerHTML = MODE===&#x27;b&#x27;
+  ? &#x27;흩어 놓아도 괜찮아요.&lt;br&gt;연결은 moss가 이어 줄게요&#x27;
+  : &#x27;생각을 붙이면,&lt;br&gt;연결이 보여요&#x27;;
+if(MODE===&#x27;b&#x27;){document.getElementById(&#x27;hint&#x27;).hidden=false;fit.classList.add(&#x27;drag&#x27;);}
+
+// [그룹, 종류, 색, 내용...]  그룹은 C안에서 모이는 덩어리 번호다
+const D=[
+ [0,&#x27;photo&#x27;,&#x27;&#x27;,&#x27;제주 협재&#x27;,&#x27;linear-gradient(170deg,#dfe6dc 0 30%,#a9c2b6 30% 55%,#eadcbe 55%,#d6c09a)&#x27;],
+ [0,&#x27;check&#x27;,&#x27;&#x27;,&#x27;여행 짐&#x27;,[&#x27;여권&#x27;,1],[&#x27;충전기&#x27;,1],[&#x27;우산&#x27;,0]],
+ [0,&#x27;link&#x27;,&#x27;&#x27;,&#x27;제주 맛집 지도&#x27;,&#x27;map.naver.com&#x27;,&#x27;#5f9b6a&#x27;],
+ [0,&#x27;hand&#x27;,&#x27;yellow&#x27;,&#x27;렌터카 예약 잊지 말기&#x27;],
+ [0,&#x27;note&#x27;,&#x27;&#x27;,&#x27;비행기 금요일 7:10 출발&#x27;],
+ [1,&#x27;photo&#x27;,&#x27;&#x27;,&#x27;10월 산책 코스&#x27;,&#x27;linear-gradient(170deg,#f2d9a8,#d9914f 55%,#8b5a3c)&#x27;],
+ [1,&#x27;photo&#x27;,&#x27;&#x27;,&#x27;베란다 수국&#x27;,&#x27;radial-gradient(circle at 40% 40%,#ead0de,#c79dba 45%,#93a68c 80%)&#x27;],
+ [1,&#x27;hand&#x27;,&#x27;lime&#x27;,&#x27;아이디어는 산책할 때 온다&#x27;],
+ [1,&#x27;note&#x27;,&#x27;purple&#x27;,&#x27;좋아하는 단어: 윤슬&#x27;],
+ [2,&#x27;check&#x27;,&#x27;&#x27;,&#x27;이사 준비&#x27;,[&#x27;인터넷 이전 신청&#x27;,1],[&#x27;관리비 정산&#x27;,0],[&#x27;화분 옮기기&#x27;,0]],
+ [2,&#x27;note&#x27;,&#x27;&#x27;,&#x27;관리사무소 전화는 10시 이후&#x27;],
+ [2,&#x27;photo&#x27;,&#x27;&#x27;,&#x27;새 집 거실&#x27;,&#x27;linear-gradient(180deg,#f1eadf 0 58%,#cdb99c 58%)&#x27;],
+ [2,&#x27;board&#x27;,&#x27;&#x27;,&#x27;새 집 가구&#x27;,&#x27;카드 8장&#x27;],
+ [2,&#x27;hand&#x27;,&#x27;yellow&#x27;,&#x27;화분은 직접 옮기기&#x27;],
+ [3,&#x27;check&#x27;,&#x27;&#x27;,&#x27;읽을 책&#x27;,[&#x27;아주 작은 습관의 힘&#x27;,1],[&#x27;도둑맞은 집중력&#x27;,0]],
+ [3,&#x27;link&#x27;,&#x27;&#x27;,&#x27;기록하는 습관을 만드는 3가지 방법&#x27;,&#x27;brunch.co.kr&#x27;,&#x27;#2c2e33&#x27;],
+ [3,&#x27;note&#x27;,&#x27;lime&#x27;,&#x27;다음 분기 목표: 매주 글 1편&#x27;],
+ [3,&#x27;hand&#x27;,&#x27;&#x27;,&#x27;천천히, 그래도 매일&#x27;],
+ [3,&#x27;link&#x27;,&#x27;&#x27;,&#x27;회고 템플릿&#x27;,&#x27;notion.so&#x27;,&#x27;#6a6c72&#x27;],
+ [4,&#x27;note&#x27;,&#x27;&#x27;,&#x27;회의 끝나고 질문 2개 정리해서 보내기&#x27;],
+ [4,&#x27;note&#x27;,&#x27;blue&#x27;,&#x27;발표 슬라이드 7장을 5장으로&#x27;],
+ [4,&#x27;photo&#x27;,&#x27;&#x27;,&#x27;화이트보드 사진&#x27;,&#x27;repeating-linear-gradient(8deg,transparent 0 22px,rgba(90,110,90,.35) 22px 24px),linear-gradient(#f5f4f0,#e2dfd7)&#x27;],
+ [4,&#x27;board&#x27;,&#x27;&#x27;,&#x27;3분기 회고&#x27;,&#x27;카드 14장&#x27;],
+ [5,&#x27;note&#x27;,&#x27;yellow&#x27;,&#x27;토요일 장보기 전에 냉장고 먼저 확인&#x27;],
+ [5,&#x27;hand&#x27;,&#x27;&#x27;,&#x27;고양이 사료 주문&#x27;],
+ [5,&#x27;note&#x27;,&#x27;purple&#x27;,&#x27;엄마 생신 선물 — 스카프? 찻잔?&#x27;],
+ [5,&#x27;photo&#x27;,&#x27;&#x27;,&#x27;망원동 카페 메뉴판&#x27;,&#x27;linear-gradient(150deg,#6b4a36,#a87d5a 60%,#e8d5bb)&#x27;],
+ [5,&#x27;link&#x27;,&#x27;&#x27;,&#x27;15분 집밥 레시피&#x27;,&#x27;youtube.com&#x27;,&#x27;#c4544a&#x27;],
+];
+const WID={note:170,hand:168,check:188,photo:176,link:196,board:172};
+function inner(d){
+  const [, t,, a, b, c] = d;
+  if(t===&#x27;note&#x27;||t===&#x27;hand&#x27;) return &#x27;&lt;p&gt;&#x27;+a+&#x27;&lt;/p&gt;&#x27;;
+  if(t===&#x27;check&#x27;) return &#x27;&lt;b&gt;&#x27;+a+&#x27;&lt;/b&gt;&lt;ul&gt;&#x27;+d.slice(4).map(x=&gt;&#x27;&lt;li class=&quot;&#x27;+(x[1]?&#x27;on&#x27;:&#x27;&#x27;)+&#x27;&quot;&gt;&#x27;+x[0]+&#x27;&lt;/li&gt;&#x27;).join(&#x27;&#x27;)+&#x27;&lt;/ul&gt;&#x27;;
+  if(t===&#x27;photo&#x27;) return &#x27;&lt;div class=&quot;ph&quot; style=&quot;background:&#x27;+b+&#x27;&quot;&gt;&lt;/div&gt;&lt;span&gt;&#x27;+a+&#x27;&lt;/span&gt;&#x27;;
+  if(t===&#x27;link&#x27;) return &#x27;&lt;small&gt;&lt;span class=&quot;fav&quot; style=&quot;background:&#x27;+c+&#x27;&quot;&gt;&#x27;+b[0].toUpperCase()+&#x27;&lt;/span&gt;&#x27;+b+&#x27;&lt;/small&gt;&lt;p&gt;&#x27;+a+&#x27;&lt;/p&gt;&#x27;;
+  if(t===&#x27;board&#x27;) return &#x27;&lt;div class=&quot;bd&quot;&gt;&lt;i&gt;&lt;/i&gt;&lt;i&gt;&lt;/i&gt;&lt;i&gt;&lt;/i&gt;&lt;i&gt;&lt;/i&gt;&lt;/div&gt;&lt;b&gt;&#x27;+a+&#x27;&lt;/b&gt;&lt;small&gt;&#x27;+b+&#x27;&lt;/small&gt;&#x27;;
+}
+
+// 시드 고정 난수 — 세 안이 같은 흩어짐에서 출발한다
+let seed=7; const R=()=&gt;((seed=(seed*16807)%2147483647)/2147483647);
+const host=document.getElementById(&#x27;cards&#x27;); const cards_tmp=[];
+const cards=D.map((d,i)=&gt;{
+  const el=document.createElement(&#x27;div&#x27;);
+  el.className=&#x27;card &#x27;+d[1]+&#x27; &#x27;+d[2]; el.style.width=WID[d[1]]+&#x27;px&#x27;; el.innerHTML=inner(d);
+  host.appendChild(el);
+  let x,y,k=0;
+  do{ x=-30+R()*(W-150); y=-20+R()*(H-110); k++; }
+  while(((x+90-720)/470)**2+((y+70-450)/280)**2&lt;1 || (k&lt;300 &amp;&amp; placed(x,y)));
+  const z=0.66+R()*0.42;
+  if(z&lt;0.78) el.classList.add(&#x27;far&#x27;);
+  el.style.zIndex=Math.round(z*100);
+  const c={el,g:d[0],x,y,r:(R()-.5)*22,z,ph:R()*6.28,sp:.7+R()*.6,vx:0,vy:0};
+  cards_tmp.push([x,y]); return c;
+});
+function placed(x,y){return cards_tmp.some(p=&gt;Math.hypot(p[0]-x,p[1]-y)&lt;125);}
+cards.forEach(c=&gt;{c.w=c.el.offsetWidth;c.h=c.el.offsetHeight;});
+
+const reduce=matchMedia(&#x27;(prefers-reduced-motion: reduce)&#x27;).matches;
+function float(c,t,amp){
+  if(reduce) return [0,0,0];
+  return [Math.sin(t*.00023*c.sp+c.ph)*amp, Math.cos(t*.00029*c.sp+c.ph*1.3)*amp*1.3, Math.sin(t*.00019+c.ph)*2];
+}
+function put(c,x,y,r,s){c.el.style.transform=&#x27;translate(&#x27;+x+&#x27;px,&#x27;+y+&#x27;px) rotate(&#x27;+r+&#x27;deg) scale(&#x27;+s+&#x27;)&#x27;;}
+
+// ---- B: 집어 던지기
+let held=null, zTop=500, off=[0,0], last=[];
+if(MODE===&#x27;b&#x27;){
+  host.addEventListener(&#x27;pointerdown&#x27;,e=&gt;{
+    const el=e.target.closest(&#x27;.card&#x27;); if(!el) return;
+    held=cards.find(c=&gt;c.el===el); el.setPointerCapture(e.pointerId);
+    el.classList.add(&#x27;held&#x27;); el.style.zIndex=++zTop;
+    const p=pt(e); off=[p[0]-held.x,p[1]-held.y]; last=[[p[0],p[1],performance.now()]];
+    held.vx=held.vy=0;
+    document.getElementById(&#x27;hint&#x27;).style.opacity=0;
+  });
+  host.addEventListener(&#x27;pointermove&#x27;,e=&gt;{
+    if(!held) return; const p=pt(e);
+    held.x=p[0]-off[0]; held.y=p[1]-off[1];
+    last.push([p[0],p[1],performance.now()]); if(last.length&gt;5) last.shift();
+  });
+  const up=()=&gt;{
+    if(!held) return;
+    const a=last[0], b=last[last.length-1], dt=Math.max(16,b[2]-a[2]);
+    held.vx=(b[0]-a[0])/dt*16; held.vy=(b[1]-a[1])/dt*16;
+    held.el.classList.remove(&#x27;held&#x27;); held.el.classList.remove(&#x27;far&#x27;); held=null;
+  };
+  host.addEventListener(&#x27;pointerup&#x27;,up); host.addEventListener(&#x27;pointercancel&#x27;,up);
+}
+function pt(e){const b=fit.getBoundingClientRect();return [(e.clientX-b.left)/S,(e.clientY-b.top)/S];}
+
+// ---- C: 모였다 흩어진다
+const svg=document.getElementById(&#x27;lines&#x27;);
+const CL=[[250,185],[720,170],[1190,185],[250,720],[720,730],[1190,720]];
+const NAMES=[&#x27;여행 계획&#x27;,&#x27;산책&#x27;,&#x27;이사 준비&#x27;,&#x27;읽고 쓰기&#x27;,&#x27;회사&#x27;,&#x27;집&#x27;];
+const labs=NAMES.map((n,i)=&gt;{const l=document.createElement(&#x27;div&#x27;);l.className=&#x27;lab&#x27;;l.textContent=n;
+  l.style.left=(CL[i][0]-40)+&#x27;px&#x27;;l.style.top=CL[i][1]-150+&#x27;px&#x27;;fit.insertBefore(l,host);return l;});
+if(MODE===&#x27;c&#x27;){
+  const by={}; cards.forEach(c=&gt;(by[c.g]=by[c.g]||[]).push(c));
+  Object.values(by).forEach(list=&gt;list.forEach((c,j)=&gt;{
+    const col=j%3, row=Math.floor(j/3), n=Math.min(3,list.length-row*3);
+    c.tx=CL[c.g][0]+(col-(n-1)/2)*150-c.w/2; c.ty=CL[c.g][1]+(row-.5)*112-c.h/2+ (list.length&lt;=3?60:0);
+    c.tr=(R()-.5)*5;
+  }));
+  // 덩어리 안은 사슬로, 덩어리 사이는 둘만 잇는다
+  var links=[]; Object.values(by).forEach(l=&gt;{for(let j=1;j&lt;l.length;j++) links.push([l[j-1],l[j]]);});
+  links.push([by[1][0],by[0][0]],[by[4][0],by[3][1]],[by[2][4],by[1][2]]);
+  svg.innerHTML=links.map(()=&gt;&#x27;&lt;path pathLength=&quot;1&quot; stroke-dasharray=&quot;1&quot; stroke-dashoffset=&quot;1&quot;/&gt;&#x27;).join(&#x27;&#x27;);
+  var paths=[...svg.children];
+}
+const ease=p=&gt;p&lt;.5?4*p*p*p:1-Math.pow(-2*p+2,3)/2;
+const CYCLE=14000;
+
+function frame(t){
+  if(MODE===&#x27;c&#x27;){
+    const u=t%CYCLE;
+    // 0~2.5초 흩어짐, 2.5~4.3초 모임, 4.3~5.3초 선, 11초까지 머묾, 11~13초 다시 흩어짐
+    let g = u&lt;2500?0 : u&lt;4300?ease((u-2500)/1800) : u&lt;11000?1 : u&lt;13000?1-ease((u-11000)/2000) : 0;
+    cards.forEach((c,i)=&gt;{
+      const gi=Math.max(0,Math.min(1, u&lt;11000 ? (g*1.25-i*.009) : g));
+      const f=float(c,t,14*(1-gi)+2*gi);
+      const x=c.x+(c.tx-c.x)*gi+f[0], y=c.y+(c.ty-c.y)*gi+f[1];
+      c.cx=x+c.w/2; c.cy=y+c.h/2; c.el.classList.toggle(&#x27;far&#x27;, c.z&lt;0.78 &amp;&amp; gi&lt;.5);
+      c.el.style.zIndex = gi&gt;.5 ? 200+i : Math.round(c.z*100);
+      put(c,x,y,c.r+(c.tr-c.r)*gi+f[2]*(1-gi), c.z+(0.84-c.z)*gi);
+    });
+    const lp = u&lt;4300?0 : u&lt;5300?(u-4300)/1000 : u&lt;11000?1 : u&lt;11600?1-(u-11000)/600 : 0;
+    paths.forEach((p,k)=&gt;{const [a,b]=links[k];
+      const mx=(a.cx+b.cx)/2, my=(a.cy+b.cy)/2-Math.abs(a.cx-b.cx)*.12;
+      p.setAttribute(&#x27;d&#x27;,&#x27;M&#x27;+a.cx+&#x27; &#x27;+a.cy+&#x27; Q&#x27;+mx+&#x27; &#x27;+my+&#x27; &#x27;+b.cx+&#x27; &#x27;+b.cy);
+      p.setAttribute(&#x27;stroke-dashoffset&#x27;, u&gt;=11000 ? 0 : 1-Math.min(1,Math.max(0,lp*1.3-k*.012)));
+      p.style.opacity = u&gt;=11000 ? lp : 1;
+    });
+    labs.forEach(l=&gt;l.style.opacity = lp&gt;.6&amp;&amp;u&lt;11000 ? 1 : 0);
+  } else {
+    cards.forEach(c=&gt;{
+      if(MODE===&#x27;b&#x27; &amp;&amp; c!==held &amp;&amp; (Math.abs(c.vx)&gt;.05||Math.abs(c.vy)&gt;.05)){
+        c.x+=c.vx; c.y+=c.vy; c.vx*=.94; c.vy*=.94;
+        if(c.x&lt;-c.w*.4||c.x&gt;W-c.w*.6){c.vx*=-.6;c.x=Math.max(-c.w*.4,Math.min(W-c.w*.6,c.x));}
+        if(c.y&lt;-c.h*.4||c.y&gt;H-c.h*.6){c.vy*=-.6;c.y=Math.max(-c.h*.4,Math.min(H-c.h*.6,c.y));}
+      }
+      const isH=c===held, f=isH?[0,0,0]:float(c,t,14);
+      put(c,c.x+f[0],c.y+f[1],isH?c.r*.3:c.r+f[2],isH?c.z*1.06:c.z);
+    });
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+&lt;/script&gt;
+&lt;/body&gt;&lt;/html&gt;
+" style="display:block;width:100%;aspect-ratio:1440/900;border:0;border-radius:6px;background:#ebecee"></iframe></div>
+      <div class="notes"><div class="note">덩어리 이름 6개는 카드 내용에 맞춰 지었다.</div></div>
+    </div>
+    <div class="cap2">장점: 2.5초 뒤 카드가 6덩어리로 모이고 선이 그어져 제품 약속을 움직임으로 보여 준다. 걱정: 14초 주기라 첫 2.5초에 떠난 사람은 핵심을 못 본다.</div>
+  </div>
+</div>
+</section>
+
+</div>
+<script type="application/json" id="spec-source">{"title": "moss 로그인 전 첫 화면 — 떠다니는 카드 히어로", "sub": "시안 3개, 각 1440×900. 액자를 누르면 크게 보인다. 시안은 라이트 단일이다 — moss 토큰에 다크가 없어 스위치를 눌러도 시안 안은 안 바뀐다.", "blocks": [{"type": "gallery", "cols": 3, "items": [{"h": "A. 보기만 — 떠다니는 카드", "html": "<iframe title=\"시안 A\" srcdoc=\"&lt;!doctype html&gt;\n&lt;html lang=&quot;ko&quot;&gt;&lt;head&gt;&lt;meta charset=&quot;utf-8&quot;&gt;\n&lt;link rel=&quot;stylesheet&quot; href=&quot;https://fonts.googleapis.com/css2?family=Caveat:wght@500&amp;family=Nanum+Pen+Script&amp;display=swap&quot;&gt;\n&lt;style&gt;\nhtml,body{margin:0;height:100%;overflow:hidden;background:#ebecee}\n#fit{position:absolute;left:0;top:0;width:1440px;height:900px;transform-origin:0 0;overflow:hidden;\n  background:#ebecee radial-gradient(#d8d2c4 1px,transparent 1.2px) 0 0/24px 24px;\n  font-family:&quot;Pretendard Variable&quot;,Pretendard,&quot;Apple SD Gothic Neo&quot;,system-ui,sans-serif;color:#2c2e33}\n#lines{position:absolute;inset:0;width:1440px;height:900px;pointer-events:none}\n#lines path{fill:none;stroke:#b4ab99;stroke-width:1.5;stroke-linecap:round}\n.lab{position:absolute;font:500 26px Caveat,&quot;Nanum Pen Script&quot;,cursive;color:#6a6c72;opacity:0;transition:opacity .6s;white-space:nowrap}\n.card{position:absolute;left:0;top:0;box-sizing:border-box;border-radius:6px;background:#fdfcfa;padding:12px 14px;\n  font-size:14px;line-height:1.5;user-select:none;\n  box-shadow:0 1px 1px rgba(42,39,34,.04),0 2px 4px rgba(42,39,34,.05),0 8px 20px rgba(42,39,34,.04);transition:box-shadow .2s,filter .3s}\n.card p{margin:0}\n.card.far{filter:blur(1.4px);opacity:.78}\n.yellow{background:#fbf5d8}.blue{background:#e5edf2}.lime{background:#e8eee0}.purple{background:#ece5f0}\n.hand p{font:500 25px/1.15 Caveat,&quot;Nanum Pen Script&quot;,cursive}\n.check b{display:block;font-size:13px;margin-bottom:6px}\n.check ul{list-style:none;margin:0;padding:0;font-size:13px}\n.check li{display:flex;gap:7px;align-items:center;margin:3px 0}\n.check li::before{content:&quot;&quot;;width:12px;height:12px;border:1.5px solid #9a968c;border-radius:3px;flex:none;box-sizing:border-box}\n.check li.on{color:#6a6c72;text-decoration:line-through}\n.check li.on::before{background:#2c2e33 url(&quot;data:image/svg+xml,%3Csvg xmlns=&#x27;http://www.w3.org/2000/svg&#x27; viewBox=&#x27;0 0 12 12&#x27;%3E%3Cpath d=&#x27;M3 6.2l2 2 4-4.4&#x27; stroke=&#x27;white&#x27; stroke-width=&#x27;1.6&#x27; fill=&#x27;none&#x27;/%3E%3C/svg%3E&quot;);border-color:#2c2e33}\n.photo{padding:6px 6px 8px}\n.photo .ph{height:118px;border-radius:3px}\n.photo span{display:block;font-size:12px;color:#6a6c72;margin:6px 4px 0}\n.link small,.board small{display:block;font-size:11px;color:#6a6c72}\n.link p{font-weight:600;font-size:13px;margin-top:3px}\n.link .fav{display:inline-grid;place-items:center;width:16px;height:16px;border-radius:4px;color:#fff;font-size:10px;font-weight:700;margin-right:6px;vertical-align:-3px}\n.board .bd{display:grid;grid-template-columns:1fr 1fr;gap:4px;height:62px;margin-bottom:8px}\n.board .bd i{border-radius:3px;background:#efeae0}\n.board .bd i:nth-child(2){background:#fbf5d8}.board .bd i:nth-child(3){background:#e8eee0}\n.board b{font-size:13px}\n.card.held{box-shadow:0 6px 12px rgba(42,39,34,.12),0 24px 48px rgba(42,39,34,.18);filter:none;opacity:1;cursor:grabbing}\n.drag .card{cursor:grab}\n#veil{position:absolute;inset:0;pointer-events:none;z-index:900;\n  background:radial-gradient(ellipse 380px 210px at 50% 50%,rgba(235,236,238,.94) 40%,rgba(235,236,238,0) 100%)}\n#hero{position:absolute;z-index:901;left:50%;top:50%;transform:translate(-50%,-50%);text-align:center;pointer-events:none;width:760px}\n#hero .wm{font-weight:700;font-size:19px;letter-spacing:-.02em;display:inline-flex;align-items:center;gap:7px}\n#hero .wm i{width:10px;height:10px;border-radius:50%;background:#a8b89c}\n#hero h1{font-size:58px;line-height:1.16;letter-spacing:-.035em;font-weight:700;margin:18px 0 30px}\n#hero .btn{pointer-events:auto;display:inline-flex;align-items:center;gap:10px;background:#2c2e33;color:#fdfcfa;border:0;\n  border-radius:999px;padding:15px 28px;font:600 16px inherit;font-family:inherit;cursor:pointer}\n#hero .btn .g{width:18px;height:18px;border-radius:50%;background:#fdfcfa;color:#2c2e33;display:grid;place-items:center;font-size:12px;font-weight:800}\n#hero .mail{pointer-events:auto;display:block;margin-top:16px;color:#6a6c72;font-size:14px;text-decoration:underline;text-underline-offset:3px}\n#hint{margin-top:22px;font:500 24px Caveat,&quot;Nanum Pen Script&quot;,cursive;color:#6a6c72;transition:opacity .5s}\n@media (prefers-reduced-motion:reduce){.card{transition:none}}\n&lt;/style&gt;&lt;/head&gt;&lt;body&gt;\n&lt;div id=&quot;fit&quot;&gt;\n  &lt;svg id=&quot;lines&quot; viewBox=&quot;0 0 1440 900&quot;&gt;&lt;/svg&gt;\n  &lt;div id=&quot;cards&quot;&gt;&lt;/div&gt;\n  &lt;div id=&quot;veil&quot;&gt;&lt;/div&gt;\n  &lt;div id=&quot;hero&quot;&gt;\n    &lt;div class=&quot;wm&quot;&gt;&lt;i&gt;&lt;/i&gt;moss&lt;/div&gt;\n    &lt;h1 id=&quot;h1&quot;&gt;&lt;/h1&gt;\n    &lt;button class=&quot;btn&quot;&gt;&lt;span class=&quot;g&quot;&gt;G&lt;/span&gt;Google로 계속&lt;/button&gt;\n    &lt;a class=&quot;mail&quot; href=&quot;#&quot;&gt;메일로 계속&lt;/a&gt;\n    &lt;div id=&quot;hint&quot; hidden&gt;카드를 끌어 보세요&lt;/div&gt;\n  &lt;/div&gt;\n&lt;/div&gt;\n&lt;script&gt;\nconst MODE=&#x27;a&#x27;, W=1440, H=900;\nconst fit=document.getElementById(&#x27;fit&#x27;); let S=1;\nfunction rescale(){S=innerWidth/W;fit.style.transform=&#x27;scale(&#x27;+S+&#x27;)&#x27;;}\naddEventListener(&#x27;resize&#x27;,rescale); rescale();\n\ndocument.getElementById(&#x27;h1&#x27;).innerHTML = MODE===&#x27;b&#x27;\n  ? &#x27;흩어 놓아도 괜찮아요.&lt;br&gt;연결은 moss가 이어 줄게요&#x27;\n  : &#x27;생각을 붙이면,&lt;br&gt;연결이 보여요&#x27;;\nif(MODE===&#x27;b&#x27;){document.getElementById(&#x27;hint&#x27;).hidden=false;fit.classList.add(&#x27;drag&#x27;);}\n\n// [그룹, 종류, 색, 내용...]  그룹은 C안에서 모이는 덩어리 번호다\nconst D=[\n [0,&#x27;photo&#x27;,&#x27;&#x27;,&#x27;제주 협재&#x27;,&#x27;linear-gradient(170deg,#dfe6dc 0 30%,#a9c2b6 30% 55%,#eadcbe 55%,#d6c09a)&#x27;],\n [0,&#x27;check&#x27;,&#x27;&#x27;,&#x27;여행 짐&#x27;,[&#x27;여권&#x27;,1],[&#x27;충전기&#x27;,1],[&#x27;우산&#x27;,0]],\n [0,&#x27;link&#x27;,&#x27;&#x27;,&#x27;제주 맛집 지도&#x27;,&#x27;map.naver.com&#x27;,&#x27;#5f9b6a&#x27;],\n [0,&#x27;hand&#x27;,&#x27;yellow&#x27;,&#x27;렌터카 예약 잊지 말기&#x27;],\n [0,&#x27;note&#x27;,&#x27;&#x27;,&#x27;비행기 금요일 7:10 출발&#x27;],\n [1,&#x27;photo&#x27;,&#x27;&#x27;,&#x27;10월 산책 코스&#x27;,&#x27;linear-gradient(170deg,#f2d9a8,#d9914f 55%,#8b5a3c)&#x27;],\n [1,&#x27;photo&#x27;,&#x27;&#x27;,&#x27;베란다 수국&#x27;,&#x27;radial-gradient(circle at 40% 40%,#ead0de,#c79dba 45%,#93a68c 80%)&#x27;],\n [1,&#x27;hand&#x27;,&#x27;lime&#x27;,&#x27;아이디어는 산책할 때 온다&#x27;],\n [1,&#x27;note&#x27;,&#x27;purple&#x27;,&#x27;좋아하는 단어: 윤슬&#x27;],\n [2,&#x27;check&#x27;,&#x27;&#x27;,&#x27;이사 준비&#x27;,[&#x27;인터넷 이전 신청&#x27;,1],[&#x27;관리비 정산&#x27;,0],[&#x27;화분 옮기기&#x27;,0]],\n [2,&#x27;note&#x27;,&#x27;&#x27;,&#x27;관리사무소 전화는 10시 이후&#x27;],\n [2,&#x27;photo&#x27;,&#x27;&#x27;,&#x27;새 집 거실&#x27;,&#x27;linear-gradient(180deg,#f1eadf 0 58%,#cdb99c 58%)&#x27;],\n [2,&#x27;board&#x27;,&#x27;&#x27;,&#x27;새 집 가구&#x27;,&#x27;카드 8장&#x27;],\n [2,&#x27;hand&#x27;,&#x27;yellow&#x27;,&#x27;화분은 직접 옮기기&#x27;],\n [3,&#x27;check&#x27;,&#x27;&#x27;,&#x27;읽을 책&#x27;,[&#x27;아주 작은 습관의 힘&#x27;,1],[&#x27;도둑맞은 집중력&#x27;,0]],\n [3,&#x27;link&#x27;,&#x27;&#x27;,&#x27;기록하는 습관을 만드는 3가지 방법&#x27;,&#x27;brunch.co.kr&#x27;,&#x27;#2c2e33&#x27;],\n [3,&#x27;note&#x27;,&#x27;lime&#x27;,&#x27;다음 분기 목표: 매주 글 1편&#x27;],\n [3,&#x27;hand&#x27;,&#x27;&#x27;,&#x27;천천히, 그래도 매일&#x27;],\n [3,&#x27;link&#x27;,&#x27;&#x27;,&#x27;회고 템플릿&#x27;,&#x27;notion.so&#x27;,&#x27;#6a6c72&#x27;],\n [4,&#x27;note&#x27;,&#x27;&#x27;,&#x27;회의 끝나고 질문 2개 정리해서 보내기&#x27;],\n [4,&#x27;note&#x27;,&#x27;blue&#x27;,&#x27;발표 슬라이드 7장을 5장으로&#x27;],\n [4,&#x27;photo&#x27;,&#x27;&#x27;,&#x27;화이트보드 사진&#x27;,&#x27;repeating-linear-gradient(8deg,transparent 0 22px,rgba(90,110,90,.35) 22px 24px),linear-gradient(#f5f4f0,#e2dfd7)&#x27;],\n [4,&#x27;board&#x27;,&#x27;&#x27;,&#x27;3분기 회고&#x27;,&#x27;카드 14장&#x27;],\n [5,&#x27;note&#x27;,&#x27;yellow&#x27;,&#x27;토요일 장보기 전에 냉장고 먼저 확인&#x27;],\n [5,&#x27;hand&#x27;,&#x27;&#x27;,&#x27;고양이 사료 주문&#x27;],\n [5,&#x27;note&#x27;,&#x27;purple&#x27;,&#x27;엄마 생신 선물 — 스카프? 찻잔?&#x27;],\n [5,&#x27;photo&#x27;,&#x27;&#x27;,&#x27;망원동 카페 메뉴판&#x27;,&#x27;linear-gradient(150deg,#6b4a36,#a87d5a 60%,#e8d5bb)&#x27;],\n [5,&#x27;link&#x27;,&#x27;&#x27;,&#x27;15분 집밥 레시피&#x27;,&#x27;youtube.com&#x27;,&#x27;#c4544a&#x27;],\n];\nconst WID={note:170,hand:168,check:188,photo:176,link:196,board:172};\nfunction inner(d){\n  const [, t,, a, b, c] = d;\n  if(t===&#x27;note&#x27;||t===&#x27;hand&#x27;) return &#x27;&lt;p&gt;&#x27;+a+&#x27;&lt;/p&gt;&#x27;;\n  if(t===&#x27;check&#x27;) return &#x27;&lt;b&gt;&#x27;+a+&#x27;&lt;/b&gt;&lt;ul&gt;&#x27;+d.slice(4).map(x=&gt;&#x27;&lt;li class=&quot;&#x27;+(x[1]?&#x27;on&#x27;:&#x27;&#x27;)+&#x27;&quot;&gt;&#x27;+x[0]+&#x27;&lt;/li&gt;&#x27;).join(&#x27;&#x27;)+&#x27;&lt;/ul&gt;&#x27;;\n  if(t===&#x27;photo&#x27;) return &#x27;&lt;div class=&quot;ph&quot; style=&quot;background:&#x27;+b+&#x27;&quot;&gt;&lt;/div&gt;&lt;span&gt;&#x27;+a+&#x27;&lt;/span&gt;&#x27;;\n  if(t===&#x27;link&#x27;) return &#x27;&lt;small&gt;&lt;span class=&quot;fav&quot; style=&quot;background:&#x27;+c+&#x27;&quot;&gt;&#x27;+b[0].toUpperCase()+&#x27;&lt;/span&gt;&#x27;+b+&#x27;&lt;/small&gt;&lt;p&gt;&#x27;+a+&#x27;&lt;/p&gt;&#x27;;\n  if(t===&#x27;board&#x27;) return &#x27;&lt;div class=&quot;bd&quot;&gt;&lt;i&gt;&lt;/i&gt;&lt;i&gt;&lt;/i&gt;&lt;i&gt;&lt;/i&gt;&lt;i&gt;&lt;/i&gt;&lt;/div&gt;&lt;b&gt;&#x27;+a+&#x27;&lt;/b&gt;&lt;small&gt;&#x27;+b+&#x27;&lt;/small&gt;&#x27;;\n}\n\n// 시드 고정 난수 — 세 안이 같은 흩어짐에서 출발한다\nlet seed=7; const R=()=&gt;((seed=(seed*16807)%2147483647)/2147483647);\nconst host=document.getElementById(&#x27;cards&#x27;); const cards_tmp=[];\nconst cards=D.map((d,i)=&gt;{\n  const el=document.createElement(&#x27;div&#x27;);\n  el.className=&#x27;card &#x27;+d[1]+&#x27; &#x27;+d[2]; el.style.width=WID[d[1]]+&#x27;px&#x27;; el.innerHTML=inner(d);\n  host.appendChild(el);\n  let x,y,k=0;\n  do{ x=-30+R()*(W-150); y=-20+R()*(H-110); k++; }\n  while(((x+90-720)/470)**2+((y+70-450)/280)**2&lt;1 || (k&lt;300 &amp;&amp; placed(x,y)));\n  const z=0.66+R()*0.42;\n  if(z&lt;0.78) el.classList.add(&#x27;far&#x27;);\n  el.style.zIndex=Math.round(z*100);\n  const c={el,g:d[0],x,y,r:(R()-.5)*22,z,ph:R()*6.28,sp:.7+R()*.6,vx:0,vy:0};\n  cards_tmp.push([x,y]); return c;\n});\nfunction placed(x,y){return cards_tmp.some(p=&gt;Math.hypot(p[0]-x,p[1]-y)&lt;125);}\ncards.forEach(c=&gt;{c.w=c.el.offsetWidth;c.h=c.el.offsetHeight;});\n\nconst reduce=matchMedia(&#x27;(prefers-reduced-motion: reduce)&#x27;).matches;\nfunction float(c,t,amp){\n  if(reduce) return [0,0,0];\n  return [Math.sin(t*.00023*c.sp+c.ph)*amp, Math.cos(t*.00029*c.sp+c.ph*1.3)*amp*1.3, Math.sin(t*.00019+c.ph)*2];\n}\nfunction put(c,x,y,r,s){c.el.style.transform=&#x27;translate(&#x27;+x+&#x27;px,&#x27;+y+&#x27;px) rotate(&#x27;+r+&#x27;deg) scale(&#x27;+s+&#x27;)&#x27;;}\n\n// ---- B: 집어 던지기\nlet held=null, zTop=500, off=[0,0], last=[];\nif(MODE===&#x27;b&#x27;){\n  host.addEventListener(&#x27;pointerdown&#x27;,e=&gt;{\n    const el=e.target.closest(&#x27;.card&#x27;); if(!el) return;\n    held=cards.find(c=&gt;c.el===el); el.setPointerCapture(e.pointerId);\n    el.classList.add(&#x27;held&#x27;); el.style.zIndex=++zTop;\n    const p=pt(e); off=[p[0]-held.x,p[1]-held.y]; last=[[p[0],p[1],performance.now()]];\n    held.vx=held.vy=0;\n    document.getElementById(&#x27;hint&#x27;).style.opacity=0;\n  });\n  host.addEventListener(&#x27;pointermove&#x27;,e=&gt;{\n    if(!held) return; const p=pt(e);\n    held.x=p[0]-off[0]; held.y=p[1]-off[1];\n    last.push([p[0],p[1],performance.now()]); if(last.length&gt;5) last.shift();\n  });\n  const up=()=&gt;{\n    if(!held) return;\n    const a=last[0], b=last[last.length-1], dt=Math.max(16,b[2]-a[2]);\n    held.vx=(b[0]-a[0])/dt*16; held.vy=(b[1]-a[1])/dt*16;\n    held.el.classList.remove(&#x27;held&#x27;); held.el.classList.remove(&#x27;far&#x27;); held=null;\n  };\n  host.addEventListener(&#x27;pointerup&#x27;,up); host.addEventListener(&#x27;pointercancel&#x27;,up);\n}\nfunction pt(e){const b=fit.getBoundingClientRect();return [(e.clientX-b.left)/S,(e.clientY-b.top)/S];}\n\n// ---- C: 모였다 흩어진다\nconst svg=document.getElementById(&#x27;lines&#x27;);\nconst CL=[[250,185],[720,170],[1190,185],[250,720],[720,730],[1190,720]];\nconst NAMES=[&#x27;여행 계획&#x27;,&#x27;산책&#x27;,&#x27;이사 준비&#x27;,&#x27;읽고 쓰기&#x27;,&#x27;회사&#x27;,&#x27;집&#x27;];\nconst labs=NAMES.map((n,i)=&gt;{const l=document.createElement(&#x27;div&#x27;);l.className=&#x27;lab&#x27;;l.textContent=n;\n  l.style.left=(CL[i][0]-40)+&#x27;px&#x27;;l.style.top=CL[i][1]-150+&#x27;px&#x27;;fit.insertBefore(l,host);return l;});\nif(MODE===&#x27;c&#x27;){\n  const by={}; cards.forEach(c=&gt;(by[c.g]=by[c.g]||[]).push(c));\n  Object.values(by).forEach(list=&gt;list.forEach((c,j)=&gt;{\n    const col=j%3, row=Math.floor(j/3), n=Math.min(3,list.length-row*3);\n    c.tx=CL[c.g][0]+(col-(n-1)/2)*150-c.w/2; c.ty=CL[c.g][1]+(row-.5)*112-c.h/2+ (list.length&lt;=3?60:0);\n    c.tr=(R()-.5)*5;\n  }));\n  // 덩어리 안은 사슬로, 덩어리 사이는 둘만 잇는다\n  var links=[]; Object.values(by).forEach(l=&gt;{for(let j=1;j&lt;l.length;j++) links.push([l[j-1],l[j]]);});\n  links.push([by[1][0],by[0][0]],[by[4][0],by[3][1]],[by[2][4],by[1][2]]);\n  svg.innerHTML=links.map(()=&gt;&#x27;&lt;path pathLength=&quot;1&quot; stroke-dasharray=&quot;1&quot; stroke-dashoffset=&quot;1&quot;/&gt;&#x27;).join(&#x27;&#x27;);\n  var paths=[...svg.children];\n}\nconst ease=p=&gt;p&lt;.5?4*p*p*p:1-Math.pow(-2*p+2,3)/2;\nconst CYCLE=14000;\n\nfunction frame(t){\n  if(MODE===&#x27;c&#x27;){\n    const u=t%CYCLE;\n    // 0~2.5초 흩어짐, 2.5~4.3초 모임, 4.3~5.3초 선, 11초까지 머묾, 11~13초 다시 흩어짐\n    let g = u&lt;2500?0 : u&lt;4300?ease((u-2500)/1800) : u&lt;11000?1 : u&lt;13000?1-ease((u-11000)/2000) : 0;\n    cards.forEach((c,i)=&gt;{\n      const gi=Math.max(0,Math.min(1, u&lt;11000 ? (g*1.25-i*.009) : g));\n      const f=float(c,t,14*(1-gi)+2*gi);\n      const x=c.x+(c.tx-c.x)*gi+f[0], y=c.y+(c.ty-c.y)*gi+f[1];\n      c.cx=x+c.w/2; c.cy=y+c.h/2; c.el.classList.toggle(&#x27;far&#x27;, c.z&lt;0.78 &amp;&amp; gi&lt;.5);\n      c.el.style.zIndex = gi&gt;.5 ? 200+i : Math.round(c.z*100);\n      put(c,x,y,c.r+(c.tr-c.r)*gi+f[2]*(1-gi), c.z+(0.84-c.z)*gi);\n    });\n    const lp = u&lt;4300?0 : u&lt;5300?(u-4300)/1000 : u&lt;11000?1 : u&lt;11600?1-(u-11000)/600 : 0;\n    paths.forEach((p,k)=&gt;{const [a,b]=links[k];\n      const mx=(a.cx+b.cx)/2, my=(a.cy+b.cy)/2-Math.abs(a.cx-b.cx)*.12;\n      p.setAttribute(&#x27;d&#x27;,&#x27;M&#x27;+a.cx+&#x27; &#x27;+a.cy+&#x27; Q&#x27;+mx+&#x27; &#x27;+my+&#x27; &#x27;+b.cx+&#x27; &#x27;+b.cy);\n      p.setAttribute(&#x27;stroke-dashoffset&#x27;, u&gt;=11000 ? 0 : 1-Math.min(1,Math.max(0,lp*1.3-k*.012)));\n      p.style.opacity = u&gt;=11000 ? lp : 1;\n    });\n    labs.forEach(l=&gt;l.style.opacity = lp&gt;.6&amp;&amp;u&lt;11000 ? 1 : 0);\n  } else {\n    cards.forEach(c=&gt;{\n      if(MODE===&#x27;b&#x27; &amp;&amp; c!==held &amp;&amp; (Math.abs(c.vx)&gt;.05||Math.abs(c.vy)&gt;.05)){\n        c.x+=c.vx; c.y+=c.vy; c.vx*=.94; c.vy*=.94;\n        if(c.x&lt;-c.w*.4||c.x&gt;W-c.w*.6){c.vx*=-.6;c.x=Math.max(-c.w*.4,Math.min(W-c.w*.6,c.x));}\n        if(c.y&lt;-c.h*.4||c.y&gt;H-c.h*.6){c.vy*=-.6;c.y=Math.max(-c.h*.4,Math.min(H-c.h*.6,c.y));}\n      }\n      const isH=c===held, f=isH?[0,0,0]:float(c,t,14);\n      put(c,c.x+f[0],c.y+f[1],isH?c.r*.3:c.r+f[2],isH?c.z*1.06:c.z);\n    });\n  }\n  requestAnimationFrame(frame);\n}\nrequestAnimationFrame(frame);\n&lt;/script&gt;\n&lt;/body&gt;&lt;/html&gt;\n\" style=\"display:block;width:100%;aspect-ratio:1440/900;border:0;border-radius:6px;background:#ebecee\"><\/iframe>", "cap": "장점: 28장이 천천히 떠서 첫눈에 메모 앱인 게 보인다. 걱정: 보기만 해서 '노는 재미'는 말로만 전해진다."}, {"h": "B. 직접 끌기 — 집어 던지는 카드", "html": "<iframe title=\"시안 B\" srcdoc=\"&lt;!doctype html&gt;\n&lt;html lang=&quot;ko&quot;&gt;&lt;head&gt;&lt;meta charset=&quot;utf-8&quot;&gt;\n&lt;link rel=&quot;stylesheet&quot; href=&quot;https://fonts.googleapis.com/css2?family=Caveat:wght@500&amp;family=Nanum+Pen+Script&amp;display=swap&quot;&gt;\n&lt;style&gt;\nhtml,body{margin:0;height:100%;overflow:hidden;background:#ebecee}\n#fit{position:absolute;left:0;top:0;width:1440px;height:900px;transform-origin:0 0;overflow:hidden;\n  background:#ebecee radial-gradient(#d8d2c4 1px,transparent 1.2px) 0 0/24px 24px;\n  font-family:&quot;Pretendard Variable&quot;,Pretendard,&quot;Apple SD Gothic Neo&quot;,system-ui,sans-serif;color:#2c2e33}\n#lines{position:absolute;inset:0;width:1440px;height:900px;pointer-events:none}\n#lines path{fill:none;stroke:#b4ab99;stroke-width:1.5;stroke-linecap:round}\n.lab{position:absolute;font:500 26px Caveat,&quot;Nanum Pen Script&quot;,cursive;color:#6a6c72;opacity:0;transition:opacity .6s;white-space:nowrap}\n.card{position:absolute;left:0;top:0;box-sizing:border-box;border-radius:6px;background:#fdfcfa;padding:12px 14px;\n  font-size:14px;line-height:1.5;user-select:none;\n  box-shadow:0 1px 1px rgba(42,39,34,.04),0 2px 4px rgba(42,39,34,.05),0 8px 20px rgba(42,39,34,.04);transition:box-shadow .2s,filter .3s}\n.card p{margin:0}\n.card.far{filter:blur(1.4px);opacity:.78}\n.yellow{background:#fbf5d8}.blue{background:#e5edf2}.lime{background:#e8eee0}.purple{background:#ece5f0}\n.hand p{font:500 25px/1.15 Caveat,&quot;Nanum Pen Script&quot;,cursive}\n.check b{display:block;font-size:13px;margin-bottom:6px}\n.check ul{list-style:none;margin:0;padding:0;font-size:13px}\n.check li{display:flex;gap:7px;align-items:center;margin:3px 0}\n.check li::before{content:&quot;&quot;;width:12px;height:12px;border:1.5px solid #9a968c;border-radius:3px;flex:none;box-sizing:border-box}\n.check li.on{color:#6a6c72;text-decoration:line-through}\n.check li.on::before{background:#2c2e33 url(&quot;data:image/svg+xml,%3Csvg xmlns=&#x27;http://www.w3.org/2000/svg&#x27; viewBox=&#x27;0 0 12 12&#x27;%3E%3Cpath d=&#x27;M3 6.2l2 2 4-4.4&#x27; stroke=&#x27;white&#x27; stroke-width=&#x27;1.6&#x27; fill=&#x27;none&#x27;/%3E%3C/svg%3E&quot;);border-color:#2c2e33}\n.photo{padding:6px 6px 8px}\n.photo .ph{height:118px;border-radius:3px}\n.photo span{display:block;font-size:12px;color:#6a6c72;margin:6px 4px 0}\n.link small,.board small{display:block;font-size:11px;color:#6a6c72}\n.link p{font-weight:600;font-size:13px;margin-top:3px}\n.link .fav{display:inline-grid;place-items:center;width:16px;height:16px;border-radius:4px;color:#fff;font-size:10px;font-weight:700;margin-right:6px;vertical-align:-3px}\n.board .bd{display:grid;grid-template-columns:1fr 1fr;gap:4px;height:62px;margin-bottom:8px}\n.board .bd i{border-radius:3px;background:#efeae0}\n.board .bd i:nth-child(2){background:#fbf5d8}.board .bd i:nth-child(3){background:#e8eee0}\n.board b{font-size:13px}\n.card.held{box-shadow:0 6px 12px rgba(42,39,34,.12),0 24px 48px rgba(42,39,34,.18);filter:none;opacity:1;cursor:grabbing}\n.drag .card{cursor:grab}\n#veil{position:absolute;inset:0;pointer-events:none;z-index:900;\n  background:radial-gradient(ellipse 380px 210px at 50% 50%,rgba(235,236,238,.94) 40%,rgba(235,236,238,0) 100%)}\n#hero{position:absolute;z-index:901;left:50%;top:50%;transform:translate(-50%,-50%);text-align:center;pointer-events:none;width:760px}\n#hero .wm{font-weight:700;font-size:19px;letter-spacing:-.02em;display:inline-flex;align-items:center;gap:7px}\n#hero .wm i{width:10px;height:10px;border-radius:50%;background:#a8b89c}\n#hero h1{font-size:58px;line-height:1.16;letter-spacing:-.035em;font-weight:700;margin:18px 0 30px}\n#hero .btn{pointer-events:auto;display:inline-flex;align-items:center;gap:10px;background:#2c2e33;color:#fdfcfa;border:0;\n  border-radius:999px;padding:15px 28px;font:600 16px inherit;font-family:inherit;cursor:pointer}\n#hero .btn .g{width:18px;height:18px;border-radius:50%;background:#fdfcfa;color:#2c2e33;display:grid;place-items:center;font-size:12px;font-weight:800}\n#hero .mail{pointer-events:auto;display:block;margin-top:16px;color:#6a6c72;font-size:14px;text-decoration:underline;text-underline-offset:3px}\n#hint{margin-top:22px;font:500 24px Caveat,&quot;Nanum Pen Script&quot;,cursive;color:#6a6c72;transition:opacity .5s}\n@media (prefers-reduced-motion:reduce){.card{transition:none}}\n&lt;/style&gt;&lt;/head&gt;&lt;body&gt;\n&lt;div id=&quot;fit&quot;&gt;\n  &lt;svg id=&quot;lines&quot; viewBox=&quot;0 0 1440 900&quot;&gt;&lt;/svg&gt;\n  &lt;div id=&quot;cards&quot;&gt;&lt;/div&gt;\n  &lt;div id=&quot;veil&quot;&gt;&lt;/div&gt;\n  &lt;div id=&quot;hero&quot;&gt;\n    &lt;div class=&quot;wm&quot;&gt;&lt;i&gt;&lt;/i&gt;moss&lt;/div&gt;\n    &lt;h1 id=&quot;h1&quot;&gt;&lt;/h1&gt;\n    &lt;button class=&quot;btn&quot;&gt;&lt;span class=&quot;g&quot;&gt;G&lt;/span&gt;Google로 계속&lt;/button&gt;\n    &lt;a class=&quot;mail&quot; href=&quot;#&quot;&gt;메일로 계속&lt;/a&gt;\n    &lt;div id=&quot;hint&quot; hidden&gt;카드를 끌어 보세요&lt;/div&gt;\n  &lt;/div&gt;\n&lt;/div&gt;\n&lt;script&gt;\nconst MODE=&#x27;b&#x27;, W=1440, H=900;\nconst fit=document.getElementById(&#x27;fit&#x27;); let S=1;\nfunction rescale(){S=innerWidth/W;fit.style.transform=&#x27;scale(&#x27;+S+&#x27;)&#x27;;}\naddEventListener(&#x27;resize&#x27;,rescale); rescale();\n\ndocument.getElementById(&#x27;h1&#x27;).innerHTML = MODE===&#x27;b&#x27;\n  ? &#x27;흩어 놓아도 괜찮아요.&lt;br&gt;연결은 moss가 이어 줄게요&#x27;\n  : &#x27;생각을 붙이면,&lt;br&gt;연결이 보여요&#x27;;\nif(MODE===&#x27;b&#x27;){document.getElementById(&#x27;hint&#x27;).hidden=false;fit.classList.add(&#x27;drag&#x27;);}\n\n// [그룹, 종류, 색, 내용...]  그룹은 C안에서 모이는 덩어리 번호다\nconst D=[\n [0,&#x27;photo&#x27;,&#x27;&#x27;,&#x27;제주 협재&#x27;,&#x27;linear-gradient(170deg,#dfe6dc 0 30%,#a9c2b6 30% 55%,#eadcbe 55%,#d6c09a)&#x27;],\n [0,&#x27;check&#x27;,&#x27;&#x27;,&#x27;여행 짐&#x27;,[&#x27;여권&#x27;,1],[&#x27;충전기&#x27;,1],[&#x27;우산&#x27;,0]],\n [0,&#x27;link&#x27;,&#x27;&#x27;,&#x27;제주 맛집 지도&#x27;,&#x27;map.naver.com&#x27;,&#x27;#5f9b6a&#x27;],\n [0,&#x27;hand&#x27;,&#x27;yellow&#x27;,&#x27;렌터카 예약 잊지 말기&#x27;],\n [0,&#x27;note&#x27;,&#x27;&#x27;,&#x27;비행기 금요일 7:10 출발&#x27;],\n [1,&#x27;photo&#x27;,&#x27;&#x27;,&#x27;10월 산책 코스&#x27;,&#x27;linear-gradient(170deg,#f2d9a8,#d9914f 55%,#8b5a3c)&#x27;],\n [1,&#x27;photo&#x27;,&#x27;&#x27;,&#x27;베란다 수국&#x27;,&#x27;radial-gradient(circle at 40% 40%,#ead0de,#c79dba 45%,#93a68c 80%)&#x27;],\n [1,&#x27;hand&#x27;,&#x27;lime&#x27;,&#x27;아이디어는 산책할 때 온다&#x27;],\n [1,&#x27;note&#x27;,&#x27;purple&#x27;,&#x27;좋아하는 단어: 윤슬&#x27;],\n [2,&#x27;check&#x27;,&#x27;&#x27;,&#x27;이사 준비&#x27;,[&#x27;인터넷 이전 신청&#x27;,1],[&#x27;관리비 정산&#x27;,0],[&#x27;화분 옮기기&#x27;,0]],\n [2,&#x27;note&#x27;,&#x27;&#x27;,&#x27;관리사무소 전화는 10시 이후&#x27;],\n [2,&#x27;photo&#x27;,&#x27;&#x27;,&#x27;새 집 거실&#x27;,&#x27;linear-gradient(180deg,#f1eadf 0 58%,#cdb99c 58%)&#x27;],\n [2,&#x27;board&#x27;,&#x27;&#x27;,&#x27;새 집 가구&#x27;,&#x27;카드 8장&#x27;],\n [2,&#x27;hand&#x27;,&#x27;yellow&#x27;,&#x27;화분은 직접 옮기기&#x27;],\n [3,&#x27;check&#x27;,&#x27;&#x27;,&#x27;읽을 책&#x27;,[&#x27;아주 작은 습관의 힘&#x27;,1],[&#x27;도둑맞은 집중력&#x27;,0]],\n [3,&#x27;link&#x27;,&#x27;&#x27;,&#x27;기록하는 습관을 만드는 3가지 방법&#x27;,&#x27;brunch.co.kr&#x27;,&#x27;#2c2e33&#x27;],\n [3,&#x27;note&#x27;,&#x27;lime&#x27;,&#x27;다음 분기 목표: 매주 글 1편&#x27;],\n [3,&#x27;hand&#x27;,&#x27;&#x27;,&#x27;천천히, 그래도 매일&#x27;],\n [3,&#x27;link&#x27;,&#x27;&#x27;,&#x27;회고 템플릿&#x27;,&#x27;notion.so&#x27;,&#x27;#6a6c72&#x27;],\n [4,&#x27;note&#x27;,&#x27;&#x27;,&#x27;회의 끝나고 질문 2개 정리해서 보내기&#x27;],\n [4,&#x27;note&#x27;,&#x27;blue&#x27;,&#x27;발표 슬라이드 7장을 5장으로&#x27;],\n [4,&#x27;photo&#x27;,&#x27;&#x27;,&#x27;화이트보드 사진&#x27;,&#x27;repeating-linear-gradient(8deg,transparent 0 22px,rgba(90,110,90,.35) 22px 24px),linear-gradient(#f5f4f0,#e2dfd7)&#x27;],\n [4,&#x27;board&#x27;,&#x27;&#x27;,&#x27;3분기 회고&#x27;,&#x27;카드 14장&#x27;],\n [5,&#x27;note&#x27;,&#x27;yellow&#x27;,&#x27;토요일 장보기 전에 냉장고 먼저 확인&#x27;],\n [5,&#x27;hand&#x27;,&#x27;&#x27;,&#x27;고양이 사료 주문&#x27;],\n [5,&#x27;note&#x27;,&#x27;purple&#x27;,&#x27;엄마 생신 선물 — 스카프? 찻잔?&#x27;],\n [5,&#x27;photo&#x27;,&#x27;&#x27;,&#x27;망원동 카페 메뉴판&#x27;,&#x27;linear-gradient(150deg,#6b4a36,#a87d5a 60%,#e8d5bb)&#x27;],\n [5,&#x27;link&#x27;,&#x27;&#x27;,&#x27;15분 집밥 레시피&#x27;,&#x27;youtube.com&#x27;,&#x27;#c4544a&#x27;],\n];\nconst WID={note:170,hand:168,check:188,photo:176,link:196,board:172};\nfunction inner(d){\n  const [, t,, a, b, c] = d;\n  if(t===&#x27;note&#x27;||t===&#x27;hand&#x27;) return &#x27;&lt;p&gt;&#x27;+a+&#x27;&lt;/p&gt;&#x27;;\n  if(t===&#x27;check&#x27;) return &#x27;&lt;b&gt;&#x27;+a+&#x27;&lt;/b&gt;&lt;ul&gt;&#x27;+d.slice(4).map(x=&gt;&#x27;&lt;li class=&quot;&#x27;+(x[1]?&#x27;on&#x27;:&#x27;&#x27;)+&#x27;&quot;&gt;&#x27;+x[0]+&#x27;&lt;/li&gt;&#x27;).join(&#x27;&#x27;)+&#x27;&lt;/ul&gt;&#x27;;\n  if(t===&#x27;photo&#x27;) return &#x27;&lt;div class=&quot;ph&quot; style=&quot;background:&#x27;+b+&#x27;&quot;&gt;&lt;/div&gt;&lt;span&gt;&#x27;+a+&#x27;&lt;/span&gt;&#x27;;\n  if(t===&#x27;link&#x27;) return &#x27;&lt;small&gt;&lt;span class=&quot;fav&quot; style=&quot;background:&#x27;+c+&#x27;&quot;&gt;&#x27;+b[0].toUpperCase()+&#x27;&lt;/span&gt;&#x27;+b+&#x27;&lt;/small&gt;&lt;p&gt;&#x27;+a+&#x27;&lt;/p&gt;&#x27;;\n  if(t===&#x27;board&#x27;) return &#x27;&lt;div class=&quot;bd&quot;&gt;&lt;i&gt;&lt;/i&gt;&lt;i&gt;&lt;/i&gt;&lt;i&gt;&lt;/i&gt;&lt;i&gt;&lt;/i&gt;&lt;/div&gt;&lt;b&gt;&#x27;+a+&#x27;&lt;/b&gt;&lt;small&gt;&#x27;+b+&#x27;&lt;/small&gt;&#x27;;\n}\n\n// 시드 고정 난수 — 세 안이 같은 흩어짐에서 출발한다\nlet seed=7; const R=()=&gt;((seed=(seed*16807)%2147483647)/2147483647);\nconst host=document.getElementById(&#x27;cards&#x27;); const cards_tmp=[];\nconst cards=D.map((d,i)=&gt;{\n  const el=document.createElement(&#x27;div&#x27;);\n  el.className=&#x27;card &#x27;+d[1]+&#x27; &#x27;+d[2]; el.style.width=WID[d[1]]+&#x27;px&#x27;; el.innerHTML=inner(d);\n  host.appendChild(el);\n  let x,y,k=0;\n  do{ x=-30+R()*(W-150); y=-20+R()*(H-110); k++; }\n  while(((x+90-720)/470)**2+((y+70-450)/280)**2&lt;1 || (k&lt;300 &amp;&amp; placed(x,y)));\n  const z=0.66+R()*0.42;\n  if(z&lt;0.78) el.classList.add(&#x27;far&#x27;);\n  el.style.zIndex=Math.round(z*100);\n  const c={el,g:d[0],x,y,r:(R()-.5)*22,z,ph:R()*6.28,sp:.7+R()*.6,vx:0,vy:0};\n  cards_tmp.push([x,y]); return c;\n});\nfunction placed(x,y){return cards_tmp.some(p=&gt;Math.hypot(p[0]-x,p[1]-y)&lt;125);}\ncards.forEach(c=&gt;{c.w=c.el.offsetWidth;c.h=c.el.offsetHeight;});\n\nconst reduce=matchMedia(&#x27;(prefers-reduced-motion: reduce)&#x27;).matches;\nfunction float(c,t,amp){\n  if(reduce) return [0,0,0];\n  return [Math.sin(t*.00023*c.sp+c.ph)*amp, Math.cos(t*.00029*c.sp+c.ph*1.3)*amp*1.3, Math.sin(t*.00019+c.ph)*2];\n}\nfunction put(c,x,y,r,s){c.el.style.transform=&#x27;translate(&#x27;+x+&#x27;px,&#x27;+y+&#x27;px) rotate(&#x27;+r+&#x27;deg) scale(&#x27;+s+&#x27;)&#x27;;}\n\n// ---- B: 집어 던지기\nlet held=null, zTop=500, off=[0,0], last=[];\nif(MODE===&#x27;b&#x27;){\n  host.addEventListener(&#x27;pointerdown&#x27;,e=&gt;{\n    const el=e.target.closest(&#x27;.card&#x27;); if(!el) return;\n    held=cards.find(c=&gt;c.el===el); el.setPointerCapture(e.pointerId);\n    el.classList.add(&#x27;held&#x27;); el.style.zIndex=++zTop;\n    const p=pt(e); off=[p[0]-held.x,p[1]-held.y]; last=[[p[0],p[1],performance.now()]];\n    held.vx=held.vy=0;\n    document.getElementById(&#x27;hint&#x27;).style.opacity=0;\n  });\n  host.addEventListener(&#x27;pointermove&#x27;,e=&gt;{\n    if(!held) return; const p=pt(e);\n    held.x=p[0]-off[0]; held.y=p[1]-off[1];\n    last.push([p[0],p[1],performance.now()]); if(last.length&gt;5) last.shift();\n  });\n  const up=()=&gt;{\n    if(!held) return;\n    const a=last[0], b=last[last.length-1], dt=Math.max(16,b[2]-a[2]);\n    held.vx=(b[0]-a[0])/dt*16; held.vy=(b[1]-a[1])/dt*16;\n    held.el.classList.remove(&#x27;held&#x27;); held.el.classList.remove(&#x27;far&#x27;); held=null;\n  };\n  host.addEventListener(&#x27;pointerup&#x27;,up); host.addEventListener(&#x27;pointercancel&#x27;,up);\n}\nfunction pt(e){const b=fit.getBoundingClientRect();return [(e.clientX-b.left)/S,(e.clientY-b.top)/S];}\n\n// ---- C: 모였다 흩어진다\nconst svg=document.getElementById(&#x27;lines&#x27;);\nconst CL=[[250,185],[720,170],[1190,185],[250,720],[720,730],[1190,720]];\nconst NAMES=[&#x27;여행 계획&#x27;,&#x27;산책&#x27;,&#x27;이사 준비&#x27;,&#x27;읽고 쓰기&#x27;,&#x27;회사&#x27;,&#x27;집&#x27;];\nconst labs=NAMES.map((n,i)=&gt;{const l=document.createElement(&#x27;div&#x27;);l.className=&#x27;lab&#x27;;l.textContent=n;\n  l.style.left=(CL[i][0]-40)+&#x27;px&#x27;;l.style.top=CL[i][1]-150+&#x27;px&#x27;;fit.insertBefore(l,host);return l;});\nif(MODE===&#x27;c&#x27;){\n  const by={}; cards.forEach(c=&gt;(by[c.g]=by[c.g]||[]).push(c));\n  Object.values(by).forEach(list=&gt;list.forEach((c,j)=&gt;{\n    const col=j%3, row=Math.floor(j/3), n=Math.min(3,list.length-row*3);\n    c.tx=CL[c.g][0]+(col-(n-1)/2)*150-c.w/2; c.ty=CL[c.g][1]+(row-.5)*112-c.h/2+ (list.length&lt;=3?60:0);\n    c.tr=(R()-.5)*5;\n  }));\n  // 덩어리 안은 사슬로, 덩어리 사이는 둘만 잇는다\n  var links=[]; Object.values(by).forEach(l=&gt;{for(let j=1;j&lt;l.length;j++) links.push([l[j-1],l[j]]);});\n  links.push([by[1][0],by[0][0]],[by[4][0],by[3][1]],[by[2][4],by[1][2]]);\n  svg.innerHTML=links.map(()=&gt;&#x27;&lt;path pathLength=&quot;1&quot; stroke-dasharray=&quot;1&quot; stroke-dashoffset=&quot;1&quot;/&gt;&#x27;).join(&#x27;&#x27;);\n  var paths=[...svg.children];\n}\nconst ease=p=&gt;p&lt;.5?4*p*p*p:1-Math.pow(-2*p+2,3)/2;\nconst CYCLE=14000;\n\nfunction frame(t){\n  if(MODE===&#x27;c&#x27;){\n    const u=t%CYCLE;\n    // 0~2.5초 흩어짐, 2.5~4.3초 모임, 4.3~5.3초 선, 11초까지 머묾, 11~13초 다시 흩어짐\n    let g = u&lt;2500?0 : u&lt;4300?ease((u-2500)/1800) : u&lt;11000?1 : u&lt;13000?1-ease((u-11000)/2000) : 0;\n    cards.forEach((c,i)=&gt;{\n      const gi=Math.max(0,Math.min(1, u&lt;11000 ? (g*1.25-i*.009) : g));\n      const f=float(c,t,14*(1-gi)+2*gi);\n      const x=c.x+(c.tx-c.x)*gi+f[0], y=c.y+(c.ty-c.y)*gi+f[1];\n      c.cx=x+c.w/2; c.cy=y+c.h/2; c.el.classList.toggle(&#x27;far&#x27;, c.z&lt;0.78 &amp;&amp; gi&lt;.5);\n      c.el.style.zIndex = gi&gt;.5 ? 200+i : Math.round(c.z*100);\n      put(c,x,y,c.r+(c.tr-c.r)*gi+f[2]*(1-gi), c.z+(0.84-c.z)*gi);\n    });\n    const lp = u&lt;4300?0 : u&lt;5300?(u-4300)/1000 : u&lt;11000?1 : u&lt;11600?1-(u-11000)/600 : 0;\n    paths.forEach((p,k)=&gt;{const [a,b]=links[k];\n      const mx=(a.cx+b.cx)/2, my=(a.cy+b.cy)/2-Math.abs(a.cx-b.cx)*.12;\n      p.setAttribute(&#x27;d&#x27;,&#x27;M&#x27;+a.cx+&#x27; &#x27;+a.cy+&#x27; Q&#x27;+mx+&#x27; &#x27;+my+&#x27; &#x27;+b.cx+&#x27; &#x27;+b.cy);\n      p.setAttribute(&#x27;stroke-dashoffset&#x27;, u&gt;=11000 ? 0 : 1-Math.min(1,Math.max(0,lp*1.3-k*.012)));\n      p.style.opacity = u&gt;=11000 ? lp : 1;\n    });\n    labs.forEach(l=&gt;l.style.opacity = lp&gt;.6&amp;&amp;u&lt;11000 ? 1 : 0);\n  } else {\n    cards.forEach(c=&gt;{\n      if(MODE===&#x27;b&#x27; &amp;&amp; c!==held &amp;&amp; (Math.abs(c.vx)&gt;.05||Math.abs(c.vy)&gt;.05)){\n        c.x+=c.vx; c.y+=c.vy; c.vx*=.94; c.vy*=.94;\n        if(c.x&lt;-c.w*.4||c.x&gt;W-c.w*.6){c.vx*=-.6;c.x=Math.max(-c.w*.4,Math.min(W-c.w*.6,c.x));}\n        if(c.y&lt;-c.h*.4||c.y&gt;H-c.h*.6){c.vy*=-.6;c.y=Math.max(-c.h*.4,Math.min(H-c.h*.6,c.y));}\n      }\n      const isH=c===held, f=isH?[0,0,0]:float(c,t,14);\n      put(c,c.x+f[0],c.y+f[1],isH?c.r*.3:c.r+f[2],isH?c.z*1.06:c.z);\n    });\n  }\n  requestAnimationFrame(frame);\n}\nrequestAnimationFrame(frame);\n&lt;/script&gt;\n&lt;/body&gt;&lt;/html&gt;\n\" style=\"display:block;width:100%;aspect-ratio:1440/900;border:0;border-radius:6px;background:#ebecee\"><\/iframe>", "cap": "장점: 로그인 전에 카드를 직접 집어 던져 보며 재미를 손으로 느낀다. 걱정: 카피가 '연결을 이어 준다'고 약속해 실제 기능보다 앞설 수 있다.", "notes": ["카피는 브리프 후보 '연결은 moss가 볼게요'를 '이어 줄게요'로 바꿨다."]}, {"h": "C. 카드가 모인다 — 흩어졌다 보드로", "html": "<iframe title=\"시안 C\" srcdoc=\"&lt;!doctype html&gt;\n&lt;html lang=&quot;ko&quot;&gt;&lt;head&gt;&lt;meta charset=&quot;utf-8&quot;&gt;\n&lt;link rel=&quot;stylesheet&quot; href=&quot;https://fonts.googleapis.com/css2?family=Caveat:wght@500&amp;family=Nanum+Pen+Script&amp;display=swap&quot;&gt;\n&lt;style&gt;\nhtml,body{margin:0;height:100%;overflow:hidden;background:#ebecee}\n#fit{position:absolute;left:0;top:0;width:1440px;height:900px;transform-origin:0 0;overflow:hidden;\n  background:#ebecee radial-gradient(#d8d2c4 1px,transparent 1.2px) 0 0/24px 24px;\n  font-family:&quot;Pretendard Variable&quot;,Pretendard,&quot;Apple SD Gothic Neo&quot;,system-ui,sans-serif;color:#2c2e33}\n#lines{position:absolute;inset:0;width:1440px;height:900px;pointer-events:none}\n#lines path{fill:none;stroke:#b4ab99;stroke-width:1.5;stroke-linecap:round}\n.lab{position:absolute;font:500 26px Caveat,&quot;Nanum Pen Script&quot;,cursive;color:#6a6c72;opacity:0;transition:opacity .6s;white-space:nowrap}\n.card{position:absolute;left:0;top:0;box-sizing:border-box;border-radius:6px;background:#fdfcfa;padding:12px 14px;\n  font-size:14px;line-height:1.5;user-select:none;\n  box-shadow:0 1px 1px rgba(42,39,34,.04),0 2px 4px rgba(42,39,34,.05),0 8px 20px rgba(42,39,34,.04);transition:box-shadow .2s,filter .3s}\n.card p{margin:0}\n.card.far{filter:blur(1.4px);opacity:.78}\n.yellow{background:#fbf5d8}.blue{background:#e5edf2}.lime{background:#e8eee0}.purple{background:#ece5f0}\n.hand p{font:500 25px/1.15 Caveat,&quot;Nanum Pen Script&quot;,cursive}\n.check b{display:block;font-size:13px;margin-bottom:6px}\n.check ul{list-style:none;margin:0;padding:0;font-size:13px}\n.check li{display:flex;gap:7px;align-items:center;margin:3px 0}\n.check li::before{content:&quot;&quot;;width:12px;height:12px;border:1.5px solid #9a968c;border-radius:3px;flex:none;box-sizing:border-box}\n.check li.on{color:#6a6c72;text-decoration:line-through}\n.check li.on::before{background:#2c2e33 url(&quot;data:image/svg+xml,%3Csvg xmlns=&#x27;http://www.w3.org/2000/svg&#x27; viewBox=&#x27;0 0 12 12&#x27;%3E%3Cpath d=&#x27;M3 6.2l2 2 4-4.4&#x27; stroke=&#x27;white&#x27; stroke-width=&#x27;1.6&#x27; fill=&#x27;none&#x27;/%3E%3C/svg%3E&quot;);border-color:#2c2e33}\n.photo{padding:6px 6px 8px}\n.photo .ph{height:118px;border-radius:3px}\n.photo span{display:block;font-size:12px;color:#6a6c72;margin:6px 4px 0}\n.link small,.board small{display:block;font-size:11px;color:#6a6c72}\n.link p{font-weight:600;font-size:13px;margin-top:3px}\n.link .fav{display:inline-grid;place-items:center;width:16px;height:16px;border-radius:4px;color:#fff;font-size:10px;font-weight:700;margin-right:6px;vertical-align:-3px}\n.board .bd{display:grid;grid-template-columns:1fr 1fr;gap:4px;height:62px;margin-bottom:8px}\n.board .bd i{border-radius:3px;background:#efeae0}\n.board .bd i:nth-child(2){background:#fbf5d8}.board .bd i:nth-child(3){background:#e8eee0}\n.board b{font-size:13px}\n.card.held{box-shadow:0 6px 12px rgba(42,39,34,.12),0 24px 48px rgba(42,39,34,.18);filter:none;opacity:1;cursor:grabbing}\n.drag .card{cursor:grab}\n#veil{position:absolute;inset:0;pointer-events:none;z-index:900;\n  background:radial-gradient(ellipse 380px 210px at 50% 50%,rgba(235,236,238,.94) 40%,rgba(235,236,238,0) 100%)}\n#hero{position:absolute;z-index:901;left:50%;top:50%;transform:translate(-50%,-50%);text-align:center;pointer-events:none;width:760px}\n#hero .wm{font-weight:700;font-size:19px;letter-spacing:-.02em;display:inline-flex;align-items:center;gap:7px}\n#hero .wm i{width:10px;height:10px;border-radius:50%;background:#a8b89c}\n#hero h1{font-size:58px;line-height:1.16;letter-spacing:-.035em;font-weight:700;margin:18px 0 30px}\n#hero .btn{pointer-events:auto;display:inline-flex;align-items:center;gap:10px;background:#2c2e33;color:#fdfcfa;border:0;\n  border-radius:999px;padding:15px 28px;font:600 16px inherit;font-family:inherit;cursor:pointer}\n#hero .btn .g{width:18px;height:18px;border-radius:50%;background:#fdfcfa;color:#2c2e33;display:grid;place-items:center;font-size:12px;font-weight:800}\n#hero .mail{pointer-events:auto;display:block;margin-top:16px;color:#6a6c72;font-size:14px;text-decoration:underline;text-underline-offset:3px}\n#hint{margin-top:22px;font:500 24px Caveat,&quot;Nanum Pen Script&quot;,cursive;color:#6a6c72;transition:opacity .5s}\n@media (prefers-reduced-motion:reduce){.card{transition:none}}\n&lt;/style&gt;&lt;/head&gt;&lt;body&gt;\n&lt;div id=&quot;fit&quot;&gt;\n  &lt;svg id=&quot;lines&quot; viewBox=&quot;0 0 1440 900&quot;&gt;&lt;/svg&gt;\n  &lt;div id=&quot;cards&quot;&gt;&lt;/div&gt;\n  &lt;div id=&quot;veil&quot;&gt;&lt;/div&gt;\n  &lt;div id=&quot;hero&quot;&gt;\n    &lt;div class=&quot;wm&quot;&gt;&lt;i&gt;&lt;/i&gt;moss&lt;/div&gt;\n    &lt;h1 id=&quot;h1&quot;&gt;&lt;/h1&gt;\n    &lt;button class=&quot;btn&quot;&gt;&lt;span class=&quot;g&quot;&gt;G&lt;/span&gt;Google로 계속&lt;/button&gt;\n    &lt;a class=&quot;mail&quot; href=&quot;#&quot;&gt;메일로 계속&lt;/a&gt;\n    &lt;div id=&quot;hint&quot; hidden&gt;카드를 끌어 보세요&lt;/div&gt;\n  &lt;/div&gt;\n&lt;/div&gt;\n&lt;script&gt;\nconst MODE=&#x27;c&#x27;, W=1440, H=900;\nconst fit=document.getElementById(&#x27;fit&#x27;); let S=1;\nfunction rescale(){S=innerWidth/W;fit.style.transform=&#x27;scale(&#x27;+S+&#x27;)&#x27;;}\naddEventListener(&#x27;resize&#x27;,rescale); rescale();\n\ndocument.getElementById(&#x27;h1&#x27;).innerHTML = MODE===&#x27;b&#x27;\n  ? &#x27;흩어 놓아도 괜찮아요.&lt;br&gt;연결은 moss가 이어 줄게요&#x27;\n  : &#x27;생각을 붙이면,&lt;br&gt;연결이 보여요&#x27;;\nif(MODE===&#x27;b&#x27;){document.getElementById(&#x27;hint&#x27;).hidden=false;fit.classList.add(&#x27;drag&#x27;);}\n\n// [그룹, 종류, 색, 내용...]  그룹은 C안에서 모이는 덩어리 번호다\nconst D=[\n [0,&#x27;photo&#x27;,&#x27;&#x27;,&#x27;제주 협재&#x27;,&#x27;linear-gradient(170deg,#dfe6dc 0 30%,#a9c2b6 30% 55%,#eadcbe 55%,#d6c09a)&#x27;],\n [0,&#x27;check&#x27;,&#x27;&#x27;,&#x27;여행 짐&#x27;,[&#x27;여권&#x27;,1],[&#x27;충전기&#x27;,1],[&#x27;우산&#x27;,0]],\n [0,&#x27;link&#x27;,&#x27;&#x27;,&#x27;제주 맛집 지도&#x27;,&#x27;map.naver.com&#x27;,&#x27;#5f9b6a&#x27;],\n [0,&#x27;hand&#x27;,&#x27;yellow&#x27;,&#x27;렌터카 예약 잊지 말기&#x27;],\n [0,&#x27;note&#x27;,&#x27;&#x27;,&#x27;비행기 금요일 7:10 출발&#x27;],\n [1,&#x27;photo&#x27;,&#x27;&#x27;,&#x27;10월 산책 코스&#x27;,&#x27;linear-gradient(170deg,#f2d9a8,#d9914f 55%,#8b5a3c)&#x27;],\n [1,&#x27;photo&#x27;,&#x27;&#x27;,&#x27;베란다 수국&#x27;,&#x27;radial-gradient(circle at 40% 40%,#ead0de,#c79dba 45%,#93a68c 80%)&#x27;],\n [1,&#x27;hand&#x27;,&#x27;lime&#x27;,&#x27;아이디어는 산책할 때 온다&#x27;],\n [1,&#x27;note&#x27;,&#x27;purple&#x27;,&#x27;좋아하는 단어: 윤슬&#x27;],\n [2,&#x27;check&#x27;,&#x27;&#x27;,&#x27;이사 준비&#x27;,[&#x27;인터넷 이전 신청&#x27;,1],[&#x27;관리비 정산&#x27;,0],[&#x27;화분 옮기기&#x27;,0]],\n [2,&#x27;note&#x27;,&#x27;&#x27;,&#x27;관리사무소 전화는 10시 이후&#x27;],\n [2,&#x27;photo&#x27;,&#x27;&#x27;,&#x27;새 집 거실&#x27;,&#x27;linear-gradient(180deg,#f1eadf 0 58%,#cdb99c 58%)&#x27;],\n [2,&#x27;board&#x27;,&#x27;&#x27;,&#x27;새 집 가구&#x27;,&#x27;카드 8장&#x27;],\n [2,&#x27;hand&#x27;,&#x27;yellow&#x27;,&#x27;화분은 직접 옮기기&#x27;],\n [3,&#x27;check&#x27;,&#x27;&#x27;,&#x27;읽을 책&#x27;,[&#x27;아주 작은 습관의 힘&#x27;,1],[&#x27;도둑맞은 집중력&#x27;,0]],\n [3,&#x27;link&#x27;,&#x27;&#x27;,&#x27;기록하는 습관을 만드는 3가지 방법&#x27;,&#x27;brunch.co.kr&#x27;,&#x27;#2c2e33&#x27;],\n [3,&#x27;note&#x27;,&#x27;lime&#x27;,&#x27;다음 분기 목표: 매주 글 1편&#x27;],\n [3,&#x27;hand&#x27;,&#x27;&#x27;,&#x27;천천히, 그래도 매일&#x27;],\n [3,&#x27;link&#x27;,&#x27;&#x27;,&#x27;회고 템플릿&#x27;,&#x27;notion.so&#x27;,&#x27;#6a6c72&#x27;],\n [4,&#x27;note&#x27;,&#x27;&#x27;,&#x27;회의 끝나고 질문 2개 정리해서 보내기&#x27;],\n [4,&#x27;note&#x27;,&#x27;blue&#x27;,&#x27;발표 슬라이드 7장을 5장으로&#x27;],\n [4,&#x27;photo&#x27;,&#x27;&#x27;,&#x27;화이트보드 사진&#x27;,&#x27;repeating-linear-gradient(8deg,transparent 0 22px,rgba(90,110,90,.35) 22px 24px),linear-gradient(#f5f4f0,#e2dfd7)&#x27;],\n [4,&#x27;board&#x27;,&#x27;&#x27;,&#x27;3분기 회고&#x27;,&#x27;카드 14장&#x27;],\n [5,&#x27;note&#x27;,&#x27;yellow&#x27;,&#x27;토요일 장보기 전에 냉장고 먼저 확인&#x27;],\n [5,&#x27;hand&#x27;,&#x27;&#x27;,&#x27;고양이 사료 주문&#x27;],\n [5,&#x27;note&#x27;,&#x27;purple&#x27;,&#x27;엄마 생신 선물 — 스카프? 찻잔?&#x27;],\n [5,&#x27;photo&#x27;,&#x27;&#x27;,&#x27;망원동 카페 메뉴판&#x27;,&#x27;linear-gradient(150deg,#6b4a36,#a87d5a 60%,#e8d5bb)&#x27;],\n [5,&#x27;link&#x27;,&#x27;&#x27;,&#x27;15분 집밥 레시피&#x27;,&#x27;youtube.com&#x27;,&#x27;#c4544a&#x27;],\n];\nconst WID={note:170,hand:168,check:188,photo:176,link:196,board:172};\nfunction inner(d){\n  const [, t,, a, b, c] = d;\n  if(t===&#x27;note&#x27;||t===&#x27;hand&#x27;) return &#x27;&lt;p&gt;&#x27;+a+&#x27;&lt;/p&gt;&#x27;;\n  if(t===&#x27;check&#x27;) return &#x27;&lt;b&gt;&#x27;+a+&#x27;&lt;/b&gt;&lt;ul&gt;&#x27;+d.slice(4).map(x=&gt;&#x27;&lt;li class=&quot;&#x27;+(x[1]?&#x27;on&#x27;:&#x27;&#x27;)+&#x27;&quot;&gt;&#x27;+x[0]+&#x27;&lt;/li&gt;&#x27;).join(&#x27;&#x27;)+&#x27;&lt;/ul&gt;&#x27;;\n  if(t===&#x27;photo&#x27;) return &#x27;&lt;div class=&quot;ph&quot; style=&quot;background:&#x27;+b+&#x27;&quot;&gt;&lt;/div&gt;&lt;span&gt;&#x27;+a+&#x27;&lt;/span&gt;&#x27;;\n  if(t===&#x27;link&#x27;) return &#x27;&lt;small&gt;&lt;span class=&quot;fav&quot; style=&quot;background:&#x27;+c+&#x27;&quot;&gt;&#x27;+b[0].toUpperCase()+&#x27;&lt;/span&gt;&#x27;+b+&#x27;&lt;/small&gt;&lt;p&gt;&#x27;+a+&#x27;&lt;/p&gt;&#x27;;\n  if(t===&#x27;board&#x27;) return &#x27;&lt;div class=&quot;bd&quot;&gt;&lt;i&gt;&lt;/i&gt;&lt;i&gt;&lt;/i&gt;&lt;i&gt;&lt;/i&gt;&lt;i&gt;&lt;/i&gt;&lt;/div&gt;&lt;b&gt;&#x27;+a+&#x27;&lt;/b&gt;&lt;small&gt;&#x27;+b+&#x27;&lt;/small&gt;&#x27;;\n}\n\n// 시드 고정 난수 — 세 안이 같은 흩어짐에서 출발한다\nlet seed=7; const R=()=&gt;((seed=(seed*16807)%2147483647)/2147483647);\nconst host=document.getElementById(&#x27;cards&#x27;); const cards_tmp=[];\nconst cards=D.map((d,i)=&gt;{\n  const el=document.createElement(&#x27;div&#x27;);\n  el.className=&#x27;card &#x27;+d[1]+&#x27; &#x27;+d[2]; el.style.width=WID[d[1]]+&#x27;px&#x27;; el.innerHTML=inner(d);\n  host.appendChild(el);\n  let x,y,k=0;\n  do{ x=-30+R()*(W-150); y=-20+R()*(H-110); k++; }\n  while(((x+90-720)/470)**2+((y+70-450)/280)**2&lt;1 || (k&lt;300 &amp;&amp; placed(x,y)));\n  const z=0.66+R()*0.42;\n  if(z&lt;0.78) el.classList.add(&#x27;far&#x27;);\n  el.style.zIndex=Math.round(z*100);\n  const c={el,g:d[0],x,y,r:(R()-.5)*22,z,ph:R()*6.28,sp:.7+R()*.6,vx:0,vy:0};\n  cards_tmp.push([x,y]); return c;\n});\nfunction placed(x,y){return cards_tmp.some(p=&gt;Math.hypot(p[0]-x,p[1]-y)&lt;125);}\ncards.forEach(c=&gt;{c.w=c.el.offsetWidth;c.h=c.el.offsetHeight;});\n\nconst reduce=matchMedia(&#x27;(prefers-reduced-motion: reduce)&#x27;).matches;\nfunction float(c,t,amp){\n  if(reduce) return [0,0,0];\n  return [Math.sin(t*.00023*c.sp+c.ph)*amp, Math.cos(t*.00029*c.sp+c.ph*1.3)*amp*1.3, Math.sin(t*.00019+c.ph)*2];\n}\nfunction put(c,x,y,r,s){c.el.style.transform=&#x27;translate(&#x27;+x+&#x27;px,&#x27;+y+&#x27;px) rotate(&#x27;+r+&#x27;deg) scale(&#x27;+s+&#x27;)&#x27;;}\n\n// ---- B: 집어 던지기\nlet held=null, zTop=500, off=[0,0], last=[];\nif(MODE===&#x27;b&#x27;){\n  host.addEventListener(&#x27;pointerdown&#x27;,e=&gt;{\n    const el=e.target.closest(&#x27;.card&#x27;); if(!el) return;\n    held=cards.find(c=&gt;c.el===el); el.setPointerCapture(e.pointerId);\n    el.classList.add(&#x27;held&#x27;); el.style.zIndex=++zTop;\n    const p=pt(e); off=[p[0]-held.x,p[1]-held.y]; last=[[p[0],p[1],performance.now()]];\n    held.vx=held.vy=0;\n    document.getElementById(&#x27;hint&#x27;).style.opacity=0;\n  });\n  host.addEventListener(&#x27;pointermove&#x27;,e=&gt;{\n    if(!held) return; const p=pt(e);\n    held.x=p[0]-off[0]; held.y=p[1]-off[1];\n    last.push([p[0],p[1],performance.now()]); if(last.length&gt;5) last.shift();\n  });\n  const up=()=&gt;{\n    if(!held) return;\n    const a=last[0], b=last[last.length-1], dt=Math.max(16,b[2]-a[2]);\n    held.vx=(b[0]-a[0])/dt*16; held.vy=(b[1]-a[1])/dt*16;\n    held.el.classList.remove(&#x27;held&#x27;); held.el.classList.remove(&#x27;far&#x27;); held=null;\n  };\n  host.addEventListener(&#x27;pointerup&#x27;,up); host.addEventListener(&#x27;pointercancel&#x27;,up);\n}\nfunction pt(e){const b=fit.getBoundingClientRect();return [(e.clientX-b.left)/S,(e.clientY-b.top)/S];}\n\n// ---- C: 모였다 흩어진다\nconst svg=document.getElementById(&#x27;lines&#x27;);\nconst CL=[[250,185],[720,170],[1190,185],[250,720],[720,730],[1190,720]];\nconst NAMES=[&#x27;여행 계획&#x27;,&#x27;산책&#x27;,&#x27;이사 준비&#x27;,&#x27;읽고 쓰기&#x27;,&#x27;회사&#x27;,&#x27;집&#x27;];\nconst labs=NAMES.map((n,i)=&gt;{const l=document.createElement(&#x27;div&#x27;);l.className=&#x27;lab&#x27;;l.textContent=n;\n  l.style.left=(CL[i][0]-40)+&#x27;px&#x27;;l.style.top=CL[i][1]-150+&#x27;px&#x27;;fit.insertBefore(l,host);return l;});\nif(MODE===&#x27;c&#x27;){\n  const by={}; cards.forEach(c=&gt;(by[c.g]=by[c.g]||[]).push(c));\n  Object.values(by).forEach(list=&gt;list.forEach((c,j)=&gt;{\n    const col=j%3, row=Math.floor(j/3), n=Math.min(3,list.length-row*3);\n    c.tx=CL[c.g][0]+(col-(n-1)/2)*150-c.w/2; c.ty=CL[c.g][1]+(row-.5)*112-c.h/2+ (list.length&lt;=3?60:0);\n    c.tr=(R()-.5)*5;\n  }));\n  // 덩어리 안은 사슬로, 덩어리 사이는 둘만 잇는다\n  var links=[]; Object.values(by).forEach(l=&gt;{for(let j=1;j&lt;l.length;j++) links.push([l[j-1],l[j]]);});\n  links.push([by[1][0],by[0][0]],[by[4][0],by[3][1]],[by[2][4],by[1][2]]);\n  svg.innerHTML=links.map(()=&gt;&#x27;&lt;path pathLength=&quot;1&quot; stroke-dasharray=&quot;1&quot; stroke-dashoffset=&quot;1&quot;/&gt;&#x27;).join(&#x27;&#x27;);\n  var paths=[...svg.children];\n}\nconst ease=p=&gt;p&lt;.5?4*p*p*p:1-Math.pow(-2*p+2,3)/2;\nconst CYCLE=14000;\n\nfunction frame(t){\n  if(MODE===&#x27;c&#x27;){\n    const u=t%CYCLE;\n    // 0~2.5초 흩어짐, 2.5~4.3초 모임, 4.3~5.3초 선, 11초까지 머묾, 11~13초 다시 흩어짐\n    let g = u&lt;2500?0 : u&lt;4300?ease((u-2500)/1800) : u&lt;11000?1 : u&lt;13000?1-ease((u-11000)/2000) : 0;\n    cards.forEach((c,i)=&gt;{\n      const gi=Math.max(0,Math.min(1, u&lt;11000 ? (g*1.25-i*.009) : g));\n      const f=float(c,t,14*(1-gi)+2*gi);\n      const x=c.x+(c.tx-c.x)*gi+f[0], y=c.y+(c.ty-c.y)*gi+f[1];\n      c.cx=x+c.w/2; c.cy=y+c.h/2; c.el.classList.toggle(&#x27;far&#x27;, c.z&lt;0.78 &amp;&amp; gi&lt;.5);\n      c.el.style.zIndex = gi&gt;.5 ? 200+i : Math.round(c.z*100);\n      put(c,x,y,c.r+(c.tr-c.r)*gi+f[2]*(1-gi), c.z+(0.84-c.z)*gi);\n    });\n    const lp = u&lt;4300?0 : u&lt;5300?(u-4300)/1000 : u&lt;11000?1 : u&lt;11600?1-(u-11000)/600 : 0;\n    paths.forEach((p,k)=&gt;{const [a,b]=links[k];\n      const mx=(a.cx+b.cx)/2, my=(a.cy+b.cy)/2-Math.abs(a.cx-b.cx)*.12;\n      p.setAttribute(&#x27;d&#x27;,&#x27;M&#x27;+a.cx+&#x27; &#x27;+a.cy+&#x27; Q&#x27;+mx+&#x27; &#x27;+my+&#x27; &#x27;+b.cx+&#x27; &#x27;+b.cy);\n      p.setAttribute(&#x27;stroke-dashoffset&#x27;, u&gt;=11000 ? 0 : 1-Math.min(1,Math.max(0,lp*1.3-k*.012)));\n      p.style.opacity = u&gt;=11000 ? lp : 1;\n    });\n    labs.forEach(l=&gt;l.style.opacity = lp&gt;.6&amp;&amp;u&lt;11000 ? 1 : 0);\n  } else {\n    cards.forEach(c=&gt;{\n      if(MODE===&#x27;b&#x27; &amp;&amp; c!==held &amp;&amp; (Math.abs(c.vx)&gt;.05||Math.abs(c.vy)&gt;.05)){\n        c.x+=c.vx; c.y+=c.vy; c.vx*=.94; c.vy*=.94;\n        if(c.x&lt;-c.w*.4||c.x&gt;W-c.w*.6){c.vx*=-.6;c.x=Math.max(-c.w*.4,Math.min(W-c.w*.6,c.x));}\n        if(c.y&lt;-c.h*.4||c.y&gt;H-c.h*.6){c.vy*=-.6;c.y=Math.max(-c.h*.4,Math.min(H-c.h*.6,c.y));}\n      }\n      const isH=c===held, f=isH?[0,0,0]:float(c,t,14);\n      put(c,c.x+f[0],c.y+f[1],isH?c.r*.3:c.r+f[2],isH?c.z*1.06:c.z);\n    });\n  }\n  requestAnimationFrame(frame);\n}\nrequestAnimationFrame(frame);\n&lt;/script&gt;\n&lt;/body&gt;&lt;/html&gt;\n\" style=\"display:block;width:100%;aspect-ratio:1440/900;border:0;border-radius:6px;background:#ebecee\"><\/iframe>", "cap": "장점: 2.5초 뒤 카드가 6덩어리로 모이고 선이 그어져 제품 약속을 움직임으로 보여 준다. 걱정: 14초 주기라 첫 2.5초에 떠난 사람은 핵심을 못 본다.", "notes": ["덩어리 이름 6개는 카드 내용에 맞춰 지었다."]}]}]}</script>
+
+<script>
+/* 테마 — 명시 라이트·명시 다크·시스템 기본 세 상태 */
+(function(){
+  var r=document.documentElement, bs=document.querySelectorAll('.themesw button');
+  function set(t){
+    if(t==='system') r.removeAttribute('data-theme'); else r.setAttribute('data-theme',t);
+    bs.forEach(function(b){b.setAttribute('aria-pressed', String(b.dataset.t===t));});
+  }
+  bs.forEach(function(b){b.addEventListener('click',function(){set(b.dataset.t);b.blur();});});
+})();
+
+/* 표 — 정렬·검색·편집 */
+document.querySelectorAll('.tbox').forEach(function(box){
+  var tb=box.querySelector('tbody'), all=[].slice.call(tb.rows), q=box.querySelector('.ttools input'),
+      cnt=box.querySelector('.ttools .n'), ths=[].slice.call(box.querySelectorAll('thead th')),
+      col=-1, dir=1;
+  function draw(){
+    var v=q ? q.value.trim().toLowerCase() : '';
+    var rows=v ? all.filter(function(tr){return tr.textContent.toLowerCase().indexOf(v)>=0;}) : all.slice();
+    if(col>=0){
+      var num=ths[col].dataset.type==='num';
+      rows.sort(function(a,b){
+        var x=a.cells[col].textContent.trim(), y=b.cells[col].textContent.trim();
+        return dir*(num ? (parseFloat(x)||0)-(parseFloat(y)||0) : x.localeCompare(y,'ko'));
+      });
+    }
+    tb.replaceChildren.apply(tb, rows);
+    if(cnt) cnt.textContent=rows.length+' / '+all.length;
+  }
+  ths.forEach(function(th,i){
+    th.addEventListener('click',function(){
+      dir = (col===i && dir===1) ? -1 : 1; col=i;
+      ths.forEach(function(o){o.removeAttribute('data-dir');});
+      th.setAttribute('data-dir',dir);
+      draw();
+    });
+  });
+  if(q) q.addEventListener('input',draw);
+  draw();
+});
+
+/* 장표 — 현재 장 표시, 키보드 넘김 */
+document.querySelectorAll('.deck').forEach(function(deck){
+  var stage=deck.querySelector('.dstage'), sl=[].slice.call(deck.querySelectorAll('.slide')),
+      at=deck.querySelector('.dnav .at'), cur=0;
+  if(!sl.length) return;
+  var dots=deck.querySelector('.dnav .dots'), pvb=deck.querySelector('.dnav .pv'),
+      nxb=deck.querySelector('.dnav .nx');
+  if(dots) sl.forEach(function(){ dots.appendChild(document.createElement('i')); });
+  function paint(){
+    if(at) at.textContent=(cur+1)+' / '+sl.length;
+    if(dots) [].forEach.call(dots.children,function(d,i){ d.classList.toggle('on', i===cur); });
+    if(pvb) pvb.disabled = cur===0;
+    if(nxb) nxb.disabled = cur===sl.length-1;
+  }
+  function go(i){
+    cur=Math.max(0,Math.min(sl.length-1,i));
+    stage.scrollTo({left:sl[cur].offsetLeft-stage.offsetLeft, behavior:'smooth'});
+    paint();
+  }
+  var vis={};
+  var io=new IntersectionObserver(function(es){
+    es.forEach(function(e){ vis[sl.indexOf(e.target)] = e.isIntersecting ? e.intersectionRatio : 0; });
+    var top=-1, bestR=0;
+    for(var i=0;i<sl.length;i++){ if(vis[i]>bestR){ bestR=vis[i]; top=i; } }
+    if(top<0) return;
+    cur=top; paint();
+  },{root:stage,threshold:[0,.25,.6,1]});
+  sl.forEach(function(s){io.observe(s);});
+  var pv=deck.querySelector('.dnav .pv'), nx=deck.querySelector('.dnav .nx');
+  if(pv) pv.addEventListener('click',function(){go(cur-1);});
+  if(nx) nx.addEventListener('click',function(){go(cur+1);});
+  stage.setAttribute('tabindex','0');
+  stage.addEventListener('keydown',function(e){
+    if(e.key==='ArrowRight'||e.key==='PageDown'){e.preventDefault();go(cur+1);}
+    if(e.key==='ArrowLeft'||e.key==='PageUp'){e.preventDefault();go(cur-1);}
+  });
+
+  /* 끌어서 넘기기. 끄는 동안 스냅을 꺼야 손끝을 따라온다 */
+  var grab=null;
+  stage.addEventListener('pointerdown',function(e){
+    if(e.button) return;
+    /* 편집 중인 글에서 시작한 끌기는 글자 선택이지 장 넘기기가 아니다 */
+    if(e.target.closest('[contenteditable]')) return;
+    grab={x:e.clientX, left:stage.scrollLeft, moved:0};
+    stage.setPointerCapture(e.pointerId);
+    stage.classList.add('drag');
+  });
+  stage.addEventListener('pointermove',function(e){
+    if(!grab) return;
+    var d=grab.x-e.clientX;
+    grab.moved=Math.max(grab.moved, Math.abs(d));
+    stage.scrollLeft=grab.left+d;
+  });
+  function release(e){
+    if(!grab) return;
+    var d=grab.x-e.clientX, w=stage.clientWidth, moved=grab.moved;
+    stage.classList.remove('drag');
+    /* 폭의 12% 를 넘겼으면 넘긴 것으로 본다. 아니면 제자리로 */
+    go(Math.abs(d) > w*0.12 ? cur + (d>0?1:-1) : cur);
+    grab=null;
+    stage.dataset.dragged = moved>6 ? '1' : '';
+  }
+  stage.addEventListener('pointerup',release);
+  stage.addEventListener('pointercancel',release);
+
+  /* 클릭으로 넘기기. 왼쪽 3분의 1은 이전, 나머지는 다음.
+     더블클릭이 편집이라 첫 클릭을 잠시 미뤄 둘을 가른다 */
+  var clickTimer=null;
+  function editSlide(el){
+    if(!el) return false;
+    document.querySelectorAll('[data-slide][contenteditable]').forEach(function(o){
+      if(o!==el) o.removeAttribute('contenteditable');
+    });
+    el.setAttribute('contenteditable','true');
+    el.focus();
+    return true;
+  }
+  stage.addEventListener('click',function(e){
+    if(stage.dataset.dragged==='1'){ stage.dataset.dragged=''; return; }
+    if(e.target.closest('a,button,input,summary')) return;
+    if(e.target.closest('[contenteditable]')) return;
+    /* 두 번째 클릭이면 편집이다. dblclick 이벤트를 기다리지 않는다 */
+    if(e.detail>=2){ clearTimeout(clickTimer); editSlide(e.target.closest('[data-slide]')); return; }
+    var x=e.clientX, r=stage.getBoundingClientRect();
+    clearTimeout(clickTimer);
+    clickTimer=setTimeout(function(){
+      go(cur + (x-r.left < r.width/3 ? -1 : 1));
+    },260);
+  });
+  stage.addEventListener('focusout',function(e){
+    var el=e.target.closest && e.target.closest('[data-slide][contenteditable]');
+    if(el) setTimeout(function(){ if(el!==document.activeElement) el.removeAttribute('contenteditable'); },0);
+  });
+});
+
+/* 주석 배치 — at 요소에 테두리를 두르고 코멘트를 그 높이에 놓고 선을 긋는다 */
+document.querySelectorAll('.gal.annot').forEach(function(gal){
+  var wraps=[].slice.call(gal.querySelectorAll('.stagewrap'));
+  function place(){
+    var wide=window.innerWidth>700;
+    gal.classList.toggle('placed', wide);
+    wraps.forEach(function(w){
+      var stage=w.querySelector('.stage'), svg=w.querySelector('.lead');
+      if(svg) svg.remove();
+      w.querySelectorAll('.mark').forEach(function(e){e.classList.remove('mark');});
+      var wb=w.getBoundingClientRect(), segs=[];
+      ['left','right'].forEach(function(side){
+        var col=w.querySelector('.notes.'+side); if(!col) return;
+        col.style.height='';
+        var notes=[].slice.call(col.querySelectorAll('.note'));
+        var cb=col.getBoundingClientRect(), y=parseFloat(getComputedStyle(col).paddingTop)||0;
+        notes.forEach(function(n){
+          var el=n.dataset.at && stage.querySelector(n.dataset.at);
+          if(el) el.classList.add('mark');
+          if(!wide){ n.style.top=''; return; }
+          var top=y;
+          if(el){
+            var eb=el.getBoundingClientRect();
+            top=Math.max(y, eb.top-cb.top+eb.height/2-n.offsetHeight/2);
+          }
+          n.style.top=top+'px';
+          y=top+n.offsetHeight+8;
+          if(el){
+            var eb2=el.getBoundingClientRect(), nb=n.getBoundingClientRect();
+            segs.push(side==='left'
+              ? [cb.right-wb.left, top+n.offsetHeight/2, eb2.left-wb.left, eb2.top-wb.top+eb2.height/2]
+              : [cb.left-wb.left, top+n.offsetHeight/2, eb2.right-wb.left, eb2.top-wb.top+eb2.height/2]);
+            segs[segs.length-1][1]=nb.top-wb.top+nb.height/2;
+          }
+        });
+        col.style.height=wide?y+'px':'';
+      });
+      if(!wide || !segs.length) return;
+      var s2=document.createElementNS('http://www.w3.org/2000/svg','svg');
+      s2.setAttribute('class','lead');
+      segs.forEach(function(g){
+        var l=document.createElementNS('http://www.w3.org/2000/svg','line');
+        l.setAttribute('x1',g[0]);l.setAttribute('y1',g[1]);
+        l.setAttribute('x2',g[2]);l.setAttribute('y2',g[3]);
+        s2.appendChild(l);
+      });
+      w.appendChild(s2);
+    });
+  }
+  place();
+  addEventListener('resize',place);
+  addEventListener('load',place);
+});
+
+/* 시안 비교 — 크게 보기 */
+document.querySelectorAll('.gal').forEach(function(gal){
+  var cands=[].slice.call(gal.querySelectorAll('.cand'));
+  cands.forEach(function(c){
+    var bar=c.querySelector('.bar');
+    if(bar) bar.addEventListener('click',function(){
+      gal.classList.toggle('zoom', !c.classList.contains('big'));
+      cands.forEach(function(o){o.classList.toggle('big', o===c && gal.classList.contains('zoom'));});
+    });
+  });
+});
+
+/* 표 — 엑셀에서 손이 가는 것: 키보드 이동, 범위 합계, 블록 복사·잘라내기·붙여넣기 */
+var SHEET = { clip:null, active:null };   /* 마지막 복사 블록과 지금 다루는 표 */
+
+document.querySelectorAll('.tbox').forEach(function(box){
+  var tb=box.querySelector('tbody'), stat=box.querySelector('.tstat .sel'),
+      hint=box.querySelector('.tstat .hint');
+  var anchor=null, focus=null, dragging=false;
+
+  function cell(r,c){ return tb.querySelector('td[data-r="'+r+'"][data-c="'+c+'"]'); }
+  function pos(td){ return {r:+td.dataset.r, c:+td.dataset.c}; }
+  function bounds(){
+    if(!anchor||!focus) return null;
+    return {r1:Math.min(anchor.r,focus.r), r2:Math.max(anchor.r,focus.r),
+            c1:Math.min(anchor.c,focus.c), c2:Math.max(anchor.c,focus.c)};
+  }
+  function picked(){
+    var b=bounds(); if(!b) return [];
+    var out=[];
+    for(var r=b.r1;r<=b.r2;r++){ var row=[];
+      for(var c=b.c1;c<=b.c2;c++){ var td=cell(r,c); if(td) row.push(td); }
+      if(row.length) out.push(row); }
+    return out;
+  }
+  function paintSel(){
+    [].forEach.call(tb.querySelectorAll('td.sel,td.cur'),function(td){
+      td.classList.remove('sel'); td.classList.remove('cur'); });
+    var rows=picked();
+    rows.forEach(function(row){ row.forEach(function(td){ td.classList.add('sel'); }); });
+    if(focus){ var f=cell(focus.r,focus.c); if(f) f.classList.add('cur'); }
+    report(rows);
+  }
+  function report(rows){
+    if(!stat) return;
+    var vals=[], n=0;
+    rows.forEach(function(row){ row.forEach(function(td){
+      n++; var t=td.textContent.trim().replace(/,/g,'');
+      if(t!=='' && !isNaN(t)) vals.push(+t); }); });
+    if(!n){ stat.textContent=''; if(hint) hint.hidden=false; return; }
+    if(hint) hint.hidden=true;
+    var out=n+'칸';
+    if(vals.length){
+      var sum=vals.reduce(function(a,b){return a+b;},0);
+      var avg=Math.round(sum/vals.length*100)/100;
+      out += ' · 합 <b>'+sum+'</b> · 평균 '+avg+' · 숫자 '+vals.length+'개';
+    }
+    stat.innerHTML=out;
+  }
+  function tsv(){
+    return grid().map(function(row){ return row.join('\t'); }).join('\n');
+  }
+  /* 고칠 수 있는 칸만 비운다. 못 고치는 칸은 그대로 둔다 */
+  function say(msg){
+    if(!hint) return;
+    hint.hidden=false; hint.textContent=msg;
+    setTimeout(function(){
+      hint.textContent='칸을 끌어 고르면 합계가 나온다';
+      hint.hidden = picked().length>0;
+    },1600);
+  }
+  function clear(){
+    var n=0;
+    picked().forEach(function(row){ row.forEach(function(td){
+      if(editable(td)){
+        td.textContent=''; td.dispatchEvent(new InputEvent('input',{bubbles:true})); n++;
+      }
+    }); });
+    return n;
+  }
+  function grid(){
+    return picked().map(function(row){
+      return row.map(function(td){ return td.textContent.trim(); });
+    });
+  }
+  /* 지금 칸을 왼쪽 위로 삼아 블록을 붙인다. 고칠 수 있는 칸만 채운다 */
+  function drop(rows){
+    if(!focus || !rows || !rows.length) return 0;
+    var n=0;
+    rows.forEach(function(line,ri){
+      line.forEach(function(v,ci){
+        var td=cell(focus.r+ri, focus.c+ci);
+        if(editable(td)){
+          td.textContent=v;
+          td.dispatchEvent(new InputEvent('input',{bubbles:true}));
+          n++;
+        }
+      });
+    });
+    if(n){
+      anchor={r:focus.r, c:focus.c};
+      var last=cell(focus.r+rows.length-1, focus.c+rows[0].length-1);
+      if(last){ var p2=pos(last); anchor=focus; focus=p2; }
+      paintSel();
+      if(last){ focus={r:+last.dataset.r, c:+last.dataset.c}; }
+    }
+    return n;
+  }
+  var api={ drop:drop, say:function(m){ say(m); }, box:box,
+            tsv:tsv, grid:grid, picked:picked, clear:function(){ return clear(); },
+            repaint:function(){ paintSel(); } };
+
+  function editable(td){ return !!(td && td.dataset.cell); }
+  /* 편집 중인 칸을 다시 누르면 커서를 옮기게 둔다. 그 외에는 선택이 먼저다 */
+  tb.addEventListener('pointerdown',function(e){
+    var td=e.target.closest('td[data-r]'); if(!td) return;
+    SHEET.active=api;
+    if(td.isContentEditable && td===document.activeElement) return;
+    e.preventDefault();
+    leave();
+    anchor=pos(td); focus=anchor; dragging=true; paintSel();
+    box.focus();
+  });
+
+  /* 더블클릭으로 편집에 들어간다 */
+  /* 편집 표시가 남는 칸이 없게 전부 훑는다. 활성 칸만 보면 이전 칸이 남는다 */
+  function leave(){
+    [].forEach.call(tb.querySelectorAll('td[contenteditable]'), function(a){
+      if(a===document.activeElement) a.blur();
+      a.removeAttribute('contenteditable');
+    });
+  }
+  /* 다른 곳을 눌러 포커스가 빠져도 정리한다 */
+  tb.addEventListener('focusout', function(e){
+    var td=e.target.closest && e.target.closest('td[contenteditable]');
+    if(td) setTimeout(function(){ if(td!==document.activeElement) td.removeAttribute('contenteditable'); },0);
+  });
+  function enter(td){
+    if(!editable(td)) return false;
+    leave();
+    td.setAttribute('contenteditable','true');
+    td.focus();
+    var r=document.createRange(); r.selectNodeContents(td);
+    var sel=getSelection(); sel.removeAllRanges(); sel.addRange(r); sel.collapseToEnd();
+    return true;
+  }
+  tb.addEventListener('click',function(e){
+    if(e.detail<2) return;
+    var td=e.target.closest('td[data-r]'); if(!td) return;
+    enter(td);
+  });
+  tb.addEventListener('dblclick',function(e){
+    var td=e.target.closest('td[data-r]'); if(!td) return;
+    enter(td);
+  });
+  tb.addEventListener('pointerover',function(e){
+    if(!dragging) return;
+    var td=e.target.closest('td[data-r]'); if(!td) return;
+    focus=pos(td); paintSel();
+  });
+  addEventListener('pointerup',function(){ dragging=false; });
+
+  box.setAttribute('tabindex','0');
+  box.addEventListener('keydown',function(e){
+    if(!focus) return;
+    var m={ArrowUp:[-1,0],ArrowDown:[1,0],ArrowLeft:[0,-1],ArrowRight:[0,1]}[e.key];
+    if(e.key==='Tab'){ m=[0, e.shiftKey?-1:1]; }
+    if(e.key==='Enter'){
+      var act=document.activeElement;
+      if(act && act.closest && act.closest('td[data-r]')){ leave(); box.focus(); }
+      m=[e.shiftKey?-1:1, 0];
+    }
+    if(m){
+      var nr=focus.r+m[0], nc=focus.c+m[1], td=cell(nr,nc);
+      if(!td) return;
+      e.preventDefault();
+      focus={r:nr,c:nc};
+      if(!e.shiftKey) anchor=focus;
+      paintSel();
+      box.focus();
+      td.scrollIntoView({block:'nearest',inline:'nearest'});
+      return;
+    }
+    if((e.key==='Delete'||e.key==='Backspace') && !e.metaKey && !e.ctrlKey
+       && !inCell()){
+      var b0=bounds();
+      if(b0 && (b0.r1!==b0.r2 || b0.c1!==b0.c2)){
+        e.preventDefault();
+        var m=clear(); paintSel();
+        say(m ? m+'칸 비웠다' : '고칠 수 있는 칸이 없다');
+      }
+    }
+    if(e.key==='Escape'){
+      if(document.activeElement && document.activeElement.closest &&
+         document.activeElement.closest('td[data-r]')){ leave(); box.focus(); return; }
+      anchor=focus=null; paintSel(); return;
+    }
+    var here=cell(focus.r,focus.c);
+    if((e.key==='F2') && enter(here)){ e.preventDefault(); return; }
+    /* 고른 칸에 글자를 치면 엑셀처럼 덮어쓰며 편집이 시작된다 */
+    if(!e.metaKey && !e.ctrlKey && !e.altKey && e.key.length===1 && editable(here)){
+      e.preventDefault();
+      /* 먼저 포커스를 옮겨야 이어서 칠 수 있다. 내용은 그다음이다 */
+      leave();
+      here.setAttribute('contenteditable','true');
+      here.focus();
+      here.textContent=e.key;
+      var rg=document.createRange(); rg.selectNodeContents(here);
+      var sl2=getSelection(); sl2.removeAllRanges(); sl2.addRange(rg); sl2.collapseToEnd();
+      here.dispatchEvent(new InputEvent('input',{bubbles:true}));
+    }
+  });
+
+  api.paste=function(text){
+    if(!focus) return 0;
+    var rows=text.replace(/\r/g,'').replace(/\n$/,'').split('\n')
+      .map(function(line){ return line.split('\t').map(function(v){ return v.trim(); }); });
+    return drop(rows);
+  };
+});
+
+/* 복사·잘라내기·붙여넣기는 브라우저가 보내는 이벤트로 받는다.
+   키 조합을 직접 판정하면 조합키가 안 잡히는 브라우저에서 조용히 죽는다 */
+function inCell(){
+  var a=document.activeElement;
+  return !!(a && a.tagName==='TD' && a.isContentEditable);
+}
+document.addEventListener('copy', function(e){
+  var t=SHEET.active;
+  if(!t || inCell()) return;
+  var text=t.tsv(); if(!text) return;
+  e.preventDefault();
+  e.clipboardData.setData('text/plain', text);
+  SHEET.clip=t.grid();
+  t.say(SHEET.clip.length+'행 '+SHEET.clip[0].length+'열 복사했다');
+});
+document.addEventListener('cut', function(e){
+  var t=SHEET.active;
+  if(!t || inCell()) return;
+  var text=t.tsv(); if(!text) return;
+  e.preventDefault();
+  e.clipboardData.setData('text/plain', text);
+  SHEET.clip=t.grid();
+  var n=t.clear(); t.repaint();
+  t.say(n ? '잘라냈다 · '+n+'칸 비움' : '복사했다 · 고칠 수 있는 칸이 없다');
+});
+
+/* 붙여넣기. 일반 요소는 paste 를 못 받아 document 에서 받는다 */
+document.addEventListener('paste', function(e){
+  var t=SHEET.active;
+  if(!t || inCell()) return;
+  var text=(e.clipboardData||window.clipboardData).getData('text');
+  if(!text) return;
+  e.preventDefault();
+  SHEET.clip=text.replace(/\r/g,'').replace(/\n$/,'').split('\n')
+    .map(function(l){ return l.split('\t').map(function(v){ return v.trim(); }); });
+  var n=t.paste(text);
+  t.say(n ? n+'칸 붙였다' : '고칠 수 있는 칸이 없다');
+});
+
+/* 편집 — 화면이 자기 명세를 들고 있다가 고친 값을 되쓴다 */
+(function(){
+  var raw=document.getElementById('spec-source');
+  if(!raw) return;
+  var spec, key='shell:'+location.pathname;
+  try{ spec=JSON.parse(raw.textContent); }catch(e){ return; }
+
+  var bar=document.querySelector('.editbar'), stat=bar&&bar.querySelector('.stat');
+  var dirty=false;
+
+  /* 저장해둔 편집을 되살린다 */
+  try{
+    var saved=localStorage.getItem(key);
+    if(saved){ spec=JSON.parse(saved); dirty=true; }
+  }catch(e){}
+
+  function cells(){ return [].slice.call(document.querySelectorAll('[data-cell]')); }
+
+  function paint(){
+    [].forEach.call(document.querySelectorAll('[data-slide]'), function(el){
+      var b=+el.dataset.block, i=+el.dataset.slide, f=el.dataset.field;
+      var v=spec.blocks[b].slides[i][f];
+      if(f==='h'){ if(el.textContent.trim()!==v) el.textContent=v; }
+      else if(el.innerHTML!==v){ el.innerHTML=v; }
+    });
+    cells().forEach(function(td){
+      var b=+td.dataset.block, r=+td.dataset.row, k=td.dataset.cell;
+      var v=spec.blocks[b].rows[r][k];
+      if(String(v)!==td.textContent.trim()) td.textContent=v;
+    });
+    mark();
+    if(bar){ bar.classList.toggle('on', dirty); if(stat) stat.textContent=count()+'곳 고침'; }
+  }
+
+  function mark(){
+    var orig=JSON.parse(raw.textContent);
+    [].forEach.call(document.querySelectorAll('[data-cell]'), function(td){
+      var b=+td.dataset.block, r=+td.dataset.row, k=td.dataset.cell;
+      td.classList.toggle('changed',
+        String(spec.blocks[b].rows[r][k]) !== String(orig.blocks[b].rows[r][k]));
+    });
+    [].forEach.call(document.querySelectorAll('[data-slide]'), function(el){
+      var b=+el.dataset.block, i=+el.dataset.slide, f=el.dataset.field;
+      el.classList.toggle('changed',
+        String(spec.blocks[b].slides[i][f]||'') !== String((orig.blocks[b].slides[i]||{})[f]||''));
+    });
+  }
+
+  function count(){
+    var orig=JSON.parse(raw.textContent), n=0;
+    spec.blocks.forEach(function(b,bi){
+      (b.rows||[]).forEach(function(row,ri){
+        Object.keys(row).forEach(function(k){
+          if(String(row[k])!==String(orig.blocks[bi].rows[ri][k])) n++;
+        });
+      });
+      (b.slides||[]).forEach(function(s,si){
+        ['h','html'].forEach(function(f){
+          if(String(s[f]||'')!==String((orig.blocks[bi].slides[si]||{})[f]||'')) n++;
+        });
+      });
+    });
+    return n;
+  }
+
+  function save(){
+    try{ localStorage.setItem(key, JSON.stringify(spec)); }catch(e){}
+  }
+
+  document.addEventListener('input', function(e){
+    var sl=e.target.closest('[data-slide]');
+    if(sl){
+      var sb=+sl.dataset.block, si=+sl.dataset.slide, f=sl.dataset.field;
+      spec.blocks[sb].slides[si][f] = f==='h' ? sl.textContent.trim() : sl.innerHTML;
+      dirty=true; save(); mark();
+      if(bar){ bar.classList.add('on'); if(stat) stat.textContent=count()+'곳 고침'; }
+      return;
+    }
+    var td=e.target.closest('[data-cell]');
+    if(!td) return;
+    var b=+td.dataset.block, r=+td.dataset.row, k=td.dataset.cell, t=td.textContent.trim();
+    var was=spec.blocks[b].rows[r][k];
+    spec.blocks[b].rows[r][k] = (typeof was==='number' && t!=='' && !isNaN(t)) ? +t : t;
+    dirty=true; save(); mark();
+    if(bar){ bar.classList.add('on'); if(stat) stat.textContent=count()+'칸 고침'; }
+  });
+
+  if(bar){
+    bar.querySelector('.copy').addEventListener('click', function(){
+      var txt=JSON.stringify(spec,null,1), btn=this;
+      navigator.clipboard.writeText(txt).then(function(){
+        btn.textContent='복사했다'; setTimeout(function(){btn.textContent='명세 복사';},1600);
+      }).catch(function(){
+        var ta=document.createElement('textarea'); ta.value=txt; document.body.appendChild(ta);
+        ta.select(); document.execCommand('copy'); ta.remove();
+        btn.textContent='복사했다'; setTimeout(function(){btn.textContent='명세 복사';},1600);
+      });
+    });
+    bar.querySelector('.reset').addEventListener('click', function(){
+      spec=JSON.parse(raw.textContent); dirty=false;
+      try{ localStorage.removeItem(key); }catch(e){}
+      paint();
+    });
+  }
+  if(dirty) paint();
+})();
+
+/* 문서 — 목차 현재 위치 */
+document.querySelectorAll('.doc').forEach(function(doc){
+  var links=[].slice.call(doc.querySelectorAll('.toc a'));
+  if(!links.length) return;
+  var hs=[].slice.call(doc.querySelectorAll('.docbody h3[id]'));
+  if(!hs.length) return;
+  function mark(){
+    /* 상단 100px 선을 지난 마지막 섹션이 현재다. 페이지 바닥이면 마지막 섹션으로 못 박는다 —
+       바닥에서는 남은 섹션들이 선을 못 넘어 현재가 멈춰 선다 */
+    var cur=hs[0];
+    hs.forEach(function(h){ if(h.getBoundingClientRect().top<=100) cur=h; });
+    if(innerHeight+scrollY >= document.documentElement.scrollHeight-4) cur=hs[hs.length-1];
+    links.forEach(function(a){ a.setAttribute('aria-current', String(a.getAttribute('href')==='#'+cur.id)); });
+  }
+  addEventListener('scroll', mark, {passive:true});
+  addEventListener('resize', mark, {passive:true});
+  mark();
+});
+</script>

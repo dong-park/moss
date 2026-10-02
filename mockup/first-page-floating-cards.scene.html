@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Caveat:wght@500&family=Nanum+Pen+Script&display=swap">
+<style>
+html,body{margin:0;height:100%;overflow:hidden;background:#ebecee}
+#fit{position:absolute;left:0;top:0;width:1440px;height:900px;transform-origin:0 0;overflow:hidden;
+  background:#ebecee radial-gradient(#d8d2c4 1px,transparent 1.2px) 0 0/24px 24px;
+  font-family:"Pretendard Variable",Pretendard,"Apple SD Gothic Neo",system-ui,sans-serif;color:#2c2e33}
+#lines{position:absolute;inset:0;width:1440px;height:900px;pointer-events:none}
+#lines path{fill:none;stroke:#b4ab99;stroke-width:1.5;stroke-linecap:round}
+.lab{position:absolute;font:500 26px Caveat,"Nanum Pen Script",cursive;color:#6a6c72;opacity:0;transition:opacity .6s;white-space:nowrap}
+.card{position:absolute;left:0;top:0;box-sizing:border-box;border-radius:6px;background:#fdfcfa;padding:12px 14px;
+  font-size:14px;line-height:1.5;user-select:none;
+  box-shadow:0 1px 1px rgba(42,39,34,.04),0 2px 4px rgba(42,39,34,.05),0 8px 20px rgba(42,39,34,.04);transition:box-shadow .2s,filter .3s}
+.card p{margin:0}
+.card.far{filter:blur(1.4px);opacity:.78}
+.yellow{background:#fbf5d8}.blue{background:#e5edf2}.lime{background:#e8eee0}.purple{background:#ece5f0}
+.hand p{font:500 25px/1.15 Caveat,"Nanum Pen Script",cursive}
+.check b{display:block;font-size:13px;margin-bottom:6px}
+.check ul{list-style:none;margin:0;padding:0;font-size:13px}
+.check li{display:flex;gap:7px;align-items:center;margin:3px 0}
+.check li::before{content:"";width:12px;height:12px;border:1.5px solid #9a968c;border-radius:3px;flex:none;box-sizing:border-box}
+.check li.on{color:#6a6c72;text-decoration:line-through}
+.check li.on::before{background:#2c2e33 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 6.2l2 2 4-4.4' stroke='white' stroke-width='1.6' fill='none'/%3E%3C/svg%3E");border-color:#2c2e33}
+.photo{padding:6px 6px 8px}
+.photo .ph{height:118px;border-radius:3px}
+.photo span{display:block;font-size:12px;color:#6a6c72;margin:6px 4px 0}
+.link small,.board small{display:block;font-size:11px;color:#6a6c72}
+.link p{font-weight:600;font-size:13px;margin-top:3px}
+.link .fav{display:inline-grid;place-items:center;width:16px;height:16px;border-radius:4px;color:#fff;font-size:10px;font-weight:700;margin-right:6px;vertical-align:-3px}
+.board .bd{display:grid;grid-template-columns:1fr 1fr;gap:4px;height:62px;margin-bottom:8px}
+.board .bd i{border-radius:3px;background:#efeae0}
+.board .bd i:nth-child(2){background:#fbf5d8}.board .bd i:nth-child(3){background:#e8eee0}
+.board b{font-size:13px}
+.card.held{box-shadow:0 6px 12px rgba(42,39,34,.12),0 24px 48px rgba(42,39,34,.18);filter:none;opacity:1;cursor:grabbing}
+.drag .card{cursor:grab}
+#veil{position:absolute;inset:0;pointer-events:none;z-index:900;
+  background:radial-gradient(ellipse 380px 210px at 50% 50%,rgba(235,236,238,.94) 40%,rgba(235,236,238,0) 100%)}
+#hero{position:absolute;z-index:901;left:50%;top:50%;transform:translate(-50%,-50%);text-align:center;pointer-events:none;width:760px}
+#hero .wm{font-weight:700;font-size:19px;letter-spacing:-.02em;display:inline-flex;align-items:center;gap:7px}
+#hero .wm i{width:10px;height:10px;border-radius:50%;background:#a8b89c}
+#hero h1{font-size:58px;line-height:1.16;letter-spacing:-.035em;font-weight:700;margin:18px 0 30px}
+#hero .btn{pointer-events:auto;display:inline-flex;align-items:center;gap:10px;background:#2c2e33;color:#fdfcfa;border:0;
+  border-radius:999px;padding:15px 28px;font:600 16px inherit;font-family:inherit;cursor:pointer}
+#hero .btn .g{width:18px;height:18px;border-radius:50%;background:#fdfcfa;color:#2c2e33;display:grid;place-items:center;font-size:12px;font-weight:800}
+#hero .mail{pointer-events:auto;display:block;margin-top:16px;color:#6a6c72;font-size:14px;text-decoration:underline;text-underline-offset:3px}
+#hint{margin-top:22px;font:500 24px Caveat,"Nanum Pen Script",cursive;color:#6a6c72;transition:opacity .5s}
+@media (prefers-reduced-motion:reduce){.card{transition:none}}
+</style></head><body>
+<div id="fit">
+  <svg id="lines" viewBox="0 0 1440 900"></svg>
+  <div id="cards"></div>
+  <div id="veil"></div>
+  <div id="hero">
+    <div class="wm"><i></i>moss</div>
+    <h1 id="h1"></h1>
+    <button class="btn"><span class="g">G</span>Google로 계속</button>
+    <a class="mail" href="#">메일로 계속</a>
+    <div id="hint" hidden>카드를 끌어 보세요</div>
+  </div>
+</div>
+<script>
+const MODE='__MODE__', W=1440, H=900;
+const fit=document.getElementById('fit'); let S=1;
+function rescale(){S=innerWidth/W;fit.style.transform='scale('+S+')';}
+addEventListener('resize',rescale); rescale();
+
+document.getElementById('h1').innerHTML = MODE==='b'
+  ? '흩어 놓아도 괜찮아요.<br>연결은 moss가 이어 줄게요'
+  : '생각을 붙이면,<br>연결이 보여요';
+if(MODE==='b'){document.getElementById('hint').hidden=false;fit.classList.add('drag');}
+
+// [그룹, 종류, 색, 내용...]  그룹은 C안에서 모이는 덩어리 번호다
+const D=[
+ [0,'photo','','제주 협재','linear-gradient(170deg,#dfe6dc 0 30%,#a9c2b6 30% 55%,#eadcbe 55%,#d6c09a)'],
+ [0,'check','','여행 짐',['여권',1],['충전기',1],['우산',0]],
+ [0,'link','','제주 맛집 지도','map.naver.com','#5f9b6a'],
+ [0,'hand','yellow','렌터카 예약 잊지 말기'],
+ [0,'note','','비행기 금요일 7:10 출발'],
+ [1,'photo','','10월 산책 코스','linear-gradient(170deg,#f2d9a8,#d9914f 55%,#8b5a3c)'],
+ [1,'photo','','베란다 수국','radial-gradient(circle at 40% 40%,#ead0de,#c79dba 45%,#93a68c 80%)'],
+ [1,'hand','lime','아이디어는 산책할 때 온다'],
+ [1,'note','purple','좋아하는 단어: 윤슬'],
+ [2,'check','','이사 준비',['인터넷 이전 신청',1],['관리비 정산',0],['화분 옮기기',0]],
+ [2,'note','','관리사무소 전화는 10시 이후'],
+ [2,'photo','','새 집 거실','linear-gradient(180deg,#f1eadf 0 58%,#cdb99c 58%)'],
+ [2,'board','','새 집 가구','카드 8장'],
+ [2,'hand','yellow','화분은 직접 옮기기'],
+ [3,'check','','읽을 책',['아주 작은 습관의 힘',1],['도둑맞은 집중력',0]],
+ [3,'link','','기록하는 습관을 만드는 3가지 방법','brunch.co.kr','#2c2e33'],
+ [3,'note','lime','다음 분기 목표: 매주 글 1편'],
+ [3,'hand','','천천히, 그래도 매일'],
+ [3,'link','','회고 템플릿','notion.so','#6a6c72'],
+ [4,'note','','회의 끝나고 질문 2개 정리해서 보내기'],
+ [4,'note','blue','발표 슬라이드 7장을 5장으로'],
+ [4,'photo','','화이트보드 사진','repeating-linear-gradient(8deg,transparent 0 22px,rgba(90,110,90,.35) 22px 24px),linear-gradient(#f5f4f0,#e2dfd7)'],
+ [4,'board','','3분기 회고','카드 14장'],
+ [5,'note','yellow','토요일 장보기 전에 냉장고 먼저 확인'],
+ [5,'hand','','고양이 사료 주문'],
+ [5,'note','purple','엄마 생신 선물 — 스카프? 찻잔?'],
+ [5,'photo','','망원동 카페 메뉴판','linear-gradient(150deg,#6b4a36,#a87d5a 60%,#e8d5bb)'],
+ [5,'link','','15분 집밥 레시피','youtube.com','#c4544a'],
+];
+const WID={note:170,hand:168,check:188,photo:176,link:196,board:172};
+function inner(d){
+  const [, t,, a, b, c] = d;
+  if(t==='note'||t==='hand') return '<p>'+a+'</p>';
+  if(t==='check') return '<b>'+a+'</b><ul>'+d.slice(4).map(x=>'<li class="'+(x[1]?'on':'')+'">'+x[0]+'</li>').join('')+'</ul>';
+  if(t==='photo') return '<div class="ph" style="background:'+b+'"></div><span>'+a+'</span>';
+  if(t==='link') return '<small><span class="fav" style="background:'+c+'">'+b[0].toUpperCase()+'</span>'+b+'</small><p>'+a+'</p>';
+  if(t==='board') return '<div class="bd"><i></i><i></i><i></i><i></i></div><b>'+a+'</b><small>'+b+'</small>';
+}
+
+// 시드 고정 난수 — 세 안이 같은 흩어짐에서 출발한다
+let seed=7; const R=()=>((seed=(seed*16807)%2147483647)/2147483647);
+const host=document.getElementById('cards'); const cards_tmp=[];
+const cards=D.map((d,i)=>{
+  const el=document.createElement('div');
+  el.className='card '+d[1]+' '+d[2]; el.style.width=WID[d[1]]+'px'; el.innerHTML=inner(d);
+  host.appendChild(el);
+  let x,y,k=0;
+  do{ x=-30+R()*(W-150); y=-20+R()*(H-110); k++; }
+  while(((x+90-720)/470)**2+((y+70-450)/280)**2<1 || (k<300 && placed(x,y)));
+  const z=0.66+R()*0.42;
+  if(z<0.78) el.classList.add('far');
+  el.style.zIndex=Math.round(z*100);
+  const c={el,g:d[0],x,y,r:(R()-.5)*22,z,ph:R()*6.28,sp:.7+R()*.6,vx:0,vy:0};
+  cards_tmp.push([x,y]); return c;
+});
+function placed(x,y){return cards_tmp.some(p=>Math.hypot(p[0]-x,p[1]-y)<125);}
+cards.forEach(c=>{c.w=c.el.offsetWidth;c.h=c.el.offsetHeight;});
+
+const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+function float(c,t,amp){
+  if(reduce) return [0,0,0];
+  return [Math.sin(t*.00023*c.sp+c.ph)*amp, Math.cos(t*.00029*c.sp+c.ph*1.3)*amp*1.3, Math.sin(t*.00019+c.ph)*2];
+}
+function put(c,x,y,r,s){c.el.style.transform='translate('+x+'px,'+y+'px) rotate('+r+'deg) scale('+s+')';}
+
+// ---- B: 집어 던지기
+let held=null, zTop=500, off=[0,0], last=[];
+if(MODE==='b'){
+  host.addEventListener('pointerdown',e=>{
+    const el=e.target.closest('.card'); if(!el) return;
+    held=cards.find(c=>c.el===el); el.setPointerCapture(e.pointerId);
+    el.classList.add('held'); el.style.zIndex=++zTop;
+    const p=pt(e); off=[p[0]-held.x,p[1]-held.y]; last=[[p[0],p[1],performance.now()]];
+    held.vx=held.vy=0;
+    document.getElementById('hint').style.opacity=0;
+  });
+  host.addEventListener('pointermove',e=>{
+    if(!held) return; const p=pt(e);
+    held.x=p[0]-off[0]; held.y=p[1]-off[1];
+    last.push([p[0],p[1],performance.now()]); if(last.length>5) last.shift();
+  });
+  const up=()=>{
+    if(!held) return;
+    const a=last[0], b=last[last.length-1], dt=Math.max(16,b[2]-a[2]);
+    held.vx=(b[0]-a[0])/dt*16; held.vy=(b[1]-a[1])/dt*16;
+    held.el.classList.remove('held'); held.el.classList.remove('far'); held=null;
+  };
+  host.addEventListener('pointerup',up); host.addEventListener('pointercancel',up);
+}
+function pt(e){const b=fit.getBoundingClientRect();return [(e.clientX-b.left)/S,(e.clientY-b.top)/S];}
+
+// ---- C: 모였다 흩어진다
+const svg=document.getElementById('lines');
+const CL=[[250,185],[720,170],[1190,185],[250,720],[720,730],[1190,720]];
+const NAMES=['여행 계획','산책','이사 준비','읽고 쓰기','회사','집'];
+const labs=NAMES.map((n,i)=>{const l=document.createElement('div');l.className='lab';l.textContent=n;
+  l.style.left=(CL[i][0]-40)+'px';l.style.top=CL[i][1]-150+'px';fit.insertBefore(l,host);return l;});
+if(MODE==='c'){
+  const by={}; cards.forEach(c=>(by[c.g]=by[c.g]||[]).push(c));
+  Object.values(by).forEach(list=>list.forEach((c,j)=>{
+    const col=j%3, row=Math.floor(j/3), n=Math.min(3,list.length-row*3);
+    c.tx=CL[c.g][0]+(col-(n-1)/2)*150-c.w/2; c.ty=CL[c.g][1]+(row-.5)*112-c.h/2+ (list.length<=3?60:0);
+    c.tr=(R()-.5)*5;
+  }));
+  // 덩어리 안은 사슬로, 덩어리 사이는 둘만 잇는다
+  var links=[]; Object.values(by).forEach(l=>{for(let j=1;j<l.length;j++) links.push([l[j-1],l[j]]);});
+  links.push([by[1][0],by[0][0]],[by[4][0],by[3][1]],[by[2][4],by[1][2]]);
+  svg.innerHTML=links.map(()=>'<path pathLength="1" stroke-dasharray="1" stroke-dashoffset="1"/>').join('');
+  var paths=[...svg.children];
+}
+const ease=p=>p<.5?4*p*p*p:1-Math.pow(-2*p+2,3)/2;
+const CYCLE=14000;
+
+function frame(t){
+  if(MODE==='c'){
+    const u=t%CYCLE;
+    // 0~2.5초 흩어짐, 2.5~4.3초 모임, 4.3~5.3초 선, 11초까지 머묾, 11~13초 다시 흩어짐
+    let g = u<2500?0 : u<4300?ease((u-2500)/1800) : u<11000?1 : u<13000?1-ease((u-11000)/2000) : 0;
+    cards.forEach((c,i)=>{
+      const gi=Math.max(0,Math.min(1, u<11000 ? (g*1.25-i*.009) : g));
+      const f=float(c,t,14*(1-gi)+2*gi);
+      const x=c.x+(c.tx-c.x)*gi+f[0], y=c.y+(c.ty-c.y)*gi+f[1];
+      c.cx=x+c.w/2; c.cy=y+c.h/2; c.el.classList.toggle('far', c.z<0.78 && gi<.5);
+      c.el.style.zIndex = gi>.5 ? 200+i : Math.round(c.z*100);
+      put(c,x,y,c.r+(c.tr-c.r)*gi+f[2]*(1-gi), c.z+(0.84-c.z)*gi);
+    });
+    const lp = u<4300?0 : u<5300?(u-4300)/1000 : u<11000?1 : u<11600?1-(u-11000)/600 : 0;
+    paths.forEach((p,k)=>{const [a,b]=links[k];
+      const mx=(a.cx+b.cx)/2, my=(a.cy+b.cy)/2-Math.abs(a.cx-b.cx)*.12;
+      p.setAttribute('d','M'+a.cx+' '+a.cy+' Q'+mx+' '+my+' '+b.cx+' '+b.cy);
+      p.setAttribute('stroke-dashoffset', u>=11000 ? 0 : 1-Math.min(1,Math.max(0,lp*1.3-k*.012)));
+      p.style.opacity = u>=11000 ? lp : 1;
+    });
+    labs.forEach(l=>l.style.opacity = lp>.6&&u<11000 ? 1 : 0);
+  } else {
+    cards.forEach(c=>{
+      if(MODE==='b' && c!==held && (Math.abs(c.vx)>.05||Math.abs(c.vy)>.05)){
+        c.x+=c.vx; c.y+=c.vy; c.vx*=.94; c.vy*=.94;
+        if(c.x<-c.w*.4||c.x>W-c.w*.6){c.vx*=-.6;c.x=Math.max(-c.w*.4,Math.min(W-c.w*.6,c.x));}
+        if(c.y<-c.h*.4||c.y>H-c.h*.6){c.vy*=-.6;c.y=Math.max(-c.h*.4,Math.min(H-c.h*.6,c.y));}
+      }
+      const isH=c===held, f=isH?[0,0,0]:float(c,t,14);
+      put(c,c.x+f[0],c.y+f[1],isH?c.r*.3:c.r+f[2],isH?c.z*1.06:c.z);
+    });
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body></html>

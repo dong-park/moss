@@ -47,7 +47,7 @@ describe("WorkspaceGate 렌더", () => {
   test("anonymous면 온보딩만, 워크스페이스는 없다", () => {
     useAuth.setState({ status: "anonymous", hydrated: true });
     mount();
-    expect(screen.getByText("moss에 오신 것을 환영해요")).toBeTruthy();
+    expect(screen.getByText("생각을 붙이면,\n연결이 보여요", { normalizer: (s) => s })).toBeTruthy();
     expect(screen.queryByText("WORKSPACE")).toBeNull();
   });
 
@@ -59,7 +59,7 @@ describe("WorkspaceGate 렌더", () => {
     });
     mount();
     expect(screen.getByText("WORKSPACE")).toBeTruthy();
-    expect(screen.queryByText("moss에 오신 것을 환영해요")).toBeNull();
+    expect(screen.queryByText("생각을 붙이면,\n연결이 보여요", { normalizer: (s) => s })).toBeNull();
   });
 
   test("expired여도 워크스페이스를 렌더한다 (D5-3)", () => {
@@ -85,6 +85,6 @@ describe("WorkspaceGate 렌더", () => {
     });
     mount();
     expect(screen.getByText("WORKSPACE")).toBeTruthy();
-    expect(screen.queryByText("moss에 오신 것을 환영해요")).toBeNull();
+    expect(screen.queryByText("생각을 붙이면,\n연결이 보여요", { normalizer: (s) => s })).toBeNull();
   });
 });
