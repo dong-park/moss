@@ -1002,21 +1002,50 @@ function avoidCenterOverlap(
   width: number,
   height: number,
   cards: Card[],
+  visible?: { x: number; y: number; width: number; height: number },
 ): { x: number; y: number } {
-  let ox = x;
-  let oy = y;
-  const MAX_TRIES = 40;
-  for (let i = 0; i < MAX_TRIES; i++) {
-    const collides = cards.some((c) => {
+  const free = (ox: number, oy: number) =>
+    !cards.some((c) => {
       if (c.kind === "frame") return false;
       const ch = c.height ?? c.width;
       return rectsOverlapWorld(ox, oy, width, height, c.x, c.y, c.width, ch);
     });
-    if (!collides) break;
+  if (free(x, y)) return { x, y };
+
+  // 화면 안에서 가운데와 가장 가까운 빈자리를 찾는다. 대각선으로만 밀면 큰 카드가
+  // 가운데 있을 때 새 카드가 화면 밖에 생겨 안 보였다.
+  // ponytail: 40px 격자 전수 — 화면 하나에 후보 ~800개라 충분히 싸다. 느려지면 나선 탐색으로.
+  if (visible) {
+    const STEP = 40;
+    const candidates: { x: number; y: number; d: number }[] = [];
+    for (let gx = visible.x; gx + width <= visible.x + visible.width; gx += STEP) {
+      for (let gy = visible.y; gy + height <= visible.y + visible.height; gy += STEP) {
+        candidates.push({ x: gx, y: gy, d: (gx - x) ** 2 + (gy - y) ** 2 });
+      }
+    }
+    candidates.sort((a, b) => a.d - b.d);
+    const hit = candidates.find((c) => free(c.x, c.y));
+    if (hit) return { x: hit.x, y: hit.y };
+  }
+
+  // 화면에 빈자리가 없으면 예전처럼 대각선으로 비켜 쌓는다.
+  let ox = x;
+  let oy = y;
+  const MAX_TRIES = 40;
+  for (let i = 0; i < MAX_TRIES && !free(ox, oy); i++) {
     ox += CENTER_STACK_OFFSET_PX;
     oy += CENTER_STACK_OFFSET_PX;
   }
   return { x: ox, y: oy };
+}
+
+/** 화면에 보이는 월드 영역 — 가운데 생성이 빈자리를 찾는 범위. */
+function visibleWorldRect(
+  v: { x: number; y: number; scale: number },
+  sx: number,
+  sy: number,
+): { x: number; y: number; width: number; height: number } {
+  return { x: -v.x / v.scale, y: -v.y / v.scale, width: (sx * 2) / v.scale, height: (sy * 2) / v.scale };
 }
 
 const SEED_CARDS: Card[] = [
@@ -2424,7 +2453,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const cardH = clamp(cardW / aspectForKind(kind), CARD_MIN_HEIGHT, CARD_MAX_HEIGHT);
     const wx = (sx - v.x) / v.scale - cardW / 2;
     const wy = (sy - v.y) / v.scale - 20;
-    const { x, y } = avoidCenterOverlap(wx, wy, cardW, cardH, get().cards);
+    const { x, y } = avoidCenterOverlap(wx, wy, cardW, cardH, get().cards, visibleWorldRect(v, sx, sy));
     return get().addCardAt(toolId, x, y);
   },
 
@@ -2556,7 +2585,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const v = get().viewport;
     const wx = (sx - v.x) / v.scale - FRAME_DEFAULT_WIDTH / 2;
     const wy = (sy - v.y) / v.scale - 20;
-    const { x, y } = avoidCenterOverlap(wx, wy, FRAME_DEFAULT_WIDTH, FRAME_DEFAULT_HEIGHT, get().cards);
+    const { x, y } = avoidCenterOverlap(wx, wy, FRAME_DEFAULT_WIDTH, FRAME_DEFAULT_HEIGHT, get().cards, visibleWorldRect(v, sx, sy));
     return get().addFrameAt(x, y);
   },
 
@@ -3568,7 +3597,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const boardH = clamp(boardW / aspectForKind("board"), CARD_MIN_HEIGHT, CARD_MAX_HEIGHT);
     const wx = (sx - v.x) / v.scale - boardW / 2;
     const wy = (sy - v.y) / v.scale - 20;
-    const { x, y } = avoidCenterOverlap(wx, wy, boardW, boardH, get().cards);
+    const { x, y } = avoidCenterOverlap(wx, wy, boardW, boardH, get().cards, visibleWorldRect(v, sx, sy));
     return get().createSubcanvas(x, y);
   },
 

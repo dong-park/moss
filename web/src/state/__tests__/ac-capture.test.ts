@@ -108,6 +108,33 @@ describe("n10 브라우저 결함4: 독 Enter/가운데 생성이 같은 자리�
     expect(overlap).toBe(false);
     expect(frame).toBeDefined();
   });
+
+  it("가운데에 큰 메모가 있어도 새 메모 5장이 모두 화면 안, 서로 겹치지 않게 놓인다", async () => {
+    await useStorage.getState().init();
+    await useWorkspace.getState().loadFromStorage();
+    const viewportSize = { width: 1400, height: 900 };
+    useWorkspace.setState({
+      viewport: { x: 0, y: 0, scale: 1 },
+      cards: [{ id: "big", kind: "text", x: 450, y: 200, width: 460, height: 460, content: "" }],
+    });
+    for (let i = 0; i < 5; i++) useWorkspace.getState().addCardAtViewportCenter("text", viewportSize);
+    await new Promise((r) => setTimeout(r, 5));
+
+    const cards = useWorkspace.getState().cards;
+    const h = (c: (typeof cards)[number]) => c.height ?? c.width;
+    for (const c of cards) {
+      expect(c.x).toBeGreaterThanOrEqual(0);
+      expect(c.y).toBeGreaterThanOrEqual(0);
+      expect(c.x + c.width).toBeLessThanOrEqual(1400);
+      expect(c.y + h(c)).toBeLessThanOrEqual(900);
+    }
+    for (const a of cards)
+      for (const b of cards) {
+        if (a === b) continue;
+        const overlap = a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + h(b) && a.y + h(a) > b.y;
+        expect(overlap).toBe(false);
+      }
+  });
 });
 
 describe("AC-2: 10종 type 모두 작동", () => {
