@@ -43,6 +43,7 @@ afterEach(() => {
     editingId: null,
     viewport: { x: 0, y: 0, scale: 1 },
     currentBoardId: SYSTEM_BOARD_ID,
+    canvasHasFitted: false,
   });
   useToasts.setState({ toasts: [] });
 });
@@ -76,6 +77,8 @@ describe("FEAT-canvas AC-3 · Canvas 가상화", () => {
       cards,
       currentBoardId: "test-board",
       viewport: { x: 0, y: 0, scale: 1 },
+      // 마운트 시 fitToCards가 뷰포트를 옮기지 않게 한다.
+      canvasHasFitted: true,
     });
 
     const { container } = mount();
