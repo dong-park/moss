@@ -209,6 +209,14 @@ describe("판 위에 새로 만든 카드는 바로 판에 속한다", () => {
     useWorkspace.getState().setFaceHeight(id, 80); // 중심 y=190 — 판 안
     expect(useWorkspace.getState().cards.find((c) => c.id === id)?.frameId).toBe(frameId);
   });
+
+  it("흰 카드 앞면 높이는 저장돼 새로고침 뒤에도 남는다", async () => {
+    await init();
+    const id = useWorkspace.getState().addCardAt("text", 0, 0);
+    useWorkspace.getState().setFaceHeight(id, 132);
+    await flushAll();
+    expect((await getDB().notes.get(id))?.height).toBe(132);
+  });
 });
 
 describe("moveFrame — 판 이동 시 속한 메모만 같은 거리로 이동", () => {

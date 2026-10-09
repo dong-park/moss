@@ -3003,9 +3003,12 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   setFaceHeight: (id, height) => {
     if (!Number.isFinite(height) || height <= 0) return;
     const h = Math.round(height);
-    // ponytail: 화면에 그려진 카드만 잰다 — 가상화로 안 그려진 카드는 다시 보일 때까지 옛 높이다.
-    if (get().cards.find((c) => c.id === id)?.height === h) return;
-    set((s) => ({ cards: s.cards.map((c) => (c.id === id ? { ...c, height: h } : c)) }));
+    // 잰 높이를 저장한다 — 새로고침 뒤 화면 밖 카드도 연결선·판 판정이 실제 높이를 쓴다.
+    const prev = get().cards.find((c) => c.id === id);
+    if (!prev || prev.height === h) return;
+    const updated = { ...prev, height: h };
+    set((s) => ({ cards: s.cards.map((c) => (c.id === id ? updated : c)) }));
+    persistCardDebounced(updated, get().currentBoardId);
     // 만들 땐 정사각 높이로 판 소속을 쟀다 — 실제 높이로 중심이 바뀌었으니 판 밖이던 카드만 다시 잰다.
     if (!get().cards.find((c) => c.id === id)?.frameId) {
       get().resolveMembership([id]);

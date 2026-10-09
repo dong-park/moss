@@ -286,7 +286,8 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
     setMeasuredHeight(el.offsetHeight);
     // 연결선·선택 상자가 정사각이 아니라 실제 카드 높이를 쓰게 store에 알린다.
     if (faceCard) setFaceHeight(card.id, el.offsetHeight);
-  }, [cardHeight, faceCard, setFaceHeight, card.id, card.content, card.kind, card.title, card.width, card.height]);
+  // card.height는 deps에 넣지 않는다 — 다른 사용자가 잰 높이가 들어와 다시 재고 쓰는 핑퐁을 막는다.
+  }, [cardHeight, faceCard, setFaceHeight, card.id, card.content, card.kind, card.title, card.width]);
 
   // 판 위에 새로 만들어져 바로 판에 속했으면 끌어 넣을 때와 같은 "착" 모션(snapCardId 주석).
   const snapNow = useWorkspace((s) => s.snapCardId === card.id);
