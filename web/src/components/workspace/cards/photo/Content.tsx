@@ -1,7 +1,8 @@
 "use client";
 
 import { useRef } from "react";
-import { PHOTO_CAPTION_MAX } from "@/state/workspace";
+import { CARD_MAX_HEIGHT, CARD_MIN_HEIGHT, PHOTO_CAPTION_MAX, useWorkspace } from "@/state/workspace";
+import { storePhoto } from "../../canvasCapture";
 import { usePhotoUrl } from "./usePhotoUrl";
 import { useT } from "@/i18n/Provider";
 import { useAutoFocusOnEdit } from "../_shared/useAutoFocusOnEdit";
@@ -42,6 +43,8 @@ export function PhotoCardContent({
     if (next !== card.content) onChange(next);
     onCommitEdit();
   };
+
+  if (!card.attachmentRef) return <EmptyPhoto cardId={card.id} width={card.width} />;
 
   return (
     <div className="relative h-full w-full" data-photo-root>
@@ -105,6 +108,59 @@ export function PhotoCardContent({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+const PHOTO_ACCEPT = "image/png,image/jpeg,image/gif,image/webp,image/svg+xml";
+
+/**
+ * 빈 사진 카드 (spec/card-faces.md) — 도크 사진 버튼이 만든다. 가운데 버튼을 누르면 파일 창이 뜨고,
+ * 고른 사진을 이 카드에 붙인 뒤 높이를 사진 비율로 맞춘다. 취소면 빈 카드로 남는다.
+ * 버튼 밖 자리는 카드 선택·드래그다.
+ */
+function EmptyPhoto({ cardId, width }: { cardId: string; width: number }) {
+  const t = useT();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const setAttachment = useWorkspace((s) => s.setAttachment);
+  const resizeCard = useWorkspace((s) => s.resizeCard);
+
+  const onPicked = async (file: File | undefined) => {
+    if (!file) return;
+    const photo = await storePhoto(file);
+    if (!photo) return; // 형식·크기 거부는 storePhoto가 토스트로 알린다.
+    setAttachment(cardId, photo.ref, { mediaType: photo.mediaType });
+    if (photo.naturalW && photo.naturalH) {
+      const h = Math.min(CARD_MAX_HEIGHT, Math.max(CARD_MIN_HEIGHT, (width * photo.naturalH) / photo.naturalW));
+      resizeCard(cardId, { width, height: h });
+    }
+  };
+
+  return (
+    <div
+      className="flex h-full w-full items-center justify-center rounded-[6px] border border-dashed border-border bg-panel"
+      data-photo-root
+      data-photo-empty
+    >
+      <button
+        type="button"
+        data-photo-pick
+        onClick={() => fileRef.current?.click()}
+        className="rounded-full border border-border bg-bg px-3 py-1.5 text-xs text-text-soft shadow-card hover:text-text"
+      >
+        {t("cards.photo.pick")}
+      </button>
+      <input
+        ref={fileRef}
+        type="file"
+        accept={PHOTO_ACCEPT}
+        hidden
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          e.target.value = ""; // 같은 파일을 다시 골라도 change가 오게.
+          void onPicked(file);
+        }}
+      />
     </div>
   );
 }

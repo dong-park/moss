@@ -89,6 +89,8 @@ export function TextboxCardContent({
   const textStyle: React.CSSProperties = {
     fontSize: sizePx,
     lineHeight: 1.3,
+    fontWeight: 600,
+    letterSpacing: "-0.01em",
     color,
     whiteSpace: autoWidth ? "pre" : "pre-wrap",
     wordBreak: autoWidth ? "normal" : "break-word",
@@ -97,8 +99,14 @@ export function TextboxCardContent({
 
   return (
     <div
+      // spec/card-faces.md: T는 흰 카드에 굵은 글씨 — 첫 화면 카드와 같은 모양.
       className="relative w-full"
-      style={{ padding: `0 ${TEXTBOX_PADDING_X}px` }}
+      style={{
+        padding: `12px ${TEXTBOX_PADDING_X}px`,
+        borderRadius: 6,
+        background: "var(--color-card-base)",
+        boxShadow: "var(--shadow-card)",
+      }}
       data-textbox-root
     >
       {/* 자동 폭 측정용 — 화면 밖, 같은 폰트·줄바꿈 없음. */}

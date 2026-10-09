@@ -4,6 +4,7 @@ import { I18nProvider } from "@/i18n/Provider";
 import { Dock } from "@/components/workspace/Dock";
 import { countTasks } from "@/components/workspace/cards/_shared/MemoFrontBadges";
 import { useWorkspace } from "@/state/workspace";
+import { EMPTY_LINK_CONTENT } from "@/components/workspace/linkMemo";
 import { useStorage } from "@/state/storage";
 import { resetDB } from "@/state/db/schema";
 
@@ -57,43 +58,32 @@ function renderDock() {
 const lastCard = () => useWorkspace.getState().cards.at(-1);
 
 describe("도크 할 일·링크·사진", () => {
-  it("할 일: 메모를 만들고 메모 창을 연다 — 체크박스는 창의 편집기가 만든다", () => {
+  it("할 일: 빈 체크박스 하나인 메모를 만들고 창 없이 카드에서 바로 편집한다", () => {
     renderDock();
     fireEvent.click(screen.getByLabelText("할 일"));
     const card = lastCard();
     expect(card?.kind).toBe("text");
-    expect(useWorkspace.getState().expandedCardId).toBe(card?.id);
-    expect(useWorkspace.getState().editingId).toBeNull();
+    expect(card?.content).toBe("- [ ] ");
+    expect(useWorkspace.getState().expandedCardId).toBeNull();
+    expect(useWorkspace.getState().editingId).toBe(card?.id);
   });
 
-  it("링크: 입력칸에 주소를 넣고 Enter면 링크 블록 메모, 아니면 안내만", async () => {
+  it("링크: 빈 링크 카드를 만들고 편집 상태로 둔다 — 주소는 카드 입력칸에 넣는다", () => {
     renderDock();
-    const before = useWorkspace.getState().cards.length;
     fireEvent.click(screen.getByLabelText("링크"));
-    const input = await screen.findByRole("textbox", { name: "링크" });
-
-    fireEvent.change(input, { target: { value: "javascript:alert(1)" } });
-    fireEvent.submit(input.closest("form")!);
-    expect(await screen.findByRole("alert")).toBeTruthy();
-    expect(useWorkspace.getState().cards.length).toBe(before);
-
-    fireEvent.change(input, { target: { value: "  https://example.com  " } });
-    fireEvent.submit(input.closest("form")!);
-    await waitFor(() => expect(useWorkspace.getState().cards.length).toBe(before + 1));
-    expect(lastCard()?.kind).toBe("text");
-    expect(lastCard()?.content).toContain("https://example.com");
-    expect(screen.queryByRole("textbox", { name: "링크" })).toBeNull();
+    const card = lastCard();
+    expect(card?.kind).toBe("text");
+    expect(card?.content).toBe(EMPTY_LINK_CONTENT);
+    expect(useWorkspace.getState().editingId).toBe(card?.id);
   });
 
-  it("사진: 파일 창을 열고, 취소하면 아무것도 만들지 않는다", () => {
+  it("사진: 빈 사진 카드를 만든다 — 파일 창은 카드를 눌러 연다", () => {
     renderDock();
-    const input = document.querySelector<HTMLInputElement>("[data-dock-photo-input]")!;
-    const click = vi.spyOn(input, "click").mockImplementation(() => undefined);
     const before = useWorkspace.getState().cards.length;
     fireEvent.click(screen.getByLabelText("사진"));
-    expect(click).toHaveBeenCalledTimes(1);
-    fireEvent.change(input, { target: { files: [] } });
-    expect(useWorkspace.getState().cards.length).toBe(before);
+    expect(useWorkspace.getState().cards.length).toBe(before + 1);
+    expect(lastCard()?.kind).toBe("photo");
+    expect(lastCard()?.attachmentRef).toBeUndefined();
   });
 });
 

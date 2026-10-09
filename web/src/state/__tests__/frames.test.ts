@@ -186,6 +186,31 @@ describe("resolveMembership — 중심점 기준 소속 판정", () => {
   });
 });
 
+describe("판 위에 새로 만든 카드는 바로 판에 속한다", () => {
+  it("addCardAt·addPhotoAt — 중심이 판 안이면 frameId를 잡는다", async () => {
+    await init();
+    const frameId = useWorkspace.getState().addFrameAt(0, 0); // 320×220
+    const memoId = useWorkspace.getState().addCardAt("text", 0, -60); // 240 정사각, 중심 (120,60)
+    const photoId = useWorkspace.getState().addPhotoAt(0, -60);
+    const outId = useWorkspace.getState().addCardAt("text", 1000, 1000);
+    const byId = (id: string) => useWorkspace.getState().cards.find((c) => c.id === id);
+    expect(byId(memoId)?.frameId).toBe(frameId);
+    expect(byId(photoId)?.frameId).toBe(frameId);
+    expect(byId(outId)?.frameId).toBeUndefined();
+    // 판에 든 마지막 카드(사진)에 "착" 모션을 예약하고, 판 밖 카드는 예약을 덮지 않는다.
+    expect(useWorkspace.getState().snapCardId).toBe(photoId);
+  });
+
+  it("흰 카드 앞면 높이를 재면 판 밖이던 카드도 다시 판정한다", async () => {
+    await init();
+    const frameId = useWorkspace.getState().addFrameAt(0, 0);
+    const id = useWorkspace.getState().addCardAt("text", 0, 150); // 정사각 중심 y=270 — 판 밖
+    expect(useWorkspace.getState().cards.find((c) => c.id === id)?.frameId).toBeUndefined();
+    useWorkspace.getState().setFaceHeight(id, 80); // 중심 y=190 — 판 안
+    expect(useWorkspace.getState().cards.find((c) => c.id === id)?.frameId).toBe(frameId);
+  });
+});
+
 describe("moveFrame — 판 이동 시 속한 메모만 같은 거리로 이동", () => {
   it("판에 속한 메모만 이동하고, 속하지 않은 메모는 제자리", async () => {
     await init();

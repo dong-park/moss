@@ -52,7 +52,7 @@ export function formatDeg(deg: number): string {
 
 /** kind별 각도 상한(도). 기울일 수 없는 kind는 0. */
 export function rotationMaxForKind(kind: string): number {
-  if (kind === "text") return MEMO_ROTATION_MAX_DEG;
+  if (kind === "text" || kind === "textbox") return MEMO_ROTATION_MAX_DEG;
   if (kind === "board") return BOARD_ROTATION_MAX_DEG;
   return 0;
 }
@@ -93,7 +93,7 @@ export function memoTint(id: string, color?: string): string {
 
 /** 기울일 수 있는 kind — 메모(text)와 파일함(board). */
 function rotatable(kind: string): boolean {
-  return kind === "text" || kind === "board";
+  return kind === "text" || kind === "board" || kind === "textbox";
 }
 
 /** 각도 0으로 세워야 하는 상황(기울일 수 없는 kind 또는 펜 모드). */
@@ -125,7 +125,7 @@ export function memoLiftedTransform(
   if (card.kind === "frame") return undefined;
   // FEAT-text-tool: textbox는 회전 0 — 들 때도 기울이지 않고 살짝 뜨기만 한다.
   // FEAT-photo-card: 사진도 회전 0(spec §경계 조건 "사진 카드는 기울이지 않는다").
-  if (card.kind === "textbox" || card.kind === "photo") return "scale(1.03)";
+  if (card.kind === "photo") return "scale(1.03)";
   const deg =
     (rotationOff(card.kind, penMode) ? 0 : cardRotationDeg(card.id, card.kind)) -
     CARD_LIFT_DEG;

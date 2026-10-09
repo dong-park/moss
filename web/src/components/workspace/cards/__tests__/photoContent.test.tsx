@@ -77,9 +77,14 @@ describe("PhotoCardContent", () => {
 
   it("missing이면 '사진 없음' 자리표시자", async () => {
     resolveAttachment.mockResolvedValue({ state: "missing", url: null });
-    renderPhoto(photoCard({ attachmentRef: undefined }));
+    renderPhoto(photoCard({ attachmentRef: "opfs://gone" }));
     await flush();
     expect(document.querySelector("[data-photo-placeholder='missing']")).toBeTruthy();
+  });
+
+  it("ref가 없으면 빈 사진 카드 — 사진 고르기 버튼", () => {
+    renderPhoto(photoCard({ attachmentRef: undefined }));
+    expect(document.querySelector("[data-photo-empty] [data-photo-pick]")).toBeTruthy();
   });
 
   it("편집 중 Enter/blur면 정규화한 캡션으로 onChange·onCommitEdit", async () => {

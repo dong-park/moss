@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { blocksToMarkdown } from "@/state/cardContent";
 import { useWorkspace } from "@/state/workspace";
 import { MemoSaveGuard } from "../_shared/editor/MemoSaveGuard"; // W1 자동저장 유실 가드
@@ -11,6 +11,9 @@ import { MemoFrontBadges } from "../_shared/MemoFrontBadges"; // FEAT-sticky-red
 import { useT } from "@/i18n/Provider";
 import { memoTint } from "../../memoVariety"; // FEAT-memo-variety 색조
 import type { CardContentProps } from "../_shared/types";
+import { memoFace } from "./face";
+import { TodoFace } from "./TodoFace";
+import { LinkInputFace } from "./LinkInputFace";
 
 // 종이 사진. 색조 층 mask도 같은 파일이어야 종이 바깥 투명부에 색이 안 칠해진다.
 const MEMO_PAPER = 'url("/cards/v2/text.png") 0 0 / 100% 100% no-repeat';
@@ -93,6 +96,34 @@ export function TextCardContent({ card, editing, onCommitEdit }: CardContentProp
       setExpandedCard(card.id);
     }
   };
+
+  // spec/card-faces.md: 링크 한 줄·체크리스트뿐인 메모는 흰 카드 앞면으로 그린다.
+  const face = useMemo(() => memoFace(card.content), [card.content]);
+  // 링크 앞면엔 고칠 칸이 없다 — 클릭으로 켜진 편집 상태를 바로 끈다. 내용은 메모 창에서 고친다.
+  useEffect(() => {
+    if (editing && face.t === "link") onCommitEdit();
+  }, [editing, face.t, onCommitEdit]);
+  if (face.t === "link") {
+    return (
+      <div className="moss-card-face" data-memo-face="link">
+        <div className="card face link">
+          <small>
+            <span className="fav" style={{ background: "#6a6c72" }}>
+              {face.site[0]?.toUpperCase()}
+            </span>
+            {face.site}
+          </small>
+          <p>{face.title}</p>
+        </div>
+      </div>
+    );
+  }
+  if (face.t === "linkEmpty") {
+    return <LinkInputFace cardId={card.id} editing={editing} onCommitEdit={onCommitEdit} />;
+  }
+  if (face.t === "todo") {
+    return <TodoFace card={card} items={face.items} editing={editing} onCommitEdit={onCommitEdit} />;
+  }
 
   return (
     <div

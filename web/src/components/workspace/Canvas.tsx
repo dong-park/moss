@@ -94,7 +94,6 @@ export function Canvas() {
   const selectedIds = useWorkspace((s) => s.selectedIds);
   const editingId = useWorkspace((s) => s.editingId);
   const draggingId = useWorkspace((s) => s.draggingId);
-  const dockDrag = useWorkspace((s) => s.dockDrag);
   const selectMany = useWorkspace((s) => s.selectMany);
   const clearSelection = useWorkspace((s) => s.clearSelection);
   const removeSelected = useWorkspace((s) => s.removeSelected);
@@ -130,18 +129,6 @@ export function Canvas() {
   const publishCursor = useCollab((s) => s.publishCursor);
   const publishSelection = useCollab((s) => s.publishSelection);
   const publishDragging = useCollab((s) => s.publishDragging);
-
-  /**
-   * 사이드바 도구 커스텀 드래그 중 — 커서가 캔버스 위에 있으면 drop hint 점 표시.
-   * 좌표는 캔버스 로컬(rect.left/top 기준). 캔버스 밖이거나 드래그 종료면 null.
-   */
-  const dropHint = (() => {
-    if (!dockDrag) return null;
-    const x = dockDrag.screenX - canvasRect.left;
-    const y = dockDrag.screenY - canvasRect.top;
-    if (x < 0 || y < 0 || x > canvasRect.width || y > canvasRect.height) return null;
-    return { x, y };
-  })();
 
   /* ─ FEAT-canvas AC-3: viewport 가상화 — viewport 밖 카드는 DOM에서 제외 ─ */
   const visibleCards = useVirtualizedCards({
@@ -732,21 +719,6 @@ export function Canvas() {
             background: "rgba(79, 124, 243, 0.08)",
             border: "1px solid rgba(79, 124, 243, 0.5)",
             borderRadius: 2,
-          }}
-        />
-      )}
-
-      {/* drop hint */}
-      {dropHint && (
-        <div
-          className="pointer-events-none absolute z-[var(--z-selection)]"
-          style={{
-            left: dropHint.x - 12,
-            top: dropHint.y - 12,
-            width: 24,
-            height: 24,
-            borderRadius: 12,
-            border: "2px dashed rgba(79,124,243,0.5)",
           }}
         />
       )}

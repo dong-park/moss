@@ -12,6 +12,7 @@ import {
   type Card,
 } from "@/state/workspace";
 import { CardContent } from "./cards/CardContent";
+import { memoFace } from "./cards/text/face";
 import { isExpandable } from "./cards/_shared/expandable";
 import { ResizeHandles } from "./ResizeHandles";
 import { decodeFrameConfig, type FrameSkinId } from "@/state/frameContent";
@@ -270,13 +271,32 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
   const [measuredHeight, setMeasuredHeight] = useState(100);
   // 메모(text)는 정사각형 아이덴티티 — 저장된 height와 무관하게 렌더 높이 = width.
   // (옛 IndexedDB의 직사각 메모까지 이 한 곳에서 덮는다.)
-  const cardHeight = card.kind === "text" ? card.width : card.height;
+  // spec/card-faces.md: 링크·할 일 앞면은 흰 카드라 내용 높이만큼만 — 정사각을 풀고 auto-grow.
+  const faceCard = useMemo(
+    () => card.kind === "textbox" || (card.kind === "text" && memoFace(card.content).t !== "paper"),
+    [card.kind, card.content],
+  );
+  // T(textbox)도 높이를 저장하지 않는 auto-grow다. 흰 카드 앞면은 저장된 height를 그리는 데 쓰지 않는다.
+  const cardHeight = faceCard ? undefined : card.kind === "text" ? card.width : card.height;
+  const setFaceHeight = useWorkspace((s) => s.setFaceHeight);
   useLayoutEffect(() => {
     if (cardHeight !== undefined) return; // 명시 높이 있으면 측정 불필요
     const el = containerRef.current;
     if (!el) return;
     setMeasuredHeight(el.offsetHeight);
-  }, [cardHeight, card.content, card.kind]);
+    // 연결선·선택 상자가 정사각이 아니라 실제 카드 높이를 쓰게 store에 알린다.
+    if (faceCard) setFaceHeight(card.id, el.offsetHeight);
+  }, [cardHeight, faceCard, setFaceHeight, card.id, card.content, card.kind, card.title, card.width, card.height]);
+
+  // 판 위에 새로 만들어져 바로 판에 속했으면 끌어 넣을 때와 같은 "착" 모션(snapCardId 주석).
+  const snapNow = useWorkspace((s) => s.snapCardId === card.id);
+  useEffect(() => {
+    if (!snapNow) return;
+    useWorkspace.getState().clearSnapCard();
+    const el = containerRef.current;
+    if (!el || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    playSnap(el, penMode ? 0 : cardRotationDeg(card.id, card.kind));
+  }, [snapNow, penMode, card.id, card.kind]);
 
   const dragRef = useRef<{
     startX: number;
@@ -294,6 +314,8 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
     // 제목 입력 위에서 누르면 글자 선택·커서 이동이라 끌지 않는다. 앞면 본문은
     // 읽기 전용이므로 편집 중이어도 종이 아무 데나 잡아 카드를 끌 수 있다.
     if (editing && (e.target as HTMLElement).closest("[data-memo-title-input]")) return;
+    // spec/card-faces.md: 할 일 앞면의 제목·항목·상자는 편집 전에도 바로 누를 수 있다.
+    if ((e.target as HTMLElement).closest("[data-todo-input], [data-link-input], [data-photo-pick]")) return;
     // FEAT-text-tool: textbox 편집 중 textarea·툴바 위에서는 드래그를 시작하지 않는다.
     if (
       editing &&
@@ -941,6 +963,24 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
       void enterSubcanvas(card.id);
       return;
     }
+    if (card.kind === "photo" && !card.attachmentRef) return; // 빈 사진 카드 — 버튼으로 고른다.
+    // spec/card-faces.md: 할 일 앞면은 카드에서 편집, 링크 앞면은 링크로 이동 — 메모 창을 열지 않는다.
+    if (card.kind === "text") {
+      const face = memoFace(card.content);
+      if (face.t === "todo") {
+        setEditing(card.id);
+        return;
+      }
+      if (face.t === "linkEmpty") {
+        setEditing(card.id); // 입력칸에 포커스
+        return;
+      }
+      if (face.t === "link") {
+        // face.url은 parseBlock이 허용 스킴(http/https/mailto)만 통과시킨 값이다.
+        window.open(face.url, "_blank", "noopener,noreferrer");
+        return;
+      }
+    }
     // FEAT-memo-expand: 확대 지원 카드(text 등)는 더블클릭으로 펼치기 모달을 연다.
     // 인라인 편집(setEditing)을 완전 대체 — 편집은 모달 안에서 한다.
     if (isExpandable(card)) {
@@ -1039,7 +1079,7 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
         // FEAT-text-tool: textbox만 예외 — 선택 툴바가 카드 위로 떠야 해서 visible.
         // FEAT-photo-card: 사진도 예외 — 캡션 여백이 카드 상자 밖으로 흘러넘친다.
         overflow:
-          card.kind === "textbox" || card.kind === "photo" ? "visible" : "hidden",
+          faceCard || card.kind === "photo" ? "visible" : "hidden",
       }}
     >
       <CardContent
@@ -1082,7 +1122,7 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
        * 클릭하면 모달로 크게 열린다. 펜 모드에선 숨김(그리기 방해 방지).
        * opacity로 호버 토글하되 키보드 포커스(focus-visible) 시에도 노출해 a11y 보장.
        */}
-      {isExpandable(card) && !penMode && (
+      {isExpandable(card) && !faceCard && !(card.kind === "photo" && !card.attachmentRef) && !penMode && (
         <button
           type="button"
           onMouseDown={(e) => e.stopPropagation()}

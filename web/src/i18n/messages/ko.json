@@ -166,6 +166,12 @@
       "frame": "메모판",
       "textbox": "텍스트"
     },
+    "todo": {
+      "titlePlaceholder": "제목",
+      "itemPlaceholder": "할 일",
+      "itemLabel": "할 일 항목",
+      "toggle": "완료 표시"
+    },
     "textbox": {
       "toolbar": {
         "label": "텍스트 서식"
@@ -349,6 +355,7 @@
       },
       "pending": "사진 올리는 중",
       "missing": "사진 없음",
+      "pick": "사진 고르기",
       "lightboxLabel": "사진 크게 보기"
     },
     "body": {

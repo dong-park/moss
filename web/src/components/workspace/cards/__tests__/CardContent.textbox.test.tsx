@@ -117,15 +117,15 @@ describe("FEAT-text-tool · TextboxCardContent", () => {
       await act(async () => {
         await Promise.resolve();
       });
-      // 400(scale 곱)이 아니라 offsetWidth 200 + 패딩 8.
-      expect(useWorkspace.getState().cards[0].width).toBe(208);
+      // 400(scale 곱)이 아니라 offsetWidth 200 + 좌우 패딩 28(14×2).
+      expect(useWorkspace.getState().cards[0].width).toBe(228);
 
       offset = 260;
       await act(async () => {
         resolveReady();
         await ready;
       });
-      expect(useWorkspace.getState().cards[0].width).toBe(268);
+      expect(useWorkspace.getState().cards[0].width).toBe(288);
     } finally {
       offsetSpy.mockRestore();
       rectSpy.mockRestore();

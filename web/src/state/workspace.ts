@@ -246,6 +246,8 @@ export interface ConnectionDraft {
  */
 export interface DockDrag {
   toolId: ToolId;
+  /** 도크 전용 버튼의 프리뷰 모양 — 할 일·링크는 흰 카드, 사진은 빈 사진 카드(spec/card-faces.md). */
+  face?: "todo" | "link" | "photo";
   screenX: number;
   screenY: number;
 }
@@ -323,7 +325,7 @@ export const TEXTBOX_DEFAULT_WIDTH = 60;
 export const TEXTBOX_MIN_AUTO_WIDTH = 16;
 
 /** textbox 자동 폭 좌우 여백(px) — 측정 글자 폭에 더한다(Content와 동일 값). */
-export const TEXTBOX_PADDING_X = 4;
+export const TEXTBOX_PADDING_X = 14;
 
 /** FEAT-photo-card: 새 사진 카드의 폭(px). 높이는 원본 비율로 계산한다(spec 성공 기준 3). */
 export const PHOTO_DEFAULT_WIDTH = 240;
@@ -534,7 +536,8 @@ interface WorkspaceState {
   addPhotoAt: (
     x: number,
     y: number,
-    opts: { ref: string; mediaType?: string; naturalW?: number; naturalH?: number },
+    /** ref가 없으면 빈 사진 카드 — 카드를 눌러 사진을 고른다(spec/card-faces.md). */
+    opts?: { ref: string; mediaType?: string; naturalW?: number; naturalH?: number },
   ) => string;
   /** 화면 중앙의 world 좌표에 카드 생성 (단축키 진입). viewport 크기는 인자로 주입. */
   addCardAtViewportCenter: (
@@ -628,6 +631,17 @@ interface WorkspaceState {
    * (§5 "true면 width는 측정값 캐시"). 사용자 리사이즈([[setTextWidth]])와 구분된다.
    */
   setTextMeasuredWidth: (id: string, width: number) => void;
+  /**
+   * spec/card-faces.md: 흰 카드 앞면(링크·할 일 메모, T)의 실제 높이. 화면이 잴 때마다 메모리에만 쓴다 —
+   * 연결선·선택 상자 계산용이고 저장하지 않는다(로드 뒤 다시 잰다).
+   */
+  setFaceHeight: (id: string, height: number) => void;
+  /**
+   * 메모판 위에 새로 만들어져 바로 판에 속한 카드 — 그 카드가 화면에 뜨면 "착" 모션을 한 번 튼다
+   * (끌어 넣을 때와 같은 효과). DraggableCard가 재생하고 비운다. 저장하지 않는다.
+   */
+  snapCardId: string | null;
+  clearSnapCard: () => void;
   /**
    * FEAT-text-tool AC-2: T 키 텍스트 배치 모드. 켜지면 캔버스 커서가 바뀌고
    * 다음 캔버스 클릭에서 textbox를 만든 뒤 한 번만 풀린다(1회성).
@@ -2395,8 +2409,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         ? { aiOptOut: true, autoWidth: true, textSize: TEXT_DEFAULT_SIZE }
         : {}),
     };
-    // FEAT-text-tool §0/§10: 메모판 안에 생성하면 소속(frameId)을 바로 잡는다.
-    if (isTextbox) {
+    // 메모판 안에 생성하면 소속(frameId)을 바로 잡는다 — 드래그로 넣은 것과 같은 판정(resolveMembership).
+    if (kind !== "frame") {
       const owner = findOwningFrame(
         get().cards.filter((c) => c.kind === "frame"),
         cardCenter(card),
@@ -2408,6 +2422,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     set((s) => ({
       cards: [...s.cards, card],
       selectedIds: [id],
+      snapCardId: card.frameId ? id : s.snapCardId,
       editingId: isCapture ? id : null,
       lastToolId: isCaptureTool ? (toolId as CaptureToolId) : s.lastToolId,
     }));
@@ -2417,8 +2432,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   addPhotoAt: (x, y, opts) => {
-    const naturalW = opts.naturalW ?? 0;
-    const naturalH = opts.naturalH ?? 0;
+    const naturalW = opts?.naturalW ?? 0;
+    const naturalH = opts?.naturalH ?? 0;
     const ratio = naturalW > 0 && naturalH > 0 ? naturalH / naturalW : 1;
     const height = clamp(PHOTO_DEFAULT_WIDTH * ratio, CARD_MIN_HEIGHT, CARD_MAX_HEIGHT);
     const id = nextId();
@@ -2430,14 +2445,20 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       width: PHOTO_DEFAULT_WIDTH,
       height,
       content: "",
-      attachmentRef: opts.ref,
-      mediaType: opts.mediaType,
+      attachmentRef: opts?.ref,
+      mediaType: opts?.mediaType,
       aiOptOut: false,
       lastVisitedAt: Date.now(),
     };
+    const owner = findOwningFrame(
+      get().cards.filter((c) => c.kind === "frame"),
+      cardCenter(card),
+    );
+    if (owner) card.frameId = owner.id;
     set((s) => ({
       cards: [...s.cards, card],
       selectedIds: [id],
+      snapCardId: card.frameId ? id : s.snapCardId,
       // 사진은 인라인 편집에 들어가지 않는다 — 캡션은 우클릭으로 연다.
       editingId: null,
     }));
@@ -2978,6 +2999,22 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     }));
     if (updated) persistCardDebounced(updated, get().currentBoardId);
   },
+
+  setFaceHeight: (id, height) => {
+    if (!Number.isFinite(height) || height <= 0) return;
+    const h = Math.round(height);
+    // ponytail: 화면에 그려진 카드만 잰다 — 가상화로 안 그려진 카드는 다시 보일 때까지 옛 높이다.
+    if (get().cards.find((c) => c.id === id)?.height === h) return;
+    set((s) => ({ cards: s.cards.map((c) => (c.id === id ? { ...c, height: h } : c)) }));
+    // 만들 땐 정사각 높이로 판 소속을 쟀다 — 실제 높이로 중심이 바뀌었으니 판 밖이던 카드만 다시 잰다.
+    if (!get().cards.find((c) => c.id === id)?.frameId) {
+      get().resolveMembership([id]);
+      if (get().cards.find((c) => c.id === id)?.frameId) set({ snapCardId: id });
+    }
+  },
+
+  snapCardId: null,
+  clearSnapCard: () => set({ snapCardId: null }),
 
   textPlacementArmed: false,
   armTextPlacement: () => {

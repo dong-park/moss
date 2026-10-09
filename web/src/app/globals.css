@@ -324,10 +324,7 @@ body {
   height: 900px;
   transform: translate(-50%, -50%);
 }
-.moss-float .card {
-  position: absolute;
-  left: 0;
-  top: 0;
+.moss-card-face .card {
   box-sizing: border-box;
   border-radius: 6px;
   background: var(--color-card-base);
@@ -336,20 +333,19 @@ body {
   line-height: 1.5;
   color: var(--color-text);
   box-shadow: var(--shadow-card);
-  will-change: transform;
 }
-.moss-float .card p { margin: 0; }
-.moss-float .card.far { filter: blur(1.4px); opacity: 0.78; }
-.moss-float .yellow { background: var(--color-card-yellow); }
-.moss-float .blue { background: var(--color-card-blue); }
-.moss-float .lime { background: var(--color-card-lime); }
-.moss-float .purple { background: var(--color-card-purple); }
+.moss-card-face .card p { margin: 0; }
+.moss-card-face .card.far { filter: blur(1.4px); opacity: 0.78; }
+.moss-card-face .yellow { background: var(--color-card-yellow); }
+.moss-card-face .blue { background: var(--color-card-blue); }
+.moss-card-face .lime { background: var(--color-card-lime); }
+.moss-card-face .purple { background: var(--color-card-purple); }
 /* ponytail: 손글씨 폰트를 앱에 싣지 않아 본문 글꼴로 쓴다. macOS에 Nanum Pen Script가 "다운로드 전"으로만
    등록돼 있으면 이름은 잡히고 글자는 □로 나온다. 손글씨를 살리려면 폰트 파일을 next/font/local로 싣는다. */
-.moss-float .hand p { font-size: 18px; font-weight: 600; line-height: 1.3; letter-spacing: -0.01em; }
-.moss-float .check b { display: block; font-size: 13px; margin-bottom: 6px; }
-.moss-float .check li { display: flex; gap: 7px; align-items: center; margin: 3px 0; font-size: 13px; }
-.moss-float .check li::before {
+.moss-card-face .hand p { font-size: 18px; font-weight: 600; line-height: 1.3; letter-spacing: -0.01em; }
+.moss-card-face .check b { display: block; font-size: 13px; margin-bottom: 6px; }
+.moss-card-face .check li { display: flex; gap: 7px; align-items: center; margin: 3px 0; font-size: 13px; }
+.moss-card-face .check li::before {
   content: "";
   flex: none;
   width: 12px;
@@ -358,15 +354,15 @@ body {
   border: 1.5px solid #9a968c;
   border-radius: 3px;
 }
-.moss-float .check li.on { color: var(--color-text-muted); text-decoration: line-through; }
-.moss-float .check li.on::before { background: var(--color-text); border-color: var(--color-text); }
-.moss-float .photo { padding: 6px 6px 8px; }
-.moss-float .photo .ph { height: 118px; border-radius: 3px; }
-.moss-float .photo span { display: block; margin: 6px 4px 0; font-size: 12px; color: var(--color-text-muted); }
-.moss-float .link small,
-.moss-float .board small { display: block; font-size: 11px; color: var(--color-text-muted); }
-.moss-float .link p { margin-top: 3px; font-size: 13px; font-weight: 600; }
-.moss-float .link .fav {
+.moss-card-face .check li.on { color: var(--color-text-muted); text-decoration: line-through; }
+.moss-card-face .check li.on::before { background: var(--color-text); border-color: var(--color-text); }
+.moss-card-face .photo { padding: 6px 6px 8px; }
+.moss-card-face .photo .ph { height: 118px; border-radius: 3px; }
+.moss-card-face .photo span { display: block; margin: 6px 4px 0; font-size: 12px; color: var(--color-text-muted); }
+.moss-card-face .link small,
+.moss-card-face .board small { display: block; font-size: 11px; color: var(--color-text-muted); }
+.moss-card-face .link p { margin-top: 3px; font-size: 13px; font-weight: 600; }
+.moss-card-face .link .fav {
   display: inline-grid;
   place-items: center;
   width: 16px;
@@ -378,11 +374,39 @@ body {
   font-weight: 700;
   vertical-align: -3px;
 }
-.moss-float .board .bd { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; height: 62px; margin-bottom: 8px; }
-.moss-float .board .bd i { border-radius: 3px; background: #efeae0; }
-.moss-float .board .bd i:nth-child(2) { background: var(--color-card-yellow); }
-.moss-float .board .bd i:nth-child(3) { background: var(--color-card-lime); }
-.moss-float .board b { font-size: 13px; }
+.moss-card-face .board .bd { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; height: 62px; margin-bottom: 8px; }
+.moss-card-face .board .bd i { border-radius: 3px; background: #efeae0; }
+.moss-card-face .board .bd i:nth-child(2) { background: var(--color-card-yellow); }
+.moss-card-face .board .bd i:nth-child(3) { background: var(--color-card-lime); }
+.moss-card-face .board b { font-size: 13px; }
+/* 캔버스 메모 앞면(spec/card-faces.md)도 같은 카드 모양을 쓴다 — 캔버스에선 카드 상자가 위치를 잡는다. */
+.moss-float .card { position: absolute; left: 0; top: 0; will-change: transform; }
+.moss-card-face .card.face { position: relative; width: 100%; box-sizing: border-box; }
+/* 할 일 앞면(TodoFace) — 상자는 버튼, 글은 입력칸. 모양은 첫 화면 체크 카드와 같다. */
+.moss-card-face .check input { all: unset; flex: 1; min-width: 0; font: inherit; color: inherit; cursor: text; }
+.moss-card-face .check input::placeholder { color: var(--color-text-muted); }
+.moss-card-face .check input.title { display: block; width: 100%; font-size: 13px; font-weight: 700; margin-bottom: 6px; }
+.moss-card-face .check li.edit::before { content: none; }
+/* 빈 링크 카드(LinkInputFace) — 주소 입력칸. */
+.moss-card-face .link input { all: unset; outline: none !important; box-shadow: none !important; display: block; width: 100%; margin-top: 3px; font-size: 13px; font-weight: 600; cursor: text; }
+.moss-card-face .link input::placeholder { color: var(--color-text-muted); font-weight: 400; }
+.moss-card-face .link [role="alert"] { margin-top: 4px; color: #c0392b; }
+/* 편집 전: 입력칸은 글자일 뿐 — 클릭은 줄(토글)·카드(드래그)로 간다. */
+.moss-card-face .check input[readonly] { pointer-events: none; cursor: inherit; }
+.moss-card-face .check li[data-todo-input] { cursor: pointer; }
+.moss-card-face .check .box {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  box-sizing: border-box;
+  border: 1.5px solid #9a968c;
+  border-radius: 3px;
+  background: transparent;
+  cursor: pointer;
+}
+.moss-card-face .check li.on .box { background: var(--color-text); border-color: var(--color-text); }
+.moss-card-face .check li.on input { text-decoration: line-through; }
 
 /* ─────────────────────────────────────────────────────────────
  * 메모 본문 체크리스트 — gfm 작업 항목(li[data-item-type="task"])을 상자로 그린다.

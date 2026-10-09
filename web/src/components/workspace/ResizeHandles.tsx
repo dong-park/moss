@@ -11,6 +11,7 @@ import {
   useWorkspace,
   type Card,
 } from "@/state/workspace";
+import { memoFace } from "./cards/text/face";
 import { readFrameContent } from "@/state/frameContent";
 import { clampFrameWidth } from "@/state/frameSkins";
 
@@ -134,7 +135,9 @@ export function ResizeHandles({
 
     // 메모(text)는 정사각 — 시작 높이는 실측이 아니라 폭. 그 외는 명시 높이/실측.
     const startH =
-      card.kind === "text" ? card.width : (card.height ?? measuredHeight);
+      card.kind === "text" && memoFace(card.content).t === "paper"
+        ? card.width
+        : (card.height ?? measuredHeight);
 
     const frameCfg = isFrame ? readFrameContent(card.content) : undefined;
     // FEAT-photo-card: 사진은 저장된 width÷height를 비율로 쓴다(사진마다 다름).

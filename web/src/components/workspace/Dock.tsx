@@ -21,9 +21,7 @@ import { useT } from "@/i18n/Provider";
 import { layout } from "@/design/tokens";
 import { PANEL_WIDTH as SIGNALS_PANEL_WIDTH } from "@/components/signals/SignalsPanel";
 import { PHOTO_DEFAULT_WIDTH } from "@/state/workspace";
-import { storePhoto } from "./canvasCapture";
-import { createLinkMemo } from "./linkMemo";
-import { requestChecklistSeed } from "./cards/_shared/editor/ChecklistSeed";
+import { EMPTY_LINK_CONTENT } from "./linkMemo";
 
 /** 드래그로 인정하기 위한 최소 이동 거리 — 단순 클릭과 구분. */
 const DRAG_THRESHOLD = 4;
@@ -61,13 +59,19 @@ const DOCK_ONLY: readonly DockOnlyId[] = ["todo", "linkMemo", "photo"];
 const isDockOnly = (id: DockToolId): id is DockOnlyId => (DOCK_ONLY as readonly string[]).includes(id);
 
 /** 드래그 미리보기는 만들어질 카드 모양을 따른다 — 할 일·링크는 메모, 사진은 이미지. */
+function previewFaceOf(id: DockToolId): "todo" | "link" | "photo" | undefined {
+  if (id === "todo") return "todo";
+  if (id === "linkMemo") return "link";
+  if (id === "photo") return "photo";
+  return undefined;
+}
+
 function previewToolOf(id: DockToolId): ToolId {
   if (id === "todo" || id === "linkMemo") return "text";
   if (id === "photo") return "image";
   return id as ToolId;
 }
 
-const PHOTO_ACCEPT = "image/png,image/jpeg,image/gif,image/webp,image/svg+xml";
 
 type DockItem = {
   toolId: DockToolId;
@@ -141,12 +145,9 @@ export function Dock({
   const createSubcanvasAtViewportCenter = useWorkspace((s) => s.createSubcanvasAtViewportCenter);
   const addPhotoAt = useWorkspace((s) => s.addPhotoAt);
   const setEditing = useWorkspace((s) => s.setEditing);
-  const setExpandedCard = useWorkspace((s) => s.setExpandedCard);
+  const setContent = useWorkspace((s) => s.setContent);
   /** 링크 주소 입력칸 — 열렸으면 놓을 자리(없으면 화면 가운데). */
-  const [linkAt, setLinkAt] = useState<{ x: number; y: number } | "center" | null>(null);
   /** 사진 파일 창을 연 뒤 고른 사진을 놓을 자리(없으면 화면 가운데). */
-  const photoAtRef = useRef<{ x: number; y: number } | null>(null);
-  const photoInputRef = useRef<HTMLInputElement>(null);
   // 무소속 토스트와 함께 임시 숨김(2026-09-22).
   // const promoteCardToNewBoard = useWorkspace((s) => s.promoteCardToNewBoard);
   // 2026-09-19 사용자 결정: 펜·시그널스 진입점 임시 숨김 — 버튼 복원 시 함께 되살린다.
@@ -167,6 +168,25 @@ export function Dock({
   const centersValidRef = useRef(false);
   /** 버튼별 현재 크기 MotionValue — 측정 시 확대분을 빼 평상시 좌표로 되돌리는 데 쓴다. */
   const sizeValuesRef = useRef<Partial<Record<DockToolId, MotionValue<number>>>>({});
+  /**
+   * 커서 왼쪽 확대분 — 독을 이만큼 왼쪽으로 당겨 커서 밑 지점이 제자리에 있게 한다(맥 독).
+   * 이게 없으면 독이 오른쪽으로만 늘어나 커서 밑 아이콘이 밀리고 옆 아이콘이 커진다.
+   */
+  const shiftX = useMotionValue(0);
+  const recomputeShift = useCallback(() => {
+    const x = mouseX.get();
+    const base = layout.dock.iconBase;
+    let shift = 0;
+    for (const [id, c] of Object.entries(centers.get()) as [DockToolId, number][]) {
+      const extra = (sizeValuesRef.current[id]?.get() ?? base) - base;
+      if (extra <= 0) continue;
+      // 커서가 이 버튼 평상시 칸의 어디쯤인지(0~1) — 그 비율만큼의 확대분이 커서 왼쪽에 생긴다.
+      const t = Math.min(1, Math.max(0, (x - (c - base / 2)) / base));
+      shift += extra * t;
+    }
+    shiftX.set(-shift);
+  }, [mouseX, centers, shiftX]);
+  useEffect(() => mouseX.on("change", recomputeShift), [mouseX, recomputeShift]);
   // 2단계 리뷰 P1-1: 독 실제 렌더 폭(레이아웃 토큰은 근사치일 뿐 — 버튼 슬롯이
   // hover로 커지면 실제 폭도 달라진다). 가운데 정렬·툴바 회피는 이 실측값을 쓴다.
   const [dockWidth, setDockWidth] = useState<number>(layout.dock.width);
@@ -245,17 +265,25 @@ export function Dock({
       const id = btn.dataset.dockId as DockToolId;
       const rect = btn.getBoundingClientRect();
       const extra = (sizeValuesRef.current[id]?.get() ?? base) - base;
-      next[id] = rect.left + rect.width / 2 - shift - extra / 2;
+      next[id] = rect.left - shiftX.get() + rect.width / 2 - shift - extra / 2;
       shift += extra;
     });
     centers.set(next);
     centersValidRef.current = true;
   };
 
-  const registerSize = useCallback((id: DockToolId, mv: MotionValue<number> | null) => {
-    if (mv) sizeValuesRef.current[id] = mv;
-    else delete sizeValuesRef.current[id];
-  }, []);
+  const sizeUnsubRef = useRef<Partial<Record<DockToolId, () => void>>>({});
+  const registerSize = useCallback(
+    (id: DockToolId, mv: MotionValue<number> | null) => {
+      sizeUnsubRef.current[id]?.();
+      delete sizeUnsubRef.current[id];
+      if (mv) {
+        sizeValuesRef.current[id] = mv;
+        sizeUnsubRef.current[id] = mv.on("change", recomputeShift);
+      } else delete sizeValuesRef.current[id];
+    },
+    [recomputeShift],
+  );
 
   // 시그널스 패널 토글·독 위치 변화 때도 캐시한 중심을 버린다(위 onResize와 같은 이유).
   useEffect(() => {
@@ -299,26 +327,19 @@ export function Dock({
   function createDockOnly(toolId: DockOnlyId, at: { x: number; y: number } | null) {
     if (toolId === "todo") {
       const id = at ? addCardAt("text", at.x, at.y) : addCardAtViewportCenter("text");
-      // 앞면은 제목만 보이므로 메모 창을 열고, 창의 편집기가 첫 줄을 체크박스로 만든다.
-      setEditing(null);
-      requestChecklistSeed(id);
-      setExpandedCard(id);
+      // 빈 항목 하나로 할 일 앞면을 띄우고 카드에서 바로 적는다(TodoFace가 제목에 포커스).
+      setContent(id, "- [ ] ");
+      setEditing(id);
       return;
     }
     if (toolId === "linkMemo") {
-      setLinkAt(at ?? "center");
+      // 빈 링크 카드 — 카드 안 입력칸에 주소를 넣는다(LinkInputFace가 포커스).
+      const id = at ? addCardAt("text", at.x, at.y) : addCardAtViewportCenter("text");
+      setContent(id, EMPTY_LINK_CONTENT);
+      setEditing(id);
       return;
     }
-    // 사진: 사용자 제스처(클릭·pointerup) 안에서 파일 창을 연다 — 브라우저가 막지 않는다.
-    photoAtRef.current = at;
-    photoInputRef.current?.click();
-  }
-
-  const onPhotoPicked = async (file: File | undefined) => {
-    if (!file) return; // 취소 — 아무것도 만들지 않는다.
-    const photo = await storePhoto(file);
-    if (!photo) return; // 형식·크기 거부는 storePhoto가 토스트로 알린다.
-    let at = photoAtRef.current;
+    // 빈 사진 카드 — 카드의 "사진 고르기"를 눌러 파일 창을 연다.
     if (!at) {
       const v = useWorkspace.getState().viewport;
       at = {
@@ -326,9 +347,8 @@ export function Dock({
         y: (window.innerHeight / 2 - v.y) / v.scale - 20,
       };
     }
-    addPhotoAt(at.x, at.y, photo);
-    photoAtRef.current = null;
-  };
+    addPhotoAt(at.x, at.y);
+  }
 
   /**
    * mouseup 위치가 캔버스 위면 그 위치에 카드/판/함을 만든다. 캔버스 밖(독 위 포함)이면 no-op.
@@ -446,7 +466,7 @@ export function Dock({
   const dockLeft = centerX - dockWidth / 2;
 
   return (
-    <div
+    <motion.div
       ref={dockRef}
       role="toolbar"
       aria-label={t("workspace.dock.label")}
@@ -467,6 +487,7 @@ export function Dock({
         height: layout.dock.height,
         background: "var(--gradient-paper)",
         boxShadow: "var(--shadow-card)",
+        x: shiftX,
       }}
     >
       {DOCK_ITEMS.filter((item) => item.draggable).map((item) => (
@@ -480,10 +501,10 @@ export function Dock({
           showLabel={hoveredId === item.toolId}
           reducedMotion={reducedMotion}
           onDragStart={(screenX, screenY) =>
-            setDockDrag({ toolId: previewToolOf(item.toolId), screenX, screenY })
+            setDockDrag({ toolId: previewToolOf(item.toolId), face: previewFaceOf(item.toolId), screenX, screenY })
           }
           onDragMove={(screenX, screenY) =>
-            setDockDrag({ toolId: previewToolOf(item.toolId), screenX, screenY })
+            setDockDrag({ toolId: previewToolOf(item.toolId), face: previewFaceOf(item.toolId), screenX, screenY })
           }
           onDragEnd={() => setDockDrag(null)}
           onDrop={(toolId, x, y) => tryDrop(toolId, x, y)}
@@ -504,29 +525,6 @@ export function Dock({
         dropTarget={dropTargetTrash}
         onClick={() => setTrashOpen(true)}
       />
-
-      <input
-        ref={photoInputRef}
-        type="file"
-        accept={PHOTO_ACCEPT}
-        hidden
-        data-dock-photo-input
-        onChange={(e) => {
-          const file = e.target.files?.[0];
-          e.target.value = ""; // 같은 파일을 다시 골라도 change가 오게.
-          void onPhotoPicked(file);
-        }}
-      />
-      {linkAt && (
-        <LinkPrompt
-          onCancel={() => setLinkAt(null)}
-          onSubmit={(url) => {
-            const id = createLinkMemo(url, linkAt === "center" ? {} : { at: linkAt });
-            if (id) setLinkAt(null);
-            return id !== null;
-          }}
-        />
-      )}
 
       {/*
        * 2026-09-19 사용자 결정: 펜·시그널스 진입점 임시 숨김(삭제 아님).
@@ -557,7 +555,7 @@ export function Dock({
         onClick={() => onSignalsClick?.()}
       />
       */}
-    </div>
+    </motion.div>
   );
 }
 
@@ -737,55 +735,5 @@ function DockButton({
         </span>
       )}
     </motion.button>
-  );
-}
-
-/**
- * 링크 주소 입력칸 — 도크 바로 위에 뜬다. Enter로 만들고 Esc·바깥 클릭으로 닫는다.
- * http·https·mailto가 아니면 만들지 않고 안내를 띄운다.
- */
-function LinkPrompt({
-  onSubmit,
-  onCancel,
-}: {
-  onSubmit: (url: string) => boolean;
-  onCancel: () => void;
-}) {
-  const t = useT();
-  const [value, setValue] = useState("");
-  const [invalid, setInvalid] = useState(false);
-  return (
-    <form
-      data-dock-link-prompt
-      className="absolute bottom-full left-1/2 mb-3 w-[300px] -translate-x-1/2 rounded-[10px] border border-border bg-white p-2 shadow-modal"
-      onSubmit={(e) => {
-        e.preventDefault();
-        if (value.trim() === "") return;
-        setInvalid(!onSubmit(value));
-      }}
-    >
-      <input
-        autoFocus
-        type="url"
-        value={value}
-        placeholder={t("workspace.tool.linkPlaceholder")}
-        aria-label={t("workspace.tool.link")}
-        aria-invalid={invalid || undefined}
-        onChange={(e) => {
-          setValue(e.target.value);
-          setInvalid(false);
-        }}
-        onKeyDown={(e) => {
-          if (e.key === "Escape") onCancel();
-        }}
-        onBlur={onCancel}
-        className="w-full rounded-[8px] border border-black/10 bg-white px-2 py-1.5 text-[13px] text-text outline-none"
-      />
-      {invalid && (
-        <p role="alert" className="mt-1 px-1 text-[11px] text-[#c0392b]">
-          {t("workspace.tool.linkInvalid")}
-        </p>
-      )}
-    </form>
   );
 }

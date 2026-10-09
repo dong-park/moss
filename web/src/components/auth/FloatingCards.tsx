@@ -164,7 +164,7 @@ export function FloatingCards() {
   }, []);
 
   return (
-    <div aria-hidden className="moss-float pointer-events-none absolute inset-0 overflow-hidden">
+    <div aria-hidden className="moss-float moss-card-face pointer-events-none absolute inset-0 overflow-hidden">
       <div ref={stage} className="stage">
         {CARDS.map((card, i) => (
           <div
