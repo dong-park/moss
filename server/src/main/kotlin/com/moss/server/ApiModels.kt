@@ -32,6 +32,10 @@ data class FileDto(val id: String, val name: String, val size: Long, val content
 @Serializable
 data class InviteResponse(val inviteToken: String)
 
+/** GET /me/usage — 저장 상한 확인용. 새 보드를 만들기 전에 웹이 부른다. */
+@Serializable
+data class UsageDto(val boards: Int, val maxBoards: Int, val fileBytes: Long, val maxFileBytes: Long)
+
 @Serializable
 data class BoardTokenResponse(val boardToken: String, val expiresInSeconds: Long)
 

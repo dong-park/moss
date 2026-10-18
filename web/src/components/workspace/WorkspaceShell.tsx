@@ -19,6 +19,7 @@ import { AuthBootstrap } from "@/components/auth/AuthBootstrap";
 import { AuthSessionOverlay } from "@/components/auth/SessionExpiredCard";
 import { WorkspaceGate } from "@/components/auth/WorkspaceGate";
 import { CollabSession } from "@/components/collab/CollabSession";
+import { UploadChoiceDialog } from "@/components/collab/UploadChoiceDialog";
 import { ShareControlMount } from "@/components/share/ShareControlMount";
 import { AccountMenu } from "@/components/auth/AccountMenu";
 import { OfflineBadge } from "@/components/presence/OfflineBadge";
@@ -191,6 +192,7 @@ export function WorkspaceShell() {
               <AccountMenu />
             </div>
             <CollabSession />
+            <UploadChoiceDialog />
             {isCanvas && (
               <>
                 {/* FEAT-subcanvas: 서브 캔버스 경로 — 캔버스 좌상단 고정 오버레이(중첩 시에만 렌더). */}

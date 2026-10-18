@@ -6,7 +6,7 @@
  */
 import { apiBaseUrl, AuthRequestError, type BoardSummary } from "@/state/auth";
 import { readErrorMessage } from "@/state/auth/api";
-import type { BoardMember, BoardToken } from "./types";
+import type { BoardMember, BoardToken, ServerUsage } from "./types";
 
 export interface ShareApi {
   /** POST /boards/{id}/share — 이 보드만 서버에 올린다 (AC-4). */
@@ -23,6 +23,8 @@ export interface ShareApi {
   members(boardId: string, accessToken: string): Promise<BoardMember[]>;
   /** GET /me/boards — 계정의 공유 보드 목록 (AC-17). */
   myBoards(accessToken: string): Promise<BoardSummary[]>;
+  /** GET /me/usage — 저장 상한 확인. 새 보드를 만들기 전에 부른다 (T2). */
+  usage(accessToken: string): Promise<ServerUsage>;
 }
 
 interface RequestInit_ {
@@ -93,4 +95,6 @@ export const realShareApi: ShareApi = {
 
   myBoards: (accessToken) =>
     request<BoardSummary[]>({ method: "GET", path: "/me/boards", accessToken }),
+
+  usage: (accessToken) => request<ServerUsage>({ method: "GET", path: "/me/usage", accessToken }),
 };

@@ -16,7 +16,9 @@ import com.moss.server.MemberDto
 import com.moss.server.MossServer
 import com.moss.server.NotFoundException
 import com.moss.server.PayloadTooLargeException
+import com.moss.server.QuotaExceededException
 import com.moss.server.ShareRequest
+import com.moss.server.UsageDto
 import com.moss.server.newId
 import com.moss.server.parseBoardId
 import com.moss.server.parseUuid
@@ -203,6 +205,12 @@ fun Route.boardRoutes(server: MossServer) {
                     Files.deleteIfExists(tmp)
                     throw PayloadTooLargeException("보드 용량(500MB)을 넘었어요")
                 }
+                SaveFileResult.USER_QUOTA_EXCEEDED -> {
+                    Files.deleteIfExists(tmp)
+                    throw QuotaExceededException(
+                        "저장 용량(${BoardRepository.formatBytes(server.repo.fileBytesLimit)})을 다 썼어요",
+                    )
+                }
                 SaveFileResult.BOARD_MISSING -> {
                     Files.deleteIfExists(tmp)
                     throw NotFoundException("보드를 찾을 수 없어요")
@@ -321,6 +329,16 @@ fun Route.boardRoutes(server: MossServer) {
         val userId = call.requireUserId(server)
         val boards: List<BoardDto> = server.repo.boardsForUser(userId).map { it.toDto() }
         call.respond(HttpStatusCode.OK, boards)
+    }
+
+    // 서버에 저장된 내 보드 수와 첨부 합계, 그 상한. 상한에 닿으면 웹이 새 보드 만들기를 막는다.
+    get("/me/usage") {
+        val userId = call.requireUserId(server)
+        val usage = server.repo.usageOf(userId)
+        call.respond(
+            HttpStatusCode.OK,
+            UsageDto(usage.boards, server.repo.boardLimit, usage.fileBytes, server.repo.fileBytesLimit),
+        )
     }
 
     // Short-lived board token for Hocuspocus (AC-11). Members only.

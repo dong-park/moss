@@ -371,6 +371,7 @@ describe("startShare → 백필 트리거 (A)", () => {
       reissueInvite: vi.fn(async () => "tok"),
       removeMember: vi.fn(async () => undefined),
       myBoards: vi.fn(async () => []),
+      usage: vi.fn(async () => ({ boards: 0, maxBoards: 100, fileBytes: 0, maxFileBytes: 1024 ** 3 })),
     };
     configureShare({ api, onBoardShared });
 

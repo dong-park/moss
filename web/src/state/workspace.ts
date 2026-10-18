@@ -88,6 +88,7 @@ import {
   nearestSide,
 } from "@/components/workspace/connectors/geometry";
 import { useShare } from "./share/store";
+import { useAuth } from "./auth";
 
 /**
  * 시스템 보드 "머무는 생각"의 가상 id. DB에는 row를 두지 않고
@@ -1801,6 +1802,30 @@ type WsSet = (
 type WsGet = () => WorkspaceState;
 
 /**
+ * remote-mcp n1 (T2): 로그인한 사용자가 새 보드를 만들기 전에 서버 저장 상한을 확인한다.
+ * 상한에 닿으면 안내를 띄우고 false — 호출자는 보드를 만들지 않는다.
+ * 로그인하지 않은 경로는 서버를 부르지 않는다.
+ */
+async function serverStoreAllowsNewBoard(): Promise<boolean> {
+  if (!useAuth.getState().session) return true;
+  try {
+    return await (await import("./membership")).canCreateBoard();
+  } catch {
+    return true;
+  }
+}
+
+/** remote-mcp n1 (T1): 방금 만든 보드를 서버에 저장한다. 실패해도 로컬 보드는 그대로다. */
+function storeNewBoardOnServer(): void {
+  if (!useAuth.getState().session) return;
+  void import("./membership")
+    .then((m) => m.registerNewBoards())
+    .catch(() => {
+      /* 오프라인 — 다음 syncMyBoards가 다시 시도한다 */
+    });
+}
+
+/**
  * undo 만료·포기로 삭제가 확정된 보드들. 공유된 파일함이면 서버 행도 지운다
  * (spec/share-subboards.md "미룬 것" — 파일함을 지울 때 서버 행 정리).
  * 되살릴 수 있는 동안에는 부르지 않는다 — undo로 되살려도 서버 사본이 먼저 사라진다.
@@ -2138,6 +2163,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     // n23 재심사 2R-1: 이전 중에는 새 보드를 만들지 않는다. 만들면 setCurrentBoard가
     // 막혀 전환되지 않는 고아 보드가 남는다.
     if (get().migrationPending) return get().currentBoardId;
+    if (!(await serverStoreAllowsNewBoard())) return get().currentBoardId;
     const storage = useStorage.getState();
     if (!storage.initialized) await storage.init();
     const id = newBoardId();
@@ -2146,12 +2172,14 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const boards = await storage.loadBoards();
     set({ boards });
     await get().navigateToBoard(id);
+    storeNewBoardOnServer();
     return id;
   },
 
   createExampleBoard: async (name = "") => {
     // n23 재심사 2R-1: 이전 중 새 보드 생성 차단 — createBoard와 같은 가드.
     if (get().migrationPending) return get().currentBoardId;
+    if (!(await serverStoreAllowsNewBoard())) return get().currentBoardId;
     const storage = useStorage.getState();
     if (!storage.initialized) await storage.init();
 
@@ -2182,12 +2210,14 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const boards = await storage.loadBoards();
     set({ boards });
     await get().navigateToBoard(boardId);
+    storeNewBoardOnServer();
     return boardId;
   },
 
   createBoardFromTemplate: async (templateId, name, t, now) => {
     // n23 재심사 2R-1: 이전 중 새 보드 생성 차단(고아 보드·전환 불일치 방지).
     if (get().migrationPending) return get().currentBoardId;
+    if (!(await serverStoreAllowsNewBoard())) return get().currentBoardId;
     const template = getTemplate(templateId);
     if (!template) throw new Error(`Unknown templateId: ${templateId}`);
     const storage = useStorage.getState();
@@ -2237,6 +2267,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const boards = await storage.loadBoards();
     set({ boards });
     await get().navigateToBoard(boardId);
+    storeNewBoardOnServer();
     return boardId;
   },
 
@@ -3460,6 +3491,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     // n23 재심사 2R-1: 이전 중 새 보드로 카드를 옮기지 않는다 — 전환이 막혀
     // 카드만 사라진 것처럼 보인다.
     if (get().migrationPending) return get().currentBoardId;
+    if (!(await serverStoreAllowsNewBoard())) return get().currentBoardId;
     // 1) 새 보드 생성 (자동 전환 발생 — 카드 목록이 새 보드 기준으로 리로드됨)
     //    그 직전에 카드의 boardId를 새 보드로 옮겨두어야 한다.
     const storage = useStorage.getState();
@@ -3484,6 +3516,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const boards = await storage.loadBoards();
     set({ boards });
     await get().navigateToBoard(id);
+    storeNewBoardOnServer();
     return id;
   },
 

@@ -217,6 +217,11 @@ export interface Settings {
    */
   ownerUserId?: string | null;
   /**
+   * remote-mcp n1 (D1): 계정별로 "서버에 올릴 보드 고르기"를 끝낸 시각(ms). 이 시각 이후에
+   * 만든 보드는 로그인 상태에서 자동으로 서버에 저장된다. 없으면 아직 고르지 않았다.
+   */
+  serverStoreSince?: Record<string, number>;
+  /**
    * P1 AC-8: 이 기기에서 지운 보드 id(최근 순, 상한 있음). 보드 행을 지우는 순간
    * 남겨, `/b/<id>`로 다시 들어올 때 "찾을 수 없는 보드예요"를 띄운다. 휴지통
    * 복원으로 보드가 돌아오면 목록에서 뺀다. optional — 없으면 판정에 영향 없다.
