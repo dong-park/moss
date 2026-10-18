@@ -6,7 +6,7 @@
 **id**: FT-5
 **상위**: spec/frame-image-template/spec.md
 **deps**: n2
-**상태**: 아직 안 함
+**상태**: 끝남
 **담당 행**: T7
 **사람 확인**: 불필요
 
