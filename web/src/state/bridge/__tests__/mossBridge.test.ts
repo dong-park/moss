@@ -376,11 +376,25 @@ describe("dispatchOp", () => {
     });
 
     it("boards.create → createBoard 호출 + id 반환", async () => {
-      const createBoard = vi.fn(async () => "b-new");
+      const createBoard = vi.fn(async () => {
+        useWorkspace.setState({ currentBoardId: "b-new" });
+        return "b-new";
+      });
       useWorkspace.setState({ createBoard });
       const r = (await dispatchOp("boards.create", { name: "새 보드" })) as { id: string };
       expect(createBoard).toHaveBeenCalledWith("새 보드");
       expect(r.id).toBe("b-new");
+    });
+
+    it("boards.create → 라우터 전환(보드 로딩)이 끝난 뒤에야 돌려준다", async () => {
+      // 라우터 경유: createBoard는 URL만 바꾸고 먼저 돌아오고, 로딩은 나중에 끝난다.
+      const createBoard = vi.fn(async () => {
+        setTimeout(() => useWorkspace.setState({ currentBoardId: "b-late" }), 20);
+        return "b-late";
+      });
+      useWorkspace.setState({ createBoard });
+      await dispatchOp("boards.create", { name: "늦은 보드" });
+      expect(useWorkspace.getState().currentBoardId).toBe("b-late");
     });
 
     it("boards.rename → renameBoard 호출, 인자 검증", async () => {

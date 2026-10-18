@@ -78,6 +78,27 @@ function resolveBoard(raw: unknown): {
   };
 }
 
+/**
+ * 라우터를 거치는 보드 전환은 비동기다 — navigateToBoard가 URL만 바꾸고 돌아오면
+ * 라우트 effect가 나중에 보드를 불러온다. 그 사이 다음 op가 들어오면 새 메모가 로딩에
+ * 덮여 사라진다. 보드가 실제 현재 보드가 될 때까지 기다린 뒤 결과를 돌려준다.
+ */
+function waitForCurrentBoard(id: string, timeoutMs = 10_000): Promise<void> {
+  if (useWorkspace.getState().currentBoardId === id) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const unsub = useWorkspace.subscribe((s) => {
+      if (s.currentBoardId !== id) return;
+      clearTimeout(timer);
+      unsub();
+      resolve();
+    });
+    const timer = setTimeout(() => {
+      unsub();
+      reject(new Error(`보드 전환이 끝나지 않았습니다: ${id}`));
+    }, timeoutMs);
+  });
+}
+
 function newNoteId(): string {
   return `c-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6)}`;
 }
@@ -502,6 +523,7 @@ export async function dispatchOp(
     case "boards.create": {
       const name = typeof params.name === "string" ? params.name : "";
       const id = await ws.createBoard(name); // 새 보드로 전환됨
+      await waitForCurrentBoard(id);
       return { id };
     }
 
@@ -523,9 +545,10 @@ export async function dispatchOp(
     case "boards.switch": {
       const id = String(params.id ?? "");
       if (!id) throw new Error("id가 필요합니다");
-      // n3 D8: URL이 원본 — 라우터가 있으면 push하고, 상태 반영은 라우트 effect가 한다.
-      // 요청한 보드로의 전환이므로 결과는 요청 id를 돌려준다(라우터 반영은 비동기).
       await ws.navigateToBoard(id);
+      // n3 D8: URL이 원본 — 라우터가 있으면 push하고, 상태 반영은 라우트 effect가 한다.
+      // 그 반영(보드 로딩)이 끝날 때까지 기다려야 다음 op가 새 보드에 안전하게 들어간다.
+      if (id !== "system") await waitForCurrentBoard(id);
       return { currentBoardId: id };
     }
 
