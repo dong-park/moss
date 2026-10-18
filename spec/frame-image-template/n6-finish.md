@@ -6,7 +6,7 @@
 **id**: FT-6
 **상위**: spec/frame-image-template/spec.md
 **deps**: n4, n5, n7
-**상태**: 아직 안 함
+**상태**: 확인 대기
 **담당 행**: T8
 **사람 확인**: 필요
 
@@ -51,3 +51,10 @@ dev 서버에서 사람이 볼 장면을 캡처해 근거로 붙이고 확인 �
 
 ## 구현 메모
 
+
+- 2026-10-18 캡처 6장을 `evidence/n6/`에 뒀다(파일 해시 모두 다름): 01-empty, 02-memos, 03-selected, 04-bg, 05-dragging, 06-legacy-columns. 실제 dev 서버(webpack, :3000 — 서버 CORS가 3100을 막아 3000 사용)에 새 로컬 계정으로 로그인해 playwright로 찍었다.
+- 판 크기·메모 위치·옛 세로 칸 판 content(skin·columns, 폭 1200)는 스토어에 직접 넣어 맞췄다. 배경은 실제 우클릭 메뉴→파일 선택으로 올렸고, 판 끌기는 마우스로 했다.
+- 문서 세 곳 갱신: FEAT-frame-skins(대체됨 표시), FEAT-sticky-redesign §7 판 문단, FEAT-frame-feel 판 그림 메모.
+- 미증명: 판 50장 멤버 끌기 프레임 시간(헤드리스로는 잴 수 없음). 
+- 관찰: 선택 안 한 판의 선이 연회색이라 배경색과 가깝다(사람 확인 1번). dev 서버에서 dock 아이콘이 처음엔 안 보인 적이 있다(서버 재시작 중 일시적, 이후 정상).
+- 환경 메모: Next dev가 브라우저 경고(Yjs 'Invalid access') 스택을 서버가 기호화하다 패닉으로 죽는다(기존 문제). playwright에서 HMR 소켓의 클라이언트→서버 메시지를 버려 피했다.
