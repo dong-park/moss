@@ -466,7 +466,8 @@ server.registerTool(
 server.registerTool(
   "boards_delete",
   {
-    description: "보드를 삭제한다(시스템 보드 불가). 현재 보드였으면 시스템 보드로 복귀.",
+    description:
+      "보드를 삭제한다(시스템 보드 불가). 보드에 있던 메모는 지워지지 않고 시스템 보드로 옮겨진다 — 다시 그리려고 지울 때는 메모를 먼저 notes_delete로 지운다. 현재 보드였으면 시스템 보드로 복귀.",
     inputSchema: { id: z.string().describe("보드 id") },
   },
   async ({ id }) => viaBridge("boards.delete", { id }),
