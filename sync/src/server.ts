@@ -1,9 +1,11 @@
 import { Database } from "@hocuspocus/extension-database";
 import { Server } from "@hocuspocus/server";
+import * as Y from "yjs";
 import { verifyBoardToken } from "./auth.ts";
 import type { SyncConfig } from "./config.ts";
 import type { DocumentStore } from "./documentStore.ts";
 import { createGuardedStore, type BoardExists } from "./guardedStore.ts";
+import { createMcpEndpoint, type McpDeps } from "./mcp.ts";
 import type { MembershipChecker } from "./membership.ts";
 
 /** WebSocket close code used when a board is at its concurrent-connection cap. */
@@ -41,6 +43,8 @@ export interface SyncServerDeps {
   store: DocumentStore;
   isMember: MembershipChecker;
   boardExists: BoardExists;
+  /** Remote MCP endpoint (RM-4). Omit to leave the route unserved. */
+  mcp?: McpDeps;
 }
 
 export interface SyncServer {
@@ -65,6 +69,10 @@ export function createSyncServer(deps: SyncServerDeps): SyncServer {
     maxBytes: limits.storeBytes,
     boardExists: deps.boardExists,
   });
+  const mcpEndpoint =
+    deps.mcp === undefined
+      ? undefined
+      : createMcpEndpoint({ maxDocumentBytes: config.maxDocumentBytes, ...deps.mcp });
 
   const server = new Server(
     {
@@ -76,6 +84,12 @@ export function createSyncServer(deps: SyncServerDeps): SyncServer {
       // resident buys no cache hit and only accumulates memory. Store then
       // unload; a reconnect re-fetches from Postgres.
       unloadImmediately: true,
+      async onRequest({ instance, request, response }) {
+        // A rejection without an error tells Hocuspocus the response is already sent.
+        if (mcpEndpoint !== undefined && (await mcpEndpoint.handle(instance, request, response))) {
+          return Promise.reject();
+        }
+      },
       async onAuthenticate({ token, documentName }) {
         const claims = await verifyBoardToken(token, config.jwtSecret);
         if (claims.boardId !== documentName) {
@@ -93,6 +107,13 @@ export function createSyncServer(deps: SyncServerDeps): SyncServer {
           // Hocuspocus `Connection.close()` path only forwards a reason string.
           connection.webSocket.close(BOARD_FULL_CODE, "board full");
         }
+      },
+      // The loaded state is what the store holds, so closing a board nobody changed writes nothing.
+      async afterLoadDocument({ documentName, document }) {
+        guardedStore.remember(documentName, Y.encodeStateAsUpdate(document));
+      },
+      async afterUnloadDocument({ documentName }) {
+        guardedStore.forget(documentName);
       },
       extensions: [
         new Database({

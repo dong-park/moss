@@ -8,6 +8,7 @@ import { ViewToggle } from "@/components/workspace/table/ViewToggle";
 import { Breadcrumb } from "@/components/workspace/Breadcrumb";
 import { SubcanvasUndoToast } from "@/components/workspace/SubcanvasUndoToast";
 import { MemoExpandDialog } from "@/components/workspace/cards/MemoExpandDialog";
+import { MemberDeleteConfirmDialog } from "@/components/workspace/MemberDeleteConfirmDialog";
 import { Dock } from "@/components/workspace/Dock";
 import { DockDragPreview } from "@/components/workspace/DockDragPreview";
 import { ShortcutsBinder } from "@/components/workspace/ShortcutsBinder";
@@ -19,6 +20,7 @@ import { AuthBootstrap } from "@/components/auth/AuthBootstrap";
 import { AuthSessionOverlay } from "@/components/auth/SessionExpiredCard";
 import { WorkspaceGate } from "@/components/auth/WorkspaceGate";
 import { CollabSession } from "@/components/collab/CollabSession";
+import { UploadChoiceDialog } from "@/components/collab/UploadChoiceDialog";
 import { ShareControlMount } from "@/components/share/ShareControlMount";
 import { AccountMenu } from "@/components/auth/AccountMenu";
 import { OfflineBadge } from "@/components/presence/OfflineBadge";
@@ -191,6 +193,7 @@ export function WorkspaceShell() {
               <AccountMenu />
             </div>
             <CollabSession />
+            <UploadChoiceDialog />
             {isCanvas && (
               <>
                 {/* FEAT-subcanvas: 서브 캔버스 경로 — 캔버스 좌상단 고정 오버레이(중첩 시에만 렌더). */}
@@ -208,6 +211,7 @@ export function WorkspaceShell() {
             <AICallPreview />
             <SignalsPanel open={signalsOpen} onClose={() => setSignalsOpen(false)} />
             <MemoExpandDialog />
+            <MemberDeleteConfirmDialog />
             {/* FEAT-subcanvas: 함 삭제 5초 undo 토스트 (position: fixed bottom-center). */}
             <SubcanvasUndoToast />
             <ExportModal />

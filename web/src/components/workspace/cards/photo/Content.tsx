@@ -63,6 +63,7 @@ export function PhotoCardContent({
             className="flex h-full w-full items-center justify-center px-2 text-center text-xs text-text-soft"
           >
             {res.state === "pending" ? t("cards.photo.pending") : null}
+            {res.state === "failed" ? t("cards.photo.failed") : null}
             {res.state === "missing" ? t("cards.photo.missing") : null}
           </div>
         )}

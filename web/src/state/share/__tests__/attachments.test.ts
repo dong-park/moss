@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { resetAuthStore, useAuth, type AuthSession } from "@/state/auth";
+import * as Y from "yjs";
+import { AuthRequestError, resetAuthStore, useAuth, type AuthSession } from "@/state/auth";
 import { resetCollabStore } from "@/state/collab";
 import { putBlob, getBlob } from "@/state/db/opfs";
 import { activateBoardDoc } from "@/state/ydoc/activeDoc";
-import { putNote, readDocFile, setDocFile } from "@/state/ydoc/model";
+import { filesMap, putNote, readDocFile, setDocFile } from "@/state/ydoc/model";
 import type { Note } from "@/state/db/schema";
 import type { FilesApi } from "../files";
 import type { ShareApi } from "../api";
@@ -17,7 +18,9 @@ import {
   resolveAttachment,
   resolveAttachmentState,
   storeAttachment,
+  UPLOAD_FAILED_QUOTA,
   uploadAttachment,
+  uploadFailedKey,
 } from "../attachments";
 import { configureShare, resetShareStore, useShare } from "../store";
 
@@ -176,6 +179,100 @@ describe("storeAttachment (작업 3)", () => {
     await uploadAttachment("b1", "opfs:a.png", new Blob([new Uint8Array([1])]), "a.png");
 
     expect(readDocFile(handle.doc, "opfs:a.png")).toBeUndefined();
+  });
+});
+
+describe("저장 용량 초과 업로드 (remote-mcp n1)", () => {
+  it("413 quota_exceeded면 업로더에게 한 번 안내하고, 원본이 없는 기기는 '올리는 중' 대신 failed를 본다", async () => {
+    const notices: string[] = [];
+    configureAttachments({ notify: (m) => notices.push(m) });
+    useShare.setState({ byBoard: { b1: { status: "shared", inviteToken: null } } });
+    const handle = await activateBoardDoc("b1");
+    upload.mockRejectedValue(new AuthRequestError("저장 용량(1GB)을 다 썼어요", 413, "quota_exceeded"));
+
+    await uploadAttachment("b1", "opfs:a.png", new Blob([new Uint8Array([1])]), "a.png");
+    await uploadAttachment("b1", "opfs:b.png", new Blob([new Uint8Array([1])]), "b.png");
+
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toContain("이 기기에서만");
+    expect(readDocFile(handle.doc, "opfs:a.png")).toBeUndefined(); // 참조 키는 fileId 자리로 비워 둔다
+    expect(filesMap(handle.doc).get(uploadFailedKey("opfs:a.png"))).toBe(UPLOAD_FAILED_QUOTA);
+    // 이 테스트 기기에는 원본 blob이 없다 — 다른 기기와 같은 처지다.
+    expect(await resolveAttachment("opfs:a.png")).toEqual({ state: "failed", url: null });
+    expect(download).not.toHaveBeenCalled();
+  });
+
+  it("25MB 이미지(413 too_large)는 공유 문서에 !quota_exceeded를 쓰지 않고 '파일이 너무 커요' 쪽으로 안내한다", async () => {
+    const notices: string[] = [];
+    configureAttachments({ notify: (m) => notices.push(m) });
+    useShare.setState({ byBoard: { b1: { status: "shared", inviteToken: null } } });
+    const handle = await activateBoardDoc("b1");
+    upload.mockRejectedValue(new AuthRequestError("파일은 20MB까지 올릴 수 있어요", 413, "too_large"));
+    const big = new Blob([new Uint8Array(25 * 1024 * 1024)], { type: "image/png" });
+
+    await uploadAttachment("b1", "opfs:big.png", big, "big.png");
+
+    expect([...filesMap(handle.doc).values()]).not.toContain(UPLOAD_FAILED_QUOTA);
+    expect(filesMap(handle.doc).size).toBe(0);
+    expect(notices).toEqual(["파일은 20MB까지 올릴 수 있어요. 첨부를 서버에 올리지 못해 이 기기에서만 보여요."]);
+  });
+
+  it("code 없는 413(프록시 거절)도 저장 상한으로 읽지 않는다", async () => {
+    const notices: string[] = [];
+    configureAttachments({ notify: (m) => notices.push(m) });
+    useShare.setState({ byBoard: { b1: { status: "shared", inviteToken: null } } });
+    const handle = await activateBoardDoc("b1");
+    upload.mockRejectedValue(new AuthRequestError("POST files 413", 413));
+
+    await uploadAttachment("b1", "opfs:a.png", new Blob([new Uint8Array([1])]), "a.png");
+
+    expect(filesMap(handle.doc).size).toBe(0);
+    expect(notices).toEqual(["파일이 너무 커요. 첨부를 서버에 올리지 못해 이 기기에서만 보여요."]);
+  });
+
+  it("두 기기가 같은 첨부를 동시에 실패·성공으로 쓰면 성공이 이긴다", async () => {
+    useShare.setState({ byBoard: { b1: { status: "shared", inviteToken: null } } });
+    const handle = await activateBoardDoc("b1");
+    const other = new Y.Doc();
+    Y.applyUpdate(other, Y.encodeStateAsUpdate(handle.doc));
+    upload.mockRejectedValueOnce(new AuthRequestError("저장 용량(1GB)을 다 썼어요", 413, "quota_exceeded"));
+
+    // 이 기기는 상한에 막히고, 서로 동기화되기 전에 다른 기기는 같은 첨부를 올렸다.
+    await uploadAttachment("b1", "opfs:a.png", new Blob([new Uint8Array([1])]), "a.png");
+    setDocFile(other, "opfs:a.png", "f-9");
+    Y.applyUpdate(other, Y.encodeStateAsUpdate(handle.doc));
+    Y.applyUpdate(handle.doc, Y.encodeStateAsUpdate(other));
+
+    for (const doc of [handle.doc, other]) expect(readDocFile(doc, "opfs:a.png")).toBe("f-9");
+    expect(await resolveAttachmentState("opfs:a.png")).toBe("ready");
+    expect(download).toHaveBeenCalledWith("b1", "f-9", expect.any(String));
+  });
+
+  it("다음 백필은 용량 초과로 못 올린 첨부를 다시 올리고 실패 표시를 지운다", async () => {
+    useShare.setState({ byBoard: { b1: { status: "shared", inviteToken: null } } });
+    const handle = await activateBoardDoc("b1");
+    await putBlob("a.png", new Blob([new Uint8Array([1])]));
+    putNote(handle.doc, {
+      id: "n1",
+      boardId: "b1",
+      kind: "text",
+      x: 0,
+      y: 0,
+      width: 720,
+      rotation: 0,
+      content: "![](opfs://a.png)",
+      aiOptOut: false,
+      createdAt: 0,
+      updatedAt: 0,
+      lastVisitedAt: 0,
+    });
+    filesMap(handle.doc).set(uploadFailedKey("opfs:a.png"), UPLOAD_FAILED_QUOTA);
+
+    await backfillBoardAttachments("b1");
+
+    expect(upload).toHaveBeenCalledTimes(1);
+    expect(readDocFile(handle.doc, "opfs:a.png")).toBe("f-1");
+    expect(filesMap(handle.doc).has(uploadFailedKey("opfs:a.png"))).toBe(false);
   });
 });
 
@@ -371,6 +468,7 @@ describe("startShare → 백필 트리거 (A)", () => {
       reissueInvite: vi.fn(async () => "tok"),
       removeMember: vi.fn(async () => undefined),
       myBoards: vi.fn(async () => []),
+      usage: vi.fn(async () => ({ boards: 0, maxBoards: 100, fileBytes: 0, maxFileBytes: 1024 ** 3 })),
     };
     configureShare({ api, onBoardShared });
 

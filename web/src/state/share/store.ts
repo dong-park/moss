@@ -68,6 +68,8 @@ export interface ShareState {
   errorByBoard: Record<string, string | null>;
 
   startShare(boardId: string, boardName: string): Promise<void>;
+  /** T1: 초대 링크 없이 보드를 서버에 저장한다. 로그인한 사용자의 보드는 모두 이 경로로 올라간다. */
+  registerBoard(boardId: string, boardName: string): Promise<void>;
   reissueInvite(boardId: string): Promise<void>;
   removeMember(boardId: string, userId: string): Promise<void>;
   unshare(boardId: string): Promise<void>;
@@ -114,6 +116,38 @@ export const useShare = create<ShareState>((set) => ({
         },
       }));
       // n10w P1-4/A: 공유 성공 뒤 기존 로컬 첨부를 백필한다(실패해도 공유는 유지).
+      deps.onBoardShared?.(boardId);
+    } catch (err) {
+      set((s) => ({
+        busyByBoard: { ...s.busyByBoard, [boardId]: false },
+        errorByBoard: { ...s.errorByBoard, [boardId]: messageOf(err) },
+      }));
+      throw err;
+    } finally {
+      startingBoards.delete(boardId);
+    }
+  },
+
+  registerBoard: async (boardId, boardName) => {
+    if (startingBoards.has(boardId)) return;
+    startingBoards.add(boardId);
+    set((s) => ({
+      busyByBoard: { ...s.busyByBoard, [boardId]: true },
+      errorByBoard: { ...s.errorByBoard, [boardId]: null },
+    }));
+    try {
+      const session = await useAuth.getState().ensureSession();
+      const summary = await deps.api.share(boardId, boardName.trim() || UNNAMED_BOARD, session.accessToken);
+      set((s) => {
+        const prev = s.byBoard[boardId];
+        return {
+          busyByBoard: { ...s.busyByBoard, [boardId]: false },
+          byBoard: {
+            ...s.byBoard,
+            [boardId]: { ...prev, inviteToken: prev?.inviteToken ?? null, status: "shared", role: summary.role },
+          },
+        };
+      });
       deps.onBoardShared?.(boardId);
     } catch (err) {
       set((s) => ({

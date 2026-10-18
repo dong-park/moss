@@ -346,6 +346,7 @@
         "placeholder": "캡션 한 줄"
       },
       "pending": "사진 올리는 중",
+      "failed": "저장 용량이 다 차서 사진을 올리지 못했어요",
       "missing": "사진 없음",
       "pick": "사진 고르기",
       "lightboxLabel": "사진 크게 보기"
@@ -606,13 +607,18 @@
         "body": "이 기기에는 다른 계정으로 만든 보드가 있어요. 이대로 계속하면 그 보드는 이 계정에 올라가지 않아요.",
         "logout": "로그아웃",
         "continue": "이대로 계속",
-        "menu": "계정"
+        "menu": "계정",
+        "connectedApps": "연결된 앱"
       }
     },
     "offline": "오프라인",
     "tooLarge": "보드가 너무 커요",
     "attachment": {
-      "uploading": "올리는 중"
+      "uploading": "올리는 중",
+      "failed": "올리지 못함 · 저장 용량 초과",
+      "quotaFailed": "저장 용량을 다 써서 첨부를 서버에 올리지 못했어요. 이 기기에서만 보여요.",
+      "tooLarge": "{reason}. 첨부를 서버에 올리지 못해 이 기기에서만 보여요.",
+      "tooLargeReason": "파일이 너무 커요"
     },
     "share": {
       "aria": "공유",
@@ -629,7 +635,36 @@
       "remove": "내보내기",
       "unshare": "공유 해제",
       "leave": "나가기",
-      "full": "이 보드는 자리가 다 찼어요"
+      "full": "이 보드는 자리가 다 찼어요",
+      "deleteMembers": "멤버 {count}명의 보드에서도 사라집니다",
+      "deleteMembersUnknown": "다른 멤버의 보드에서도 사라질 수 있어요",
+      "deleteMembersBody": "멤버를 확인하지 못했어요. 지우면 실행 취소 시간이 지난 뒤 이 보드를 함께 쓰는 모두에게서 지워요.",
+      "deleteMembersDescription": "지우면 실행 취소 시간이 지난 뒤 이 보드를 함께 쓰는 모두에게서 지워요.",
+      "deleteMembersConfirm": "모두에게서 지우기",
+      "deleteMembersCancel": "취소"
+    },
+    "quota": {
+      "boards": "보드를 {max}개까지 저장할 수 있어요. 쓰지 않는 보드를 지우면 새로 만들 수 있어요.",
+      "storage": "저장 용량 {limit}을 다 썼어요. 첨부가 큰 보드를 지우면 새로 만들 수 있어요.",
+      "localOnly": "{reason}. 서버에 올리지 못한 보드는 이 기기에만 있어요."
+    },
+    "upload": {
+      "title": "서버에 올릴 보드를 골라 주세요",
+      "body": "고른 보드는 서버에 저장되어 내 계정으로 어느 기기에서든 열려요. 고르지 않은 보드는 이 기기에만 남아요.",
+      "confirm": "올리기",
+      "skip": "올리지 않고 계속",
+      "failed": "서버에 닿지 못했어요. 연결을 확인하고 다시 시도해 주세요."
+    },
+    "apps": {
+      "title": "연결된 앱",
+      "body": "내 보드에 접근하는 AI 앱이에요. 해제하면 그 앱은 바로 접근할 수 없어요.",
+      "empty": "연결된 앱이 없어요.",
+      "connectedAt": "{date} 연결",
+      "lastUsed": "{date} 사용",
+      "disconnect": "해제",
+      "disconnectNamed": "{name} 연결 해제",
+      "failed": "처리하지 못했어요. 잠시 뒤 다시 시도해 주세요.",
+      "close": "닫기"
     }
   }
 }

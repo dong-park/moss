@@ -12,12 +12,13 @@
  * 순수 로직은 deps 주입으로 테스트하고, 실경로는 기본 deps가 Ktor·Dexie·y-indexeddb를 탄다.
  */
 import { t } from "@/i18n";
-import { useAuth } from "./auth";
+import { AuthRequestError, useAuth } from "./auth";
 import { uploadBoardDoc } from "./collab";
 import type { BoardSummary } from "./auth/types";
-import { getDB, type Board } from "./db/schema";
+import { getDB, type Board, type ServerDeleteMark } from "./db/schema";
 import { useToasts } from "./notifications";
 import { realShareApi, type ShareApi } from "./share/api";
+import { askMemberDelete } from "./share/memberDeleteConfirm";
 import { useShare } from "./share/store";
 import { useStorage } from "./storage";
 import { isSystemBoardNote } from "./boardIds";
@@ -42,6 +43,11 @@ export interface MembershipDeps {
    */
   uploadDoc: (boardId: string, accessToken: string) => Promise<void>;
   notify: (message: string) => void;
+  /**
+   * D9: 다른 멤버가 있는 보드를 지우기 전에 묻는다. `others`는 소유자 말고 멤버 수,
+   * null이면 멤버를 확인하지 못했다. 거절하면 false.
+   */
+  confirmMemberDelete: (others: number | null) => Promise<boolean>;
 }
 
 const defaultDeps: MembershipDeps = {
@@ -51,6 +57,7 @@ const defaultDeps: MembershipDeps = {
   notify: (message) => {
     useToasts.getState().push({ tone: "calm", title: message });
   },
+  confirmMemberDelete: (others) => askMemberDelete(others),
 };
 
 let deps: MembershipDeps = defaultDeps;
@@ -62,6 +69,8 @@ export function configureMembership(next: Partial<MembershipDeps>): void {
 export function resetMembershipDeps(): void {
   deps = defaultDeps;
   notified.clear();
+  tooLargeBoards.clear();
+  removing.clear();
 }
 
 /** 같은 보드의 해제 알림을 한 번만 띄운다 (AC-13 "한 번"). */
@@ -234,7 +243,11 @@ export async function syncMyBoards(): Promise<void> {
   const localIds = new Set(localBoards.map((b) => b.id));
   const serverIds = new Set(summaries.map((s) => s.id));
 
+  // 이 기기에서 이 계정이 지운 보드는 서버 목록에 있어도 되살리지 않는다.
+  const hidden = await settleServerDeletes(summaries, localIds, session);
+
   for (const summary of summaries) {
+    if (hidden.has(summary.id)) continue;
     if (!localIds.has(summary.id)) {
       await saveRemoteBoard(summary);
     }
@@ -259,6 +272,7 @@ export async function syncMyBoards(): Promise<void> {
   const fresh = await storage.loadBoards();
   useWorkspace.setState({ boards: fresh });
   await shareSubBoards();
+  await registerNewBoards();
 }
 
 /** 원격 사본 행을 만든다. 공유 루트는 홈 아래 입구 카드를, 파일함은 부모 아래에 둔다. */
@@ -296,6 +310,7 @@ export async function shareSubBoards(): Promise<void> {
     for (const board of boards) {
       if (!board.parentBoardId || byBoard[board.id]?.status === "shared") continue;
       if (byBoard[board.parentBoardId]?.status !== "shared") continue;
+      if (tooLargeBoards.has(board.id)) continue;
       try {
         const summary = await deps.api.share(
           board.id,
@@ -306,7 +321,18 @@ export async function shareSubBoards(): Promise<void> {
         useShare.getState().restoreShared(board.id, summary.role);
         registered.push(board.id);
         progressed = true;
-      } catch {
+      } catch (err) {
+        // 저장 상한(413) — 이 파일함은 이 기기에만 남는다. 안내하고 더 시도하지 않는다.
+        if (isQuotaExceeded(err)) {
+          notifyLocalOnly(board.id, err.message);
+          progressed = false;
+          break;
+        }
+        // 크기 초과(413 too_large) — 이 파일함은 이 기기에만 남고 같은 세션에서 다시 올리지 않는다.
+        if (isBoardTooLarge(err)) {
+          skipTooLargeBoard(board.id, err);
+          continue;
+        }
         // 오프라인·권한 없음 — 다음 동기화 때 다시 시도한다.
       }
     }
@@ -327,18 +353,22 @@ export async function shareSubBoards(): Promise<void> {
  * (spec/share-subboards.md "미룬 것" — 파일함을 지울 때 서버 행 정리).
  *
  * 되살릴 수 있는 단계에서 부르면 안 된다 — undo로 사본을 되돌려도 서버에서 먼저 사라진다.
- * 부모도 같이 지워졌으면 서버 cascade가 처리하므로 건너뛴다. 공유 루트(부모 없음)는
- * 여기서 건드리지 않는다 — 소유자의 루트 해제 몫이다.
+ * 부모도 같이 지워졌으면 서버 cascade가 처리하므로 건너뛴다. 최상위 보드는 소유자 기기에서만
+ * 지운다 — 서버에 저장된 사본이 /me/boards로 되살아나거나 저장 상한을 차지하지 않게 한다.
+ * 다른 멤버가 있는 최상위 보드는 그 멤버가 D9 확인(confirmBoardDeletion) 때 있던 멤버일 때만
+ * 지운다 — 확인 없이 생긴 멤버가 있으면 남겨 두어 멤버 모르게 사라지지 않게 한다.
  */
 export async function unshareRemovedSubBoards(boards: Board[]): Promise<void> {
   if (boards.length === 0) return;
   const deleted = new Set(boards.map((b) => b.id));
-  const targets = boards.filter(
-    (b) =>
-      b.parentBoardId &&
-      !deleted.has(b.parentBoardId) &&
-      useShare.getState().byBoard[b.id]?.status === "shared",
-  );
+  const targets = boards.filter((b) => {
+    const info = useShare.getState().byBoard[b.id];
+    if (info?.status !== "shared") return false;
+    // 최상위 보드: 모든 보드가 서버에 있으니 지운 보드의 서버 사본도 지워야 /me/boards로 되살아나지 않고
+    // 저장 상한이 비워진다. 소유자만 지울 수 있다 — 편집자의 사본은 건드리지 않는다.
+    if (isTopLevel(b)) return info.role === "owner";
+    return b.parentBoardId != null && !deleted.has(b.parentBoardId);
+  });
   if (targets.length === 0) return;
   let session;
   try {
@@ -346,14 +376,246 @@ export async function unshareRemovedSubBoards(boards: Board[]): Promise<void> {
   } catch {
     return; // 로그인 안 한 기기는 서버를 부르지 않는다.
   }
+  const marks = new Map((await loadMarks(session.user.id)).map((m) => [m.boardId, m]));
   for (const board of targets) {
-    try {
-      await deps.api.unshare(board.id, session.accessToken);
-      useShare.getState().forgetBoard(board.id);
-    } catch {
-      // 오프라인·이미 지워짐 — 다음 syncMyBoards가 정리한다.
+    // 최상위 보드는 지금 멤버를 다시 본다. 멤버를 확인하지 못하면(오프라인) 지우지 않고
+    // 다음 syncMyBoards가 다시 본다.
+    if (isTopLevel(board) && (await checkMembers(board.id, marks.get(board.id), session)) !== "ok") {
+      continue;
     }
+    await deleteServerCopy(board.id, session);
   }
+}
+
+/**
+ * 파일함 cascade가 행을 지우기 시작했지만 실행 취소 상태(pendingSubcanvasUndo)가 아직
+ * 세워지지 않은 보드. 이 틈에 sync가 끼어도 서버 사본을 지우지 않는다. 단일 보드 삭제는
+ * 실행 취소 상태를 행보다 먼저 세우므로 여기에 넣지 않는다.
+ */
+const removing = new Set<string>();
+
+async function loadMarks(userId: string): Promise<ServerDeleteMark[]> {
+  return getDB().serverDeletes.where("userId").equals(userId).toArray();
+}
+
+async function dropMarks(userId: string, boardIds: string[]): Promise<void> {
+  if (boardIds.length === 0) return;
+  await getDB().serverDeletes.bulkDelete(boardIds.map((id) => [userId, id] as [string, string]));
+}
+
+/** 서버 사본이 지워졌거나 이미 없다 — 표시와 공유 상태를 뺀다. 보드는 되살리지 않는다. */
+async function forgetServerBoard(userId: string, boardId: string): Promise<void> {
+  await dropMarks(userId, [boardId]);
+  useShare.getState().forgetBoard(boardId);
+}
+
+/**
+ * 보드 행을 지우기 직전에 부른다. 로그인한 계정의 "이 기기에서 지운 보드"로 남긴다 — 편집자로
+ * 받은 최상위 보드는 서버에서 지울 수 없으니 남기지 않는다. hold면 돌려준 함수를 부를 때까지
+ * (실행 취소 상태를 세울 때까지) 실행 취소 기간으로 본다. confirmBoardDeletion이 먼저 남긴
+ * 승인 멤버(approvedMemberIds)는 그대로 둔다.
+ */
+export async function markServerDeletes(boards: Board[], hold: boolean): Promise<() => void> {
+  const ids = boards.map((b) => b.id);
+  if (hold) for (const id of ids) removing.add(id);
+  const release = () => {
+    if (hold) for (const id of ids) removing.delete(id);
+  };
+  const userId = useAuth.getState().session?.user.id;
+  if (!userId) return release;
+  const byBoard = useShare.getState().byBoard;
+  const targets = boards.filter((b) => !(isTopLevel(b) && byBoard[b.id]?.role === "editor"));
+  const db = getDB();
+  await db.transaction("rw", db.serverDeletes, async () => {
+    for (const board of targets) {
+      const prev = await db.serverDeletes.get([userId, board.id]);
+      await db.serverDeletes.put({
+        userId,
+        boardId: board.id,
+        approvedMemberIds: prev?.approvedMemberIds ?? [],
+      });
+    }
+  });
+  return release;
+}
+
+/** 실행 취소로 보드가 돌아왔다 — 어느 계정의 표시든 뺀다. 서버 사본은 건드리지 않는다. */
+export async function clearServerDeletes(boardIds: string[]): Promise<void> {
+  if (boardIds.length === 0) return;
+  await getDB().serverDeletes.where("boardId").anyOf(boardIds).delete();
+}
+
+/** 실행 취소 기간(5초) 안에 있는 보드. 이 동안은 서버 사본을 지우지 않는다. */
+function inUndoWindow(boardId: string): boolean {
+  const ws = useWorkspace.getState();
+  return (
+    removing.has(boardId) ||
+    ws.pendingBoardUndo?.board.id === boardId ||
+    ws.pendingSubcanvasUndo?.boards.some((b) => b.id === boardId) === true
+  );
+}
+
+/**
+ * 서버 사본을 지운다. 성공하거나 404(이미 없음)면 표시를 빼고 보드는 숨긴 채 둔다. 403(소유자가
+ * 아님)이면 표시를 빼고 보통 보드로 되돌린다.
+ * 돌려주는 값: "deleted" 지웠거나 이미 없다 · "normal" 표시를 빼고 보통 보드로 다룬다 · "retry" 일시 오류.
+ */
+async function deleteServerCopy(
+  boardId: string,
+  session: { accessToken: string; user: { id: string } },
+): Promise<"deleted" | "normal" | "retry"> {
+  try {
+    await deps.api.unshare(boardId, session.accessToken);
+  } catch (err) {
+    if (err instanceof AuthRequestError && err.status === 404) {
+      await forgetServerBoard(session.user.id, boardId);
+      return "deleted";
+    }
+    if (err instanceof AuthRequestError && err.status === 403) {
+      await dropMarks(session.user.id, [boardId]);
+      return "normal";
+    }
+    console.warn("[moss] 서버 보드 지우기 재시도 대기", boardId, statusOf(err));
+    return "retry";
+  }
+  await forgetServerBoard(session.user.id, boardId);
+  return "deleted";
+}
+
+/**
+ * 최상위 보드의 서버 사본을 지우기 직전에 지금 멤버를 서버에 묻는다(캐시된 목록은 늦을 수 있다).
+ * D9 승인은 확인 당시 멤버에 대한 것이라, 소유자 말고 승인에 없던 멤버가 있으면 표시를 빼고 보통
+ * 보드로 둔다. 확인 없이 지운 보드는 승인 멤버가 비어 있어 소유자 혼자일 때만 지운다.
+ * 돌려주는 값: "ok" 지워도 된다 · "normal" 보통 보드로 둔다 · "gone" 서버에 이미 없다 · "retry" 일시 오류.
+ */
+async function checkMembers(
+  boardId: string,
+  mark: ServerDeleteMark | undefined,
+  session: { accessToken: string; user: { id: string } },
+): Promise<"ok" | "normal" | "gone" | "retry"> {
+  let others: string[];
+  try {
+    others = otherMemberIds(await deps.api.members(boardId, session.accessToken));
+  } catch (err) {
+    if (err instanceof AuthRequestError && err.status === 404) {
+      await forgetServerBoard(session.user.id, boardId);
+      return "gone";
+    }
+    console.warn("[moss] 서버 보드 멤버 확인 실패", boardId, statusOf(err));
+    return "retry";
+  }
+  const approved = new Set(mark?.approvedMemberIds ?? []);
+  if (others.every((id) => approved.has(id))) return "ok";
+  await dropMarks(session.user.id, [boardId]);
+  return "normal";
+}
+
+function otherMemberIds(members: { id: string; role: string }[]): string[] {
+  return members.filter((m) => m.role !== "owner").map((m) => m.id);
+}
+
+function statusOf(err: unknown): number | string {
+  return err instanceof AuthRequestError ? err.status : "network";
+}
+
+/**
+ * syncMyBoards 앞단: 이 계정이 이 기기에서 지운 보드(serverDeletes)를 정리한다.
+ * 돌려주는 id는 이번 동기화에서 되살리지 않을 보드다. 서버에 없는 표시는 빼고, 로컬에 행이
+ * 있는 보드(지우는 중이거나 되살아난 보드)는 건드리지 않는다. 실행 취소 기간이 아니면 서버 사본
+ * 지우기를 다시 시도한다. 404(이미 없음)면 표시를 빼고 숨긴 채 두고, 403이거나 승인에 없던 멤버가
+ * 있으면 표시를 빼고 보통 보드처럼 되살린다.
+ */
+async function settleServerDeletes(
+  summaries: BoardSummary[],
+  localIds: Set<string>,
+  session: { accessToken: string; user: { id: string } },
+): Promise<Set<string>> {
+  const hidden = new Set<string>();
+  const marks = await loadMarks(session.user.id);
+  if (marks.length === 0) return hidden;
+  const onServer = new Map(summaries.map((s) => [s.id, s]));
+  const markedIds = new Set(marks.map((m) => m.boardId));
+  const gone: string[] = [];
+  for (const mark of marks) {
+    const id = mark.boardId;
+    const summary = onServer.get(id);
+    if (!summary) {
+      gone.push(id);
+      continue;
+    }
+    if (localIds.has(id)) continue;
+    hidden.add(id);
+    if (inUndoWindow(id)) continue;
+    // 부모도 지웠으면 부모를 지울 때 서버가 같이 지운다.
+    if (summary.parentId && markedIds.has(summary.parentId)) continue;
+    if (!summary.parentId) {
+      const check = await checkMembers(id, mark, session);
+      if (check === "normal") hidden.delete(id); // 승인 없이 생긴 멤버 — 멤버 모르게 지우지 않는다.
+      if (check !== "ok") continue;
+    }
+    if ((await deleteServerCopy(id, session)) === "normal") hidden.delete(id);
+  }
+  await dropMarks(session.user.id, gone);
+  return hidden;
+}
+
+/**
+ * D9 → A: 소유자가 서버에 저장된 최상위 보드를 지우기 전에 부른다. 다른 멤버가 있으면
+ * "멤버 N명의 보드에서도 사라집니다"를 묻고, 확정하면 그 자리에서 표시에 확인 당시 멤버
+ * (approvedMemberIds)를 남긴다. undo 만료 뒤 지금 멤버가 그 안에 있을 때만 서버 사본을 지운다.
+ * false면 호출자는 보드를 지우지 않는다. 멤버를 확인하지 못하면 수 없이 묻고, 승인 멤버를 남기지
+ * 않는다 — 그 보드는 지울 때 소유자 혼자여야 서버 사본이 지워진다.
+ */
+export async function confirmBoardDeletion(boards: Board[]): Promise<boolean> {
+  const byBoard = useShare.getState().byBoard;
+  const targets = boards.filter((b) => {
+    const info = byBoard[b.id];
+    return isTopLevel(b) && info?.status === "shared" && info.role === "owner";
+  });
+  if (targets.length === 0) return true;
+  let session;
+  try {
+    session = await useAuth.getState().ensureSession();
+  } catch {
+    return true; // 로그인 안 함 — 서버 사본을 지우지 않으니 물을 것도 없다.
+  }
+  const approved = new Map<string, string[]>();
+  let others: number | null;
+  try {
+    const ids = new Set<string>();
+    for (const board of targets) {
+      const boardOthers = otherMemberIds(await deps.api.members(board.id, session.accessToken));
+      approved.set(board.id, boardOthers);
+      for (const id of boardOthers) ids.add(id);
+    }
+    others = ids.size;
+  } catch {
+    others = null;
+    approved.clear();
+  }
+  if (others === 0) return true;
+  const ok = await deps.confirmMemberDelete(others);
+  if (ok) await writeApprovals(session.user.id, approved);
+  return ok;
+}
+
+/** D9 확인 당시 멤버를 표시에 바로 남긴다. 실패해도 지우기는 막지 않는다 — 승인 없는 표시로 다룬다. */
+async function writeApprovals(userId: string, approved: Map<string, string[]>): Promise<void> {
+  if (approved.size === 0) return;
+  const db = getDB();
+  try {
+    await db.transaction("rw", db.serverDeletes, async () => {
+      for (const [boardId, approvedMemberIds] of approved) {
+        await db.serverDeletes.put({ userId, boardId, approvedMemberIds });
+      }
+    });
+  } catch (err) {
+    console.warn("[moss] 지운 보드 표시 실패", [...approved.keys()], err);
+  }
+}
+
+function isTopLevel(board: Board): boolean {
+  return !board.parentBoardId || board.parentBoardId === SYSTEM_BOARD_ID;
 }
 
 /**
@@ -450,4 +712,208 @@ export async function openSharedBoard(boardId: string): Promise<BoardSummary | n
   const fresh = await storage.loadBoards();
   useWorkspace.setState({ boards: fresh });
   return summary;
+}
+/* ── remote-mcp n1: 로그인한 사용자의 보드는 모두 서버에 저장한다 ─────────────────── */
+
+function isQuotaExceeded(err: unknown): err is AuthRequestError {
+  // 413 too_large(크기 초과)는 계정 상한이 아니다 — isBoardTooLarge가 따로 다룬다.
+  return err instanceof AuthRequestError && err.status === 413 && err.code === "quota_exceeded";
+}
+
+function isBoardTooLarge(err: unknown): err is AuthRequestError {
+  return err instanceof AuthRequestError && err.status === 413 && err.code === "too_large";
+}
+
+/**
+ * 보드 크기(500MB)가 한도를 넘어 서버가 거절한 보드. 같은 세션에서는 다시 올리지 않는다 —
+ * 동기화마다 같은 보드를 올렸다 거절당하며 대역폭만 쓰기 때문이다. 앱을 다시 열면 한 번 더 시도한다.
+ */
+const tooLargeBoards = new Set<string>();
+
+/** 크기 초과로 올리지 못한 보드를 기록하고 사용자에게 한 번 알린다. 그 보드는 이 기기에만 남는다. */
+function skipTooLargeBoard(boardId: string, err: AuthRequestError): void {
+  tooLargeBoards.add(boardId);
+  notifyLocalOnly(boardId, err.message || t("collab.tooLarge"));
+}
+
+/**
+ * 저장 상한(413)에 막혀 서버에 못 올린 보드를 알린다. 그 보드는 이 기기에만 남는다.
+ * 다음 동기화가 같은 보드를 다시 시도해도 한 세션에 한 번만 띄운다.
+ */
+function notifyLocalOnly(boardId: string, reason: string): void {
+  const key = `quota:${boardId}`;
+  if (notified.has(key)) return;
+  notified.add(key);
+  deps.notify(t("collab.quota.localOnly", { reason: reason.replace(/[.。]\s*$/, "") }));
+}
+
+/** 용량을 사람이 읽는 단위로. 안내 문구에만 쓴다. */
+function formatLimitBytes(bytes: number): string {
+  const gb = 1024 * 1024 * 1024;
+  return bytes >= gb ? `${Math.round(bytes / gb)}GB` : `${Math.round(bytes / (1024 * 1024))}MB`;
+}
+
+/**
+ * T2: 새 보드를 만들기 전에 서버 저장 상한을 확인한다. 상한에 닿았으면 안내를 띄우고 false.
+ * 로그인하지 않았거나 서버에 닿지 못하면 막지 않는다 — 로컬 보드는 계속 만들 수 있다.
+ */
+export async function canCreateBoard(): Promise<boolean> {
+  let session;
+  try {
+    session = await useAuth.getState().ensureSession();
+  } catch {
+    return true;
+  }
+  let usage;
+  try {
+    usage = await deps.api.usage(session.accessToken);
+  } catch {
+    return true;
+  }
+  if (usage.boards >= usage.maxBoards) {
+    deps.notify(t("collab.quota.boards", { max: usage.maxBoards }));
+    return false;
+  }
+  if (usage.fileBytes >= usage.maxFileBytes) {
+    deps.notify(t("collab.quota.storage", { limit: formatLimitBytes(usage.maxFileBytes) }));
+    return false;
+  }
+  return true;
+}
+
+/** 이 기기에만 있는 최상위 보드. 파일함은 부모를 따라 올라가므로 고르는 대상이 아니다. */
+export async function listUploadCandidates(): Promise<Board[]> {
+  const storage = useStorage.getState();
+  if (!storage.initialized) await storage.init();
+  const byBoard = useShare.getState().byBoard;
+  return (await storage.loadBoards()).filter(
+    (b) =>
+      !b.isSystem &&
+      !b.remote &&
+      (!b.parentBoardId || b.parentBoardId === SYSTEM_BOARD_ID) &&
+      byBoard[b.id]?.status !== "shared",
+  );
+}
+
+export interface RegisterResult {
+  registered: string[];
+  /** 오프라인 같은 일시 오류로 못 올린 보드. 다시 시도할 수 있다. */
+  failed: string[];
+  /** 저장 상한에 막혔으면 서버 안내 문구. 첫 번째 막힘에서 멈추고, 남은 보드는 이 기기에만 있다. */
+  blocked: string | null;
+}
+
+/**
+ * 보드들을 서버에 저장한다(초대 링크 없이). 상한(413)에 닿으면 거기서 멈추고 안내를 띄운다.
+ * 오프라인 같은 일시 오류는 그 보드만 건너뛴다. 열려 있지 않은 보드는 내용도 한 번 올린다.
+ */
+export async function registerBoards(boardIds: string[]): Promise<RegisterResult> {
+  const result: RegisterResult = { registered: [], failed: [], blocked: null };
+  let blockedId: string | null = null;
+  let session;
+  try {
+    session = await useAuth.getState().ensureSession();
+  } catch {
+    return result; // 로그인 안 한 기기는 서버를 부르지 않는다 (AC-1).
+  }
+  const storage = useStorage.getState();
+  if (!storage.initialized) await storage.init();
+  const boards = await storage.loadBoards();
+  for (const id of boardIds) {
+    const board = boards.find((b) => b.id === id);
+    if (!board || useShare.getState().byBoard[id]?.status === "shared") continue;
+    if (tooLargeBoards.has(id)) continue;
+    try {
+      await useShare.getState().registerBoard(id, board.name);
+    } catch (err) {
+      if (isQuotaExceeded(err)) {
+        result.blocked = err.message;
+        blockedId = id;
+        break;
+      }
+      if (isBoardTooLarge(err)) {
+        skipTooLargeBoard(id, err); // 실패가 아니다 — 다시 시도해도 같은 답이라 고르기 창도 붙잡지 않는다.
+        continue;
+      }
+      result.failed.push(id); // 오프라인·일시 장애 — 다음 기회에 다시 시도한다.
+      continue;
+    }
+    if (useShare.getState().byBoard[id]?.status === "shared") result.registered.push(id);
+  }
+  await Promise.all(
+    result.registered.map((id) =>
+      deps.uploadDoc(id, session.accessToken).catch(() => {
+        /* 업로드 실패는 치명적이지 않다 — 그 보드를 열면 sync가 올린다 */
+      }),
+    ),
+  );
+  if (result.blocked && blockedId) notifyLocalOnly(blockedId, result.blocked);
+  return result;
+}
+
+/**
+ * 고르기를 끝낸 계정이면, 그 뒤에 만든 로컬 보드를 서버에 저장한다 (T1).
+ * 고르기 전이면 아무것도 하지 않는다 — 고르지 않은 보드는 올리지 않는다 (D1).
+ */
+export async function registerNewBoards(): Promise<void> {
+  const userId = useAuth.getState().user?.id;
+  if (!userId) return;
+  const since = useStorage.getState().settings?.serverStoreSince?.[userId];
+  if (since == null) return;
+  const fresh = (await listUploadCandidates()).filter((b) => b.createdAt >= since);
+  if (fresh.length === 0) return;
+  await registerBoards(fresh.map((b) => b.id));
+}
+
+const preparingChoice = new Set<string>();
+
+/**
+ * D1: 처음 로그인한 계정에게 보여 줄 "올릴 보드 고르기" 대상을 준비한다.
+ * 계정의 서버 보드를 먼저 받아 이미 올라간 보드를 뺀다. 고를 보드가 없으면 창 없이 끝낸다.
+ * 이미 끝낸 계정이거나 준비 중이면 null.
+ */
+export async function prepareUploadChoice(
+  userId: string,
+): Promise<{ boards: Board[]; since: number } | null> {
+  if (useStorage.getState().settings?.serverStoreSince?.[userId] != null) return null;
+  if (preparingChoice.has(userId)) return null;
+  preparingChoice.add(userId);
+  try {
+    await syncMyBoards();
+    // syncMyBoards는 로그인이 풀렸거나 오프라인이면 아무것도 못 한다 — 그때 고르기를 끝내지 않는다.
+    try {
+      await useAuth.getState().ensureSession();
+    } catch {
+      return null;
+    }
+    const since = Date.now();
+    const boards = await listUploadCandidates();
+    if (boards.length === 0) {
+      await markUploadChoiceDone(userId, since);
+      return null;
+    }
+    return { boards, since };
+  } finally {
+    preparingChoice.delete(userId);
+  }
+}
+
+async function markUploadChoiceDone(userId: string, since: number): Promise<void> {
+  const current = useStorage.getState().settings?.serverStoreSince ?? {};
+  await useStorage.getState().updateSettings({ serverStoreSince: { ...current, [userId]: since } });
+}
+
+/** 고른 보드를 올리고 이 계정의 고르기를 끝낸다. 고르지 않은 보드는 이 기기에만 남는다. */
+export async function finishUploadChoice(
+  userId: string,
+  since: number,
+  selectedIds: string[],
+): Promise<RegisterResult> {
+  const result: RegisterResult =
+    selectedIds.length > 0
+      ? await registerBoards(selectedIds)
+      : { registered: [], failed: [], blocked: null };
+  // 일시 오류로 못 올린 보드가 있으면 끝내지 않는다 — 창이 열린 채 다시 시도할 수 있다.
+  if (result.failed.length === 0) await markUploadChoiceDone(userId, since);
+  return result;
 }

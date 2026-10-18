@@ -6,6 +6,7 @@ import com.moss.server.Files
 import com.moss.server.GoogleUser
 import com.moss.server.Invites
 import com.moss.server.Members
+import com.moss.server.QuotaExceededException
 import com.moss.server.Users
 import com.moss.server.dbQuery
 import com.moss.server.newId
@@ -45,7 +46,10 @@ data class InvitePreview(val boardName: String, val ownerName: String)
 enum class JoinResult { JOINED, ALREADY_MEMBER, FULL, MISSING }
 
 /** Outcome of [BoardRepository.saveFile]; each carries its own compensation. */
-enum class SaveFileResult { ACCEPTED, QUOTA_EXCEEDED, BOARD_MISSING }
+enum class SaveFileResult { ACCEPTED, QUOTA_EXCEEDED, USER_QUOTA_EXCEEDED, BOARD_MISSING }
+
+/** 한 사용자가 소유한 보드 수와 첨부 합계(바이트). 파일함도 보드로 센다. */
+data class UserUsage(val boards: Int, val fileBytes: Long)
 
 object InviteTokens {
     private val random = SecureRandom()
@@ -65,6 +69,8 @@ object InviteTokens {
 class BoardRepository(
     private val maxMembersPerBoard: Int,
     private val maxBoardFileBytes: Long = DEFAULT_MAX_BOARD_FILE_BYTES,
+    private val maxBoardsPerUser: Int = DEFAULT_MAX_BOARDS_PER_USER,
+    private val maxUserFileBytes: Long = DEFAULT_MAX_USER_FILE_BYTES,
 ) {
 
     suspend fun upsertUser(google: GoogleUser): UserRow = dbQuery {
@@ -152,6 +158,7 @@ class BoardRepository(
     suspend fun shareSubBoard(boardId: String, parentId: String, name: String) = dbQuery {
         val root = rootIn(parentId)
         val ownerId = Boards.selectAll().where { Boards.id eq root }.single()[Boards.ownerId]
+        ensureRoomForNewBoard(boardId, ownerId)
         Boards.insertIgnore {
             it[id] = boardId
             it[Boards.ownerId] = ownerId
@@ -167,6 +174,7 @@ class BoardRepository(
      * it silently keeps the first row (callers re-read ownership afterwards).
      */
     suspend fun shareBoard(boardId: String, ownerId: UUID, name: String): BoardRow = dbQuery {
+        ensureRoomForNewBoard(boardId, ownerId)
         val now = System.currentTimeMillis()
         Boards.insertIgnore {
             it[id] = boardId
@@ -182,6 +190,12 @@ class BoardRepository(
         }
         BoardRow(boardId, ownerId, name)
     }
+
+    /** 소유자의 보드 수와 첨부 합계. 상한 안내와 새 보드 만들기 사전 확인이 쓴다. */
+    suspend fun usageOf(ownerId: UUID): UserUsage = dbQuery { usageIn(ownerId) }
+
+    val boardLimit: Int get() = maxBoardsPerUser
+    val fileBytesLimit: Long get() = maxUserFileBytes
 
     suspend fun renameBoard(boardId: String, name: String) {
         dbQuery { Boards.update({ Boards.id eq boardId }) { it[Boards.name] = name } }
@@ -345,6 +359,10 @@ class BoardRepository(
         val total = Files.size.sum()
         val used = Files.select(total).where { Files.boardId eq boardId }.single()[total] ?: 0L
         if (used + size > maxBoardFileBytes) return@dbQuery SaveFileResult.QUOTA_EXCEEDED
+        // 사용자 합계 — 보드 소유자 계정으로 센다. 사용자 행을 잠가 다른 보드의 동시 업로드가 같이 통과하지 못하게 한다.
+        val owner = Boards.selectAll().where { Boards.id eq boardId }.single()[Boards.ownerId]
+        Users.selectAll().where { Users.id eq owner }.forUpdate().singleOrNull()
+        if (usageIn(owner).fileBytes + size > maxUserFileBytes) return@dbQuery SaveFileResult.USER_QUOTA_EXCEEDED
         Files.insert {
             it[id] = fileId
             it[Files.boardId] = boardId
@@ -354,6 +372,30 @@ class BoardRepository(
             it[createdAt] = System.currentTimeMillis()
         }
         SaveFileResult.ACCEPTED
+    }
+
+    private fun usageIn(ownerId: UUID): UserUsage {
+        val boards = Boards.selectAll().where { Boards.ownerId eq ownerId }.count().toInt()
+        val total = Files.size.sum()
+        val bytes = Files.join(Boards, JoinType.INNER, Files.boardId, Boards.id)
+            .select(total).where { Boards.ownerId eq ownerId }.single()[total] ?: 0L
+        return UserUsage(boards, bytes)
+    }
+
+    /**
+     * 새 보드 행을 만들기 전에 사용자 상한을 확인한다. 이미 있는 보드의 재등록(멱등)은 통과한다.
+     * 사용자 행을 잠가 같은 사용자의 동시 등록이 상한을 같이 넘지 못하게 한다.
+     */
+    private fun ensureRoomForNewBoard(boardId: String, ownerId: UUID) {
+        Users.selectAll().where { Users.id eq ownerId }.forUpdate().singleOrNull() ?: return
+        if (Boards.selectAll().where { Boards.id eq boardId }.count() > 0) return
+        val usage = usageIn(ownerId)
+        if (usage.boards >= maxBoardsPerUser) {
+            throw QuotaExceededException("보드는 ${maxBoardsPerUser}개까지 저장할 수 있어요")
+        }
+        if (usage.fileBytes >= maxUserFileBytes) {
+            throw QuotaExceededException("저장 용량(${formatBytes(maxUserFileBytes)})을 다 썼어요")
+        }
     }
 
     private fun rootIn(boardId: String): String {
@@ -370,5 +412,18 @@ class BoardRepository(
 
         /** D12: 500 MB per board. */
         const val DEFAULT_MAX_BOARD_FILE_BYTES: Long = 500L * 1024 * 1024
+
+        /** D2: 사용자당 보드 100개(파일함 포함). */
+        const val DEFAULT_MAX_BOARDS_PER_USER: Int = 100
+
+        /** D2: 사용자당 첨부 합계 1 GB. */
+        const val DEFAULT_MAX_USER_FILE_BYTES: Long = 1024L * 1024 * 1024
+
+        fun formatBytes(bytes: Long): String {
+            val gb = 1024L * 1024 * 1024
+            val mb = 1024L * 1024
+            return if (bytes >= gb && bytes % gb == 0L) "${bytes / gb}GB" else "${bytes / mb}MB"
+        }
     }
 }
+

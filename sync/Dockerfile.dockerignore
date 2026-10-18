@@ -1,0 +1,6 @@
+**/node_modules
+sync/test
+sync/scripts
+sync/data
+**/*.test.ts
+**/*.md

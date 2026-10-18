@@ -28,7 +28,11 @@ export function Breadcrumb() {
     [boards, currentBoardId],
   );
 
-  const shared = useShare((s) => s.byBoard[currentBoardId]?.status === "shared");
+  // 로그인한 사용자의 보드는 모두 서버에 있다 — "공유" 표시는 다른 사람이 함께 쓰는 보드에만 단다.
+  const shared = useShare((s) => {
+    const info = s.byBoard[currentBoardId];
+    return info?.status === "shared" && (info.role === "editor" || (info.members?.length ?? 0) > 1);
+  });
 
   // 조상은 클릭 가능한 조각, 마지막 조각은 지금 보드 이름이다.
   // 헤더(BoardPicker)가 마운트되지 않아 이름을 여기서 안 그리면 "홈 ›"에서 끊겨 보인다.

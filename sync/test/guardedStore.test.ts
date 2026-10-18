@@ -106,4 +106,33 @@ describe("createGuardedStore", () => {
     await store.delete(BOARD);
     expect(inner.has(BOARD)).toBe(false);
   });
+
+  test("skips a state equal to the last one stored or loaded; delete and forget clear that record", async () => {
+    let writes = 0;
+    const store = createGuardedStore(
+      Object.assign(inner, {
+        store: async (name: string, state: Uint8Array) => {
+          writes += 1;
+          await MemoryDocumentStore.prototype.store.call(inner, name, state);
+        },
+      }),
+      { maxBytes: 1024, boardExists: async () => alive },
+    );
+    expect(await store.store(BOARD, bytes("a"))).toEqual({ stored: true, bytes: 1 });
+    expect(await store.store(BOARD, bytes("a"))).toEqual({ stored: false, reason: "unchanged" });
+    expect(await store.store(BOARD, bytes("b"))).toEqual({ stored: true, bytes: 1 });
+    expect(writes).toBe(2);
+
+    // A board loaded with state "c" and closed unchanged writes nothing.
+    store.remember(BOARD, bytes("c"));
+    expect(await store.store(BOARD, bytes("c"))).toEqual({ stored: false, reason: "unchanged" });
+    store.forget(BOARD);
+    expect(await store.store(BOARD, bytes("c"))).toEqual({ stored: true, bytes: 1 });
+
+    // After a revoke the same state is not "already stored" any more; the board check decides.
+    await store.delete(BOARD);
+    alive = false;
+    expect(await store.store(BOARD, bytes("c"))).toEqual({ stored: false, reason: "board_gone" });
+    expect(writes).toBe(3);
+  });
 });

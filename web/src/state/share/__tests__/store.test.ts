@@ -28,6 +28,7 @@ function fakeShareApi(overrides: Partial<ShareApi> = {}): ShareApi {
     removeMember: vi.fn(async () => undefined),
     members: vi.fn(async () => [] as BoardMember[]),
     myBoards: vi.fn(async () => []),
+    usage: vi.fn(async () => ({ boards: 0, maxBoards: 100, fileBytes: 0, maxFileBytes: 1024 ** 3 })),
     ...overrides,
   };
 }

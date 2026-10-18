@@ -1,5 +1,16 @@
 import * as Y from "yjs";
 import type { Board, Connection, Note } from "@/state/db/schema";
+import {
+  BOARD_FIELDS,
+  CONNECTION_FIELDS,
+  CONNECTIONS_MAP,
+  FILES_MAP,
+  META_MAP,
+  NOTE_FIELDS,
+  NOTES_MAP,
+  readFields,
+  writeFields,
+} from "@moss/doc-model";
 import { transactLocal } from "./origin";
 
 /**
@@ -14,9 +25,6 @@ import { transactLocal } from "./origin";
  * Y.Text가 아니라 문자열 필드다 — 문자 단위 병합은 Milkdown 연동이 필요해
  * 이번 범위 밖(spec §14).
  */
-export const NOTES_MAP = "notes";
-export const CONNECTIONS_MAP = "connections";
-export const META_MAP = "meta";
 /**
  * FEAT-collab-auth n10 — 첨부 로컬 참조 → 서버 fileId 매핑.
  *
@@ -25,7 +33,8 @@ export const META_MAP = "meta";
  * 받는 쪽은 맵에 fileId가 생기면 서버에서 내려받아 OPFS에 같은 이름으로 캐시한다.
  * 값이 아직 없으면 '올리는 중' 자리표시자다.
  */
-export const FILES_MAP = "files";
+
+export { NOTES_MAP, CONNECTIONS_MAP, META_MAP, FILES_MAP };
 
 /**
  * 기기 로컬 필드는 문서에 쓰지 않는다 — 보드를 여는 사람마다 값이 달라서
@@ -35,24 +44,12 @@ export type SharedNote = Omit<Note, "lastVisitedAt">;
 /** n9: `remote`(이 기기가 서버에서 받아온 공유 보드인지)도 기기 로컬 — 문서에 쓰지 않는다. */
 export type SharedBoard = Omit<Board, "lastOpenedAt" | "remote">;
 
-// Record<keyof T, true>라서 스키마에 필드가 늘면 여기서 컴파일 에러가 난다.
-const NOTE_KEYS: Record<keyof SharedNote, true> = {
-  id: true, boardId: true, kind: true, x: true, y: true, width: true, height: true,
-  rotation: true, content: true, attachmentRef: true, mediaType: true, color: true,
-  overlay: true, frameId: true, title: true, aiOptOut: true, createdAt: true, updatedAt: true,
-  textSize: true, autoWidth: true,
-};
-const CONNECTION_KEYS: Record<keyof Connection, true> = {
-  id: true, sourceNoteId: true, targetNoteId: true, source: true, status: true, label: true,
-  createdAt: true, sourceSide: true, targetSide: true,
-};
-const BOARD_KEYS: Record<keyof SharedBoard, true> = {
-  id: true, name: true, isSystem: true, templateId: true, parentBoardId: true, createdAt: true,
-  updatedAt: true,
-};
-const NOTE_FIELDS = Object.keys(NOTE_KEYS);
-const CONNECTION_FIELDS = Object.keys(CONNECTION_KEYS);
-const BOARD_FIELDS = Object.keys(BOARD_KEYS);
+// 필드 목록은 @moss/doc-model에만 있다. 스키마에 필드가 늘어 목록에서 빠지면 아래가 컴파일 에러가 난다.
+type MissingFields<T, L extends readonly string[]> = Exclude<keyof T, L[number]>;
+const _noteComplete: MissingFields<SharedNote, typeof NOTE_FIELDS> extends never ? true : never = true;
+const _connectionComplete: MissingFields<Connection, typeof CONNECTION_FIELDS> extends never ? true : never = true;
+const _boardComplete: MissingFields<SharedBoard, typeof BOARD_FIELDS> extends never ? true : never = true;
+void [_noteComplete, _connectionComplete, _boardComplete];
 
 export function toSharedNote(note: Note): SharedNote {
   const shared: Partial<Note> = { ...note };
@@ -65,37 +62,6 @@ export function toSharedBoard(board: Board): SharedBoard {
   delete shared.lastOpenedAt;
   delete shared.remote;
   return shared as SharedBoard;
-}
-
-/** undefined 필드는 키를 만들지 않는다 — 왕복 시 없는 키가 undefined로 돌아온다. */
-function writeFields(map: Y.Map<unknown>, source: object, fields: readonly string[]): void {
-  const record = source as Record<string, unknown>;
-  for (const field of fields) {
-    const value = record[field];
-    if (value === undefined) {
-      if (map.has(field)) map.delete(field);
-    } else if (map.get(field) !== value) {
-      // 같은 값을 다시 set하면 Yjs는 새 Item을 쌓는다 — 저장량·동기화량이 는다.
-      map.set(field, value);
-    }
-  }
-}
-
-function readFields<T>(map: Y.Map<unknown>, fields: readonly string[]): T {
-  const out: Record<string, unknown> = {};
-  for (const field of fields) {
-    const value = map.get(field);
-    // 원격 peer가 비원시 값(Y 타입·객체)을 넣어도 스토어로 흘리지 않는다. 스키마 필드는 전부 원시값이다.
-    if (isPrimitive(value)) out[field] = value;
-  }
-  return out as T;
-}
-
-const PRIMITIVE_TYPES = new Set(["string", "number", "boolean"]);
-
-// null은 통과한다 — boardId 같은 스키마 필드가 null을 쓴다.
-function isPrimitive(value: unknown): boolean {
-  return value === null || PRIMITIVE_TYPES.has(typeof value);
 }
 
 /** id가 문자열이 아니면 불완전한 항목이다 — 읽기에서 건너뛴다. */

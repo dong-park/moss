@@ -23,6 +23,13 @@
  * 직렬화를 거부하고 파싱에서 null — 저장형 XSS 차단(리뷰 P1).
  */
 
+import {
+  FILE_BLOCK_TITLE,
+  escapeBlockLabel as escapeLabel,
+  fileBlockMarkdown,
+  imageBlockMarkdown,
+  unescapeBlockLabel as unescapeLabel,
+} from "@moss/doc-model";
 import { toMarkdownUrl, toStorageRef } from "@/state/db/opfsRef";
 
 /** 녹음 블록의 label은 항상 고정 문자열이다(spec §11 표). */
@@ -37,7 +44,7 @@ export type Block =
 export type BlockType = Block["type"];
 
 /** 문단 단독 링크 마크의 title 표식 — 이 셋만 블록 후보(그 외는 일반 링크). */
-export const BLOCK_LINK_TITLES = new Set(["moss-link", "moss-audio", "moss-file"]);
+export const BLOCK_LINK_TITLES = new Set(["moss-link", "moss-audio", FILE_BLOCK_TITLE]);
 
 /**
  * link 마크 하나(문단 단독)의 title·href·label을 블록으로 판정한다(spec §11).
@@ -56,7 +63,7 @@ export function classifyLinkMark(input: {
     if (!href.startsWith("opfs://")) return null;
     return { type: "audio", ref: toStorageRef(href) };
   }
-  if (title === "moss-file") {
+  if (title === FILE_BLOCK_TITLE) {
     if (!href.startsWith("opfs://")) return null;
     return { type: "file", ref: toStorageRef(href), filename: label };
   }
@@ -76,17 +83,8 @@ export interface BlockCounts {
 }
 
 /* ── 라벨(제목·파일명) 이스케이프 ─────────────────────────────
- * `]`·`"`·`\`는 마크다운 링크 문법을 깨거나(대괄호 종료) title 표식과
- * 충돌한다(따옴표). 역슬래시 1개로 이스케이프하고, 파싱 때 되돌린다. */
-function escapeLabel(label: string): string {
-  // 개행·제어문자는 블록을 두 줄로 쪼개 복구 불가로 만든다 → 공백으로(리뷰 P1).
-  const oneLine = label.replace(/[\u0000-\u001f\u007f]+/g, " ");
-  return oneLine.replace(/[\\\]"()]/g, (m) => "\\" + m);
-}
-
-function unescapeLabel(label: string): string {
-  return label.replace(/\\(.)/g, "$1");
-}
+ * 규칙은 sync MCP 업로드와 같아야 해서 @moss/doc-model의 escapeBlockLabel·
+ * unescapeBlockLabel을 쓴다(`]`·`"`·괄호·역슬래시 이스케이프, 개행은 공백). */
 
 /* ── 링크 URL ───────────────────────────────────────────────── */
 
@@ -118,13 +116,11 @@ export function serializeBlock(block: Block): string | null;
 export function serializeBlock(block: Block): string | null {
   switch (block.type) {
     case "image":
-      return `![](${toMarkdownUrl(block.ref)})`;
+      return imageBlockMarkdown(block.ref);
     case "audio":
       return `[${AUDIO_LABEL}](${toMarkdownUrl(block.ref)} "moss-audio")`;
-    case "file": {
-      const label = escapeLabel(block.filename);
-      return `[${label}](${toMarkdownUrl(block.ref)} "moss-file")`;
-    }
+    case "file":
+      return fileBlockMarkdown(block.ref, block.filename);
     case "link": {
       const url = normalizeLinkUrl(block.url);
       if (!url) return null;
@@ -140,7 +136,7 @@ const IMAGE_RE = /^!\[\]\((opfs:\/\/\S+)\)$/;
 const AUDIO_RE = new RegExp(`^\\[${AUDIO_LABEL}\\]\\((opfs:\\/\\/\\S+) "moss-audio"\\)$`);
 /** 라벨은 escapeLabel 결과만 인정한다 — 이스케이프 안 된 `\ ] " ( )`가 있으면 불일치. */
 const LABEL = String.raw`((?:[^\\\]"()]|\\.)*)`;
-const FILE_RE = new RegExp(String.raw`^\[${LABEL}\]\((opfs:\/\/\S+) "moss-file"\)$`);
+const FILE_RE = new RegExp(String.raw`^\[${LABEL}\]\((opfs:\/\/\S+) "${FILE_BLOCK_TITLE}"\)$`);
 const LINK_RE = new RegExp(String.raw`^\[${LABEL}\]\((\S+) "moss-link"\)$`);
 
 /**
@@ -161,7 +157,7 @@ export function parseBlock(paragraphText: string): Block | null {
   m = FILE_RE.exec(s);
   if (m) {
     return classifyLinkMark({
-      title: "moss-file",
+      title: FILE_BLOCK_TITLE,
       href: m[2],
       label: unescapeLabel(m[1]),
     });

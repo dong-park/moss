@@ -88,6 +88,7 @@ import {
   nearestSide,
 } from "@/components/workspace/connectors/geometry";
 import { useShare } from "./share/store";
+import { useAuth } from "./auth";
 
 /**
  * 시스템 보드 "머무는 생각"의 가상 id. DB에는 row를 두지 않고
@@ -251,6 +252,8 @@ export interface PendingBoardUndo {
   board: Board;
   affectedNoteIds: string[];
   expiresAt: number;
+  /** 행 지우기가 끝났는가. false인 동안은 실행 취소·닫기를 받지 않는다(지우기가 이어서 행을 지운다). */
+  ready: boolean;
 }
 
 export const BOARD_UNDO_MS = 5000;
@@ -472,6 +475,7 @@ interface WorkspaceState {
   /**
    * 직전에 삭제된 보드를 5초간 복구할 수 있도록 보관하는 스냅샷.
    * UI(BoardUndoToast)가 구독하고, expiresAt 시점에 자동으로 null로 비워진다.
+   * remote-mcp n1 서버 삭제 보호도 이 값을 본다.
    */
   pendingBoardUndo: PendingBoardUndo | null;
   /** 삭제 확인 다이얼로그 대상 보드 id (null이면 닫힘). */
@@ -738,9 +742,10 @@ interface WorkspaceState {
   /** 마지막으로 그린 카드의 overlay 전체 지움(되돌리기 가능). */
   penClear: () => void;
 
-  remove: (id: string) => void;
+  /** `deleteConfirmed`: D9 확인을 이미 받았다(내부 재호출용). */
+  remove: (id: string, opts?: { deleteConfirmed?: boolean }) => void;
   /** ids를 주면 그 카드들을, 생략하면 지금 선택을 지운다. */
-  removeSelected: (ids?: string[]) => void;
+  removeSelected: (ids?: string[], opts?: { deleteConfirmed?: boolean }) => void;
 
   /* ─────────── FEAT-trash: 휴지통 ─────────── */
   /** 휴지통 패널 열림 상태. */
@@ -1809,6 +1814,30 @@ type WsSet = (
 type WsGet = () => WorkspaceState;
 
 /**
+ * remote-mcp n1 (T2): 로그인한 사용자가 새 보드를 만들기 전에 서버 저장 상한을 확인한다.
+ * 상한에 닿으면 안내를 띄우고 false — 호출자는 보드를 만들지 않는다.
+ * 로그인하지 않은 경로는 서버를 부르지 않는다.
+ */
+async function serverStoreAllowsNewBoard(): Promise<boolean> {
+  if (!useAuth.getState().session) return true;
+  try {
+    return await (await import("./membership")).canCreateBoard();
+  } catch {
+    return true;
+  }
+}
+
+/** remote-mcp n1 (T1): 방금 만든 보드를 서버에 저장한다. 실패해도 로컬 보드는 그대로다. */
+function storeNewBoardOnServer(): void {
+  if (!useAuth.getState().session) return;
+  void import("./membership")
+    .then((m) => m.registerNewBoards())
+    .catch(() => {
+      /* 오프라인 — 다음 syncMyBoards가 다시 시도한다 */
+    });
+}
+
+/**
  * undo 만료·포기로 삭제가 확정된 보드들. 공유된 파일함이면 서버 행도 지운다
  * (spec/share-subboards.md "미룬 것" — 파일함을 지울 때 서버 행 정리).
  * 되살릴 수 있는 동안에는 부르지 않는다 — undo로 되살려도 서버 사본이 먼저 사라진다.
@@ -1820,6 +1849,69 @@ function unshareFinalizedBoards(boards: Board[]): void {
     .catch(() => {
       /* 오프라인 — 다음 syncMyBoards가 다시 시도한다 */
     });
+}
+
+/**
+ * remote-mcp D9: 소유자로 서버에 저장된 최상위 보드를 지우기 전에, 다른 멤버가 있으면
+ * "멤버 N명의 보드에서도 사라집니다"를 묻는다. false면 호출자는 지우지 않는다.
+ */
+async function confirmBoardDeletion(boards: Board[]): Promise<boolean> {
+  if (boards.length === 0 || !useAuth.getState().session) return true;
+  return (await import("./membership")).confirmBoardDeletion(boards);
+}
+
+/** 실행 취소로 되살아난 보드의 "이 기기에서 지운 보드" 표시를 뺀다 — 서버 사본을 지우지 않는다. */
+async function cancelServerDeletes(boards: Board[]): Promise<void> {
+  try {
+    await (await import("./membership")).clearServerDeletes(boards.map((b) => b.id));
+  } catch {
+    /* 표시가 남아도 로컬에 있는 보드는 syncMyBoards가 건드리지 않는다 */
+  }
+}
+
+/**
+ * remote-mcp n1: 보드 행을 지우기 직전에 "이 기기에서 이 계정이 지운 보드"로 남겨 syncMyBoards가
+ * 서버 목록만 보고 되살리지 않게 한다. hold면 돌려준 함수를 부를 때까지 실행 취소 기간으로 본다 —
+ * 실행 취소 상태를 세우기 전에 sync가 끼어도 서버 사본을 지우지 않는다.
+ */
+async function markServerDeletes(boards: Board[], hold: boolean): Promise<() => void> {
+  if (boards.length === 0 || !useAuth.getState().session) return () => {};
+  try {
+    return await (await import("./membership")).markServerDeletes(boards, hold);
+  } catch (err) {
+    // 표시를 못 남겨도 지우기는 막지 않는다.
+    console.warn("[moss] 지운 보드 표시 실패", boards.map((b) => b.id), err);
+    return () => {};
+  }
+}
+
+/** rootIds 보드와 그 하위 보드 전부(parentBoardId 체인). */
+function boardSubtree(all: Board[], rootIds: string[]): Board[] {
+  const ids = new Set(rootIds);
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const b of all) {
+      if (b.parentBoardId && ids.has(b.parentBoardId) && !ids.has(b.id)) {
+        ids.add(b.id);
+        grew = true;
+      }
+    }
+  }
+  return all.filter((b) => ids.has(b.id));
+}
+
+/** 지울 함 카드 중 D9 확인이 필요한 보드 — 소유자로 서버에 저장된 최상위 보드. 동기 판정. */
+function boardsNeedingDeleteCheck(cards: Card[], boards: Board[]): Board[] {
+  const byBoard = useShare.getState().byBoard;
+  const out: Board[] = [];
+  for (const card of cards) {
+    if (card.kind !== "board" || !card.boardRef) continue;
+    const info = byBoard[card.boardRef];
+    if (info?.status !== "shared" || info.role !== "owner") continue;
+    const board = boards.find((b) => b.id === card.boardRef);
+    if (board && (!board.parentBoardId || board.parentBoardId === SYSTEM_BOARD_ID)) out.push(board);
+  }
+  return out;
 }
 
 /**
@@ -1843,61 +1935,68 @@ async function cascadeDeleteFunnels(
   const connections: Connection[] = [];
   const embeddings: EmbeddingCacheEntry[] = [];
 
-  for (const fc of funnelCards) {
-    if (!fc.boardRef) continue;
-    const fnote = await db.notes.get(fc.id);
-    if (fnote) funnelNotes.push(fnote);
-    await db.notes.delete(fc.id);
-    // FEAT-connectors: 함 카드에 닿은 선(현재 보드)은 고아로 남기지 않고 지운다.
-    // 5초 undo는 서브 보드 안쪽 연결만 복원한다 — 함 카드 자체의 선은 복원 대상 아님.
-    const incident = await db.connections
-      .where("sourceNoteId")
-      .equals(fc.id)
-      .or("targetNoteId")
-      .equals(fc.id)
-      .toArray();
-    if (incident.length > 0) {
-      await db.connections.bulkDelete(incident.map((c) => c.id));
-      // undo 스냅샷에도 넣어야 5초 undo 시 선이 영구 유실되지 않는다.
-      connections.push(...incident);
+  // 지우기 전에 표시하고 실행 취소 기간을 세운다 — 행이 사라진 뒤 sync가 끼어도 되살리거나 지우지 않는다.
+  const roots = funnelCards.flatMap((fc) => (fc.boardRef ? [fc.boardRef] : []));
+  const release = await markServerDeletes(boardSubtree(await db.boards.toArray(), roots), true);
+  try {
+    for (const fc of funnelCards) {
+      if (!fc.boardRef) continue;
+      const fnote = await db.notes.get(fc.id);
+      if (fnote) funnelNotes.push(fnote);
+      await db.notes.delete(fc.id);
+      // FEAT-connectors: 함 카드에 닿은 선(현재 보드)은 고아로 남기지 않고 지운다.
+      // 5초 undo는 서브 보드 안쪽 연결만 복원한다 — 함 카드 자체의 선은 복원 대상 아님.
+      const incident = await db.connections
+        .where("sourceNoteId")
+        .equals(fc.id)
+        .or("targetNoteId")
+        .equals(fc.id)
+        .toArray();
+      if (incident.length > 0) {
+        await db.connections.bulkDelete(incident.map((c) => c.id));
+        // undo 스냅샷에도 넣어야 5초 undo 시 선이 영구 유실되지 않는다.
+        connections.push(...incident);
+      }
+      const snap = await storage.removeBoardCascade(fc.boardRef);
+      boards.push(...snap.boards);
+      notes.push(...snap.notes);
+      connections.push(...snap.connections);
+      embeddings.push(...snap.embeddings);
     }
-    const snap = await storage.removeBoardCascade(fc.boardRef);
-    boards.push(...snap.boards);
-    notes.push(...snap.notes);
-    connections.push(...snap.connections);
-    embeddings.push(...snap.embeddings);
+
+    const freshBoards = await storage.loadBoards();
+    const counts = { ...get().subcanvasCounts };
+    for (const fc of funnelCards) if (fc.boardRef) delete counts[fc.boardRef];
+    set({ boards: freshBoards, subcanvasCounts: counts });
+
+    // 직전 undo가 남아 있으면 그건 즉시 확정(blob purge) — undo 스택은 1개만 유지.
+    const prev = get().pendingSubcanvasUndo;
+    if (prev) void storage.purgeAttachments([...prev.funnelNotes, ...prev.notes]);
+
+    const expiresAt = Date.now() + BOARD_UNDO_MS;
+    set({
+      pendingSubcanvasUndo: {
+        funnelCards,
+        boardAtDeletion,
+        funnelNotes,
+        boards,
+        notes,
+        connections,
+        embeddings,
+        expiresAt,
+      },
+    });
+    setTimeout(() => {
+      const cur = get().pendingSubcanvasUndo;
+      if (cur && cur.expiresAt === expiresAt) {
+        void storage.purgeAttachments([...cur.funnelNotes, ...cur.notes]);
+        unshareFinalizedBoards(cur.boards);
+        set({ pendingSubcanvasUndo: null });
+      }
+    }, BOARD_UNDO_MS);
+  } finally {
+    release();
   }
-
-  const freshBoards = await storage.loadBoards();
-  const counts = { ...get().subcanvasCounts };
-  for (const fc of funnelCards) if (fc.boardRef) delete counts[fc.boardRef];
-  set({ boards: freshBoards, subcanvasCounts: counts });
-
-  // 직전 undo가 남아 있으면 그건 즉시 확정(blob purge) — undo 스택은 1개만 유지.
-  const prev = get().pendingSubcanvasUndo;
-  if (prev) void storage.purgeAttachments([...prev.funnelNotes, ...prev.notes]);
-
-  const expiresAt = Date.now() + BOARD_UNDO_MS;
-  set({
-    pendingSubcanvasUndo: {
-      funnelCards,
-      boardAtDeletion,
-      funnelNotes,
-      boards,
-      notes,
-      connections,
-      embeddings,
-      expiresAt,
-    },
-  });
-  setTimeout(() => {
-    const cur = get().pendingSubcanvasUndo;
-    if (cur && cur.expiresAt === expiresAt) {
-      void storage.purgeAttachments([...cur.funnelNotes, ...cur.notes]);
-      unshareFinalizedBoards(cur.boards);
-      set({ pendingSubcanvasUndo: null });
-    }
-  }, BOARD_UNDO_MS);
 }
 
 /**
@@ -2146,6 +2245,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     // n23 재심사 2R-1: 이전 중에는 새 보드를 만들지 않는다. 만들면 setCurrentBoard가
     // 막혀 전환되지 않는 고아 보드가 남는다.
     if (get().migrationPending) return get().currentBoardId;
+    if (!(await serverStoreAllowsNewBoard())) return get().currentBoardId;
     const storage = useStorage.getState();
     if (!storage.initialized) await storage.init();
     const id = newBoardId();
@@ -2154,12 +2254,14 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const boards = await storage.loadBoards();
     set({ boards });
     await get().navigateToBoard(id);
+    storeNewBoardOnServer();
     return id;
   },
 
   createExampleBoard: async (name = "") => {
     // n23 재심사 2R-1: 이전 중 새 보드 생성 차단 — createBoard와 같은 가드.
     if (get().migrationPending) return get().currentBoardId;
+    if (!(await serverStoreAllowsNewBoard())) return get().currentBoardId;
     const storage = useStorage.getState();
     if (!storage.initialized) await storage.init();
 
@@ -2190,12 +2292,14 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const boards = await storage.loadBoards();
     set({ boards });
     await get().navigateToBoard(boardId);
+    storeNewBoardOnServer();
     return boardId;
   },
 
   createBoardFromTemplate: async (templateId, name, t, now) => {
     // n23 재심사 2R-1: 이전 중 새 보드 생성 차단(고아 보드·전환 불일치 방지).
     if (get().migrationPending) return get().currentBoardId;
+    if (!(await serverStoreAllowsNewBoard())) return get().currentBoardId;
     const template = getTemplate(templateId);
     if (!template) throw new Error(`Unknown templateId: ${templateId}`);
     const storage = useStorage.getState();
@@ -2245,6 +2349,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const boards = await storage.loadBoards();
     set({ boards });
     await get().navigateToBoard(boardId);
+    storeNewBoardOnServer();
     return boardId;
   },
 
@@ -2266,6 +2371,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     }
     const storage = useStorage.getState();
     if (!storage.initialized) await storage.init();
+    const doomed = await getDB().boards.get(id);
+    if (doomed) (await markServerDeletes([doomed], false))();
     await storage.removeBoard(id);
     const boards = await storage.loadBoards();
     const next: Partial<WorkspaceState> = { boards };
@@ -2297,20 +2404,34 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const board = await db.boards.get(id);
     if (!board) return; // 이미 삭제된 보드 — no-op
 
-    // 2) 이전 undo가 있었으면 그건 영구 폐기 (스택 1개만 유지)
-    set({ pendingBoardUndo: null });
+    // remote-mcp D9: 다른 멤버가 있으면 먼저 묻는다. 거절하면 지우지 않는다.
+    if (!(await confirmBoardDeletion([board]))) return;
 
-    // 3) 실제 삭제 — removeBoard는 currentBoardId === id이면 시스템으로 복귀까지 처리
-    await get().removeBoard(id);
-
-    // 4) 스냅샷 저장 + 5초 자동 폐기
+    // 2) 스냅샷 저장 — 이전 undo가 있었으면 그건 영구 폐기 (스택 1개만 유지).
+    //    실행 취소 기간은 행을 지우기 전에 세운다 — 지우는 도중 sync가 끼어도 서버 사본을
+    //    지우지 않는다(remote-mcp n1). 지우기가 끝날 때까지는 ready:false라 실행 취소를 받지 않는다.
     set({
       pendingBoardUndo: {
         board,
         affectedNoteIds: affected as string[],
         expiresAt: Date.now() + BOARD_UNDO_MS,
+        ready: false,
       },
     });
+
+    // 3) 실제 삭제 — removeBoard는 currentBoardId === id이면 시스템으로 복귀까지 처리.
+    try {
+      await get().removeBoard(id);
+    } catch (err) {
+      if (get().pendingBoardUndo?.board.id === id) set({ pendingBoardUndo: null });
+      throw err;
+    }
+    const removed = get().pendingBoardUndo;
+    if (removed?.board.id === id) {
+      set({ pendingBoardUndo: { ...removed, expiresAt: Date.now() + BOARD_UNDO_MS, ready: true } });
+    }
+
+    // 4) 5초 자동 폐기
     setTimeout(() => {
       // 만료 시 — 다른 undo로 덮어쓰여 있지 않다면만 비운다.
       const cur = get().pendingBoardUndo;
@@ -2323,13 +2444,14 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   undoBoardRemove: async () => {
     const pending = get().pendingBoardUndo;
-    if (!pending) return;
+    if (!pending?.ready) return;
     set({ pendingBoardUndo: null });
     const storage = useStorage.getState();
     if (!storage.initialized) await storage.init();
     const db = getDB();
     // 보드 row 복원
     await db.boards.put(pending.board);
+    await cancelServerDeletes([pending.board]);
     // P1 AC-8: 복원된 보드는 "지운 보드" 목록에서 뺀다.
     await storage.forgetDeletedBoards([pending.board.id]);
     // 그 보드에 있던 메모 boardId 복원 (그 사이 사용자가 이동시킨 메모는 건드리지 않음 — id 기반)
@@ -2347,6 +2469,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   clearBoardUndo: () => {
     const pending = get().pendingBoardUndo;
+    if (pending && !pending.ready) return;
     if (pending) unshareFinalizedBoards([pending.board]);
     set({ pendingBoardUndo: null });
   },
@@ -3267,12 +3390,22 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     }
   },
 
-  remove: (id) => {
+  remove: (id, opts) => {
     // FEAT-sticky-redesign: 판은 삭제 경로가 다르다(메모는 제자리, frameId만 해제).
     const target = get().cards.find((c) => c.id === id);
     if (target && target.kind === "frame") {
       get().deleteFrame(id);
       return;
+    }
+    // remote-mcp D9: 멤버가 있을 수 있는 보드의 함 카드는 확인을 받은 뒤에 지운다.
+    if (target && !opts?.deleteConfirmed) {
+      const guarded = boardsNeedingDeleteCheck([target], get().boards);
+      if (guarded.length > 0) {
+        void confirmBoardDeletion(guarded).then((ok) => {
+          if (ok && get().cards.some((c) => c.id === id)) get().remove(id, { deleteConfirmed: true });
+        });
+        return;
+      }
     }
     // FEAT-subcanvas: 함 카드면 연결된 서브 보드 트리까지 cascade 삭제(5초 undo).
     const card = target;
@@ -3311,8 +3444,22 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     }
   },
 
-  removeSelected: (ids = get().selectedIds) => {
+  removeSelected: (ids = get().selectedIds, opts) => {
     if (ids.length === 0) return;
+    // remote-mcp D9: 선택에 멤버가 있을 수 있는 보드의 함 카드가 있으면 확인을 받은 뒤 지운다.
+    // 거절하면 선택 전체를 지우지 않는다.
+    if (!opts?.deleteConfirmed) {
+      const selected = get().cards.filter((c) => ids.includes(c.id));
+      const guarded = boardsNeedingDeleteCheck(selected, get().boards);
+      if (guarded.length > 0) {
+        void confirmBoardDeletion(guarded).then((ok) => {
+          if (!ok) return;
+          const still = ids.filter((id) => get().cards.some((c) => c.id === id));
+          get().removeSelected(still, { deleteConfirmed: true });
+        });
+        return;
+      }
+    }
     // FEAT-sticky-redesign: 선택 중 판은 별도 경로(메모는 제자리, frameId만 해제)로
     // 먼저 처리하고, 나머지 선택에서 제외해 아래 일반 삭제 경로로 removeNote 되지 않게 한다.
     const frameIds = get()
@@ -3468,6 +3615,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     // n23 재심사 2R-1: 이전 중 새 보드로 카드를 옮기지 않는다 — 전환이 막혀
     // 카드만 사라진 것처럼 보인다.
     if (get().migrationPending) return get().currentBoardId;
+    if (!(await serverStoreAllowsNewBoard())) return get().currentBoardId;
     // 1) 새 보드 생성 (자동 전환 발생 — 카드 목록이 새 보드 기준으로 리로드됨)
     //    그 직전에 카드의 boardId를 새 보드로 옮겨두어야 한다.
     const storage = useStorage.getState();
@@ -3492,6 +3640,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const boards = await storage.loadBoards();
     set({ boards });
     await get().navigateToBoard(id);
+    storeNewBoardOnServer();
     return id;
   },
 
@@ -3776,6 +3925,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const db = getDB();
     // blob은 아직 안 지웠으므로(만료 전) row만 되돌리면 미디어까지 복원된다.
     await db.boards.bulkPut(pending.boards);
+    await cancelServerDeletes(pending.boards);
     // P1 AC-8: 되살아난 보드들은 "지운 보드" 목록에서 뺀다.
     await useStorage
       .getState()

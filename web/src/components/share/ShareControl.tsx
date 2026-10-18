@@ -152,7 +152,7 @@ export function ShareControl({
 
   return (
     <div ref={containerRef} className="relative flex items-center gap-3.5">
-      {status === "shared" ? <MemberAvatarRow members={shownMembers} /> : null}
+      {status === "shared" && shownMembers.length > 1 ? <MemberAvatarRow members={shownMembers} /> : null}
 
       <button
         type="button"

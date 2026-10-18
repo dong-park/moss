@@ -17,12 +17,22 @@
  *  - P1-5: 내려받을 fileId가 이미 동기화됐으면 collab/소유 상태와 무관하게 내려받는다.
  *  - P2-1: 다운로드 캐시는 보드별 네임스페이스로 분리한다(참조 충돌 방지).
  *  - B: `files` 맵 변화를 구독해 열려 있는 화면이 자리표시자를 실제 첨부로 바꾸게 한다.
+ *
+ * remote-mcp n1: 저장 용량 상한(413 quota_exceeded)에 막힌 업로드는 `files` 맵의 실패 키
+ * (uploadFailedKey)에 UPLOAD_FAILED_QUOTA를 적는다. 다른 기기는 '올리는 중' 대신 '올리지 못함'을
+ * 보고, 업로더 기기는 안내를 받는다. 다음 백필이 다시 시도한다. 실패 표시는 참조 키와 따로 있어
+ * 다른 기기의 성공(fileId)을 덮지 못하고, 읽을 때는 fileId가 실패 표시보다 앞선다.
+ * 크기 초과(413 too_large 등)는 업로더에게만 알리고 맵에 쓰지 않는다.
  */
 import type * as Y from "yjs";
-import { useAuth } from "@/state/auth";
+import { LOCAL_REF_PREFIX, UPLOAD_FAILED_QUOTA, uploadFailedKey } from "@moss/doc-model";
+import { t } from "@/i18n";
+import { AuthRequestError, useAuth } from "@/state/auth";
 import { getBlob, getBlobUrl, putBlob } from "@/state/db/opfs";
+import { useToasts } from "@/state/notifications";
 import { getActiveBoardDoc, getOrOpenBoardDoc } from "@/state/ydoc/activeDoc";
 import { filesMap, readDocFile, readNotes, setDocFile } from "@/state/ydoc/model";
+import { transactLocal } from "@/state/ydoc/origin";
 import { writeToBoardDoc } from "@/state/ydoc/writeThrough";
 import { useCollab } from "@/state/collab";
 import { useShare } from "./store";
@@ -32,11 +42,18 @@ export interface AttachmentDeps {
   files: FilesApi;
   /** P1-2: 보드별 자동(렌더) 다운로드 예산. 없으면 기본값. */
   maxAutoDownloadsPerBoard?: number;
+  /** 업로더에게 띄우는 안내. 테스트는 토스트 대신 기록한다. */
+  notify: (message: string) => void;
 }
 
 const DEFAULT_MAX_AUTO_DOWNLOADS = 64;
 
-const defaultDeps: AttachmentDeps = { files: realFilesApi };
+const defaultDeps: AttachmentDeps = {
+  files: realFilesApi,
+  notify: (message) => {
+    useToasts.getState().push({ tone: "calm", title: message });
+  },
+};
 let deps: AttachmentDeps = defaultDeps;
 
 /** 테스트 주입용 — n8 `configureShare`와 같은 패턴. */
@@ -48,7 +65,13 @@ export function resetAttachmentDeps(): void {
   deps = defaultDeps;
 }
 
-const OPFS_PREFIX = "opfs:";
+const OPFS_PREFIX = LOCAL_REF_PREFIX;
+
+// 키 규칙(참조 접두사·실패 표시)은 sync MCP와 같은 정의를 쓰도록 @moss/doc-model에 있다.
+export { UPLOAD_FAILED_QUOTA, uploadFailedKey };
+
+/** 이 세션에서 안내를 띄운 보드·사유 — 붙여 넣은 첨부 여러 개가 안내를 여러 번 띄우지 않게. */
+const uploadNotified = new Set<string>();
 
 /** 이 보드가 서버에 공유돼 있는가. n7이 연결 중이거나 n8이 shared로 표시했으면 참. */
 export function isSharedBoard(boardId: string | null | undefined): boolean {
@@ -114,8 +137,19 @@ export async function uploadAttachment(
     try {
       const session = await useAuth.getState().ensureSession();
       const saved = await deps.files.upload(boardId, blob, filename, session.accessToken);
-      await writeToBoardDoc(boardId, (doc) => setDocFile(doc, localRef, saved.id));
-    } catch {
+      await writeToBoardDoc(boardId, (doc) =>
+        transactLocal(doc, () => {
+          setDocFile(doc, localRef, saved.id);
+          filesMap(doc).delete(uploadFailedKey(localRef));
+        }),
+      );
+    } catch (err) {
+      if (err instanceof AuthRequestError && err.status === 413) {
+        // 계정 상한만 공유 문서에 실패로 남긴다. 파일·보드 크기 초과는 업로더에게만 알린다.
+        if (err.code === "quota_exceeded") await markQuotaFailed(boardId, localRef);
+        else notifyTooLarge(boardId, err.code === "too_large" ? err.message : "");
+        return;
+      }
       // 업로드 실패 — 매핑을 쓰지 않는다(자리표시자 유지). 사용자 편집은 잃지 않는다.
     } finally {
       inflight.delete(key);
@@ -124,6 +158,34 @@ export async function uploadAttachment(
 
   inflight.set(key, task);
   return task;
+}
+
+/** 용량 초과: 다른 기기가 '올리지 못함'을 보게 맵에 표시하고, 업로더에게 한 번 알린다. */
+async function markQuotaFailed(boardId: string, localRef: string): Promise<void> {
+  notifyOnce(`quota:${boardId}`, t("collab.attachment.quotaFailed"));
+  await writeToBoardDoc(boardId, (doc) => {
+    if (readDocFile(doc, localRef)) return;
+    transactLocal(doc, () => filesMap(doc).set(uploadFailedKey(localRef), UPLOAD_FAILED_QUOTA));
+  }).catch(() => {
+    /* 문서를 못 열면 표시만 빠진다 — 다른 기기는 '올리는 중'을 본다 */
+  });
+}
+
+/** 파일 20MB·보드 500MB 초과(또는 프록시가 code 없이 낸 413). 서버 사유가 없으면 기본 문구. */
+function notifyTooLarge(boardId: string, reason: string): void {
+  const why = reason.replace(/[.。]\s*$/, "") || t("collab.attachment.tooLargeReason");
+  notifyOnce(`large:${boardId}`, t("collab.attachment.tooLarge", { reason: why }));
+}
+
+function notifyOnce(key: string, message: string): void {
+  if (uploadNotified.has(key)) return;
+  uploadNotified.add(key);
+  deps.notify(message);
+}
+
+/** 실패 표시가 있는가. 읽는 쪽은 fileId를 먼저 본다 — 성공이 실패 표시를 이긴다. */
+function hasUploadFailure(doc: Y.Doc, localRef: string): boolean {
+  return filesMap(doc).get(uploadFailedKey(localRef)) === UPLOAD_FAILED_QUOTA;
 }
 
 /**
@@ -162,7 +224,8 @@ export async function backfillBoardAttachments(boardId: string): Promise<void> {
     return; // 못 연 보드 — 다음 공유 세션에 재시도.
   }
   for (const ref of collectLocalRefs(handle.doc)) {
-    if (readDocFile(handle.doc, ref)) continue; // 이미 올라감.
+    const fileId = readDocFile(handle.doc, ref);
+    if (fileId) continue; // 이미 올라감. 용량 초과로 못 올린 것(실패 키)은 다시 시도한다.
     const blob = await getBlob(ref).catch(() => null);
     if (!blob) continue; // 이 기기에 없는 참조는 올릴 것이 없다.
     await uploadAttachment(boardId, ref, blob, ref.slice(OPFS_PREFIX.length));
@@ -211,13 +274,15 @@ function detachFilesObserver(): void {
 
 /* ── 해석 ─────────────────────────────────────────────────────── */
 
-export type AttachmentState = "ready" | "pending" | "missing";
+export type AttachmentState = "ready" | "pending" | "failed" | "missing";
 
 export type AttachmentResolution =
   /** OPFS에서 꺼내 쓸 수 있다(또는 방금 내려받아 캐시했다). */
   | { state: "ready"; url: string }
   /** 공유 보드인데 아직 못 쓴다 — 업로드 전·진행 중·실패. '올리는 중' 자리표시자. */
   | { state: "pending"; url: null }
+  /** 업로더가 저장 용량 상한에 막혀 서버에 올리지 못했다. '올리지 못함' 자리표시자. */
+  | { state: "failed"; url: null }
   /** 이 기기에 없고 공유 보드도 아니다 — 복구 불가. */
   | { state: "missing"; url: null };
 
@@ -281,6 +346,7 @@ export async function resolveAttachmentState(
 
   const fileId = readDocFile(handle.doc, ref);
   if (!fileId) {
+    if (hasUploadFailure(handle.doc, ref)) return "failed";
     return isSharedBoard(boardId) ? "pending" : "missing";
   }
 
@@ -323,6 +389,7 @@ export async function resolveAttachment(
 export function resetAttachments(): void {
   inflight.clear();
   autoDownloads.clear();
+  uploadNotified.clear();
   filesListeners.clear();
   detachFilesObserver();
   deps = defaultDeps;

@@ -32,6 +32,9 @@ services:
       # n5 Hocuspocus control endpoint for revoke/kick (internal port, not published).
       SYNC_INTERNAL_URL: ${SYNC_INTERNAL_URL:-http://sync:1235}
       SYNC_INTERNAL_SECRET: ${SYNC_INTERNAL_SECRET:?SYNC_INTERNAL_SECRET is required}
+      # 원격 MCP(RM-4): 인가 서버(server)와 엔드포인트(sync)가 같은 공개 주소를 봐야 토큰 대상이 맞는다.
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8080}
+      MCP_RESOURCE_URL: ${MCP_RESOURCE_URL:-}
     ports:
       - "8080:8080"
     volumes:
@@ -50,7 +53,8 @@ services:
 
   sync:
     build:
-      context: ./sync
+      context: .
+      dockerfile: sync/Dockerfile
     environment:
       PORT: "1234"
       INTERNAL_PORT: "1235"
@@ -62,6 +66,10 @@ services:
       # node-postgres URL (Ktor uses the jdbc: prefix on its own service).
       DATABASE_URL: postgres://moss:moss@postgres:5432/moss
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      # 원격 MCP(RM-4): 비우면 /mcp 를 열지 않는다. 토큰은 매 호출 server 의 /oauth/introspect 로 확인한다.
+      KTOR_INTERNAL_URL: ${KTOR_INTERNAL_URL:-http://server:8080}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8080}
+      MCP_RESOURCE_URL: ${MCP_RESOURCE_URL:-}
     ports:
       - "1234:1234"
     depends_on:
@@ -75,7 +83,8 @@ services:
   # 로컬 배포용 웹. 3000은 next dev가 쓰므로 3001로 연다.
   web:
     build:
-      context: ./web
+      context: .
+      dockerfile: web/Dockerfile
       args:
         NEXT_PUBLIC_MOSS_API_URL: ${NEXT_PUBLIC_MOSS_API_URL:-http://localhost:8080}
         NEXT_PUBLIC_MOSS_SYNC_URL: ${NEXT_PUBLIC_MOSS_SYNC_URL:-ws://localhost:1234}

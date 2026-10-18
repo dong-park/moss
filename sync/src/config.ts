@@ -6,7 +6,10 @@
  *  - Board token issuer is `moss` with claims `typ=board`, `sub`, `boardId`.
  */
 
+import type { McpEndpointConfig } from "./mcp.ts";
+
 export const MIN_JWT_SECRET_BYTES = 32;
+const DEFAULT_PUBLIC_BASE_URL = "http://localhost:8080";
 export const DEFAULT_MAX_DOCUMENT_BYTES = 10 * 1024 * 1024;
 /** Concurrent connections allowed per board (spec §4). */
 export const DEFAULT_MAX_CONNECTIONS_PER_BOARD = 10;
@@ -26,6 +29,8 @@ export interface SyncConfig {
   maxConnectionsPerBoard: number;
   debounceMs: number;
   maxDebounceMs: number;
+  /** Remote MCP endpoint (RM-4). Absent unless `KTOR_INTERNAL_URL` is set. */
+  mcp?: McpEndpointConfig;
 }
 
 function positiveInt(raw: string | undefined, fallback: number, name: string): number {
@@ -35,6 +40,22 @@ function positiveInt(raw: string | undefined, fallback: number, name: string): n
     throw new Error(`${name} must be a positive integer, got '${raw}'`);
   }
   return value;
+}
+
+function mcpConfig(env: NodeJS.ProcessEnv): McpEndpointConfig | undefined {
+  const ktorUrl = env.KTOR_INTERNAL_URL?.trim();
+  if (ktorUrl === undefined || ktorUrl === "") return undefined;
+  const publicBaseUrl = (env.PUBLIC_BASE_URL?.trim() || DEFAULT_PUBLIC_BASE_URL).replace(/\/+$/, "");
+  // Same defaults as Ktor's AppConfig so the token audience matches what it issues.
+  const resourceUrl = env.MCP_RESOURCE_URL?.trim().replace(/\/+$/, "") || `${publicBaseUrl}/mcp`;
+  for (const [name, value] of [["KTOR_INTERNAL_URL", ktorUrl], ["PUBLIC_BASE_URL", publicBaseUrl], ["MCP_RESOURCE_URL", resourceUrl]]) {
+    try {
+      new URL(value as string);
+    } catch {
+      throw new Error(`${name} must be an absolute URL, got '${value}'`);
+    }
+  }
+  return { ktorUrl, publicBaseUrl, resourceUrl };
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): SyncConfig {
@@ -56,6 +77,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): SyncConfig {
     throw new Error("SYNC_INTERNAL_SECRET is required");
   }
 
+  const mcp = mcpConfig(env);
   return {
     port: positiveInt(env.PORT, 1234, "PORT"),
     internalPort: positiveInt(env.INTERNAL_PORT, 1235, "INTERNAL_PORT"),
@@ -77,6 +99,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): SyncConfig {
     ),
     debounceMs: positiveInt(env.STORE_DEBOUNCE_MS, 2000, "STORE_DEBOUNCE_MS"),
     maxDebounceMs: positiveInt(env.STORE_MAX_DEBOUNCE_MS, 10000, "STORE_MAX_DEBOUNCE_MS"),
+    ...(mcp !== undefined ? { mcp } : {}),
   };
 }
 

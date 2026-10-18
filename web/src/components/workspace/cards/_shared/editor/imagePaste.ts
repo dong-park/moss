@@ -195,6 +195,7 @@ export const imagePasteHandler: PasteHandler = (view, event) => {
  * contentDOM이 없고, ignoreMutation으로 src 교체가 PM 재렌더 루프를 타지 않게 한다. */
 /** n10 작업 4 — 공유 보드에서 아직 업로드/다운로드가 안 끝난 첨부의 자리표시자. */
 const UPLOADING_LABEL = t("collab.attachment.uploading");
+const UPLOAD_FAILED_LABEL = t("collab.attachment.failed");
 
 class OpfsImageNodeView implements NodeView {
   dom: HTMLImageElement;
@@ -269,7 +270,8 @@ class OpfsImageNodeView implements NodeView {
         return;
       }
       this.dom.setAttribute("data-moss-attachment-state", res.state);
-      this.dom.alt = res.state === "pending" ? UPLOADING_LABEL : this.altText;
+      this.dom.alt =
+        res.state === "pending" ? UPLOADING_LABEL : res.state === "failed" ? UPLOAD_FAILED_LABEL : this.altText;
     });
   }
 

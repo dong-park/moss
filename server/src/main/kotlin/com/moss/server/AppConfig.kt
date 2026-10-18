@@ -33,10 +33,20 @@ data class AppConfig(
     val maxBoardFileBytes: Long = BoardRepository.DEFAULT_MAX_BOARD_FILE_BYTES,
     // Browser origins allowed by CORS. Exact matches only, never a wildcard.
     val allowedOrigins: List<String> = listOf(DEFAULT_ALLOWED_ORIGIN),
+    // OAuth 발급자(인가 서버)의 공개 주소. 프록시 뒤에서는 반드시 바깥에서 보이는 주소로 설정한다.
+    val publicBaseUrl: String = DEFAULT_PUBLIC_BASE_URL,
+    // MCP 엔드포인트의 공개 주소(보호 리소스). 토큰의 audience가 된다.
+    val mcpResourceUrl: String = "$DEFAULT_PUBLIC_BASE_URL/mcp",
+    // D4: 범위 없이 읽기쓰기 하나. 수명은 D4가 정하지 않아 접근 1시간, 갱신 30일로 두고 설정값으로 뺐다.
+    val mcpAccessTtlSeconds: Long = 60 * 60,
+    val mcpRefreshTtlSeconds: Long = 30L * 24 * 60 * 60,
+    // 앞단 프록시 중 X-Forwarded-For를 믿을 홉 수. 0이면 헤더를 보지 않고 접속 주소를 쓴다(OAuth 요청 수 상한의 키).
+    val trustedProxyHops: Int = 0,
 ) {
     companion object {
         const val MIN_JWT_SECRET_BYTES = 32
         const val DEFAULT_ALLOWED_ORIGIN = "http://localhost:3000"
+        const val DEFAULT_PUBLIC_BASE_URL = "http://localhost:8080"
 
         /** D12: 20 MB per file. */
         const val DEFAULT_MAX_FILE_BYTES: Long = 20L * 1024 * 1024
@@ -55,6 +65,9 @@ data class AppConfig(
             require(syncInternalUrl.isNullOrBlank() || !syncInternalSecret.isNullOrBlank()) {
                 "SYNC_INTERNAL_SECRET is required when SYNC_INTERNAL_URL is set"
             }
+            val publicBaseUrl = (env["PUBLIC_BASE_URL"]?.takeIf { it.isNotBlank() } ?: DEFAULT_PUBLIC_BASE_URL)
+                .trimEnd('/')
+            require("://" in publicBaseUrl) { "PUBLIC_BASE_URL must be scheme://host[:port]" }
             return AppConfig(
                 port = env["PORT"]?.toIntOrNull() ?: 8080,
                 jwtSecret = jwtSecret,
@@ -73,6 +86,16 @@ data class AppConfig(
                 maxBoardFileBytes = env["MAX_BOARD_FILE_BYTES"]?.let { positiveBytes("MAX_BOARD_FILE_BYTES", it) }
                     ?: BoardRepository.DEFAULT_MAX_BOARD_FILE_BYTES,
                 allowedOrigins = parseAllowedOrigins(env["ALLOWED_ORIGINS"]),
+                publicBaseUrl = publicBaseUrl,
+                mcpResourceUrl = env["MCP_RESOURCE_URL"]?.takeIf { it.isNotBlank() }?.trimEnd('/')
+                    ?: "$publicBaseUrl/mcp",
+                mcpAccessTtlSeconds = env["MCP_ACCESS_TTL_SECONDS"]?.let { positiveBytes("MCP_ACCESS_TTL_SECONDS", it) }
+                    ?: (60L * 60),
+                mcpRefreshTtlSeconds = env["MCP_REFRESH_TTL_SECONDS"]?.let { positiveBytes("MCP_REFRESH_TTL_SECONDS", it) }
+                    ?: (30L * 24 * 60 * 60),
+                trustedProxyHops = env["TRUSTED_PROXY_HOPS"]?.takeIf { it.isNotBlank() }?.let { raw ->
+                    requireNotNull(raw.trim().toIntOrNull()?.takeIf { it >= 0 }) { "TRUSTED_PROXY_HOPS must be a non-negative integer, got '$raw'" }
+                } ?: 0,
             )
         }
 

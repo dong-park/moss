@@ -5,8 +5,8 @@
  * 모듈 로드 시점에 fetch하지 않는다.
  */
 import { apiBaseUrl, AuthRequestError, type BoardSummary } from "@/state/auth";
-import { readErrorMessage } from "@/state/auth/api";
-import type { BoardMember, BoardToken } from "./types";
+import { readErrorBody } from "@/state/auth/api";
+import type { BoardMember, BoardToken, ServerUsage } from "./types";
 
 export interface ShareApi {
   /** POST /boards/{id}/share — 이 보드만 서버에 올린다 (AC-4). */
@@ -23,6 +23,8 @@ export interface ShareApi {
   members(boardId: string, accessToken: string): Promise<BoardMember[]>;
   /** GET /me/boards — 계정의 공유 보드 목록 (AC-17). */
   myBoards(accessToken: string): Promise<BoardSummary[]>;
+  /** GET /me/usage — 저장 상한 확인. 새 보드를 만들기 전에 부른다 (T2). */
+  usage(accessToken: string): Promise<ServerUsage>;
 }
 
 interface RequestInit_ {
@@ -42,8 +44,8 @@ async function request<T>({ method, path, accessToken, body }: RequestInit_): Pr
   });
   if (!res.ok) {
     // 서버 문구("소유자만 링크를 만들 수 있어요")가 팝오버에 그대로 뜬다 — 없을 때만 기계 문구.
-    const message = (await readErrorMessage(res)) ?? `${method} ${path} ${res.status}`;
-    throw new AuthRequestError(message, res.status);
+    const { code, message } = await readErrorBody(res);
+    throw new AuthRequestError(message ?? `${method} ${path} ${res.status}`, res.status, code);
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
@@ -93,4 +95,6 @@ export const realShareApi: ShareApi = {
 
   myBoards: (accessToken) =>
     request<BoardSummary[]>({ method: "GET", path: "/me/boards", accessToken }),
+
+  usage: (accessToken) => request<ServerUsage>({ method: "GET", path: "/me/usage", accessToken }),
 };

@@ -24,4 +24,12 @@ export interface BoardToken {
   expiresInSeconds: number;
 }
 
+/** GET /me/usage — 서버에 저장된 내 보드 수·첨부 합계와 그 상한 (T2·D2). */
+export interface ServerUsage {
+  boards: number;
+  maxBoards: number;
+  fileBytes: number;
+  maxFileBytes: number;
+}
+
 export type { BoardSummary };
