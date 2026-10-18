@@ -5,7 +5,7 @@
 **agent**: runner
 **id**: RM-8
 **상위**: spec/remote-mcp/spec.md
-**deps**: n6, n7
+**deps**: n6, n7, n9
 **상태**: 아직 안 함
 **담당 행**: T11
 **사람 확인**: 필요

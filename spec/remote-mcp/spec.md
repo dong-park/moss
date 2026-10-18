@@ -64,7 +64,8 @@ rows/T1~T11이 기준이다. 결정은 rows/D1~D8이고 2026-10-18 모두 답을
 | n5 | [n5-read-tools.md](n5-read-tools.md) | n4 | 아직 안 함 |
 | n6 | [n6-write-tools.md](n6-write-tools.md) | n5 | 아직 안 함 |
 | n7 | [n7-connected-apps.md](n7-connected-apps.md) | n3 | 아직 안 함 |
-| n8 | [n8-real-connector.md](n8-real-connector.md) | n6, n7 | 아직 안 함 |
+| n8 | [n8-real-connector.md](n8-real-connector.md) | n6, n7, n9 | 아직 안 함 |
+| n9 | [n9-doc-trash.md](n9-doc-trash.md) | n6 | 아직 안 함 |
 
 ## 공통 완료 기준
 1. web은 `cd web && npx tsc --noEmit`, sync와 server는 각자 테스트 통과. 기준선 실패는 따로 적는다

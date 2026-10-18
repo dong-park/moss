@@ -56,3 +56,10 @@ mcp/src 도구 정의, server POST /boards/{id}/files
   - 저장 중복(성능 P1): store 훅이 마지막으로 저장한 상태와 같으면 건너뛰게 해 transact와 disconnect의 이중 즉시 저장, 업로드 사전 확인의 빈 저장을 없앤다. 업로드 크기 확인은 readDoc이나 같은 연결로 한다.
   - findFreeSpot(성능 P1): 상자를 y로 정렬해 현재 줄에 걸치는 후보만 보고, 겹치면 x·y를 겹친 상자 끝으로 건너뛴다. 메모 3000개 보드에서 한 번 호출이 50ms 안인지 테스트로 잰다.
   - P2: delete_note가 상한에 걸려 일부만 지웠으면 오류 대신 결과에 지운 id와 남은 id를 적는다. mcpBoards의 JS 재정렬을 빼고 DB 순서를 쓴다. 블록 마크다운 형식(opfs:// 링크, "moss-file" 제목)도 doc-model로 옮긴다.
+- 메인 (2026-10-18): D10 → A(사용자). 휴지통 삭제는 새 노드 n9로 옮기고 이 노드는 나머지를 끝낸 것으로 닫는다.
+- 고쳐줘 (2026-10-18, 메인 · wave-20261018-2300 /review, 재심사 1라운드 — 다음 리뷰에도 P1이면 사용자에게):
+  - 본문 왕복 손상(정합성·Devil 교차 P1): fenceUntrusted가 줄 앞 #·[·<<<에 역슬래시를 붙여, 에이전트가 읽은 본문을 update_note로 다시 쓰면 제목·첨부 블록이 깨진다. 본문은 바꾸지 않는다. 울타리 표식에 응답마다 무작위 nonce를 넣고(<<<메모 본문 {nonce}>>> … <<<메모 본문 끝 {nonce}>>>), 본문 안의 <<<·>>>는 위치와 상관없이 무력화하지 말고 nonce로 구분되게 한다. 제목·검색 조각·연결선 라벨·파일 이름도 같은 울타리에 넣는다(보안 P2). read_board로 읽은 본문을 update_note로 그대로 쓰면 본문이 같다는 왕복 테스트를 둔다.
+  - findFreeSpot 무한 루프(보안 P1): noteBoxes에서 x·y·width·height가 유한하지 않으면 건너뛰고, 캔버스 범위(예: |v| ≤ 1e7)로 자른다. 루프는 y = Math.max(snap(rowEnd), y + GRID_STEP)로 반드시 전진하고 반복 상한을 둬, 넘으면 {x:minX, y:maxY+NOTE_GAP}로 떨어진다. {x:0.13, y:-1, width:1700, height:2.2e20} 같은 입력 테스트를 둔다.
+  - 내부 삭제 경로가 넓다(Devil·유지보수 교차 P1)와 응답 전 끊김 고아 파일(정합성 P1): DELETE를 업로드 되돌리기 전용으로 좁힌다. sync가 업로드마다 멱등 키(UUID)를 헤더로 보내고 Ktor가 파일 행에 업로드 키와 grantId를 기록한다(필요하면 Flyway 마이그레이션 V9__부터). 되돌리기(.../files/discard 같은 이름)는 같은 키·같은 grant의 파일만 지운다. 업로드가 응답 전에 실패하면 같은 키로 되돌리기를 부른다. 로그는 'mcp upload discarded'로 일반 삭제와 구분한다. 응답 전 끊김과 다른 grant 파일 거절을 테스트로 고정한다.
+  - P2: guardedStore의 'unchanged'는 stored:true, skipped:"unchanged"로 바꾸고 maxBytes 검사를 해시보다 먼저 한다. mcpBoards 쿼리에 DB 콜레이션 순서를 따른다는 주석. delete_note 일부 삭제를 결과로 돌려주는 정책은 이름에 드러나는 테스트로 고정한다. X-Moss-Internal 비교를 OAuthRoutes와 공용 함수로 묶는다. opfsRef의 옛 별칭은 남겨도 된다.
+- 범위 (2026-10-18, 메인): 이번에는 이 노드만 돈다. n9(문서 휴지통)는 이 수정 뒤에 같은 mcpWriteTools.ts를 고친다 — delete_note 본문은 건드리지 않는다.
