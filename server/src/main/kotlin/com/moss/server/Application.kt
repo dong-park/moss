@@ -7,6 +7,7 @@ import com.moss.server.auth.authRoutes
 import com.moss.server.auth.installAuthRateLimits
 import com.moss.server.boards.BoardRepository
 import com.moss.server.boards.boardRoutes
+import com.moss.server.oauth.oauthRoutes
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
@@ -112,5 +113,6 @@ fun Application.mossModule(
         get("/health") { call.respond(HttpStatusCode.OK, HealthResponse("ok")) }
         authRoutes(server)
         boardRoutes(server)
+        oauthRoutes(server)
     }
 }
