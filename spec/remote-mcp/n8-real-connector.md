@@ -33,3 +33,4 @@ D5
 spec/remote-mcp/evidence/n8
 
 ## 구현 메모
+- 출시 전 확인 (2026-10-18, 메인 · wave-20261018-1830 /review P2, n3): (1) TRUSTED_PROXY_HOPS를 1 이상으로 둘 때 Ktor 8080이 외부에 직접 열려 있으면 X-Forwarded-For 위조로 OAuth limiter를 피한다. 지금 docker-compose.yml은 8080:8080을 공개한다. 배포에서는 프록시만 8080에 닿게 하고 홉 수를 정한다. (2) 메타데이터 fetch의 느린 DNS가 전역 슬롯 8개를 차지할 수 있다(ClientResolver.kt:128). 호스트별 동시 1개와 실패 캐시를 출시 전에 넣을지 정한다.

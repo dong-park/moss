@@ -33,3 +33,4 @@
 web 설정 화면, server 토큰 폐기 API
 
 ## 구현 메모
+- 병렬 경계 (2026-10-18, 메인 · 웨이브 4): n1 수정·n4와 같은 워킹트리에서 동시에 돈다. n7 몫은 웹 설정 화면(새 컴포넌트)과 server/src/main/kotlin/com/moss/server/oauth/ 패키지다. web/src/state/membership.ts·workspace.ts는 n1 몫, sync/는 n4 몫이다. gradle은 n4와 build 디렉터리가 겹치니 격리 복사본에서 돌린다. 커밋은 자기 파일만 지정해 add한다.
