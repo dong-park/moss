@@ -22,12 +22,14 @@
 import {
   useWorkspace,
   type Card,
+  cardCenter,
   encodeSubcanvas,
   __internal,
 } from "@/state/workspace";
 import { newBoardId } from "@/state/boardIds";
 import { useStorage } from "@/state/storage";
-import { getDB } from "@/state/db/schema";
+import { getDB, type ConnectionSide } from "@/state/db/schema";
+import { nearestSide } from "@/components/workspace/connectors/geometry";
 import {
   deleteNoteRecord,
   writeBoardRecord,
@@ -74,6 +76,27 @@ function resolveBoard(raw: unknown): {
     isCurrent: target === current,
     target,
   };
+}
+
+/**
+ * 라우터를 거치는 보드 전환은 비동기다 — navigateToBoard가 URL만 바꾸고 돌아오면
+ * 라우트 effect가 나중에 보드를 불러온다. 그 사이 다음 op가 들어오면 새 메모가 로딩에
+ * 덮여 사라진다. 보드가 실제 현재 보드가 될 때까지 기다린 뒤 결과를 돌려준다.
+ */
+function waitForCurrentBoard(id: string, timeoutMs = 10_000): Promise<void> {
+  if (useWorkspace.getState().currentBoardId === id) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const unsub = useWorkspace.subscribe((s) => {
+      if (s.currentBoardId !== id) return;
+      clearTimeout(timer);
+      unsub();
+      resolve();
+    });
+    const timer = setTimeout(() => {
+      unsub();
+      reject(new Error(`보드 전환이 끝나지 않았습니다: ${id}`));
+    }, timeoutMs);
+  });
 }
 
 function newNoteId(): string {
@@ -370,11 +393,31 @@ export async function dispatchOp(
       const content = typeof params.content === "string" ? params.content : undefined;
       // 제목은 웹과 같은 규칙(한 줄, 80자)으로 정규화한다. 빈 문자열은 제목 지우기.
       const title = typeof params.title === "string" ? normalizeTitle(params.title) : undefined;
+      const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
+      const x = num(params.x);
+      const y = num(params.y);
+      const width = num(params.width);
+      const height = num(params.height);
+      const moves = x !== undefined || y !== undefined || width !== undefined || height !== undefined;
       if (!id) throw new Error("id가 필요합니다");
-      if (content === undefined && title === undefined) throw new Error("content나 title이 필요합니다");
-      if (ws.cards.some((c) => c.id === id)) {
+      if (content === undefined && title === undefined && !moves) {
+        throw new Error("content·title·x·y·width·height 중 하나는 필요합니다");
+      }
+      const inStore = ws.cards.find((c) => c.id === id);
+      if (inStore) {
         if (content !== undefined) ws.setContent(id, content);
         if (title !== undefined) ws.setTitle(id, title);
+        if (width !== undefined || height !== undefined) {
+          // resizeCard가 크기를 클램프하고 메모(text)는 정사각형으로 맞춘다.
+          ws.resizeCard(id, {
+            width: width ?? inStore.width,
+            height: height ?? width ?? inStore.height ?? inStore.width,
+            x,
+            y,
+          });
+        } else if (x !== undefined || y !== undefined) {
+          ws.moveCard(id, x ?? inStore.x, y ?? inStore.y);
+        }
         return { id };
       }
       // 다른 보드 카드 — 존재 확인 후 준 필드만 병합 저장(없으면 junk 생성 방지).
@@ -386,6 +429,19 @@ export async function dispatchOp(
         await writeNoteRecord(saved);
       }
       if (title !== undefined) await useStorage.getState().updateNoteTitle(id, title);
+      if (moves) {
+        const w = width ?? note.width;
+        // 메모(text)는 정사각형 — 폭을 바꾸면 높이도 같이 맞춘다.
+        const h = note.kind === "text" && width !== undefined ? width : (height ?? note.height);
+        const saved = await useStorage.getState().saveNote({
+          id,
+          ...(x !== undefined ? { x } : {}),
+          ...(y !== undefined ? { y } : {}),
+          ...(w !== undefined ? { width: w } : {}),
+          ...(h !== undefined ? { height: h } : {}),
+        });
+        await writeNoteRecord(saved);
+      }
       return { id };
     }
 
@@ -467,6 +523,7 @@ export async function dispatchOp(
     case "boards.create": {
       const name = typeof params.name === "string" ? params.name : "";
       const id = await ws.createBoard(name); // 새 보드로 전환됨
+      await waitForCurrentBoard(id);
       return { id };
     }
 
@@ -488,13 +545,14 @@ export async function dispatchOp(
     case "boards.switch": {
       const id = String(params.id ?? "");
       if (!id) throw new Error("id가 필요합니다");
-      // n3 D8: URL이 원본 — 라우터가 있으면 push하고, 상태 반영은 라우트 effect가 한다.
-      // 요청한 보드로의 전환이므로 결과는 요청 id를 돌려준다(라우터 반영은 비동기).
       await ws.navigateToBoard(id);
+      // n3 D8: URL이 원본 — 라우터가 있으면 push하고, 상태 반영은 라우트 effect가 한다.
+      // 그 반영(보드 로딩)이 끝날 때까지 기다려야 다음 op가 새 보드에 안전하게 들어간다.
+      if (id !== "system") await waitForCurrentBoard(id);
       return { currentBoardId: id };
     }
 
-    /* ── connections: 캔버스 렌더 대상 아님 → storage(Dexie) 데이터 경로 ── */
+    /* ── connections: 두 카드가 현재 보드에 있으면 화면 연결선(connectCards)으로, 아니면 storage 경로 ── */
     case "connections.list": {
       const storage = useStorage.getState();
       const noteId = typeof params.noteId === "string" ? params.noteId : undefined;
@@ -508,10 +566,37 @@ export async function dispatchOp(
         throw new Error("sourceNoteId와 targetNoteId가 필요합니다");
       }
       const label = typeof params.label === "string" ? params.label : undefined;
+      const side = (v: unknown): ConnectionSide | undefined =>
+        v === "top" || v === "right" || v === "bottom" || v === "left" ? v : undefined;
+      const sourceSide = side(params.sourceSide);
+      const targetSide = side(params.targetSide);
+      const source = ws.cards.find((c) => c.id === sourceNoteId);
+      const target = ws.cards.find((c) => c.id === targetNoteId);
+      if (source && target) {
+        // 현재 보드: 사용자가 끈 선과 같은 경로라 즉시 그려진다. 변을 안 주면 마주 보는 변.
+        const id = ws.connectCards(
+          sourceNoteId,
+          sourceSide ?? nearestSide(source, cardCenter(target)),
+          targetNoteId,
+          targetSide ?? nearestSide(target, cardCenter(source)),
+        );
+        if (!id) throw new Error("자기 자신과는 연결할 수 없습니다");
+        if (label) ws.setConnectionLabel(id, label);
+        // connectCards가 새 선을 선택하므로 사용자 선택 상태를 되돌린다.
+        useWorkspace.setState({ selectedConnectionId: null });
+        return { id };
+      }
       const id = `cx-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6)}`;
       // mergeConnection이 source="manual"/status="active"/createdAt을 채운다.
       // n23 재심사 2R-6: Dexie 미러와 소유 문서 쓰기는 saveConnection 한 액션이 함께 한다.
-      await useStorage.getState().saveConnection({ id, sourceNoteId, targetNoteId, label });
+      await useStorage.getState().saveConnection({
+        id,
+        sourceNoteId,
+        targetNoteId,
+        label,
+        ...(sourceSide ? { sourceSide } : {}),
+        ...(targetSide ? { targetSide } : {}),
+      });
       return { id };
     }
 

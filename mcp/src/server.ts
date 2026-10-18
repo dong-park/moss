@@ -15,6 +15,7 @@ import { z } from "zod";
 import { MossBridge, MossNotConnectedError } from "./bridge.ts";
 import { aiEmbed, aiSummarize, aiConnectionLabel, type SummarizeKind } from "./ai.ts";
 import { resolveImageInput, resolveMediaInput, fetchImageAsBase64 } from "./image.ts";
+import { layoutMindmap } from "./mindmap.ts";
 import {
   devTest,
   devLint,
@@ -118,6 +119,9 @@ server.registerTool(
  * base64+mimeType로 정규화하고, link는 url/title 그대로 브리지에 넘긴다.
  * 브리지가 `serializeBlock`으로 본문 블록을 만든다(문법·이스케이프 단일 출처).
  */
+/** 연결선이 카드에 붙는 변. */
+const sideSchema = z.enum(["top", "right", "bottom", "left"]);
+
 const bridgeBlockSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("image"),
@@ -268,14 +272,19 @@ server.registerTool(
   "notes_update",
   {
     description:
-      "기존 카드의 본문이나 제목을 바꾼다(보드 무관, id로). 준 항목만 바뀐다. title을 빈 문자열로 주면 제목이 지워진다. 현재 보드면 화면 반영.",
+      "기존 카드의 본문·제목·위치·크기를 바꾼다(보드 무관, id로). 준 항목만 바뀐다. title을 빈 문자열로 주면 제목이 지워진다. 메모는 정사각형이라 width를 주면 height도 같이 맞는다. 현재 보드면 화면 반영.",
     inputSchema: {
       id: z.string().describe("카드 id"),
       content: z.string().optional().describe("새 본문(마크다운)"),
       title: z.string().optional().describe("새 제목 한 줄(80자까지). 빈 문자열이면 제목 지우기"),
+      x: z.number().optional().describe("월드 좌표 x"),
+      y: z.number().optional().describe("월드 좌표 y"),
+      width: z.number().optional().describe("카드 폭(px)"),
+      height: z.number().optional().describe("카드 높이(px). 메모는 무시하고 폭에 맞춘다"),
     },
   },
-  async ({ id, content, title }) => viaBridge("notes.update", { id, content, title }),
+  async ({ id, content, title, x, y, width, height }) =>
+    viaBridge("notes.update", { id, content, title, x, y, width, height }),
 );
 
 server.registerTool(
@@ -489,10 +498,92 @@ server.registerTool(
       sourceNoteId: z.string().describe("출발 노트 id"),
       targetNoteId: z.string().describe("도착 노트 id"),
       label: z.string().optional().describe("연결 라벨(선택)"),
+      sourceSide: sideSchema.optional().describe("출발 카드에서 선이 나가는 변(생략 시 상대 쪽 변)"),
+      targetSide: sideSchema.optional().describe("도착 카드에서 선이 닿는 변(생략 시 상대 쪽 변)"),
     },
   },
-  async ({ sourceNoteId, targetNoteId, label }) =>
-    viaBridge("connections.create", { sourceNoteId, targetNoteId, label }),
+  async ({ sourceNoteId, targetNoteId, label, sourceSide, targetSide }) =>
+    viaBridge("connections.create", { sourceNoteId, targetNoteId, label, sourceSide, targetSide }),
+);
+
+/* ── 생각 지도: 중심-갈래-세부 나무 + 갈래 사이 연결을 한 번에 그린다 ── */
+
+server.registerTool(
+  "map_create",
+  {
+    description:
+      "생각을 지도로 정리한다. 중심 노드 하나(parent 없음)에서 갈래와 세부를 parent로 잇는 나무를 주면, 마인드맵처럼 좌우로 펼쳐 메모와 연결선을 함께 만든다. 나무 밖의 관계(근거·기한·영향 등)는 links로 이어 라벨을 단다. 메모 앞면에는 title만 보이고 content는 메모 창에서 보인다. 반환은 key→메모 id.",
+    inputSchema: {
+      boardId: z.string().optional().describe('대상 보드 id 또는 "system"(생략 시 현재 보드)'),
+      layout: z.enum(["mindmap", "tree"]).optional().describe("mindmap=좌우로 펼침(기본), tree=오른쪽으로만"),
+      origin: z.object({ x: z.number(), y: z.number() }).optional().describe("중심 메모 좌상단 월드 좌표(기본 40,40)"),
+      size: z.number().optional().describe("메모 한 변(기본 240, 중심은 320)"),
+      nodes: z
+        .array(
+          z.object({
+            key: z.string().describe("이 호출 안에서 쓰는 노드 이름(links·parent가 가리킨다)"),
+            title: z.string().describe("메모 앞면 제목 한 줄"),
+            content: z.string().optional().describe("메모 본문 마크다운(창에서 보인다)"),
+            parent: z.string().optional().describe("부모 노드 key. 중심 노드만 생략"),
+            edgeLabel: z.string().optional().describe("부모→이 노드 선의 라벨"),
+            blocks: z.array(bridgeBlockSchema).optional().describe("본문 블록(이미지 등), notes_create와 같다"),
+          }),
+        )
+        .min(1),
+      links: z
+        .array(z.object({ from: z.string(), to: z.string(), label: z.string().optional() }))
+        .optional()
+        .describe("나무 밖의 관계선(노드 key끼리)"),
+    },
+  },
+  async ({ boardId, layout, origin, size, nodes, links }) =>
+    attempt(async () => {
+      const { nodes: placed, edges } = layoutMindmap(nodes, {
+        layout,
+        origin,
+        size,
+        rootSize: size !== undefined ? Math.round(size * 4 / 3) : undefined,
+      });
+      const byKey = new Map(nodes.map((n) => [n.key, n]));
+      for (const l of links ?? []) {
+        if (!byKey.has(l.from) || !byKey.has(l.to)) throw new Error(`links에 없는 key: ${l.from}→${l.to}`);
+      }
+      const ids = new Map<string, string>();
+      for (const p of placed) {
+        const n = byKey.get(p.key)!;
+        const blocks = n.blocks ? await resolveBridgeBlocks(n.blocks) : undefined;
+        const r = (await bridge.call("notes.create", {
+          content: n.content ?? "",
+          title: n.title,
+          boardId,
+          x: p.x,
+          y: p.y,
+          width: p.size,
+          blocks,
+        })) as { id: string };
+        ids.set(p.key, r.id);
+      }
+      let connections = 0;
+      for (const e of edges) {
+        await bridge.call("connections.create", {
+          sourceNoteId: ids.get(e.from),
+          targetNoteId: ids.get(e.to),
+          sourceSide: e.sourceSide,
+          targetSide: e.targetSide,
+          label: byKey.get(e.to)!.edgeLabel,
+        });
+        connections++;
+      }
+      for (const l of links ?? []) {
+        await bridge.call("connections.create", {
+          sourceNoteId: ids.get(l.from),
+          targetNoteId: ids.get(l.to),
+          label: l.label,
+        });
+        connections++;
+      }
+      return { nodes: Object.fromEntries(ids), connections };
+    }),
 );
 
 server.registerTool(

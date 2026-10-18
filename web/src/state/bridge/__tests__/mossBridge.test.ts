@@ -299,7 +299,15 @@ describe("dispatchOp", () => {
 
     await dispatchOp("notes.update", { id, title: "" });
     expect(useWorkspace.getState().cards[0]!.title).toBeUndefined();
-    await expect(dispatchOp("notes.update", { id })).rejects.toThrow("content나 title");
+    await expect(dispatchOp("notes.update", { id })).rejects.toThrow("하나는 필요합니다");
+  });
+
+  it("notes.update x/y/width → 메모를 옮기고 정사각형으로 줄인다", async () => {
+    const { id } = (await dispatchOp("notes.create", { content: "본문", width: 720 })) as { id: string };
+    await dispatchOp("notes.update", { id, x: 300, y: 400, width: 240 });
+    const card = useWorkspace.getState().cards[0]!;
+    expect([card.x, card.y, card.width, card.height]).toEqual([300, 400, 240, 240]);
+    expect(card.content).toBe("본문");
   });
 
   it("notes.delete → 카드 제거, 없으면 throw", async () => {
@@ -368,11 +376,25 @@ describe("dispatchOp", () => {
     });
 
     it("boards.create → createBoard 호출 + id 반환", async () => {
-      const createBoard = vi.fn(async () => "b-new");
+      const createBoard = vi.fn(async () => {
+        useWorkspace.setState({ currentBoardId: "b-new" });
+        return "b-new";
+      });
       useWorkspace.setState({ createBoard });
       const r = (await dispatchOp("boards.create", { name: "새 보드" })) as { id: string };
       expect(createBoard).toHaveBeenCalledWith("새 보드");
       expect(r.id).toBe("b-new");
+    });
+
+    it("boards.create → 라우터 전환(보드 로딩)이 끝난 뒤에야 돌려준다", async () => {
+      // 라우터 경유: createBoard는 URL만 바꾸고 먼저 돌아오고, 로딩은 나중에 끝난다.
+      const createBoard = vi.fn(async () => {
+        setTimeout(() => useWorkspace.setState({ currentBoardId: "b-late" }), 20);
+        return "b-late";
+      });
+      useWorkspace.setState({ createBoard });
+      await dispatchOp("boards.create", { name: "늦은 보드" });
+      expect(useWorkspace.getState().currentBoardId).toBe("b-late");
     });
 
     it("boards.rename → renameBoard 호출, 인자 검증", async () => {
@@ -435,6 +457,29 @@ describe("dispatchOp", () => {
       await expect(
         dispatchOp("connections.create", { sourceNoteId: "a" }),
       ).rejects.toThrow("필요");
+    });
+
+    it("connections.create 현재 보드 두 카드 → 화면 연결선, 변·라벨 반영, 선택은 비움", async () => {
+      useStorage.setState({ saveConnection: vi.fn(async () => {}) });
+      const { id: a } = (await dispatchOp("notes.create", { content: "A", x: 0, y: 0 })) as { id: string };
+      const { id: b } = (await dispatchOp("notes.create", { content: "B", x: 600, y: 0 })) as { id: string };
+      const { id } = (await dispatchOp("connections.create", {
+        sourceNoteId: a,
+        targetNoteId: b,
+        label: "근거",
+      })) as { id: string };
+      const conn = useWorkspace.getState().connections.find((c) => c.id === id)!;
+      expect([conn.sourceSide, conn.targetSide, conn.label]).toEqual(["right", "left", "근거"]);
+      expect(useWorkspace.getState().selectedConnectionId).toBeNull();
+
+      const { id: up } = (await dispatchOp("connections.create", {
+        sourceNoteId: b,
+        targetNoteId: a,
+        sourceSide: "top",
+        targetSide: "top",
+      })) as { id: string };
+      const c2 = useWorkspace.getState().connections.find((c) => c.id === up)!;
+      expect([c2.sourceSide, c2.targetSide]).toEqual(["top", "top"]);
     });
 
     it("connections.delete → removeConnection 호출", async () => {
@@ -520,6 +565,11 @@ describe("dispatchOp", () => {
       const got = (await dispatchOp("notes.get", { id })) as BridgeNote;
       expect(got.title).toBe("딴 보드 제목");
       expect(got.content).toBe("changed");
+
+      await dispatchOp("notes.update", { id, x: 10, y: 20, width: 240 });
+      const moved = (await dispatchOp("notes.get", { id })) as BridgeNote;
+      expect([moved.x, moved.y, moved.width, moved.height]).toEqual([10, 20, 240, 240]);
+      expect(moved.title).toBe("딴 보드 제목");
 
       await dispatchOp("notes.delete", { id });
       await expect(dispatchOp("notes.get", { id })).rejects.toThrow("찾을 수 없습니다");

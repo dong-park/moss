@@ -27,7 +27,7 @@ moss의 사용자 데이터는 브라우저 IndexedDB(Dexie)에만 산다 — No
 | `notes_create_file` | 파일을 본문 블록으로 넣은 메모 생성(임의 타입, OPFS) |
 | `notes_create_comment` | 코멘트(주석) 카드 생성(author/time 메타) |
 | `notes_create_board` | 함(서브캔버스 funnel) 카드 + 빈 서브 보드 생성 |
-| `notes_update` | 카드 본문·제목 교체(준 항목만) |
+| `notes_update` | 카드 본문·제목·위치·크기 교체(준 항목만) |
 | `notes_delete` | 카드 삭제 |
 | `boards_list` | 사용자 보드 목록 + 현재 보드 id |
 | `boards_create` | 새 보드 생성(그 보드로 전환) |
@@ -35,7 +35,8 @@ moss의 사용자 데이터는 브라우저 IndexedDB(Dexie)에만 산다 — No
 | `boards_delete` | 보드 삭제 |
 | `boards_switch` | 현재 보드 전환(이후 `notes_*`가 이 보드 기준) |
 | `connections_list` | 연결 목록(noteId 필터 가능) |
-| `connections_create` | 두 노트 사이 수동 연결 생성 |
+| `connections_create` | 두 노트 사이 연결선 생성(라벨, 붙는 변 선택). 현재 보드면 바로 그려진다 |
+| `map_create` | 생각 지도: 중심-갈래-세부 나무와 관계선을 받아 마인드맵으로 배치해 메모·연결선을 한 번에 만든다 |
 | `connections_delete` | 연결 삭제 |
 
 > ⚠️ 메모 본문은 **720px 고정 컬럼**이라 카드가 좁으면 우측이 잘린다. 제목/요약이 긴 글은

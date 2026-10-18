@@ -51,8 +51,12 @@ export function MemoTitleRow({
   onBlur?: (relatedTarget: EventTarget | null) => void;
 }) {
   const centered = variant === "center";
+  // 앞면 제목은 카드 폭(cqw)에 맞춰 커지고, 멀리 줌에서는 화면 기준 하한
+  // (--memo-title-floor × 역배율, globals.css 줌 구간)보다 작아지지 않는다.
+  const centeredFontSize =
+    "max(clamp(15px, 8cqw, 60px), calc(var(--memo-title-floor, 0px) * var(--zoom-inv, 1)))";
   const style: React.CSSProperties = centered
-    ? { width: "100%", height: MEMO_TITLE_ROW_HEIGHT, padding: "0 12px", textAlign: "center" }
+    ? { width: "100%", height: MEMO_TITLE_ROW_HEIGHT, padding: "0 12px", textAlign: "center", fontSize: centeredFontSize }
     : { width: MEMO_CONTENT_WIDTH, height: MEMO_TITLE_ROW_HEIGHT, padding: "0 9px" };
 
   // AC-2: 컬럼 변형(창)은 빈 제목 줄을 그리지 않는다. 가운데 변형(앞면)은 빈
@@ -60,6 +64,28 @@ export function MemoTitleRow({
   if (!editable && !title && !centered) return null;
 
   if (!editable) {
+    if (centered) {
+      // 앞면 읽기: 글자가 커져도 잘리지 않게 세 줄까지 감싼다.
+      return (
+        <div
+          className={[
+            "moss-md select-none overflow-hidden break-keep font-bold leading-tight",
+            title ? "text-text" : "text-text-faint",
+          ].join(" ")}
+          style={{
+            width: "100%",
+            padding: "0 10%",
+            textAlign: "center",
+            fontSize: centeredFontSize,
+            display: "-webkit-box",
+            WebkitBoxOrient: "vertical",
+            WebkitLineClamp: 3,
+          }}
+        >
+          {title || placeholder}
+        </div>
+      );
+    }
     return (
       <div
         className={[
@@ -79,7 +105,8 @@ export function MemoTitleRow({
       type="text"
       data-memo-title-input
       className={[
-        "moss-md w-full border-none bg-transparent text-[15px] font-bold text-text outline-none placeholder:text-text-faint",
+        "moss-md w-full border-none bg-transparent font-bold text-text outline-none placeholder:text-text-faint",
+        centered ? "" : "text-[15px]",
         // 앞면은 포커스 링을 끈다 — globals.css의 `*:focus-visible` 라임 outline이
         // 카드 폭을 꽉 채운 줄 위아래로 초록 선 두 개로 보인다(좌우는 카드가 자름).
         // 깜빡이는 커서가 이미 "여기 치면 된다"를 말한다(2026-09-22 사용자 결정).
