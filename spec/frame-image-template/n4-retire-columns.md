@@ -6,7 +6,7 @@
 **id**: FT-4
 **상위**: spec/frame-image-template/spec.md
 **deps**: n3
-**상태**: 아직 안 함
+**상태**: 끝남
 **담당 행**: T6
 **사람 확인**: 불필요
 
@@ -45,3 +45,8 @@
 ## 구현 메모
 - (메인, 2026-10-18) 걷을 파일은 `rg -ln 'frameSkin|ColumnsSkin|FRAME_COLUMN' web/src` 9개에서 시작한다.
 
+- (runner n4, 2026-10-18) 걷은 것: `state/frameSkins.ts`, `ColumnsSkin.tsx`와 테스트 2개(ColumnsSkin·frameSkins), store의 `setFrameSkin`·`add/rename/removeFrameColumn`, i18n `frameSkin` 블록, Canvas의 `--frame-zoom`(칸 이름표 전용이라 고아가 됨). `FRAME_SKIN_MENU`는 n3에서 이미 사라져 있었다.
+- `clampFrameWidth(currentWidth, nextWidth)`는 `workspace.ts`로 옮겼다(최소 240, 최대 `max(1200, 지금 폭)`). `ResizeHandles`와 `resizeFrame`이 같은 함수를 쓴다.
+- `frameContent.ts`는 `skin`·`columns`를 읽지 않고 `unknown`으로 두어 `encodeFrameContent`가 원본 그대로 다시 쓴다(옛 코드는 깨진 칸 목록을 기본 3칸으로 바꿔 썼다). `decodeFrameConfig`는 `{name, bg}`만 돌려준다.
+- 테스트: `frameLegacyColumns.test.ts`(폭 1920·칸 4개·멤버 3 읽기, 이름 변경 뒤 columns 보존, 폭 한계), `Content.bg.test.tsx`(칸 그림 없음), `frameSkinRoundTrip`·`frameContent`·`frameBackground` 테스트를 새 규칙에 맞춰 고침.
+- 검증: `tsc --noEmit` 통과, `eslint` 통과, `vitest run` 전체 180파일 1440 통과. 첫 전체 실행에서만 `mossBridge.test` unhandled rejection(DatabaseClosedError) 6건이 떴고 같은 코드 기준선에서도 1건이 떠 흔들리는 기존 현상이다(재실행 0건). 이 노드가 쓴 증거는 단위 테스트뿐이다 — 실브라우저에서 옛 세로 칸 판을 열어 보는 확인은 n6 몫.
