@@ -1078,9 +1078,10 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
         // 오른쪽 끝을 넘어 그대로 보였다. width는 card.height 유무와 무관하게
         // 항상 크롭돼야 하므로 overflow는 조건 없이 hidden으로 둔다.
         // FEAT-text-tool: textbox만 예외 — 선택 툴바가 카드 위로 떠야 해서 visible.
+        // 메모판: 이름표가 판 바깥 위에 있다.
         // FEAT-photo-card: 사진도 예외 — 캡션 여백이 카드 상자 밖으로 흘러넘친다.
         overflow:
-          faceCard || card.kind === "photo" ? "visible" : "hidden",
+          faceCard || card.kind === "photo" || card.kind === "frame" ? "visible" : "hidden",
       }}
     >
       <CardContent

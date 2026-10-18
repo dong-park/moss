@@ -59,15 +59,14 @@ export function DockDragPreview() {
   if (drag.face || isTextbox || isFrame) {
     const w = drag.face === "photo" ? PHOTO_DEFAULT_WIDTH : widthForKind(kindForTool(drag.toolId));
     const body = isFrame ? (
-      // 메모판 Content와 같은 9-slice 화이트보드 — 놓으면 생길 빈 판 그대로.
+      // 메모판 Content와 같은 선택 파랑 1px 선 — 놓으면 생길 빈 판 그대로.
       <div
         style={{
           width: FRAME_DEFAULT_WIDTH,
           height: FRAME_DEFAULT_HEIGHT,
           boxSizing: "border-box",
-          borderStyle: "solid",
-          borderWidth: 18,
-          borderImage: 'url("/cards/v2/whiteboard.png") 50 fill / 18px stretch',
+          border: "1px solid var(--color-accent-blue)",
+          borderRadius: 4,
         }}
       />
     ) : drag.face === "photo" ? (
