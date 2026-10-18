@@ -14,7 +14,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { MossBridge, MossNotConnectedError } from "./bridge.ts";
 import { aiEmbed, aiSummarize, aiConnectionLabel, type SummarizeKind } from "./ai.ts";
-import { resolveImageInput, resolveMediaInput, fetchImageAsBase64 } from "./image.ts";
+import { resolveImageInput, resolveMediaInput, fetchImageAsBase64, preparePhoto } from "./image.ts";
 import { layoutMindmap } from "./mindmap.ts";
 import { layoutGroups } from "./groups.ts";
 import {
@@ -515,11 +515,57 @@ server.registerTool(
 /** 상태 → 메모 색. 정보(info)는 기본 노랑. */
 const STATUS_COLOR = { done: "lime", todo: "pink", check: "purple", info: undefined } as const;
 
+/** 로컬 사진 파일 하나로 사진 카드를 만든다. fit이 있으면 그 정사각형 칸 안에 비율을 지켜 가운데 놓는다. */
+async function createPhotoCard(
+  path: string,
+  at: { x: number; y: number },
+  opts: { width?: number; fit?: number; caption?: string; boardId?: string } = {},
+) {
+  const p = await preparePhoto(path);
+  const ratio = p.width > 0 && p.height > 0 ? p.height / p.width : 1;
+  let { x, y } = at;
+  let width = opts.width;
+  if (opts.fit !== undefined) {
+    width = ratio > 1 ? opts.fit / ratio : opts.fit;
+    x += (opts.fit - width) / 2;
+    y += (opts.fit - width * ratio) / 2;
+  }
+  return (await bridge.call("photos.create", {
+    boardId: opts.boardId,
+    dataBase64: p.dataBase64,
+    mimeType: p.mimeType,
+    naturalW: p.width,
+    naturalH: p.height,
+    x: Math.round(x),
+    y: Math.round(y),
+    width: width !== undefined ? Math.round(width) : undefined,
+    caption: opts.caption,
+  })) as { id: string };
+}
+
+server.registerTool(
+  "photos_create",
+  {
+    description:
+      "로컬 사진 파일로 사진 카드를 만든다. 메모 본문 속 이미지와 달리 사진 자체가 보드에 보인다(앞면이 사진). 큰 사진은 긴 변 1600px로 줄여 올린다. 현재 보드에만 만든다. 메모판 안에 놓으면 판에 들어간다.",
+    inputSchema: {
+      path: z.string().describe("로컬 이미지 파일 경로"),
+      x: z.number().optional(),
+      y: z.number().optional(),
+      width: z.number().optional().describe("카드 폭(기본 240). 높이는 원본 비율"),
+      caption: z.string().optional().describe("사진 아래 캡션 한 줄"),
+      boardId: z.string().optional().describe("현재 보드여야 한다"),
+    },
+  },
+  async ({ path, x, y, width, caption, boardId }) =>
+    attempt(() => createPhotoCard(path, { x: x ?? 40, y: y ?? 40 }, { width, caption, boardId })),
+);
+
 server.registerTool(
   "map_groups",
   {
     description:
-      "주제별로 묶어 정리한다. 주제(group)마다 메모판 하나를 만들고 그 안에 메모를 격자로 놓는다. 메모 색은 상태를 뜻한다(done=연두 확정, todo=분홍 할 일, check=보라 확인 필요, info=노랑). 선은 links로 준 관계만 긋는다 — 같은 판 안의 관계는 판이 이미 말하므로 판을 넘는 관계에만 쓴다. 대상 보드로 전환한 뒤 그린다. 반환은 key→id.",
+      "주제별로 묶어 정리한다. 주제(group)마다 메모판 하나를 만들고 그 안에 메모를 격자로 놓는다. photos를 주면 메모 뒤 칸에 사진 카드로 놓는다. 메모 색은 상태를 뜻한다(done=연두 확정, todo=분홍 할 일, check=보라 확인 필요, info=노랑). 선은 links로 준 관계만 긋는다 — 같은 판 안의 관계는 판이 이미 말하므로 판을 넘는 관계에만 쓴다. 대상 보드로 전환한 뒤 그린다. 반환은 key→id.",
     inputSchema: {
       boardId: z.string().optional().describe("대상 보드 id(생략 시 현재 보드). 다른 보드면 전환한다"),
       origin: z.object({ x: z.number(), y: z.number() }).optional(),
@@ -541,7 +587,11 @@ server.registerTool(
                   status: z.enum(["done", "todo", "check", "info"]).optional().describe("기본 info"),
                 }),
               )
-              .min(1),
+              .default([]),
+            photos: z
+              .array(z.object({ path: z.string(), caption: z.string().optional() }))
+              .optional()
+              .describe("판 안 메모 뒤에 놓을 사진(로컬 경로). 앞면에 사진이 보이는 사진 카드가 된다"),
           }),
         )
         .min(1),
@@ -556,7 +606,13 @@ server.registerTool(
   async ({ boardId, origin, center, groups, links, noteCols, groupCols }) =>
     attempt(async () => {
       const L = layoutGroups(
-        { hasCenter: center !== undefined, groups: groups.map((g) => ({ key: g.key, notes: g.notes.map((n) => n.key) })) },
+        {
+          hasCenter: center !== undefined,
+          groups: groups.map((g) => ({
+            key: g.key,
+            notes: [...g.notes.map((n) => n.key), ...(g.photos ?? []).map((_, i) => `${g.key}#photo${i}`)],
+          })),
+        },
         { origin, noteCols, groupCols },
       );
       const noteKeys = new Set(groups.flatMap((g) => g.notes.map((n) => n.key)));
@@ -587,11 +643,17 @@ server.registerTool(
           })) as { id: string };
           ids[n.key] = m.id;
         }
+        for (const [i, ph] of (g.photos ?? []).entries()) {
+          const cell = L.notes[`${g.key}#photo${i}`]!;
+          const r = await createPhotoCard(ph.path, cell, { fit: cell.width, caption: ph.caption });
+          ids[`${g.key}#photo${i}`] = r.id;
+        }
       }
       for (const l of links ?? []) {
         await bridge.call("connections.create", { sourceNoteId: ids[l.from], targetNoteId: ids[l.to], label: l.label });
       }
-      return { ids, frames: groups.length, notes: noteKeys.size, connections: links?.length ?? 0 };
+      const photos = groups.reduce((s, g) => s + (g.photos?.length ?? 0), 0);
+      return { ids, frames: groups.length, notes: noteKeys.size, photos, connections: links?.length ?? 0 };
     }),
 );
 

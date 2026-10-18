@@ -1,6 +1,6 @@
 import { describe, test, expect } from "bun:test";
 import { writeFile, rm } from "node:fs/promises";
-import { resolveImageInput, resolveMediaInput } from "./image.ts";
+import { preparePhoto, resolveImageInput, resolveMediaInput } from "./image.ts";
 
 // 1x1 투명 PNG.
 const PNG_B64 =
@@ -81,5 +81,20 @@ describe("resolveMediaInput", () => {
       "application/octet-stream",
     );
     await rm(bin);
+  });
+});
+describe("preparePhoto", () => {
+  test("큰 사진은 긴 변 maxSide로 줄이고 크기를 돌려준다", async () => {
+    const big = "/tmp/moss-prep-test.png";
+    const { execFileSync } = await import("node:child_process");
+    await writeFile(big, Buffer.from(PNG_B64, "base64"));
+    execFileSync("sips", ["-z", "300", "200", big]); // 200x300
+    const small = await preparePhoto(big, 100);
+    expect(small.height).toBe(100);
+    expect(Math.abs(small.width - 67)).toBeLessThanOrEqual(1);
+    expect(small.mimeType).toBe("image/jpeg");
+    const same = await preparePhoto(big, 1600);
+    expect([same.width, same.height, same.mimeType]).toEqual([200, 300, "image/png"]);
+    await rm(big);
   });
 });

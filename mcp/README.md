@@ -23,6 +23,7 @@ moss의 사용자 데이터는 브라우저 IndexedDB(Dexie)에만 산다 — No
 | `notes_create` | text 메모 생성(`title` 앞면 제목, `blocks[]`로 이미지·녹음·파일·링크 본문 블록; `width`/`height`) |
 | `notes_create_link_preview` | URL의 OG(제목·요약·썸네일)로 미리보기 메모 생성 |
 | `notes_create_image` | 이미지를 본문 블록으로 넣은 메모 생성(path 또는 dataBase64 → OPFS 저장) |
+| `photos_create` | 사진 카드 생성(앞면이 사진, 원본 비율, 큰 사진은 긴 변 1600px로 줄임) |
 | `notes_create_audio` | 녹음을 본문 블록으로 넣은 메모 생성(audio/*, OPFS) |
 | `notes_create_file` | 파일을 본문 블록으로 넣은 메모 생성(임의 타입, OPFS) |
 | `notes_create_comment` | 코멘트(주석) 카드 생성(author/time 메타) |
