@@ -2,7 +2,7 @@
   "id": "D6",
   "confidence": "mid",
   "reversible": true,
-  "status": "아직 안 함",
+  "status": "끝남",
   "blocks": [
     "n7"
   ],
@@ -10,7 +10,9 @@
     "answer": "",
     "fix": ""
   },
-  "log": [],
+  "log": [
+    "2026-10-18 D6 → A (답 없음 · 추천대로)"
+  ],
   "kind": "decision",
   "title": "메모를 어떤 포스트잇 모양으로 그릴까",
   "given": "메모 앞면을 흰 종이 사진에서 포스트잇으로 바꾼다",

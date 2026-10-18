@@ -1,8 +1,8 @@
 {
   "id": "D7",
-  "confidence": "low",
+  "confidence": "mid",
   "reversible": true,
-  "status": "아직 안 함",
+  "status": "끝남",
   "blocks": [
     "n7"
   ],
@@ -10,7 +10,9 @@
     "answer": "",
     "fix": ""
   },
-  "log": [],
+  "log": [
+    "2026-10-18 D7 → A (답 없음 · 추천대로)"
+  ],
   "kind": "decision",
   "title": "포스트잇 색은 얼마나 진하게 할까",
   "given": "메모 색은 노랑·파랑·연두·보라·분홍 다섯 개다",
