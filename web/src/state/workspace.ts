@@ -731,9 +731,10 @@ interface WorkspaceState {
   /** 마지막으로 그린 카드의 overlay 전체 지움(되돌리기 가능). */
   penClear: () => void;
 
-  remove: (id: string) => void;
+  /** `deleteConfirmed`: D9 확인을 이미 받았다(내부 재호출용). */
+  remove: (id: string, opts?: { deleteConfirmed?: boolean }) => void;
   /** ids를 주면 그 카드들을, 생략하면 지금 선택을 지운다. */
-  removeSelected: (ids?: string[]) => void;
+  removeSelected: (ids?: string[], opts?: { deleteConfirmed?: boolean }) => void;
 
   /* ─────────── FEAT-trash: 휴지통 ─────────── */
   /** 휴지통 패널 열림 상태. */
@@ -1840,6 +1841,29 @@ function unshareFinalizedBoards(boards: Board[]): void {
 }
 
 /**
+ * remote-mcp D9: 소유자로 서버에 저장된 최상위 보드를 지우기 전에, 다른 멤버가 있으면
+ * "멤버 N명의 보드에서도 사라집니다"를 묻는다. false면 호출자는 지우지 않는다.
+ */
+async function confirmBoardDeletion(boards: Board[]): Promise<boolean> {
+  if (boards.length === 0 || !useAuth.getState().session) return true;
+  return (await import("./membership")).confirmBoardDeletion(boards);
+}
+
+/** 지울 함 카드 중 D9 확인이 필요한 보드 — 소유자로 서버에 저장된 최상위 보드. 동기 판정. */
+function boardsNeedingDeleteCheck(cards: Card[], boards: Board[]): Board[] {
+  const byBoard = useShare.getState().byBoard;
+  const out: Board[] = [];
+  for (const card of cards) {
+    if (card.kind !== "board" || !card.boardRef) continue;
+    const info = byBoard[card.boardRef];
+    if (info?.status !== "shared" || info.role !== "owner") continue;
+    const board = boards.find((b) => b.id === card.boardRef);
+    if (board && (!board.parentBoardId || board.parentBoardId === SYSTEM_BOARD_ID)) out.push(board);
+  }
+  return out;
+}
+
+/**
  * FEAT-subcanvas: 함 카드들을 cascade 삭제하고 5초 undo 스냅샷을 건다.
  * DB row(board/note/connection/embedding)는 즉시 지우되 OPFS blob은 보존하고,
  * undo 만료(또는 ×) 시에만 purge한다 — 만료 전 undo면 미디어까지 복원되도록.
@@ -2319,6 +2343,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       .primaryKeys();
     const board = await db.boards.get(id);
     if (!board) return; // 이미 삭제된 보드 — no-op
+
+    // remote-mcp D9: 다른 멤버가 있으면 먼저 묻는다. 거절하면 지우지 않는다.
+    if (!(await confirmBoardDeletion([board]))) return;
 
     // 2) 이전 undo가 있었으면 그건 영구 폐기 (스택 1개만 유지)
     set({ pendingBoardUndo: null });
@@ -3290,12 +3317,22 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     }
   },
 
-  remove: (id) => {
+  remove: (id, opts) => {
     // FEAT-sticky-redesign: 판은 삭제 경로가 다르다(메모는 제자리, frameId만 해제).
     const target = get().cards.find((c) => c.id === id);
     if (target && target.kind === "frame") {
       get().deleteFrame(id);
       return;
+    }
+    // remote-mcp D9: 멤버가 있을 수 있는 보드의 함 카드는 확인을 받은 뒤에 지운다.
+    if (target && !opts?.deleteConfirmed) {
+      const guarded = boardsNeedingDeleteCheck([target], get().boards);
+      if (guarded.length > 0) {
+        void confirmBoardDeletion(guarded).then((ok) => {
+          if (ok && get().cards.some((c) => c.id === id)) get().remove(id, { deleteConfirmed: true });
+        });
+        return;
+      }
     }
     // FEAT-subcanvas: 함 카드면 연결된 서브 보드 트리까지 cascade 삭제(5초 undo).
     const card = target;
@@ -3334,8 +3371,22 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     }
   },
 
-  removeSelected: (ids = get().selectedIds) => {
+  removeSelected: (ids = get().selectedIds, opts) => {
     if (ids.length === 0) return;
+    // remote-mcp D9: 선택에 멤버가 있을 수 있는 보드의 함 카드가 있으면 확인을 받은 뒤 지운다.
+    // 거절하면 선택 전체를 지우지 않는다.
+    if (!opts?.deleteConfirmed) {
+      const selected = get().cards.filter((c) => ids.includes(c.id));
+      const guarded = boardsNeedingDeleteCheck(selected, get().boards);
+      if (guarded.length > 0) {
+        void confirmBoardDeletion(guarded).then((ok) => {
+          if (!ok) return;
+          const still = ids.filter((id) => get().cards.some((c) => c.id === id));
+          get().removeSelected(still, { deleteConfirmed: true });
+        });
+        return;
+      }
+    }
     // FEAT-sticky-redesign: 선택 중 판은 별도 경로(메모는 제자리, frameId만 해제)로
     // 먼저 처리하고, 나머지 선택에서 제외해 아래 일반 삭제 경로로 removeNote 되지 않게 한다.
     const frameIds = get()

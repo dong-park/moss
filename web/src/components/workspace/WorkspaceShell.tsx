@@ -8,6 +8,7 @@ import { ViewToggle } from "@/components/workspace/table/ViewToggle";
 import { Breadcrumb } from "@/components/workspace/Breadcrumb";
 import { SubcanvasUndoToast } from "@/components/workspace/SubcanvasUndoToast";
 import { MemoExpandDialog } from "@/components/workspace/cards/MemoExpandDialog";
+import { MemberDeleteConfirmDialog } from "@/components/workspace/MemberDeleteConfirmDialog";
 import { Dock } from "@/components/workspace/Dock";
 import { DockDragPreview } from "@/components/workspace/DockDragPreview";
 import { ShortcutsBinder } from "@/components/workspace/ShortcutsBinder";
@@ -210,6 +211,7 @@ export function WorkspaceShell() {
             <AICallPreview />
             <SignalsPanel open={signalsOpen} onClose={() => setSignalsOpen(false)} />
             <MemoExpandDialog />
+            <MemberDeleteConfirmDialog />
             {/* FEAT-subcanvas: 함 삭제 5초 undo 토스트 (position: fixed bottom-center). */}
             <SubcanvasUndoToast />
             <ExportModal />

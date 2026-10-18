@@ -615,7 +615,9 @@
     "attachment": {
       "uploading": "올리는 중",
       "failed": "올리지 못함 · 저장 용량 초과",
-      "quotaFailed": "저장 용량을 다 써서 첨부를 서버에 올리지 못했어요. 이 기기에서만 보여요."
+      "quotaFailed": "저장 용량을 다 써서 첨부를 서버에 올리지 못했어요. 이 기기에서만 보여요.",
+      "tooLarge": "{reason}. 첨부를 서버에 올리지 못해 이 기기에서만 보여요.",
+      "tooLargeReason": "파일이 너무 커요"
     },
     "share": {
       "aria": "공유",
@@ -632,7 +634,13 @@
       "remove": "내보내기",
       "unshare": "공유 해제",
       "leave": "나가기",
-      "full": "이 보드는 자리가 다 찼어요"
+      "full": "이 보드는 자리가 다 찼어요",
+      "deleteMembers": "멤버 {count}명의 보드에서도 사라집니다",
+      "deleteMembersUnknown": "다른 멤버의 보드에서도 사라질 수 있어요",
+      "deleteMembersBody": "멤버를 확인하지 못했어요. 지우면 실행 취소 시간이 지난 뒤 이 보드를 함께 쓰는 모두에게서 지워요.",
+      "deleteMembersDescription": "지우면 실행 취소 시간이 지난 뒤 이 보드를 함께 쓰는 모두에게서 지워요.",
+      "deleteMembersConfirm": "모두에게서 지우기",
+      "deleteMembersCancel": "취소"
     },
     "quota": {
       "boards": "보드를 {max}개까지 저장할 수 있어요. 쓰지 않는 보드를 지우면 새로 만들 수 있어요.",

@@ -17,13 +17,14 @@ import {
   registerNewBoards,
   resetMembershipDeps,
   shareSubBoards,
+  syncMyBoards,
   unshareRemovedSubBoards,
 } from "@/state/membership";
 import { configureShare, useShare, type BoardMember } from "@/state/share";
 import type { ShareApi } from "@/state/share";
 import { resetShareStore } from "@/state/share/store";
 import { useStorage } from "@/state/storage";
-import { SYSTEM_BOARD_ID, useWorkspace } from "@/state/workspace";
+import { BOARD_UNDO_MS, SYSTEM_BOARD_ID, useWorkspace, type Card } from "@/state/workspace";
 import { destroyBoardDocs } from "@/state/ydoc/activeDoc";
 
 const NOW = 1_700_000_000_000;
@@ -168,7 +169,7 @@ describe("T1 · 보드를 서버에 저장한다 (초대 링크 없이)", () => 
     const share = vi
       .fn<ShareApi["share"]>()
       .mockResolvedValueOnce(summary("b1"))
-      .mockRejectedValueOnce(new AuthRequestError("보드는 100개까지 저장할 수 있어요", 413));
+      .mockRejectedValueOnce(new AuthRequestError("보드는 100개까지 저장할 수 있어요", 413, "quota_exceeded"));
     install(fakeApi({ share }));
     for (const id of ["b1", "b2", "b3"]) await getDB().boards.put(makeBoard(id));
 
@@ -304,9 +305,23 @@ describe("지운 최상위 보드는 서버에서도 지운다", () => {
 });
 
 describe("저장 상한(413)은 조용히 묻히지 않는다", () => {
+  it("413 too_large(크기 초과)는 저장 상한 안내를 띄우지 않고 다음 동기화에 다시 시도한다", async () => {
+    const share = vi.fn<ShareApi["share"]>(async () => {
+      throw new AuthRequestError("보드 용량(500MB)을 넘었어요", 413, "too_large");
+    });
+    install(fakeApi({ share }));
+    await getDB().boards.bulkPut([makeBoard("parent"), makeBoard("box1", { parentBoardId: "parent" })]);
+    useShare.getState().restoreShared("parent", "owner");
+
+    await shareSubBoards();
+
+    expect(notified).toEqual([]);
+    expect(useShare.getState().byBoard.box1?.status).not.toBe("shared");
+  });
+
   it("/me/usage가 실패해 로컬로 만든 보드가 413을 받으면 안내하고 이 기기에만 둔다. 다시 시도해도 안내는 한 번", async () => {
     const share = vi.fn<ShareApi["share"]>(async () => {
-      throw new AuthRequestError("보드는 100개까지 저장할 수 있어요", 413);
+      throw new AuthRequestError("보드는 100개까지 저장할 수 있어요", 413, "quota_exceeded");
     });
     install(fakeApi({ share, usage: vi.fn(async () => { throw new TypeError("network"); }) }));
     await useStorage.getState().updateSettings({ serverStoreSince: { me: Date.now() - 1000 } });
@@ -324,7 +339,7 @@ describe("저장 상한(413)은 조용히 묻히지 않는다", () => {
 
   it("공유 보드 안 파일함이 413을 받으면 안내하고 그 파일함은 이 기기에만 둔다", async () => {
     const share = vi.fn<ShareApi["share"]>(async () => {
-      throw new AuthRequestError("보드는 100개까지 저장할 수 있어요", 413);
+      throw new AuthRequestError("보드는 100개까지 저장할 수 있어요", 413, "quota_exceeded");
     });
     install(fakeApi({ share }));
     await getDB().boards.bulkPut([
@@ -369,5 +384,107 @@ describe("새 보드 만들기 배선 (workspace)", () => {
   });
 });
 
+describe("D9 — 다른 멤버가 있는 최상위 보드를 소유자가 지운다", () => {
+  let onServer: Set<string>;
+  let unshare: Mock<ShareApi["unshare"]>;
+  let confirmMemberDelete: Mock<(others: number | null) => Promise<boolean>>;
 
+  function setup(answer: boolean) {
+    onServer = new Set(["together"]);
+    unshare = vi.fn<ShareApi["unshare"]>(async (id) => {
+      onServer.delete(id);
+    });
+    install(
+      fakeApi({
+        unshare,
+        members: vi.fn(async () => [OWNER, EDITOR]),
+        myBoards: vi.fn(async () => [...onServer].map(summary)),
+      }),
+    );
+    confirmMemberDelete = vi.fn(async () => answer);
+    configureMembership({ confirmMemberDelete });
+    useShare.getState().restoreShared("together", "owner");
+  }
+
+  afterEach(() => {
+    // 남은 undo 타이머가 다음 테스트의 가짜 API를 부르지 않게 한다.
+    useWorkspace.setState({ pendingBoardUndo: null, pendingSubcanvasUndo: null });
+  });
+
+  it("확인하면 실행 취소 기간 뒤 서버 사본을 지우고, 다음 syncMyBoards가 되살리지 않는다", async () => {
+    setup(true);
+    await getDB().boards.put(makeBoard("together"));
+    const timers = vi.spyOn(globalThis, "setTimeout");
+
+    await useWorkspace.getState().removeBoardWithUndo("together");
+    const expire = timers.mock.calls.find((c) => c[1] === BOARD_UNDO_MS)?.[0] as () => void;
+    timers.mockRestore();
+
+    expect(confirmMemberDelete).toHaveBeenCalledWith(1);
+    expect(unshare).not.toHaveBeenCalled(); // 실행 취소 기간에는 서버를 건드리지 않는다
+    expire();
+    await vi.waitFor(() => expect(unshare).toHaveBeenCalledWith("together", session.accessToken));
+
+    await syncMyBoards();
+    expect(await getDB().boards.get("together")).toBeUndefined();
+  });
+
+  it("확인을 거절하면 보드를 지우지 않는다", async () => {
+    setup(false);
+    await getDB().boards.put(makeBoard("together"));
+
+    await useWorkspace.getState().removeBoardWithUndo("together");
+
+    expect(confirmMemberDelete).toHaveBeenCalledWith(1);
+    expect(await getDB().boards.get("together")).toBeDefined();
+    expect(useWorkspace.getState().pendingBoardUndo).toBeNull();
+    expect(unshare).not.toHaveBeenCalled();
+  });
+
+  it("홈의 보드 카드를 지울 때도 묻고, 거절하면 카드와 보드가 남는다", async () => {
+    setup(false);
+    await getDB().boards.put(makeBoard("together", { parentBoardId: SYSTEM_BOARD_ID }));
+    const card = { id: "c1", kind: "board", boardRef: "together" } as Card;
+    useWorkspace.setState({
+      cards: [card],
+      boards: await useStorage.getState().loadBoards(),
+      currentBoardId: SYSTEM_BOARD_ID,
+    });
+
+    useWorkspace.getState().removeSelected(["c1"]);
+
+    await vi.waitFor(() => expect(confirmMemberDelete).toHaveBeenCalledWith(1));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(useWorkspace.getState().cards.map((c) => c.id)).toEqual(["c1"]);
+    expect(await getDB().boards.get("together")).toBeDefined();
+  });
+
+  it("홈의 보드 카드 삭제를 확인하면 카드와 보드를 지운다", async () => {
+    setup(true);
+    await getDB().boards.put(makeBoard("together", { parentBoardId: SYSTEM_BOARD_ID }));
+    const card = { id: "c1", kind: "board", boardRef: "together" } as Card;
+    useWorkspace.setState({
+      cards: [card],
+      boards: await useStorage.getState().loadBoards(),
+      currentBoardId: SYSTEM_BOARD_ID,
+    });
+
+    useWorkspace.getState().remove("c1");
+
+    await vi.waitFor(async () => expect(await getDB().boards.get("together")).toBeUndefined());
+    expect(useWorkspace.getState().cards).toEqual([]);
+  });
+
+  it("혼자 쓰는 보드는 묻지 않는다", async () => {
+    setup(true);
+    install(fakeApi({ members: vi.fn(async () => [OWNER]) }));
+    configureMembership({ confirmMemberDelete });
+    await getDB().boards.put(makeBoard("together"));
+
+    await useWorkspace.getState().removeBoardWithUndo("together");
+
+    expect(confirmMemberDelete).not.toHaveBeenCalled();
+    expect(await getDB().boards.get("together")).toBeUndefined();
+  });
+});
 

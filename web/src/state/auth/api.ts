@@ -28,6 +28,8 @@ export class AuthRequestError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    /** 서버 오류 본문의 `error` 코드(예: quota_exceeded, too_large). 본문에 없으면 undefined. */
+    readonly code?: string,
   ) {
     super(message);
     this.name = "AuthRequestError";
@@ -64,14 +66,22 @@ export interface AuthApi {
  * 문구를 그대로 쓰고, 없으면(비JSON·프록시 오류) null을 돌려준다 — 호출자가 상태 코드별
  * 기본 문구를 살릴 수 있게 한다. "/auth/login 401" 같은 기계 문구를 만들지 않는다.
  */
-export async function readErrorMessage(res: Response): Promise<string | null> {
+/** Ktor 오류 본문 `{error, message}`를 읽는다. 본문이 JSON이 아니면 둘 다 없다. */
+export async function readErrorBody(res: Response): Promise<{ code?: string; message?: string }> {
   try {
-    const body = (await res.json()) as { message?: unknown };
-    if (typeof body?.message === "string" && body.message) return body.message;
+    const body = (await res.json()) as { error?: unknown; message?: unknown };
+    return {
+      code: typeof body?.error === "string" && body.error ? body.error : undefined,
+      message: typeof body?.message === "string" && body.message ? body.message : undefined,
+    };
   } catch {
     // 본문이 JSON이 아니면 서버 문구 없음.
+    return {};
   }
-  return null;
+}
+
+export async function readErrorMessage(res: Response): Promise<string | null> {
+  return (await readErrorBody(res)).message ?? null;
 }
 
 async function postJson<T>(

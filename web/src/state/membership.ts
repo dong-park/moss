@@ -18,6 +18,7 @@ import type { BoardSummary } from "./auth/types";
 import { getDB, type Board } from "./db/schema";
 import { useToasts } from "./notifications";
 import { realShareApi, type ShareApi } from "./share/api";
+import { askMemberDelete } from "./share/memberDeleteConfirm";
 import { useShare } from "./share/store";
 import { useStorage } from "./storage";
 import { isSystemBoardNote } from "./boardIds";
@@ -42,6 +43,11 @@ export interface MembershipDeps {
    */
   uploadDoc: (boardId: string, accessToken: string) => Promise<void>;
   notify: (message: string) => void;
+  /**
+   * D9: 다른 멤버가 있는 보드를 지우기 전에 묻는다. `others`는 소유자 말고 멤버 수,
+   * null이면 멤버를 확인하지 못했다. 거절하면 false.
+   */
+  confirmMemberDelete: (others: number | null) => Promise<boolean>;
 }
 
 const defaultDeps: MembershipDeps = {
@@ -51,6 +57,7 @@ const defaultDeps: MembershipDeps = {
   notify: (message) => {
     useToasts.getState().push({ tone: "calm", title: message });
   },
+  confirmMemberDelete: (others) => askMemberDelete(others),
 };
 
 let deps: MembershipDeps = defaultDeps;
@@ -62,6 +69,7 @@ export function configureMembership(next: Partial<MembershipDeps>): void {
 export function resetMembershipDeps(): void {
   deps = defaultDeps;
   notified.clear();
+  deleteConfirmed.clear();
 }
 
 /** 같은 보드의 해제 알림을 한 번만 띄운다 (AC-13 "한 번"). */
@@ -336,7 +344,8 @@ export async function shareSubBoards(): Promise<void> {
  * 되살릴 수 있는 단계에서 부르면 안 된다 — undo로 사본을 되돌려도 서버에서 먼저 사라진다.
  * 부모도 같이 지워졌으면 서버 cascade가 처리하므로 건너뛴다. 최상위 보드는 소유자 기기에서만
  * 지운다 — 서버에 저장된 사본이 /me/boards로 되살아나거나 저장 상한을 차지하지 않게 한다.
- * 다른 멤버가 있는 최상위 보드는 지우지 않는다 — 서버 사본을 지우면 멤버 전원의 보드가 사라진다.
+ * 다른 멤버가 있는 최상위 보드는 D9 확인(confirmBoardDeletion)을 받은 것만 지운다 — 확인 없이
+ * 멤버가 생긴 보드는 남겨 두어 멤버 모르게 사라지지 않게 한다.
  */
 export async function unshareRemovedSubBoards(boards: Board[]): Promise<void> {
   if (boards.length === 0) return;
@@ -358,14 +367,61 @@ export async function unshareRemovedSubBoards(boards: Board[]): Promise<void> {
   }
   for (const board of targets) {
     try {
-      // 최상위 보드는 소유자 혼자 쓸 때만 지운다. 멤버를 확인하지 못하면(오프라인) 지우지 않는다.
-      if (isTopLevel(board) && !(await ownerIsAlone(board.id, session.accessToken))) continue;
+      // 최상위 보드는 D9 확인을 받았거나 소유자 혼자 쓸 때만 지운다.
+      // 확인 없이 멤버를 확인하지 못하면(오프라인) 지우지 않는다.
+      if (
+        isTopLevel(board) &&
+        !deleteConfirmed.has(board.id) &&
+        !(await ownerIsAlone(board.id, session.accessToken))
+      ) {
+        continue;
+      }
       await deps.api.unshare(board.id, session.accessToken);
+      deleteConfirmed.delete(board.id);
       useShare.getState().forgetBoard(board.id);
     } catch {
       // 오프라인·이미 지워짐 — 다음 syncMyBoards가 정리한다.
     }
   }
+}
+
+/** D9 확인을 받은 최상위 보드. undo 만료 뒤 멤버가 있어도 서버 사본을 지운다. */
+const deleteConfirmed = new Set<string>();
+
+/**
+ * D9 → A: 소유자가 서버에 저장된 최상위 보드를 지우기 전에 부른다. 다른 멤버가 있으면
+ * "멤버 N명의 보드에서도 사라집니다"를 묻고, 확정하면 undo 만료 뒤 서버 사본을 지우도록
+ * 표시한다. false면 호출자는 보드를 지우지 않는다. 멤버를 확인하지 못하면 수 없이 묻는다.
+ */
+export async function confirmBoardDeletion(boards: Board[]): Promise<boolean> {
+  const byBoard = useShare.getState().byBoard;
+  const targets = boards.filter((b) => {
+    const info = byBoard[b.id];
+    return isTopLevel(b) && info?.status === "shared" && info.role === "owner";
+  });
+  if (targets.length === 0) return true;
+  let session;
+  try {
+    session = await useAuth.getState().ensureSession();
+  } catch {
+    return true; // 로그인 안 함 — 서버 사본을 지우지 않으니 물을 것도 없다.
+  }
+  let others: number | null;
+  try {
+    const ids = new Set<string>();
+    for (const board of targets) {
+      for (const m of await deps.api.members(board.id, session.accessToken)) {
+        if (m.role !== "owner") ids.add(m.id);
+      }
+    }
+    others = ids.size;
+  } catch {
+    others = null;
+  }
+  if (others === 0) return true;
+  const ok = await deps.confirmMemberDelete(others);
+  if (ok) for (const board of targets) deleteConfirmed.add(board.id);
+  return ok;
 }
 
 function isTopLevel(board: Board): boolean {
@@ -476,7 +532,8 @@ export async function openSharedBoard(boardId: string): Promise<BoardSummary | n
 /* ── remote-mcp n1: 로그인한 사용자의 보드는 모두 서버에 저장한다 ─────────────────── */
 
 function isQuotaExceeded(err: unknown): err is AuthRequestError {
-  return err instanceof AuthRequestError && err.status === 413;
+  // 413 too_large(크기 초과)는 계정 상한이 아니다 — 다음 동기화가 다시 시도한다.
+  return err instanceof AuthRequestError && err.status === 413 && err.code === "quota_exceeded";
 }
 
 /**
