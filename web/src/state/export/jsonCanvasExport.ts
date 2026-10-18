@@ -1,6 +1,7 @@
 import JSZip from "jszip";
 import type { Board, Connection, ConnectionSide, Note } from "../db/schema";
-import { decodeFrameContent } from "../frameContent";
+import { decodeFrameConfig } from "../frameContent";
+import { attachmentZipPath } from "./attachments";
 import { isSystemBoardId, normalizeBoardId } from "../boardIds";
 import { isMemoColor, MEMO_COLORS } from "@/components/workspace/memoVariety";
 
@@ -15,6 +16,9 @@ export interface JsonCanvasNode {
   text?: string;
   label?: string;
   color?: string;
+  /** group 전용: 배경 이미지 상대 경로(JSON Canvas 스펙). */
+  background?: string;
+  backgroundStyle?: "cover" | "ratio" | "repeat";
 }
 
 export interface JsonCanvasEdge {
@@ -44,12 +48,15 @@ function noteHeight(note: Note): number {
 export function buildJsonCanvas(
   notes: Note[],
   connections: Connection[],
+  attachments: Map<string, Blob> = new Map(),
 ): JsonCanvasDocument {
   const nodes: JsonCanvasNode[] = [];
   const noteIds = new Set(notes.map((n) => n.id));
 
   for (const note of notes) {
     if (note.kind === "frame") {
+      const cfg = decodeFrameConfig(note.content);
+      const hasBg = !!note.attachmentRef && attachments.has(note.attachmentRef);
       nodes.push({
         id: note.id,
         type: "group",
@@ -57,7 +64,11 @@ export function buildJsonCanvas(
         y: note.y,
         width: note.width,
         height: noteHeight(note),
-        label: decodeFrameContent(note.content),
+        label: cfg.name,
+        // 판 높이를 이미지 비율에 맞추므로(D2 답 A) 비율 맞춤으로 싣는다.
+        ...(hasBg
+          ? { background: attachmentZipPath(note.attachmentRef!), backgroundStyle: "ratio" as const }
+          : {}),
       });
       continue;
     }
@@ -102,6 +113,7 @@ export async function exportJsonCanvasZip(
   notes: Note[],
   boards: Board[],
   connections: Connection[],
+  attachments: Map<string, Blob> = new Map(),
 ): Promise<Blob> {
   const zip = new JSZip();
   const byBoard = new Map<string | null, Note[]>();
@@ -123,8 +135,12 @@ export async function exportJsonCanvasZip(
     const boardConnections = connections.filter(
       (c) => noteIds.has(c.sourceNoteId) && noteIds.has(c.targetNoteId),
     );
-    const doc = buildJsonCanvas(boardNotes, boardConnections);
+    const doc = buildJsonCanvas(boardNotes, boardConnections, attachments);
     zip.file(`${safeName}.canvas`, JSON.stringify(doc, null, 2));
+    for (const n of boardNotes) {
+      const blob = n.kind === "frame" && n.attachmentRef ? attachments.get(n.attachmentRef) : undefined;
+      if (blob) zip.file(attachmentZipPath(n.attachmentRef!), blob);
+    }
   }
 
   if (byBoard.size === 0) {

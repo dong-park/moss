@@ -282,18 +282,10 @@
       "purple": "보라",
       "pink": "분홍"
     },
-    "frameSkin": {
-      "menu": "판 모양",
-      "free": "자유",
-      "columns": "세로 칸",
-      "addColumn": "칸 추가",
-      "removeColumn": "칸 삭제",
-      "unnamedColumn": "이름 없는 칸",
-      "defaults": {
-        "seed": "씨앗",
-        "growing": "자라는 중",
-        "resting": "묵힘"
-      }
+    "frameBg": {
+      "upload": "배경 이미지 올리기…",
+      "replace": "배경 이미지 바꾸기…",
+      "clear": "배경 이미지 지우기"
     }
   },
   "capture": {

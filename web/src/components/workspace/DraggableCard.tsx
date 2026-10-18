@@ -15,7 +15,7 @@ import { CardContent } from "./cards/CardContent";
 import { memoFace } from "./cards/text/face";
 import { isExpandable } from "./cards/_shared/expandable";
 import { ResizeHandles } from "./ResizeHandles";
-import { decodeFrameConfig, type FrameSkinId } from "@/state/frameContent";
+import { storePhoto } from "./canvasCapture";
 import {
   cardRotationDeg,
   formatDeg,
@@ -33,11 +33,7 @@ import { nextTiltAngle } from "./dragTilt";
 
 const DRAG_THRESHOLD = 3; // px — 이 거리 넘으면 드래그로 인식
 
-/** FEAT-frame-skins §7: 판 우클릭 "판 모양" 하위 메뉴 항목. */
-const FRAME_SKIN_MENU = [
-  { id: "free", labelKey: "workspace.frameSkin.free" },
-  { id: "columns", labelKey: "workspace.frameSkin.columns" },
-] as const satisfies readonly { id: FrameSkinId; labelKey: string }[];
+const FRAME_BG_ACCEPT = "image/png,image/jpeg,image/gif,image/webp,image/svg+xml";
 
 /**
  * FEAT-drag-tilt: 놓은 뒤 0도로 돌아오는 스프링. 2~3회 흔들리다 선다.
@@ -135,8 +131,10 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
   // FEAT-frame-feel T2/T4: 넣기 강조 대상 판과, 흔들리는 판 — 휘발 상태.
   const setDropTargetFrame = useWorkspace((s) => s.setDropTargetFrame);
   const setWobbleFrame = useWorkspace((s) => s.setWobbleFrame);
-  // FEAT-frame-skins: 판 우클릭 → 판 모양 전환.
-  const setFrameSkin = useWorkspace((s) => s.setFrameSkin);
+  // FEAT-frame-image-template: 판 우클릭 → 배경 이미지 올리기·바꾸기·지우기.
+  const setFrameBackground = useWorkspace((s) => s.setFrameBackground);
+  const clearFrameBackground = useWorkspace((s) => s.clearFrameBackground);
+  const frameBgInputRef = useRef<HTMLInputElement>(null);
   const setMemoColor = useWorkspace((s) => s.setMemoColor);
   const boards = useWorkspace((s) => s.boards);
   const currentBoardId = useWorkspace((s) => s.currentBoardId);
@@ -1078,9 +1076,10 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
         // 오른쪽 끝을 넘어 그대로 보였다. width는 card.height 유무와 무관하게
         // 항상 크롭돼야 하므로 overflow는 조건 없이 hidden으로 둔다.
         // FEAT-text-tool: textbox만 예외 — 선택 툴바가 카드 위로 떠야 해서 visible.
+        // 메모판: 이름표가 판 바깥 위에 있다.
         // FEAT-photo-card: 사진도 예외 — 캡션 여백이 카드 상자 밖으로 흘러넘친다.
         overflow:
-          faceCard || card.kind === "photo" ? "visible" : "hidden",
+          faceCard || card.kind === "photo" || card.kind === "frame" ? "visible" : "hidden",
       }}
     >
       <CardContent
@@ -1176,7 +1175,7 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
   );
 
   // FEAT-eject: 서브캔버스 밖(루트/시스템)이면 우클릭 메뉴 없이 카드만 렌더.
-  // FEAT-frame-skins: 판은 서브캔버스 밖에서도 "판 모양" 메뉴가 필요하다.
+  // 판은 서브캔버스 밖에서도 배경 이미지 메뉴가 필요하다.
   // 편집/펜 모드에선 트리거를 비활성화해 브라우저 기본 메뉴(복사·붙여넣기 등)를 살린다.
   const isFrame = card.kind === "frame";
   // 파일함은 어디서든 우클릭으로 이름을 바꾼다.
@@ -1194,9 +1193,21 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
       : name.trim() === ""
         ? t("cards.board.unnamed")
         : name;
-  const currentSkin = isFrame ? decodeFrameConfig(card.content).skin : "free";
+  const hasFrameBg = isFrame && !!card.attachmentRef;
+  const onFrameBgPicked = async (file: File | undefined) => {
+    if (!file) return;
+    const photo = await storePhoto(file); // 형식·크기 거부는 토스트만 뜨고 null.
+    if (!photo) return;
+    setFrameBackground(card.id, {
+      ref: photo.ref,
+      mediaType: photo.mediaType,
+      w: photo.naturalW,
+      h: photo.naturalH,
+    });
+  };
 
   return (
+    <>
     <ContextMenu.Root>
       <ContextMenu.Trigger asChild disabled={editing || penMode}>
         {cardNode}
@@ -1260,36 +1271,26 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
               )}
             </>
           )}
-          {/* FEAT-frame-skins §7: 판 모양 하위 메뉴 — 지금 스킨에 체크. */}
+          {/* FEAT-frame-image-template: 배경 이미지 — 있으면 바꾸기·지우기. */}
           {isFrame && (
-            <ContextMenu.Sub>
-              <ContextMenu.SubTrigger
-                data-frame-skin-menu="true"
-                className="flex cursor-pointer items-center justify-between rounded-md px-3 py-1.5 text-sm text-text outline-none transition-colors data-[highlighted]:bg-panel data-[state=open]:bg-panel"
+            <>
+              <ContextMenu.Item
+                data-frame-bg-item={hasFrameBg ? "replace" : "upload"}
+                className="cursor-pointer rounded-md px-3 py-1.5 text-sm text-text outline-none transition-colors data-[highlighted]:bg-panel"
+                onSelect={() => frameBgInputRef.current?.click()}
               >
-                <span>{t("workspace.frameSkin.menu")}</span>
-                <span className="text-text-soft">›</span>
-              </ContextMenu.SubTrigger>
-              <ContextMenu.Portal>
-                <ContextMenu.SubContent className="z-[var(--z-panel)] min-w-44 rounded-lg border border-border bg-bg p-1 shadow-card-lift">
-                  {FRAME_SKIN_MENU.map((item) => (
-                    <ContextMenu.Item
-                      key={item.id}
-                      data-frame-skin-item={item.id}
-                      className="flex cursor-pointer items-center justify-between rounded-md px-3 py-1.5 text-sm text-text outline-none transition-colors data-[highlighted]:bg-panel"
-                      onSelect={() => setFrameSkin(card.id, item.id)}
-                    >
-                      <span>{t(item.labelKey)}</span>
-                      {currentSkin === item.id && (
-                        <span aria-hidden="true" className="text-text-soft">
-                          ✓
-                        </span>
-                      )}
-                    </ContextMenu.Item>
-                  ))}
-                </ContextMenu.SubContent>
-              </ContextMenu.Portal>
-            </ContextMenu.Sub>
+                {t(hasFrameBg ? "workspace.frameBg.replace" : "workspace.frameBg.upload")}
+              </ContextMenu.Item>
+              {hasFrameBg && (
+                <ContextMenu.Item
+                  data-frame-bg-item="clear"
+                  className="cursor-pointer rounded-md px-3 py-1.5 text-sm text-text outline-none transition-colors data-[highlighted]:bg-panel"
+                  onSelect={() => clearFrameBackground(card.id)}
+                >
+                  {t("workspace.frameBg.clear")}
+                </ContextMenu.Item>
+              )}
+            </>
           )}
           {/* 메모 색 하위 메뉴 — 여러 장을 선택했고 이 메모가 그 안에 있으면 선택 전부에 적용. */}
           {isMemo && (
@@ -1336,6 +1337,21 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
         </ContextMenu.Content>
       </ContextMenu.Portal>
     </ContextMenu.Root>
+    {isFrame && (
+      <input
+        ref={frameBgInputRef}
+        type="file"
+        accept={FRAME_BG_ACCEPT}
+        data-frame-bg-input="true"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          e.target.value = "";
+          void onFrameBgPicked(file);
+        }}
+      />
+    )}
+    </>
   );
 });
 

@@ -5,58 +5,34 @@
  * workspace.ts(renameFrame)·cards/frame/Content.tsx(parseFrameName) 세 곳에 흩어져
  * 있었다. 여기 하나로 모은다.
  *
- * FEAT-frame-skins: 이름만이 아니라 스킨·칸 목록까지 담는다. DB 스키마는 그대로 두고
- * content JSON만 넓힌다. 스킨이 free여도 columns는 지우지 않고 보관한다(AC-3).
+ * 옛 세로 칸 판(FEAT-frame-skins)의 skin·columns는 읽지 않고, 다시 쓸 때 원본 그대로 보존한다.
  */
 
 export const FRAME_DEFAULT_NAME = "새 메모판";
 export const FRAME_NAME_MAX = 40;
 
-/** 칸 이름 규약: trim, 최대 20자, "" 허용(AC-7). */
-export const FRAME_COLUMN_NAME_MAX = 20;
-/** 칸 수 하한·상한(§2 포함). 2 미만이면 기본 3칸으로 읽는다(AC-2). */
-export const FRAME_COLUMN_COUNT_MIN = 2;
-export const FRAME_COLUMN_COUNT_MAX = 8;
-/** 칸 한 칸의 기준 폭. 세로 칸 판 최소 폭 = 칸 수 × 이 값(AC-4·AC-9). */
-export const FRAME_COLUMN_WIDTH = 240;
-/** 세로 칸 판 최대 폭(AC-10). */
-export const FRAME_COLUMNS_MAX_WIDTH = 2400;
-
-export type FrameSkinId = "free" | "columns";
-
-export interface FrameColumn {
-  id: string;
-  name: string;
-}
-
 export interface FrameContentJson {
   name?: string;
-  skin?: FrameSkinId;
-  /** skin이 free여도 지우지 않고 보관한다. */
-  columns?: FrameColumn[];
+  /**
+   * 옛 세로 칸 판의 데이터. 화면은 읽지 않지만(그룹 선 판) 다시 쓸 때 지우지 않는다 —
+   * 나중에 되돌릴 길을 남긴다(D4).
+   */
+  skin?: unknown;
+  columns?: unknown;
+  /** FEAT-frame-image-template: 배경 이미지 원본 크기. 파일 참조는 판 행의 attachmentRef에 둔다. */
+  bg?: FrameBackgroundSize;
 }
 
-/** 정규화를 마친 판 설정 — 화면·스토어가 쓰는 모양. columns는 항상 2~8개. */
+/** 배경 이미지 원본 픽셀 크기. 비율 맞춤에 쓴다. */
+export interface FrameBackgroundSize {
+  w: number;
+  h: number;
+}
+
+/** 정규화를 마친 판 설정 — 화면·스토어가 쓰는 모양. */
 export interface FrameConfig {
   name: string;
-  skin: FrameSkinId;
-  columns: FrameColumn[];
-}
-
-/** 기본 칸 이름. AC-3의 "씨앗 / 자라는 중 / 묵힘". */
-export const FRAME_DEFAULT_COLUMN_NAMES = ["씨앗", "자라는 중", "묵힘"] as const;
-
-/** 칸 id는 화면 key 전용 — 새 칸마다 유일하면 된다. */
-export function newFrameColumnId(): string {
-  return `col-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-/** 기본 3칸. id는 고정 — 디코딩할 때마다 새로 만들면 React key가 흔들린다. */
-export function defaultFrameColumns(): FrameColumn[] {
-  return FRAME_DEFAULT_COLUMN_NAMES.map((name, i) => ({
-    id: `col-default-${i}`,
-    name,
-  }));
+  bg?: FrameBackgroundSize;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -69,26 +45,13 @@ function normalizeName(name: unknown): string {
   return trimmed === "" ? FRAME_DEFAULT_NAME : trimmed;
 }
 
-/** 칸 이름 → trim 최대 20자. "" 허용. */
-function normalizeColumnName(name: unknown): string {
-  return typeof name === "string" ? name.trim().slice(0, FRAME_COLUMN_NAME_MAX) : "";
-}
-
-/**
- * 모르는 모양의 칸 목록을 정규화한다(AC-2).
- * 배열이 아니거나, 항목이 객체가 아니거나, 2개 미만이면 기본 3칸. 최대 8개로 자른다.
- */
-export function normalizeFrameColumns(raw: unknown): FrameColumn[] {
-  if (!Array.isArray(raw)) return defaultFrameColumns();
-  const columns: FrameColumn[] = [];
-  for (const entry of raw.slice(0, FRAME_COLUMN_COUNT_MAX)) {
-    if (!isRecord(entry)) return defaultFrameColumns();
-    const id =
-      typeof entry.id === "string" && entry.id !== "" ? entry.id : `col-fallback-${columns.length}`;
-    columns.push({ id, name: normalizeColumnName(entry.name) });
-  }
-  if (columns.length < FRAME_COLUMN_COUNT_MIN) return defaultFrameColumns();
-  return columns;
+/** 배경 원본 크기 → 둘 다 양의 유한수일 때만 남긴다. 아니면 없음. */
+export function normalizeFrameBg(raw: unknown): FrameBackgroundSize | undefined {
+  if (!isRecord(raw)) return undefined;
+  const { w, h } = raw as Record<string, unknown>;
+  if (typeof w !== "number" || typeof h !== "number") return undefined;
+  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return undefined;
+  return { w, h };
 }
 
 /** 저장된 content를 파싱한다 — 실패·비객체는 빈 설정으로(오류로 멈추지 않는다). */
@@ -102,14 +65,13 @@ export function readFrameContent(content?: string): FrameContentJson {
   }
 }
 
-/** content → 정규화된 설정. 모르는 스킨은 free, 깨진 칸 목록은 기본 3칸(AC-2). */
+/** content → 정규화된 설정. 옛 세로 칸 판도 칸 없이 이름·배경만 읽는다. */
 export function decodeFrameConfig(content: string): FrameConfig {
   const raw = readFrameContent(content);
-  return {
-    name: normalizeName(raw.name),
-    skin: raw.skin === "columns" ? "columns" : "free",
-    columns: normalizeFrameColumns(raw.columns),
-  };
+  const cfg: FrameConfig = { name: normalizeName(raw.name) };
+  const bg = normalizeFrameBg(raw.bg);
+  if (bg) cfg.bg = bg;
+  return cfg;
 }
 
 /** content → 표시용 이름. 파싱 실패·빈 이름은 기본값으로 폴백. */
@@ -118,8 +80,8 @@ export function decodeFrameContent(content: string): string {
 }
 
 /**
- * 설정 → frame Note.content. 이름은 trim 1~40자로 정규화하고,
- * 스킨은 알려진 값만, 칸 목록은 정규화해 담는다(있을 때만).
+ * 설정 → frame Note.content. 이름은 trim 1~40자로 정규화한다.
+ * 옛 세로 칸 판의 skin·columns는 있으면 손대지 않고 그대로 담는다.
  *
  * 문자열을 넘기면 이름만 있는 옛 호출(`encodeFrameContent("판")`)로 읽는다 —
  * 내보내기·마이그레이션의 기존 호출부를 그대로 둔다.
@@ -127,7 +89,9 @@ export function decodeFrameContent(content: string): string {
 export function encodeFrameContent(content: FrameContentJson | string = {}): string {
   const cfg: FrameContentJson = typeof content === "string" ? { name: content } : content;
   const out: FrameContentJson = { name: normalizeName(cfg.name) };
-  if (cfg.skin === "columns" || cfg.skin === "free") out.skin = cfg.skin;
-  if (cfg.columns !== undefined) out.columns = normalizeFrameColumns(cfg.columns);
+  if (cfg.skin !== undefined) out.skin = cfg.skin;
+  if (cfg.columns !== undefined) out.columns = cfg.columns;
+  const bg = normalizeFrameBg(cfg.bg);
+  if (bg) out.bg = bg;
   return JSON.stringify(out);
 }

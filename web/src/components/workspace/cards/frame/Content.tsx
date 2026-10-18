@@ -4,7 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useWorkspace } from "@/state/workspace";
 import type { Card } from "@/state/workspace";
 import { decodeFrameConfig } from "@/state/frameContent";
-import { ColumnsSkin } from "./skins/ColumnsSkin";
+import { usePhotoUrl } from "../photo/usePhotoUrl";
+import { useT } from "@/i18n/Provider";
 
 /* ─────────────────────────────────────────────────────────────
  * FEAT-sticky-redesign n7 — 메모판(frame) 렌더.
@@ -14,10 +15,13 @@ import { ColumnsSkin } from "./skins/ColumnsSkin";
  * ───────────────────────────────────────────────────────────── */
 
 export function FrameCardContent({ card }: { card: Card }) {
+  const t = useT();
   const renameFrame = useWorkspace((s) => s.renameFrame);
-  // 드래그 중에도 판은 다시 렌더된다 — content가 같으면 파싱·칸 배경을 다시 하지 않는다.
+  // 드래그 중에도 판은 다시 렌더된다 — content가 같으면 다시 파싱하지 않는다.
   const config = useMemo(() => decodeFrameConfig(card.content), [card.content]);
   const name = config.name;
+  const selected = useWorkspace((s) => s.selectedIds.includes(card.id));
+  const bg = usePhotoUrl(card.attachmentRef);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(name);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -41,17 +45,34 @@ export function FrameCardContent({ card }: { card: Card }) {
   return (
     <div
       className="relative h-full w-full"
+      data-frame-line="true"
       style={{
-        // 화이트보드 한 장을 9-slice로 늘린다 — 알루미늄 모서리 캡·아래 트레이는 제 크기로 남고
-        // 변·판 면만 늘어난다. 원본 800×563, 모서리 캡까지 50px를 잘라 화면에서는 18px로 그린다.
-        borderStyle: "solid",
-        borderWidth: 18,
-        borderImage: 'url("/cards/v2/whiteboard.png") 50 fill / 18px stretch',
+        // 그룹 선: 1px 실선. 고르면 선택 파랑.
+        border: "1px solid " + (selected ? "var(--color-accent-blue)" : "var(--color-border)"),
+        borderRadius: 4,
       }}
     >
-      {/* FEAT-frame-skins: 세로 칸 스킨의 경계·이름표 배경. 메모보다 아래층. */}
-      {config.skin === "columns" && (
-        <ColumnsSkin frameId={card.id} columns={config.columns} />
+      {/* FEAT-frame-image-template: 배경 이미지. 판 높이가 이미지 비율을 따르므로 꽉 채운다(D2 A, 원본 진하기 D3 A). */}
+      {card.attachmentRef && bg.state !== "loading" && (
+        <div
+          data-frame-bg={bg.state}
+          className="pointer-events-none absolute inset-0 overflow-hidden"
+          style={{ borderRadius: 3 }}
+        >
+          {bg.state === "ready" && bg.url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={bg.url}
+              alt=""
+              draggable={false}
+              className="pointer-events-none h-full w-full select-none object-fill"
+            />
+          ) : bg.state === "missing" ? (
+            <div className="flex h-full w-full items-center justify-center px-2 text-center text-xs text-text-soft">
+              {t("cards.photo.missing")}
+            </div>
+          ) : null}
+        </div>
       )}
       <div
         role={editing ? undefined : "button"}
@@ -70,10 +91,14 @@ export function FrameCardContent({ card }: { card: Card }) {
         // DraggableCard가 frame에는 z-index를 아예 안 주도록 바꿔(auto — 새
         // 컨텍스트를 안 만듦) 이름표의 z-index가 world-layer 레벨에서 메모와
         // 직접 비교되게 한다(15 > 미선택 메모 10).
-        // 이름표는 판 안쪽 위에 둔다 — DraggableCard가 카드 밖 넘침을 잘라내므로(결함3)
-        // 테두리에 걸치게(-top) 두면 글자 윗부분이 잘린다.
-        style={{ zIndex: 15 }}
-        className="absolute top-2 left-3 max-w-[80%] rounded-md bg-bg px-2 py-0.5 text-[12px] font-semibold text-text shadow-card"
+        // 이름표는 판 바깥 왼쪽 위에 둔다 — DraggableCard가 frame은 overflow visible로 둔다.
+        style={{
+          zIndex: 15,
+          top: -20,
+          left: -1,
+          color: selected ? "var(--color-accent-blue)" : undefined,
+        }}
+        className="absolute max-w-[80%] text-[12px] font-semibold leading-4 text-text-soft"
       >
         {editing ? (
           <input
