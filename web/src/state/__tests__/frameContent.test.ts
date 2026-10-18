@@ -70,4 +70,13 @@ describe("encodeFrameContent / decodeFrameConfig", () => {
     const content = encodeFrameContent({ name: "판", columns: [] });
     expect(decodeFrameConfig(content).columns).toHaveLength(3);
   });
+  it("FT-2: bg 크기는 양수일 때만 왕복하고, 아니면 없앤다", () => {
+    const ok = encodeFrameContent({ name: "판", bg: { w: 800, h: 400 } });
+    expect(decodeFrameConfig(ok).bg).toEqual({ w: 800, h: 400 });
+    for (const bad of [{ w: 0, h: 10 }, { w: -1, h: 5 }, { w: 10, h: NaN }, { w: "1", h: 2 }, null]) {
+      const content = encodeFrameContent({ name: "판", bg: bad as never });
+      expect(JSON.parse(content)).not.toHaveProperty("bg");
+      expect(decodeFrameConfig(JSON.stringify({ name: "판", bg: bad })).bg).toBeUndefined();
+    }
+  });
 });

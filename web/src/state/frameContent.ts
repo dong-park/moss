@@ -34,6 +34,14 @@ export interface FrameContentJson {
   skin?: FrameSkinId;
   /** skin이 free여도 지우지 않고 보관한다. */
   columns?: FrameColumn[];
+  /** FEAT-frame-image-template: 배경 이미지 원본 크기. 파일 참조는 판 행의 attachmentRef에 둔다. */
+  bg?: FrameBackgroundSize;
+}
+
+/** 배경 이미지 원본 픽셀 크기. 비율 맞춤에 쓴다. */
+export interface FrameBackgroundSize {
+  w: number;
+  h: number;
 }
 
 /** 정규화를 마친 판 설정 — 화면·스토어가 쓰는 모양. columns는 항상 2~8개. */
@@ -41,6 +49,7 @@ export interface FrameConfig {
   name: string;
   skin: FrameSkinId;
   columns: FrameColumn[];
+  bg?: FrameBackgroundSize;
 }
 
 /** 기본 칸 이름. AC-3의 "씨앗 / 자라는 중 / 묵힘". */
@@ -91,6 +100,15 @@ export function normalizeFrameColumns(raw: unknown): FrameColumn[] {
   return columns;
 }
 
+/** 배경 원본 크기 → 둘 다 양의 유한수일 때만 남긴다. 아니면 없음. */
+export function normalizeFrameBg(raw: unknown): FrameBackgroundSize | undefined {
+  if (!isRecord(raw)) return undefined;
+  const { w, h } = raw as Record<string, unknown>;
+  if (typeof w !== "number" || typeof h !== "number") return undefined;
+  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return undefined;
+  return { w, h };
+}
+
 /** 저장된 content를 파싱한다 — 실패·비객체는 빈 설정으로(오류로 멈추지 않는다). */
 export function readFrameContent(content?: string): FrameContentJson {
   if (!content) return {};
@@ -105,11 +123,14 @@ export function readFrameContent(content?: string): FrameContentJson {
 /** content → 정규화된 설정. 모르는 스킨은 free, 깨진 칸 목록은 기본 3칸(AC-2). */
 export function decodeFrameConfig(content: string): FrameConfig {
   const raw = readFrameContent(content);
-  return {
+  const cfg: FrameConfig = {
     name: normalizeName(raw.name),
     skin: raw.skin === "columns" ? "columns" : "free",
     columns: normalizeFrameColumns(raw.columns),
   };
+  const bg = normalizeFrameBg(raw.bg);
+  if (bg) cfg.bg = bg;
+  return cfg;
 }
 
 /** content → 표시용 이름. 파싱 실패·빈 이름은 기본값으로 폴백. */
@@ -129,5 +150,7 @@ export function encodeFrameContent(content: FrameContentJson | string = {}): str
   const out: FrameContentJson = { name: normalizeName(cfg.name) };
   if (cfg.skin === "columns" || cfg.skin === "free") out.skin = cfg.skin;
   if (cfg.columns !== undefined) out.columns = normalizeFrameColumns(cfg.columns);
+  const bg = normalizeFrameBg(cfg.bg);
+  if (bg) out.bg = bg;
   return JSON.stringify(out);
 }

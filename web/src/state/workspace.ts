@@ -73,6 +73,7 @@ import {
   FRAME_COLUMN_COUNT_MAX,
   FRAME_COLUMN_COUNT_MIN,
   newFrameColumnId,
+  normalizeFrameBg,
   normalizeFrameColumns,
   readFrameContent,
   type FrameContentJson,
@@ -295,6 +296,20 @@ export const CARD_MAX_HEIGHT = 1200;
  */
 export const FRAME_MIN_WIDTH = 240;
 export const FRAME_MIN_HEIGHT = 160;
+
+/** 배경 원본 크기에 맞춘 판 높이 — 폭 × h ÷ w, 최소·최대 높이로 자른다. */
+function fitFrameHeight(width: number, bg: { w: number; h: number }): number {
+  return clamp(Math.round((width * bg.h) / bg.w), FRAME_MIN_HEIGHT, CARD_MAX_HEIGHT);
+}
+
+/** 판 배경 파일 삭제. 실패는 무시하고 고아로 둔다. */
+function dropFrameBackgroundFile(ref: string | undefined): void {
+  if (!ref) return;
+  void useStorage
+    .getState()
+    .purgeAttachments([{ attachmentRef: ref } as Note])
+    .catch(() => undefined);
+}
 export const FRAME_DEFAULT_WIDTH = 320;
 export const FRAME_DEFAULT_HEIGHT = 220;
 
@@ -591,6 +606,17 @@ interface WorkspaceState {
   ) => void;
   /** 판 이름 변경. 1~40자, trim 후 빈 문자열이면 "새 메모판"으로 되돌린다. */
   renameFrame: (id: string, name: string) => void;
+  /**
+   * 판 배경 이미지를 올리거나 바꾼다(FEAT-frame-image-template). 파일은 호출부가 이미 저장했다
+   * (storePhoto). 옛 파일이 있으면 지운다. 원본 크기(w·h)가 있으면 폭은 두고 높이를
+   * 폭 × h ÷ w로 맞춘 뒤 소속을 다시 판정한다(손 리사이즈와 같다).
+   */
+  setFrameBackground: (
+    id: string,
+    photo: { ref: string; mediaType: string; w: number; h: number },
+  ) => void;
+  /** 판 배경을 비우고 파일을 지운다. 판 크기와 메모는 그대로다. */
+  clearFrameBackground: (id: string) => void;
   /* ─────────── FEAT-frame-skins: 스킨·세로 칸 ─────────── */
   /**
    * 판 스킨을 바꾼다. 세로 칸으로 바뀌면 칸 목록이 없을 때 기본 3칸을 만들고,
@@ -2700,13 +2726,22 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         // FEAT-frame-skins: 폭 한계는 스킨이 정한다(AC-9·AC-10). 자유 판 상한은
         // "지금 폭까지" — 세로 칸(1920)을 자유로 바꿔도 튀지 않고 더 넓히지 못한다.
         const w = clampFrameWidth(readFrameContent(c.content), next.baseWidth ?? c.width, next.width);
-        const h = clamp(next.height, FRAME_MIN_HEIGHT, CARD_MAX_HEIGHT);
+        let h = clamp(next.height, FRAME_MIN_HEIGHT, CARD_MAX_HEIGHT);
+        let y = next.y !== undefined ? next.y : c.y;
+        // FEAT-frame-image-template: 배경이 있으면 폭에 맞춰 높이로 비율을 지킨다.
+        // 위쪽 핸들(y가 움직인 경우)은 아래 가장자리를 고정한다.
+        const bg = c.attachmentRef ? normalizeFrameBg(readFrameContent(c.content).bg) : undefined;
+        if (bg) {
+          const fitted = fitFrameHeight(w, bg);
+          if (next.y !== undefined && next.y !== c.y) y = next.y + h - fitted;
+          h = fitted;
+        }
         updated = {
           ...c,
           width: w,
           height: h,
           x: next.x !== undefined ? next.x : c.x,
-          y: next.y !== undefined ? next.y : c.y,
+          y,
         };
         return updated;
       }),
@@ -2729,6 +2764,63 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       }),
     }));
     if (updated) persistCardDebounced(updated, get().currentBoardId);
+  },
+
+  setFrameBackground: (id, photo) => {
+    let updated: Card | undefined;
+    let oldRef: string | undefined;
+    let resized = false;
+    set((s) => ({
+      cards: s.cards.map((c) => {
+        if (c.id !== id || c.kind !== "frame") return c;
+        oldRef = c.attachmentRef;
+        const cfg = readFrameContent(c.content);
+        const bg = normalizeFrameBg({ w: photo.w, h: photo.h });
+        const nextCfg: FrameContentJson = { ...cfg, bg };
+        const height = bg ? fitFrameHeight(c.width, bg) : c.height;
+        resized = height !== c.height;
+        updated = {
+          ...c,
+          attachmentRef: photo.ref,
+          mediaType: photo.mediaType,
+          height,
+          content: encodeFrameContent(nextCfg),
+        };
+        return updated;
+      }),
+    }));
+    if (!updated) return;
+    persistCardDebounced(updated, get().currentBoardId);
+    if (oldRef && oldRef !== photo.ref) dropFrameBackgroundFile(oldRef);
+    if (resized) {
+      get().resolveMembership(
+        get()
+          .cards.filter((c) => c.kind !== "frame")
+          .map((c) => c.id),
+      );
+    }
+  },
+
+  clearFrameBackground: (id) => {
+    let updated: Card | undefined;
+    let oldRef: string | undefined;
+    set((s) => ({
+      cards: s.cards.map((c) => {
+        if (c.id !== id || c.kind !== "frame") return c;
+        oldRef = c.attachmentRef;
+        const cfg = readFrameContent(c.content);
+        updated = {
+          ...c,
+          attachmentRef: undefined,
+          mediaType: undefined,
+          content: encodeFrameContent({ ...cfg, bg: undefined }),
+        };
+        return updated;
+      }),
+    }));
+    if (!updated) return;
+    persistCardDebounced(updated, get().currentBoardId);
+    dropFrameBackgroundFile(oldRef);
   },
 
   setFrameSkin: (id, skin) => {
@@ -2846,6 +2938,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       expandedCardId: s.expandedCardId === id ? null : s.expandedCardId,
     }));
     cancelPersist(id);
+    dropFrameBackgroundFile(card.attachmentRef);
     const boardId = get().currentBoardId;
     const afterDelete = new Map(get().cards.map((c) => [c.id, c]));
     withActiveDoc(boardId, (doc) => {
