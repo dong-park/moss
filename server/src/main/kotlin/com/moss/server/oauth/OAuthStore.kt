@@ -196,7 +196,7 @@ class OAuthStore(private val config: AppConfig) {
     }
 
     /** 갱신 토큰을 한 번 쓰고 새 쌍을 낸다. 이미 쓴 토큰이 다시 오면 연결 전체를 폐기한다. */
-    suspend fun refresh(refreshToken: String, clientId: String?): RefreshResult = dbQuery {
+    suspend fun refresh(refreshToken: String, clientId: String): RefreshResult = dbQuery {
         val hash = sha256(refreshToken)
         val now = System.currentTimeMillis()
         val row = (OAuthTokens innerJoin OAuthGrants).selectAll()
@@ -206,7 +206,7 @@ class OAuthStore(private val config: AppConfig) {
         if (row[OAuthGrants.revokedAt] != null || row[OAuthTokens.expiresAt] < now) {
             return@dbQuery RefreshResult.Invalid
         }
-        if (clientId != null && clientId != row[OAuthGrants.clientId]) return@dbQuery RefreshResult.Invalid
+        if (clientId != row[OAuthGrants.clientId]) return@dbQuery RefreshResult.Invalid
         // 동시에 두 번 오면 먼저 표시한 쪽만 통과하고 나머지는 재사용으로 본다.
         val claimed = OAuthTokens.update({ (OAuthTokens.tokenHash eq hash) and OAuthTokens.consumedAt.isNull() }) {
             it[consumedAt] = now

@@ -113,10 +113,11 @@ class OAuthFlowTest : ApiTest() {
             append("code_verifier", codeVerifier)
         })
 
-    private suspend fun HttpClient.refresh(token: String): HttpResponse =
+    private suspend fun HttpClient.refresh(token: String, clientId: String?): HttpResponse =
         submitForm("/oauth/token", parameters {
             append("grant_type", "refresh_token")
             append("refresh_token", token)
+            clientId?.let { append("client_id", it) }
         })
 
     private suspend fun HttpClient.introspect(token: String, secret: String = "internal-secret"): HttpResponse =
@@ -292,15 +293,44 @@ class OAuthFlowTest : ApiTest() {
         val first = client.connect(clientId)
         val refresh1 = first["refresh_token"]!!.jsonPrimitive.content
 
-        val second = client.refresh(refresh1).also { assertEquals(HttpStatusCode.OK, it.status) }.obj()
+        val second = client.refresh(refresh1, clientId).also { assertEquals(HttpStatusCode.OK, it.status) }.obj()
         val access2 = second["access_token"]!!.jsonPrimitive.content
         val refresh2 = second["refresh_token"]!!.jsonPrimitive.content
         assertEquals("true", client.introspect(access2).obj()["active"]!!.jsonPrimitive.content)
 
         // 옛 갱신 토큰을 다시 내면 연결 전체가 죽는다.
-        assertEquals(HttpStatusCode.BadRequest, client.refresh(refresh1).status)
+        assertEquals(HttpStatusCode.BadRequest, client.refresh(refresh1, clientId).status)
         assertEquals("false", client.introspect(access2).obj()["active"]!!.jsonPrimitive.content)
-        assertEquals(HttpStatusCode.BadRequest, client.refresh(refresh2).status)
+        assertEquals(HttpStatusCode.BadRequest, client.refresh(refresh2, clientId).status)
+    }
+
+    @Test
+    fun refreshNeedsTheClientThatWasIssuedTheToken() = oauthApp {
+        val client = plain()
+        client.signup()
+        val clientId = client.register()
+        val otherClientId = client.register()
+        val tokens = client.connect(clientId)
+        val refresh = tokens["refresh_token"]!!.jsonPrimitive.content
+        val access = tokens["access_token"]!!.jsonPrimitive.content
+
+        val missing = client.refresh(refresh, null)
+        assertEquals(HttpStatusCode.BadRequest, missing.status)
+        assertEquals("invalid_request", missing.obj()["error"]!!.jsonPrimitive.content)
+        val other = client.refresh(refresh, otherClientId)
+        assertEquals(HttpStatusCode.BadRequest, other.status)
+        assertEquals("invalid_grant", other.obj()["error"]!!.jsonPrimitive.content)
+        // 거절된 시도는 토큰을 쓰지도 연결을 끊지도 않는다.
+        assertEquals("true", client.introspect(access).obj()["active"]!!.jsonPrimitive.content)
+        assertEquals(HttpStatusCode.OK, client.refresh(refresh, clientId).status)
+    }
+
+    @Test
+    fun authorizeRequestsAreRateLimited() = oauthApp {
+        val client = plain()
+        repeat(60) { assertEquals(HttpStatusCode.BadRequest, client.get("/oauth/authorize?client_id=moss_nope").status) }
+        assertEquals(HttpStatusCode.TooManyRequests, client.get("/oauth/authorize?client_id=moss_nope").status)
+        assertEquals(HttpStatusCode.TooManyRequests, client.decide("moss_nope").status)
     }
 
     @Test
@@ -326,7 +356,7 @@ class OAuthFlowTest : ApiTest() {
 
         assertEquals(HttpStatusCode.NoContent, client.authedDelete("/oauth/grants/$grantId", web.accessToken).status)
         assertEquals("false", client.introspect(access).obj()["active"]!!.jsonPrimitive.content)
-        assertEquals(HttpStatusCode.BadRequest, client.refresh(refresh).status)
+        assertEquals(HttpStatusCode.BadRequest, client.refresh(refresh, clientId).status)
         assertEquals(0, Json.parseToJsonElement(client.authedGet("/oauth/grants", web.accessToken).bodyAsText()).jsonArray.size)
     }
 

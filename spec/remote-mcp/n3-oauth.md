@@ -45,3 +45,10 @@ server AuthRoutes.kt, AppConfig.kt
 - 고쳐줘 (2026-10-18, 메인 · wave-20261018-1100 /review P1): 클라이언트 ID 메타데이터 문서 fetch의 SSRF(ClientResolver.kt:84-111). https만, 기본 포트(443)만 허용하고, DNS를 한 번 풀어 사설·루프백·링크로컬·메타데이터 주소(IPv4·IPv6 모두)를 거절한 뒤 그 푼 주소로 접속해 재바인딩을 막는다. 리다이렉트를 따르지 않고 응답 크기·시간 상한을 둔다. /oauth/authorize GET(OAuthRoutes.kt:252)에 요청 수 상한을 단다. 각 거절을 테스트로 고정한다.
 - 고쳐줘 (2026-10-18, 메인 · /review P2): refresh_token 그랜트에서 client_id를 필수로 받고 토큰을 발급한 클라이언트와 맞는지 확인한다. introspect에 인증 또는 요청 수 상한을 둔다. 프록시 뒤에서 limiter가 한 버킷으로 묶이는 문제는 배포 구성(신뢰할 프록시 헤더)이 정해지지 않아 이번에 고치지 않고, 코드 주석 대신 이 메모에만 남긴다.
 - 병렬 경계 (2026-10-18, 메인 · 수정 웨이브): gradle은 n1과 build 디렉터리가 겹치니 격리 복사본에서 돌린다. 고칠 파일은 server/src/main/kotlin/com/moss/server/oauth/ 아래와 그 테스트까지다. BoardRoutes·BoardRepository는 n1 몫이다.
+- 수정 (2026-10-18, runner · 고쳐줘 반영): 
+  - SSRF: ClientResolver.kt의 HttpClient 기반 fetcher를 `PinnedMetadataFetcher`로 바꿨다. https·443만 받고(클라이언트 ID 검증 `isValidMetadataUrl`도 같은 규칙), DNS를 한 번만 풀어 전부 공개 주소일 때만 그 주소로 직접 소켓 접속한다(TLS는 원래 호스트로 SNI·인증서 이름 검사). 공개 판정은 IPv4 사설·루프백·링크로컬(메타데이터 169.254.169.254)·CGNAT·문서용·벤치마크·멀티캐스트·예약과 IPv6 루프백·ULA·링크로컬·멀티캐스트·문서용·Teredo, 그리고 IPv4가 든 매핑·호환·NAT64·6to4 주소의 안쪽 IPv4까지 본다. 리다이렉트는 따르지 않고 200만 받으며, Transfer-Encoding·Content-Encoding이 붙은 응답은 거절한다. 본문 64KB, 헤더 16KB, 전체 5초 상한. 요청은 HTTP/1.0이다.
+  - /oauth/authorize GET·POST에 클라이언트 주소(remoteHost)당 분당 60회 상한(초과 429). POST는 로그인 상한 앞에서도 fetch를 일으키므로 같이 건다.
+  - refresh_token 그랜트는 client_id 필수(없으면 invalid_request), 토큰을 발급받은 클라이언트와 다르면 invalid_grant이며 이때 토큰을 쓰지도 연결을 끊지도 않는다.
+  - introspect는 이미 X-Moss-Internal 내부 비밀으로 인증하고 비밀이 없으면 꺼 두므로(기존 테스트 introspectionNeedsTheInternalSecret) 요청 수 상한은 더하지 않았다.
+  - 검증: server 전체 테스트 111개 통과(격리 복사본). 실제 TLS 접속은 임시 테스트로 https://www.google.com/robots.txt 를 받아 확인했고, 다른 IP(8.8.8.8)로 고정하면 인증서 이름 불일치로 거절됐다. 그 임시 테스트는 커밋하지 않았다.
+  - 남은 틈(결정 필요): 프록시 뒤에서는 remoteHost가 프록시 주소 하나라 모든 limiter(register·token·authorize·로그인)가 한 버킷으로 묶인다. 신뢰할 프록시 헤더(X-Forwarded-For 등) 구성이 정해지지 않아 이번에 고치지 않았다. 속도 제한은 여전히 메모리 안이라 인스턴스 하나 기준이다. 실제 클라이언트 ID 메타데이터 문서 연결은 n8에서 확인한다.

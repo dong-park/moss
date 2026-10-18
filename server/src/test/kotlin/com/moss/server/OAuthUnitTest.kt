@@ -3,12 +3,14 @@ package com.moss.server
 import com.moss.server.oauth.AttemptLimiter
 import com.moss.server.oauth.ClientMetadataException
 import com.moss.server.oauth.ClientResolver
-import com.moss.server.oauth.HttpClientMetadataFetcher
 import com.moss.server.oauth.OAuthStore
+import com.moss.server.oauth.PinnedMetadataFetcher
 import com.moss.server.oauth.RedirectUris
 import com.moss.server.oauth.pkceChallenge
 import kotlinx.coroutines.runBlocking
 import java.net.InetAddress
+import java.net.ServerSocket
+import java.net.Socket
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -81,13 +83,143 @@ class OAuthUnitTest {
     }
 
     @Test
-    fun metadataFetchRefusesPrivateAddresses() {
-        for (ip in listOf("127.0.0.1", "10.0.0.5", "192.168.1.1", "169.254.169.254", "172.16.0.9", "100.64.0.1", "0.0.0.0", "::1", "fc00::1", "fe80::1")) {
-            assertFalse(HttpClientMetadataFetcher.isPublicAddress(InetAddress.getByName(ip)), ip)
+    fun metadataUrlsOnlyAllowThePlainHttpsPort() {
+        assertTrue(ClientResolver.isValidMetadataUrl("https://app.example:443/client.json"))
+        assertFalse(ClientResolver.isValidMetadataUrl("https://app.example:8443/client.json"))
+        assertFalse(ClientResolver.isValidMetadataUrl("https://app.example:6379/client.json"))
+        assertFalse(ClientResolver.isValidMetadataUrl("https://user:pw@app.example/client.json"))
+    }
+
+    @Test
+    fun metadataFetchRefusesNonPublicAddresses() {
+        val refused = listOf(
+            "127.0.0.1", "10.0.0.5", "192.168.1.1", "169.254.169.254", "172.16.0.9", "172.31.255.255", "100.64.0.1", "0.0.0.0",
+            "192.0.0.8", "192.0.2.1", "198.18.0.1", "198.51.100.7", "203.0.113.9", "224.0.0.1", "240.0.0.1", "255.255.255.255",
+            "::1", "::", "fc00::1", "fd00:ec2::254", "fe80::1", "fec0::1", "ff02::1", "2001:db8::1", "2001:0:4136:e378:8000:63bf:3fff:fdd2",
+            "::10.0.0.1", "::ffff:10.0.0.1", "::ffff:169.254.169.254", "64:ff9b::a00:1", "64:ff9b::7f00:1", "64:ff9b:1::1",
+            "2002:0a00:0001::1", "2002:7f00:0001::1", "2002:a9fe:a9fe::1", "100::1",
+        )
+        for (ip in refused) assertFalse(PinnedMetadataFetcher.isPublicAddress(InetAddress.getByName(ip)), ip)
+        for (ip in listOf("93.184.216.34", "8.8.8.8", "172.32.0.1", "100.63.255.255", "192.0.1.1", "2606:4700:4700::1111", "64:ff9b::808:808", "2002:0808:0808::1")) {
+            assertTrue(PinnedMetadataFetcher.isPublicAddress(InetAddress.getByName(ip)), ip)
         }
-        assertTrue(HttpClientMetadataFetcher.isPublicAddress(InetAddress.getByName("93.184.216.34")))
         assertFailsWith<ClientMetadataException> {
-            runBlocking { HttpClientMetadataFetcher().fetch("https://localhost/client.json") }
+            runBlocking { PinnedMetadataFetcher().fetch("https://localhost/client.json") }
+        }
+    }
+
+    private val publicIp = InetAddress.getByName("93.184.216.34")
+
+    /** 가짜 원격 서버: 요청을 읽고 [respond]가 낸 바이트를 쓴 뒤 [holdMillis] 동안 붙잡고 닫는다. */
+    private class FakeRemote(val respond: ByteArray, val holdMillis: Long = 0) : AutoCloseable {
+        val server = ServerSocket(0)
+        @Volatile var request = ""
+        init {
+            Thread {
+                runCatching {
+                    server.accept().use { s ->
+                        val buf = StringBuilder()
+                        while (!buf.endsWith("\r\n\r\n")) buf.append(s.getInputStream().read().toChar())
+                        request = buf.toString()
+                        s.getOutputStream().apply { write(respond); flush() }
+                        Thread.sleep(holdMillis)
+                    }
+                }
+            }.apply { isDaemon = true }.start()
+        }
+        override fun close() = server.close()
+    }
+
+    private class Recorder(val addresses: List<InetAddress>, val port: Int) {
+        var resolves = 0
+        var connectedTo: InetAddress? = null
+        var connectedHost: String? = null
+        fun fetcher(timeoutMillis: Long = 5_000) = PinnedMetadataFetcher(
+            resolve = { resolves++; addresses },
+            openSocket = { address, _, host, _ -> connectedTo = address; connectedHost = host; Socket("127.0.0.1", port) },
+            timeoutMillis = timeoutMillis,
+        )
+    }
+
+    private fun ok(body: String) = "HTTP/1.0 200 OK\r\nContent-Type: application/json\r\n\r\n$body".toByteArray()
+
+    @Test
+    fun metadataFetchConnectsToTheAddressItChecked() = runBlocking {
+        FakeRemote(ok("{}")).use { remote ->
+            val rec = Recorder(listOf(publicIp), remote.server.localPort)
+            assertEquals("{}", rec.fetcher().fetch("https://app.example/client.json?v=1"))
+            // DNS는 한 번만 풀고, 검사한 그 주소와 원래 호스트 이름(TLS 이름 검사용)으로 접속한다.
+            assertEquals(1, rec.resolves)
+            assertEquals(publicIp, rec.connectedTo)
+            assertEquals("app.example", rec.connectedHost)
+            assertTrue(remote.request.startsWith("GET /client.json?v=1 HTTP/1.0\r\n"), remote.request)
+            assertTrue(remote.request.contains("Host: app.example\r\n"))
+        }
+    }
+
+    @Test
+    fun metadataFetchRefusesBadTargetsBeforeConnecting() {
+        fun check(addresses: List<InetAddress>, url: String) {
+            val rec = Recorder(addresses, 1)
+            assertFailsWith<ClientMetadataException>(url) { runBlocking { rec.fetcher().fetch(url) } }
+            assertNull(rec.connectedTo, url)
+        }
+        check(listOf(publicIp), "http://app.example/client.json")
+        check(listOf(publicIp), "https://app.example:8443/client.json")
+        check(listOf(publicIp), "https://user@app.example/client.json")
+        check(listOf(InetAddress.getByName("169.254.169.254")), "https://metadata.example/client.json")
+        check(listOf(InetAddress.getByName("::1")), "https://v6.example/client.json")
+        // 공개 주소와 사설 주소가 섞여 풀리면 거절한다(재바인딩용 다중 레코드).
+        check(listOf(publicIp, InetAddress.getByName("10.0.0.5")), "https://mixed.example/client.json")
+        check(emptyList(), "https://empty.example/client.json")
+    }
+
+    @Test
+    fun metadataFetchDoesNotFollowRedirectsOrAcceptOddResponses() {
+        val responses = listOf(
+            "HTTP/1.0 302 Found\r\nLocation: http://169.254.169.254/latest\r\n\r\n",
+            "HTTP/1.0 404 Not Found\r\n\r\n{}",
+            "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n2\r\n{}\r\n0\r\n\r\n",
+            "HTTP/1.0 200 OK\r\nContent-Encoding: gzip\r\n\r\n{}",
+            "garbage",
+            "HTTP/1.0 200 OK\r\n" + "X-Pad: " + "a".repeat(20_000) + "\r\n\r\n{}",
+        )
+        for (response in responses) {
+            FakeRemote(response.toByteArray()).use { remote ->
+                val rec = Recorder(listOf(publicIp), remote.server.localPort)
+                assertFailsWith<ClientMetadataException>(response.take(40)) { runBlocking { rec.fetcher().fetch("https://app.example/c.json") } }
+            }
+        }
+    }
+
+    @Test
+    fun metadataFetchCapsResponseSize() = runBlocking {
+        val atLimit = "x".repeat(PinnedMetadataFetcher.MAX_BYTES)
+        FakeRemote(ok(atLimit)).use { remote ->
+            assertEquals(atLimit, Recorder(listOf(publicIp), remote.server.localPort).fetcher().fetch("https://app.example/c.json"))
+        }
+        FakeRemote(ok("x".repeat(PinnedMetadataFetcher.MAX_BYTES + 1))).use { remote ->
+            assertFailsWith<ClientMetadataException> {
+                Recorder(listOf(publicIp), remote.server.localPort).fetcher().fetch("https://app.example/c.json")
+            }
+        }
+        // 끝없이 흘려보내는 서버도 상한에서 끊긴다.
+        FakeRemote(ok("x".repeat(5_000_000))).use { remote ->
+            assertFailsWith<ClientMetadataException> {
+                Recorder(listOf(publicIp), remote.server.localPort).fetcher().fetch("https://app.example/c.json")
+            }
+        }
+        Unit
+    }
+
+    @Test
+    fun metadataFetchGivesUpOnASlowServer() {
+        // 헤더 일부만 보내고 붙잡는 서버: 전체 시간 상한(여기서는 300ms)에서 끊어야 한다.
+        FakeRemote("HTTP/1.0 200 OK\r\n".toByteArray(), holdMillis = 3_000).use { remote ->
+            val rec = Recorder(listOf(publicIp), remote.server.localPort)
+            val started = System.nanoTime()
+            assertFailsWith<ClientMetadataException> { runBlocking { rec.fetcher(timeoutMillis = 300).fetch("https://app.example/c.json") } }
+            assertTrue((System.nanoTime() - started) / 1_000_000 < 2_000)
         }
     }
 

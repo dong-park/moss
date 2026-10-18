@@ -150,6 +150,8 @@ fun Route.oauthRoutes(
     val registerLimiter = AttemptLimiter(limit = 20, windowMillis = 60 * 60_000L)
     val consentLoginLimiter = AttemptLimiter(limit = 10, windowMillis = 60_000L)
     val tokenLimiter = AttemptLimiter(limit = 120, windowMillis = 60_000L)
+    // 인가 요청은 로그인 전이라도 메타데이터 문서 클라이언트의 URL fetch를 일으킨다.
+    val authorizeLimiter = AttemptLimiter(limit = 60, windowMillis = 60_000L)
 
     // ---- 메타데이터 ----
     // 보호 리소스는 경로가 붙은 형태(/.well-known/oauth-protected-resource/mcp)로도 찾을 수 있다(RFC 9728).
@@ -249,12 +251,20 @@ fun Route.oauthRoutes(
         }
     }
 
+    suspend fun ApplicationCall.authorizeAllowed(): Boolean {
+        if (authorizeLimiter.tryAcquire(request.origin.remoteHost)) return true
+        respondPage(HttpStatusCode.TooManyRequests, OAuthPages.errorPage("요청이 너무 많아요. 잠시 뒤 다시 해 주세요"))
+        return false
+    }
+
     get("/oauth/authorize") {
+        if (!call.authorizeAllowed()) return@get
         val params = call.request.queryParameters
         call.respondAuthz(validate(params), params)
     }
 
     post("/oauth/authorize") {
+        if (!call.authorizeAllowed()) return@post
         val params = call.receiveParameters()
         val authz = validate(params)
         if (authz !is Authz.Valid) return@post call.respondAuthz(authz, params)
@@ -313,7 +323,10 @@ fun Route.oauthRoutes(
                 }
                 "refresh_token" -> {
                     val token = p["refresh_token"] ?: throw OAuthException("invalid_request", "refresh_token 이 필요해요")
-                    when (val result = store.refresh(token, p["client_id"])) {
+                    // 갱신 토큰을 발급받은 클라이언트만 쓸 수 있다.
+                    val clientId = p["client_id"]?.takeIf { it.isNotBlank() }
+                        ?: throw OAuthException("invalid_request", "client_id 가 필요해요")
+                    when (val result = store.refresh(token, clientId)) {
                         is RefreshResult.Ok -> result.tokens
                         RefreshResult.Invalid -> throw OAuthException("invalid_grant", "갱신 토큰이 유효하지 않아요")
                         RefreshResult.Reused -> throw OAuthException("invalid_grant", "이미 쓴 갱신 토큰이라 연결을 해제했어요. 다시 연결해 주세요")

@@ -9,15 +9,19 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
+import java.io.ByteArrayOutputStream
+import java.io.IOException
 import java.net.Inet4Address
 import java.net.Inet6Address
 import java.net.InetAddress
+import java.net.InetSocketAddress
+import java.net.Socket
+import java.net.SocketTimeoutException
 import java.net.URI
-import java.net.http.HttpClient
-import java.net.http.HttpRequest
-import java.net.http.HttpResponse
-import java.time.Duration
 import java.util.concurrent.ConcurrentHashMap
+import javax.net.ssl.SNIHostName
+import javax.net.ssl.SSLSocket
+import javax.net.ssl.SSLSocketFactory
 
 /** 인가 요청이 가리키는 클라이언트. 이름은 동의 화면에 그대로 보이고, 등록된 redirect_uri 밖으로는 코드를 보내지 않는다. */
 data class ResolvedClient(val clientId: String, val name: String, val redirectUris: List<String>)
@@ -71,61 +75,176 @@ fun interface ClientMetadataFetcher {
 }
 
 /**
- * JDK HttpClient 기반. 사용자가 고른 URL을 서버가 대신 여는 것이라 SSRF를 막는다:
- * https만, 사설·루프백·링크로컬 주소로 풀리면 거절, 리다이렉트 안 따라감, 크기·시간 상한.
- * 남은 틈: 검사한 뒤 HttpClient가 DNS를 한 번 더 풀어 그 사이 주소가 바뀌는 재바인딩.
+ * 사용자가 고른 URL을 서버가 대신 여는 것이라 SSRF를 막는다:
+ * - https, 기본 포트(443)만 받는다.
+ * - DNS를 한 번만 풀어 모든 주소가 공개 주소일 때만 쓰고, 그 푼 주소로 직접 접속한다(HttpClient가 다시 풀지 않으니 재바인딩 틈이 없다).
+ *   TLS는 원래 호스트 이름으로 SNI와 인증서 이름을 검사한다.
+ * - 리다이렉트는 따르지 않고(200만 받음), 응답 크기와 전체 소요 시간에 상한을 둔다.
+ * 요청은 HTTP/1.0 이라 응답이 청크 없이 연결 종료로 끝난다.
  */
-class HttpClientMetadataFetcher : ClientMetadataFetcher {
-    private val http = HttpClient.newBuilder()
-        .followRedirects(HttpClient.Redirect.NEVER)
-        .connectTimeout(Duration.ofSeconds(3))
-        .build()
+class PinnedMetadataFetcher(
+    private val resolve: (String) -> List<InetAddress> = { InetAddress.getAllByName(it).toList() },
+    private val openSocket: (InetAddress, Int, String, Int) -> Socket = ::openTlsSocket,
+    private val timeoutMillis: Long = TIMEOUT_MILLIS,
+) : ClientMetadataFetcher {
 
     override suspend fun fetch(url: String): String = withContext(Dispatchers.IO) {
         val uri = runCatching { URI(url) }.getOrNull()
             ?: throw ClientMetadataException("클라이언트 주소가 올바르지 않아요")
+        val host = uri.host
+        if (uri.scheme != "https" || host.isNullOrBlank() || uri.userInfo != null || uri.fragment != null ||
+            (uri.port != -1 && uri.port != HTTPS_PORT)
+        ) throw ClientMetadataException("클라이언트 주소가 올바르지 않아요")
         val addresses = try {
-            InetAddress.getAllByName(uri.host)
+            resolve(host)
         } catch (e: Exception) {
             throw ClientMetadataException("클라이언트 주소를 찾을 수 없어요")
         }
         if (addresses.isEmpty() || addresses.any { !isPublicAddress(it) }) {
             throw ClientMetadataException("클라이언트 주소가 공개 주소가 아니에요")
         }
-        val request = HttpRequest.newBuilder(uri)
-            .timeout(Duration.ofSeconds(5))
-            .header("Accept", "application/json")
-            .GET()
-            .build()
-        val response = try {
-            http.send(request, HttpResponse.BodyHandlers.ofInputStream())
-        } catch (e: Exception) {
+        val deadline = System.nanoTime() + timeoutMillis * 1_000_000
+        val socket = connect(addresses, host, deadline)
+        try {
+            socket.use { exchange(it, host, uri, deadline) }
+        } catch (e: ClientMetadataException) {
+            throw e
+        } catch (e: IOException) {
             throw ClientMetadataException("클라이언트 문서를 가져오지 못했어요")
         }
-        response.body().use { stream ->
-            if (response.statusCode() != 200) throw ClientMetadataException("클라이언트 문서를 가져오지 못했어요")
-            val bytes = stream.readNBytes(MAX_BYTES + 1)
-            if (bytes.size > MAX_BYTES) throw ClientMetadataException("클라이언트 문서가 너무 커요")
-            String(bytes, Charsets.UTF_8)
+    }
+
+    private fun remainingMillis(deadline: Long): Int {
+        val left = (deadline - System.nanoTime()) / 1_000_000
+        if (left <= 0) throw ClientMetadataException("클라이언트 문서가 너무 느려요")
+        return left.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+    }
+
+    /** 검사한 주소만 차례로 시도한다. 호스트 이름은 다시 풀지 않는다. */
+    private fun connect(addresses: List<InetAddress>, host: String, deadline: Long): Socket {
+        for (address in addresses) {
+            try {
+                return openSocket(address, HTTPS_PORT, host, remainingMillis(deadline))
+            } catch (e: IOException) {
+                continue
+            }
         }
+        throw ClientMetadataException("클라이언트 문서를 가져오지 못했어요")
+    }
+
+    private fun exchange(socket: Socket, host: String, uri: URI, deadline: Long): String {
+        val path = (uri.rawPath?.ifEmpty { "/" } ?: "/") + (uri.rawQuery?.let { "?$it" } ?: "")
+        val request = "GET $path HTTP/1.0\r\nHost: $host\r\nAccept: application/json\r\n" +
+            "Accept-Encoding: identity\r\nConnection: close\r\n\r\n"
+        socket.soTimeout = remainingMillis(deadline)
+        socket.getOutputStream().apply { write(request.toByteArray(Charsets.ISO_8859_1)); flush() }
+
+        val input = socket.getInputStream()
+        val out = ByteArrayOutputStream()
+        val chunk = ByteArray(4096)
+        val cap = MAX_HEADER_BYTES + MAX_BYTES + 1
+        while (out.size() < cap) {
+            socket.soTimeout = remainingMillis(deadline)
+            val n = try {
+                input.read(chunk, 0, minOf(chunk.size, cap - out.size()))
+            } catch (e: SocketTimeoutException) {
+                throw ClientMetadataException("클라이언트 문서가 너무 느려요")
+            }
+            if (n < 0) break
+            out.write(chunk, 0, n)
+        }
+        val bytes = out.toByteArray()
+        val end = indexOfHeaderEnd(bytes)
+        if (end < 0 || end > MAX_HEADER_BYTES) throw ClientMetadataException("클라이언트 응답이 올바르지 않아요")
+        val lines = String(bytes, 0, end, Charsets.ISO_8859_1).split("\r\n")
+        if (!STATUS_RE.matches(lines.first())) throw ClientMetadataException("클라이언트 문서를 가져오지 못했어요")
+        for (line in lines.drop(1)) {
+            val name = line.substringBefore(':').trim().lowercase()
+            val value = line.substringAfter(':', "").trim().lowercase()
+            if (name == "transfer-encoding" || (name == "content-encoding" && value != "identity")) {
+                throw ClientMetadataException("클라이언트 응답이 올바르지 않아요")
+            }
+        }
+        val bodyStart = end + 4
+        if (bytes.size - bodyStart > MAX_BYTES) throw ClientMetadataException("클라이언트 문서가 너무 커요")
+        return String(bytes, bodyStart, bytes.size - bodyStart, Charsets.UTF_8)
+    }
+
+    private fun indexOfHeaderEnd(b: ByteArray): Int {
+        for (i in 0..b.size - 4) {
+            if (b[i] == '\r'.code.toByte() && b[i + 1] == '\n'.code.toByte() && b[i + 2] == '\r'.code.toByte() && b[i + 3] == '\n'.code.toByte()) return i
+        }
+        return -1
     }
 
     companion object {
         const val MAX_BYTES = 64 * 1024
+        const val TIMEOUT_MILLIS = 5_000L
+        private const val MAX_HEADER_BYTES = 16 * 1024
+        private const val HTTPS_PORT = 443
+        private val STATUS_RE = Regex("^HTTP/1\\.[01] 200( .*)?$")
+
+        /** 검사한 주소로 직접 연결하고, TLS 이름 검사는 원래 호스트로 한다. */
+        private fun openTlsSocket(address: InetAddress, port: Int, host: String, timeoutMillis: Int): Socket {
+            val raw = Socket()
+            try {
+                raw.connect(InetSocketAddress(address, port), timeoutMillis)
+                raw.soTimeout = timeoutMillis
+                val tls = (SSLSocketFactory.getDefault() as SSLSocketFactory).createSocket(raw, host, port, true) as SSLSocket
+                tls.sslParameters = tls.sslParameters.apply {
+                    endpointIdentificationAlgorithm = "HTTPS"
+                    runCatching { SNIHostName(host) }.getOrNull()?.let { serverNames = listOf(it) }
+                }
+                tls.startHandshake()
+                return tls
+            } catch (e: Exception) {
+                runCatching { raw.close() }
+                throw if (e is IOException) e else IOException(e)
+            }
+        }
 
         fun isPublicAddress(address: InetAddress): Boolean {
             if (address.isAnyLocalAddress || address.isLoopbackAddress || address.isLinkLocalAddress ||
                 address.isSiteLocalAddress || address.isMulticastAddress
             ) return false
-            val b = address.address
+            val b = address.address.map { it.toInt() and 0xFF }
             return when (address) {
-                // 100.64.0.0/10(통신사 NAT), 0.0.0.0/8
-                is Inet4Address -> !(b[0].toInt() == 0 ||
-                    (b[0].toInt() == 100 && (b[1].toInt() and 0xC0) == 64))
-                // fc00::/7(고유 로컬)
-                is Inet6Address -> (b[0].toInt() and 0xFE) != 0xFC
+                is Inet4Address -> isPublicV4(b)
+                is Inet6Address -> isPublicV6(b)
                 else -> false
             }
+        }
+
+        private fun isPublicV4(b: List<Int>): Boolean {
+            val (a, c, d) = b
+            return !(
+                a == 0 || a == 10 || a == 127 || a >= 224 ||
+                    (a == 100 && c in 64..127) || // 통신사 NAT
+                    (a == 169 && c == 254) ||
+                    (a == 172 && c in 16..31) ||
+                    (a == 192 && c == 168) ||
+                    (a == 192 && c == 0 && (d == 0 || d == 2)) || // 192.0.0.0/24, 192.0.2.0/24(문서용)
+                    (a == 198 && c in 18..19) || // 벤치마크
+                    (a == 198 && c == 51 && d == 100) ||
+                    (a == 203 && c == 0 && d == 113)
+                )
+        }
+
+        private fun isPublicV6(b: List<Int>): Boolean {
+            val firstTenZero = b.take(10).all { it == 0 }
+            if (firstTenZero && b[10] == 0 && b[11] == 0) return false // ::/96(호환 주소, 미지정, 루프백)
+            if (firstTenZero && b[10] == 0xFF && b[11] == 0xFF) return isPublicV4(b.subList(12, 16)) // IPv4 매핑
+            if ((b[0] and 0xFE) == 0xFC) return false // fc00::/7
+            if (b[0] == 0xFE && (b[1] and 0xC0) != 0) return false // fe80::/10, fec0::/10
+            if (b[0] == 0xFF) return false
+            if (b[0] == 0x00 && b[1] == 0x64 && b[2] == 0xFF && b[3] == 0x9B) { // NAT64: 안에 든 IPv4가 공개여야 한다
+                return b.subList(4, 12).all { it == 0 } && isPublicV4(b.subList(12, 16))
+            }
+            if (b[0] == 0x20 && b[1] == 0x02) return isPublicV4(b.subList(2, 6)) // 6to4
+            if (b[0] == 0x20 && b[1] == 0x01 && b[2] == 0 && b[3] == 0) return false // Teredo
+            if (b[0] == 0x20 && b[1] == 0x01 && b[2] == 0x0D && b[3] == 0xB8) return false // 문서용
+            if (b[0] == 0x01 && b.subList(1, 8).all { it == 0 }) return false // 100::/64
+            return true
         }
     }
 }
@@ -135,7 +254,7 @@ class HttpClientMetadataFetcher : ClientMetadataFetcher {
  */
 class ClientResolver(
     private val store: OAuthStore,
-    private val fetcher: ClientMetadataFetcher = HttpClientMetadataFetcher(),
+    private val fetcher: ClientMetadataFetcher = PinnedMetadataFetcher(),
     private val nowMillis: () -> Long = System::currentTimeMillis,
 ) {
     private val cache = ConcurrentHashMap<String, Pair<Long, ResolvedClient>>()
@@ -163,6 +282,7 @@ class ClientResolver(
         fun isValidMetadataUrl(url: String): Boolean {
             val uri = runCatching { URI(url) }.getOrNull() ?: return false
             if (uri.scheme != "https" || uri.host.isNullOrBlank() || uri.fragment != null || uri.userInfo != null) return false
+            if (uri.port != -1 && uri.port != 443) return false
             val path = uri.path ?: return false
             return path.length > 1 && path.split('/').none { it == "." || it == ".." }
         }
