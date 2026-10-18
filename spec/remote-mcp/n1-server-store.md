@@ -6,7 +6,7 @@
 **id**: RM-1
 **상위**: spec/remote-mcp/spec.md
 **deps**: 없음
-**상태**: 끝남
+**상태**: 진행
 **담당 행**: T1, T2
 **사람 확인**: 불필요
 
@@ -96,3 +96,5 @@ web/src/state/share/api.ts, attachments.ts, server BoardRoutes.kt, sync document
   - markServerDeletes 실패와 승인 쓰기 실패는 삭제를 막지 않고 console.warn("[moss] 지운 보드 표시 실패", ids, err)을 남긴다. schema.ts v7 주석에 pendingServerDeletes 미이전·되돌릴 수 없는 마이그레이션을 적었다.
   - 확인한 것: web `tsc --noEmit`·바꾼 파일 eslint 통과, web vitest 183파일 1492 통과(건너뜀 8은 기존). 새 테스트 5개(확인 당시 멤버 저장, 확인 뒤 멤버가 늘면 지우지 않고 되돌림, 오래된 myBoards 뒤 404, 403은 되돌림, 만료 정리와 sync 동시 실행에서 늦은 404). 404를 예전처럼 "normal"로 돌리면 404 테스트 2개가, 승인 비교를 빼면 멤버 증가 테스트가 실패하는 것을 확인했다.
   - 갭: 실제 브라우저+서버+sync 실경로는 이번에도 돌리지 못했다(Ktor 계약 가짜 주입). 실행 취소 상태를 먼저 세우므로 removeBoard가 끝나기 전(수십 ms) 실행 취소를 누르면 되돌린 행이 다시 지워질 수 있다 — 테스트하지 않았다.
+- 고쳐줘 (2026-10-18, 사용자 승인 · wave-20261018-2200 /review P1): removeBoardWithUndo가 pendingBoardUndo를 removeBoard보다 먼저 세워, removeBoard가 await 중일 때 실행 취소를 누르면 removeBoard가 이어서 표시를 다시 쓰고 행을 지워 다음 syncMyBoards가 서버 사본을 모든 멤버에게서 지운다(workspace.ts:2403). 지우기가 끝날 때까지 실행 취소를 받지 않게 한다: pendingBoardUndo에 준비 여부(예: ready:false면 토스트·undo 비활성)를 두거나 removing 동안 undoBoardRemove가 기다리게 한다. 서버 삭제 보호(inUndoWindow)는 그동안 계속 참이어야 한다. removeBoard 도중 실행 취소 경우를 테스트로 고정하고, 고친 코드를 되돌리면 그 테스트가 실패하는지 확인한다. pendingBoardUndo 선언부에 'remote-mcp n1 서버 삭제 보호도 이 값을 본다' 한 줄을 남긴다.
+- 병렬 경계 (2026-10-18, 메인): n6 수정과 같은 워킹트리에서 동시에 돈다. 고칠 파일은 web/src/state/workspace.ts(필요하면 membership.ts)와 그 테스트, 실행 취소 토스트 컴포넌트까지다. sync/·server·shared/·web/src/state/share/attachments.ts는 n6 몫이다. 임시 인덱스를 쓰면 같은 셸 명령 안에서 add와 commit을 끝낸다.
