@@ -2,6 +2,7 @@ import { Pool } from "pg";
 import { loadConfig, toPgConnection } from "./config.ts";
 import { ensureDocumentsTable, PostgresDocumentStore } from "./documentStore.ts";
 import { startInternalServer } from "./internalServer.ts";
+import { createKtorIntrospector } from "./mcp.ts";
 import { createPostgresBoardExists, createPostgresMembership } from "./membership.ts";
 import { createSyncServer } from "./server.ts";
 
@@ -13,11 +14,21 @@ async function main(): Promise<void> {
   // binding the socket and losing edits to "relation does not exist".
   await ensureDocumentsTable(pool);
 
+  const isMember = createPostgresMembership(pool);
   const sync = createSyncServer({
     config,
     store: new PostgresDocumentStore(pool),
-    isMember: createPostgresMembership(pool),
+    isMember,
     boardExists: createPostgresBoardExists(pool),
+    ...(config.mcp !== undefined
+      ? {
+          mcp: {
+            config: config.mcp,
+            introspect: createKtorIntrospector(config.mcp, config.internalSecret),
+            isMember,
+          },
+        }
+      : {}),
   });
   const port = await sync.listen();
 

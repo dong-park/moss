@@ -4,6 +4,7 @@ import { verifyBoardToken } from "./auth.ts";
 import type { SyncConfig } from "./config.ts";
 import type { DocumentStore } from "./documentStore.ts";
 import { createGuardedStore, type BoardExists } from "./guardedStore.ts";
+import { createMcpEndpoint, type McpDeps } from "./mcp.ts";
 import type { MembershipChecker } from "./membership.ts";
 
 /** WebSocket close code used when a board is at its concurrent-connection cap. */
@@ -41,6 +42,8 @@ export interface SyncServerDeps {
   store: DocumentStore;
   isMember: MembershipChecker;
   boardExists: BoardExists;
+  /** Remote MCP endpoint (RM-4). Omit to leave the route unserved. */
+  mcp?: McpDeps;
 }
 
 export interface SyncServer {
@@ -65,6 +68,7 @@ export function createSyncServer(deps: SyncServerDeps): SyncServer {
     maxBytes: limits.storeBytes,
     boardExists: deps.boardExists,
   });
+  const mcpEndpoint = deps.mcp === undefined ? undefined : createMcpEndpoint(deps.mcp);
 
   const server = new Server(
     {
@@ -76,6 +80,12 @@ export function createSyncServer(deps: SyncServerDeps): SyncServer {
       // resident buys no cache hit and only accumulates memory. Store then
       // unload; a reconnect re-fetches from Postgres.
       unloadImmediately: true,
+      async onRequest({ instance, request, response }) {
+        // A rejection without an error tells Hocuspocus the response is already sent.
+        if (mcpEndpoint !== undefined && (await mcpEndpoint.handle(instance, request, response))) {
+          return Promise.reject();
+        }
+      },
       async onAuthenticate({ token, documentName }) {
         const claims = await verifyBoardToken(token, config.jwtSecret);
         if (claims.boardId !== documentName) {
