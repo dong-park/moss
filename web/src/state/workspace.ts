@@ -310,6 +310,12 @@ function dropFrameBackgroundFile(ref: string | undefined): void {
     .purgeAttachments([{ attachmentRef: ref } as Note])
     .catch(() => undefined);
 }
+/** 새 ref 저장(디바운스)이 끝난 뒤 옛 파일을 지운다 — 저장 전에 닫혀도 행이 지워진 파일을 가리키지 않게. */
+function dropFrameBackgroundFileAfterSave(id: string, ref: string | undefined): void {
+  void flushCard(id)
+    .catch(() => undefined)
+    .then(() => dropFrameBackgroundFile(ref));
+}
 export const FRAME_DEFAULT_WIDTH = 320;
 export const FRAME_DEFAULT_HEIGHT = 220;
 
@@ -2791,7 +2797,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     }));
     if (!updated) return;
     persistCardDebounced(updated, get().currentBoardId);
-    if (oldRef && oldRef !== photo.ref) dropFrameBackgroundFile(oldRef);
+    if (oldRef && oldRef !== photo.ref) dropFrameBackgroundFileAfterSave(id, oldRef);
     if (resized) {
       get().resolveMembership(
         get()
@@ -2820,7 +2826,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     }));
     if (!updated) return;
     persistCardDebounced(updated, get().currentBoardId);
-    dropFrameBackgroundFile(oldRef);
+    dropFrameBackgroundFileAfterSave(id, oldRef);
   },
 
   setFrameSkin: (id, skin) => {

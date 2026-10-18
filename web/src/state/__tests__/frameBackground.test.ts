@@ -176,8 +176,11 @@ describe("옛 파일 정리", () => {
     useWorkspace.getState().setFrameBackground(id, photo("opfs:one.png"));
     expect(purged).toEqual([]);
     useWorkspace.getState().setFrameBackground(id, photo("opfs:two.png"));
+    expect(purged).toEqual([]); // 새 ref 저장 전에는 옛 파일을 지우지 않는다
+    await new Promise((r) => setTimeout(r, 30));
     expect(purged).toEqual(["opfs:one.png"]);
     useWorkspace.getState().setFrameBackground(id, photo("opfs:two.png"));
+    await new Promise((r) => setTimeout(r, 30));
     expect(purged).toEqual(["opfs:one.png"]);
     expect(frameOf(id).attachmentRef).toBe("opfs:two.png");
   });
@@ -197,6 +200,7 @@ describe("옛 파일 정리", () => {
     expect(f.mediaType).toBeUndefined();
     expect(readFrameContent(f.content).bg).toBeUndefined();
     expect({ w: f.width, h: f.height }).toEqual(sized);
+    await new Promise((r) => setTimeout(r, 30));
     expect(purged).toEqual(["opfs:x.png"]);
     expect(cardOf("mm").frameId).toBe(id);
 
