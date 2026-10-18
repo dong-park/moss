@@ -69,7 +69,7 @@ export function configureMembership(next: Partial<MembershipDeps>): void {
 export function resetMembershipDeps(): void {
   deps = defaultDeps;
   notified.clear();
-  deleteConfirmed.clear();
+  tooLargeBoards.clear();
 }
 
 /** 같은 보드의 해제 알림을 한 번만 띄운다 (AC-13 "한 번"). */
@@ -242,7 +242,11 @@ export async function syncMyBoards(): Promise<void> {
   const localIds = new Set(localBoards.map((b) => b.id));
   const serverIds = new Set(summaries.map((s) => s.id));
 
+  // D9: 지우기를 확인한 보드는 되살리지 않고 서버 사본 지우기를 다시 시도한다.
+  const hidden = await settlePendingServerDeletes(summaries, localIds, session.accessToken);
+
   for (const summary of summaries) {
+    if (hidden.has(summary.id)) continue;
     if (!localIds.has(summary.id)) {
       await saveRemoteBoard(summary);
     }
@@ -305,6 +309,7 @@ export async function shareSubBoards(): Promise<void> {
     for (const board of boards) {
       if (!board.parentBoardId || byBoard[board.id]?.status === "shared") continue;
       if (byBoard[board.parentBoardId]?.status !== "shared") continue;
+      if (tooLargeBoards.has(board.id)) continue;
       try {
         const summary = await deps.api.share(
           board.id,
@@ -321,6 +326,11 @@ export async function shareSubBoards(): Promise<void> {
           notifyLocalOnly(board.id, err.message);
           progressed = false;
           break;
+        }
+        // 크기 초과(413 too_large) — 이 파일함은 이 기기에만 남고 같은 세션에서 다시 올리지 않는다.
+        if (isBoardTooLarge(err)) {
+          skipTooLargeBoard(board.id, err);
+          continue;
         }
         // 오프라인·권한 없음 — 다음 동기화 때 다시 시도한다.
       }
@@ -365,19 +375,20 @@ export async function unshareRemovedSubBoards(boards: Board[]): Promise<void> {
   } catch {
     return; // 로그인 안 한 기기는 서버를 부르지 않는다.
   }
+  const confirmed = new Set(pendingServerDeleteIds());
   for (const board of targets) {
     try {
       // 최상위 보드는 D9 확인을 받았거나 소유자 혼자 쓸 때만 지운다.
       // 확인 없이 멤버를 확인하지 못하면(오프라인) 지우지 않는다.
       if (
         isTopLevel(board) &&
-        !deleteConfirmed.has(board.id) &&
+        !confirmed.has(board.id) &&
         !(await ownerIsAlone(board.id, session.accessToken))
       ) {
         continue;
       }
       await deps.api.unshare(board.id, session.accessToken);
-      deleteConfirmed.delete(board.id);
+      await clearServerDeletes([board.id]);
       useShare.getState().forgetBoard(board.id);
     } catch {
       // 오프라인·이미 지워짐 — 다음 syncMyBoards가 정리한다.
@@ -385,8 +396,74 @@ export async function unshareRemovedSubBoards(boards: Board[]): Promise<void> {
   }
 }
 
-/** D9 확인을 받은 최상위 보드. undo 만료 뒤 멤버가 있어도 서버 사본을 지운다. */
-const deleteConfirmed = new Set<string>();
+/**
+ * D9 확인을 받은 최상위 보드(settings.pendingServerDeletes). undo 만료 뒤 멤버가 있어도 서버 사본을
+ * 지운다. 메모리가 아니라 저장소에 둔다 — 지우기가 실패하거나 5초 안에 새로고침해도 표시가 남아
+ * syncMyBoards가 보드를 되살리지 않고 지우기를 다시 시도한다.
+ */
+function pendingServerDeleteIds(): string[] {
+  return useStorage.getState().settings?.pendingServerDeletes ?? [];
+}
+
+async function markServerDeletes(ids: string[]): Promise<void> {
+  const next = [...new Set([...pendingServerDeleteIds(), ...ids])];
+  await useStorage.getState().updateSettings({ pendingServerDeletes: next });
+}
+
+/** 서버 사본이 지워졌거나 실행 취소로 보드가 돌아왔을 때 표시를 뺀다. */
+export async function clearServerDeletes(ids: string[]): Promise<void> {
+  const current = pendingServerDeleteIds();
+  const next = current.filter((id) => !ids.includes(id));
+  if (next.length === current.length) return;
+  await useStorage.getState().updateSettings({ pendingServerDeletes: next });
+}
+
+/** 실행 취소 기간(5초) 안에 있는 보드. 이 동안은 서버 사본을 지우지 않는다. */
+function inUndoWindow(boardId: string): boolean {
+  const ws = useWorkspace.getState();
+  return (
+    ws.pendingBoardUndo?.board.id === boardId ||
+    ws.pendingSubcanvasUndo?.boards.some((b) => b.id === boardId) === true
+  );
+}
+
+/**
+ * syncMyBoards 앞단: 삭제를 확인한 보드 중 서버에 남은 것의 지우기를 다시 시도한다.
+ * 돌려주는 id는 이번 동기화에서 되살리지 않을 보드다(실행 취소 기간이거나 지우기가 실패했다).
+ * 서버에 이미 없는 표시는 정리하고, 로컬에 다시 있는 보드는 건드리지 않는다.
+ */
+async function settlePendingServerDeletes(
+  summaries: BoardSummary[],
+  localIds: Set<string>,
+  accessToken: string,
+): Promise<Set<string>> {
+  const hidden = new Set<string>();
+  const marked = pendingServerDeleteIds();
+  if (marked.length === 0) return hidden;
+  const onServer = new Set(summaries.map((s) => s.id));
+  const settled: string[] = [];
+  for (const id of marked) {
+    if (!onServer.has(id)) {
+      settled.push(id);
+      continue;
+    }
+    if (localIds.has(id)) continue; // 아직 지우는 중이거나 되살아난 보드 — 평소처럼 다룬다.
+    if (inUndoWindow(id)) {
+      hidden.add(id);
+      continue;
+    }
+    try {
+      await deps.api.unshare(id, accessToken);
+      settled.push(id);
+      useShare.getState().forgetBoard(id);
+      hidden.add(id);
+    } catch {
+      hidden.add(id); // 오프라인 — 되살리지 않고 다음 동기화가 다시 시도한다.
+    }
+  }
+  if (settled.length > 0) await clearServerDeletes(settled);
+  return hidden;
+}
 
 /**
  * D9 → A: 소유자가 서버에 저장된 최상위 보드를 지우기 전에 부른다. 다른 멤버가 있으면
@@ -420,7 +497,7 @@ export async function confirmBoardDeletion(boards: Board[]): Promise<boolean> {
   }
   if (others === 0) return true;
   const ok = await deps.confirmMemberDelete(others);
-  if (ok) for (const board of targets) deleteConfirmed.add(board.id);
+  if (ok) await markServerDeletes(targets.map((b) => b.id));
   return ok;
 }
 
@@ -532,8 +609,24 @@ export async function openSharedBoard(boardId: string): Promise<BoardSummary | n
 /* ── remote-mcp n1: 로그인한 사용자의 보드는 모두 서버에 저장한다 ─────────────────── */
 
 function isQuotaExceeded(err: unknown): err is AuthRequestError {
-  // 413 too_large(크기 초과)는 계정 상한이 아니다 — 다음 동기화가 다시 시도한다.
+  // 413 too_large(크기 초과)는 계정 상한이 아니다 — isBoardTooLarge가 따로 다룬다.
   return err instanceof AuthRequestError && err.status === 413 && err.code === "quota_exceeded";
+}
+
+function isBoardTooLarge(err: unknown): err is AuthRequestError {
+  return err instanceof AuthRequestError && err.status === 413 && err.code === "too_large";
+}
+
+/**
+ * 보드 크기(500MB)가 한도를 넘어 서버가 거절한 보드. 같은 세션에서는 다시 올리지 않는다 —
+ * 동기화마다 같은 보드를 올렸다 거절당하며 대역폭만 쓰기 때문이다. 앱을 다시 열면 한 번 더 시도한다.
+ */
+const tooLargeBoards = new Set<string>();
+
+/** 크기 초과로 올리지 못한 보드를 기록하고 사용자에게 한 번 알린다. 그 보드는 이 기기에만 남는다. */
+function skipTooLargeBoard(boardId: string, err: AuthRequestError): void {
+  tooLargeBoards.add(boardId);
+  notifyLocalOnly(boardId, err.message || t("collab.tooLarge"));
 }
 
 /**
@@ -622,6 +715,7 @@ export async function registerBoards(boardIds: string[]): Promise<RegisterResult
   for (const id of boardIds) {
     const board = boards.find((b) => b.id === id);
     if (!board || useShare.getState().byBoard[id]?.status === "shared") continue;
+    if (tooLargeBoards.has(id)) continue;
     try {
       await useShare.getState().registerBoard(id, board.name);
     } catch (err) {
@@ -629,6 +723,10 @@ export async function registerBoards(boardIds: string[]): Promise<RegisterResult
         result.blocked = err.message;
         blockedId = id;
         break;
+      }
+      if (isBoardTooLarge(err)) {
+        skipTooLargeBoard(id, err); // 실패가 아니다 — 다시 시도해도 같은 답이라 고르기 창도 붙잡지 않는다.
+        continue;
       }
       result.failed.push(id); // 오프라인·일시 장애 — 다음 기회에 다시 시도한다.
       continue;

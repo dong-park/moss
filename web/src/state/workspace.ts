@@ -1849,6 +1849,15 @@ async function confirmBoardDeletion(boards: Board[]): Promise<boolean> {
   return (await import("./membership")).confirmBoardDeletion(boards);
 }
 
+/** 실행 취소로 되살아난 보드의 D9 삭제 확인 표시를 뺀다 — 서버 사본을 지우지 않는다. */
+async function cancelServerDeletes(boards: Board[]): Promise<void> {
+  try {
+    await (await import("./membership")).clearServerDeletes(boards.map((b) => b.id));
+  } catch {
+    /* 표시가 남아도 로컬에 있는 보드는 syncMyBoards가 건드리지 않는다 */
+  }
+}
+
 /** 지울 함 카드 중 D9 확인이 필요한 보드 — 소유자로 서버에 저장된 최상위 보드. 동기 판정. */
 function boardsNeedingDeleteCheck(cards: Card[], boards: Board[]): Board[] {
   const byBoard = useShare.getState().byBoard;
@@ -2380,6 +2389,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const db = getDB();
     // 보드 row 복원
     await db.boards.put(pending.board);
+    await cancelServerDeletes([pending.board]);
     // P1 AC-8: 복원된 보드는 "지운 보드" 목록에서 뺀다.
     await storage.forgetDeletedBoards([pending.board.id]);
     // 그 보드에 있던 메모 boardId 복원 (그 사이 사용자가 이동시킨 메모는 건드리지 않음 — id 기반)
@@ -3852,6 +3862,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const db = getDB();
     // blob은 아직 안 지웠으므로(만료 전) row만 되돌리면 미디어까지 복원된다.
     await db.boards.bulkPut(pending.boards);
+    await cancelServerDeletes(pending.boards);
     // P1 AC-8: 되살아난 보드들은 "지운 보드" 목록에서 뺀다.
     await useStorage
       .getState()

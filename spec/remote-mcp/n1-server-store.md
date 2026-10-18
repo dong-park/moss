@@ -27,7 +27,7 @@ D1, D2
 
 - [ ] spec 공통 완료 기준 전부
 - [ ] 담당 행의 Then이 실제로 보인다
-- [ ] 새 로직 최소 1테스트
+- [x] 새 로직 최소 1테스트
 
 ## 파일 포인터
 
@@ -66,3 +66,8 @@ web/src/state/share/api.ts, attachments.ts, server BoardRoutes.kt, sync document
 - 고쳐줘 (2026-10-18, 메인 · wave-20261018-1830 /review P1): 삭제 확인 표시 deleteConfirmed가 메모리에만 있어, unshare가 실패(오프라인)하거나 5초 안에 새로고침하면 syncMyBoards의 saveRemoteBoard가 보드를 되살린다(membership.ts:367·389·245). 확인한 보드 id를 영구 저장(Dexie settings 등)하고, syncMyBoards는 그 id를 되살리지 않고 unshare를 다시 시도하며, 성공하면 표시를 지운다. 실행 취소(workspace.ts:2374)는 표시를 지운다. 실패 후 새로고침·sync 경로를 테스트로 고정한다.
 - 고쳐줘 (2026-10-18, 메인 · /review P2): too_large로 거절된 보드를 sync마다 조용히 재시도한다(membership.ts:534). 재시도를 멈추고 사용자에게 한 번 안내한다.
 - 병렬 경계 (2026-10-18, 메인 · 웨이브 4): n4·n7과 같은 워킹트리에서 동시에 돈다. 고칠 파일은 web/src/state/membership.ts·workspace.ts·share/와 그 테스트, 필요한 확인 UI까지다. server·sync·설정 화면은 건드리지 않는다.
+- 수정 (2026-10-18, runner n1 · 웨이브 4 고쳐줘 2건, 앞 runner의 미커밋 변경을 이어받아 완성):
+  - P1 삭제 확인 표시 영구화: 확인한 보드 id를 Dexie settings.pendingServerDeletes에 둔다(메모리 deleteConfirmed 제거). syncMyBoards는 먼저 표시된 보드를 정리한다 — 서버에 이미 없으면 표시를 빼고, 실행 취소 기간이면 건드리지 않고 숨기고, 그 밖에는 `DELETE /boards/{id}/share`를 다시 시도해 성공하면 표시를 뺀다. 실패해도 그 보드는 되살리지 않는다. 로컬에 행이 다시 있는 보드는 평소처럼 다룬다. 실행 취소(보드 목록·파일함 두 경로)는 표시를 뺀다. 마이그레이션은 필요 없다(settings 한 행의 선택 필드).
+  - P2 too_large 재시도 중단: 보드·파일함 등록이 413 too_large면 그 보드 id를 세션 메모리에 두고 같은 세션에서는 다시 올리지 않으며, "{서버 사유 또는 '보드가 너무 커요'}. 서버에 올리지 못한 보드는 이 기기에만 있어요."를 보드당 한 번 띄운다. 앱을 다시 열면 한 번 더 시도한다(보드에서 첨부를 지워 크기가 줄었을 수 있어서다). 고르기 창(registerBoards)에서는 실패로 세지 않는다.
+  - 확인한 것: web `tsc --noEmit`·바꾼 파일 eslint 통과, web vitest 183파일 1482 통과. 새 테스트 5개(오프라인 실패 후 sync가 되살리지 않고 재시도·성공 시 표시 제거, 5초 안 새로고침 뒤 sync가 서버 사본 지움, 실행 취소 기간에는 sync가 건드리지 않음, 실행 취소가 표시 제거, 최상위 보드 too_large 한 번 안내·재시도 없음)와 기존 파일함 too_large 테스트를 새 동작으로 고쳤다. syncMyBoards의 숨김을 끄면 새 D9 테스트 3개가 실패하는 것을 확인했다. 전체 실행의 DatabaseClosedError 1건은 mossBridge.test.ts에서 나는 기존 정리 순서 문제다.
+  - 갭: 실제 브라우저+서버+sync 실경로는 돌리지 못했다. 다른 멤버가 소유자 삭제 뒤 sync할 때 보드가 사라지는 것은 서버 사본이 지워진 뒤에야 보인다(오프라인 동안은 멤버에게 남는다).

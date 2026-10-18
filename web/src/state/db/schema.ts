@@ -222,6 +222,12 @@ export interface Settings {
    */
   serverStoreSince?: Record<string, number>;
   /**
+   * remote-mcp n1 (D9): 소유자가 삭제를 확인한 서버 저장 보드 id. 확인한 순간부터 서버 사본을
+   * 지울 때까지 남겨, 새로고침·오프라인이어도 syncMyBoards가 그 보드를 되살리지 않고 지우기를
+   * 다시 시도한다. 서버 사본이 지워지거나 실행 취소로 보드가 돌아오면 뺀다.
+   */
+  pendingServerDeletes?: string[];
+  /**
    * P1 AC-8: 이 기기에서 지운 보드 id(최근 순, 상한 있음). 보드 행을 지우는 순간
    * 남겨, `/b/<id>`로 다시 들어올 때 "찾을 수 없는 보드예요"를 띄운다. 휴지통
    * 복원으로 보드가 돌아오면 목록에서 뺀다. optional — 없으면 판정에 영향 없다.
