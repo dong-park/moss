@@ -3,6 +3,12 @@ import type { Board, Note } from "../db/schema";
 import { decodeFrameContent } from "../frameContent";
 import JSZip from "jszip";
 
+/** 배경 이미지 파일 확장자. ref(opfs:<id>.<ext>)에서 읽고 없으면 빈 값. */
+function refExtension(ref: string): string {
+  const m = /\.([A-Za-z0-9]+)$/.exec(ref);
+  return m ? `.${m[1]!.toLowerCase()}` : "";
+}
+
 export interface MarkdownExportContext {
   notes: Note[];
   boards: Board[];
@@ -122,6 +128,7 @@ export function markdownZipPath(
 export async function exportMarkdownZip(
   notes: Note[],
   boards: Board[],
+  attachments: Map<string, Blob> = new Map(),
 ): Promise<Blob> {
   const exportNotes = notes.filter(
     (n) =>
@@ -139,6 +146,13 @@ export async function exportMarkdownZip(
     const path = markdownZipPath(note, ctx, usedNames);
     const { content } = noteToMarkdown(note, ctx);
     zip.file(path, content);
+    // 판 배경 이미지는 판 이름 폴더에 _background.<확장자>로 둔다.
+    const blob = note.kind === "frame" && note.attachmentRef ? attachments.get(note.attachmentRef) : undefined;
+    if (blob) {
+      const slash = path.lastIndexOf("/");
+      const folder = `${path.slice(0, slash)}/${slugify(ctx.frameNameById.get(note.id) ?? "")}`;
+      zip.file(`${folder}/_background${refExtension(note.attachmentRef!)}`, blob);
+    }
   }
 
   return zip.generateAsync({ type: "blob", compression: "DEFLATE" });
