@@ -47,9 +47,13 @@ export function FrameCardContent({ card }: { card: Card }) {
       className="relative h-full w-full"
       data-frame-line="true"
       style={{
-        // 그룹 선: 1px 실선. 고르면 선택 파랑.
-        border: "1px solid " + (selected ? "var(--color-accent-blue)" : "var(--color-border)"),
+        // 그룹 선: 화면 기준 1px 실선(PZ-3, --zoom-inv로 줌을 거슬러 곱한다). 고르면 선택 파랑.
+        border:
+          "calc(1px * var(--zoom-inv, 1)) solid " +
+          (selected ? "var(--color-accent-blue)" : "var(--color-frame-line)"),
         borderRadius: 4,
+        // 옅은 흰 면 — 선보다 멀리서 판 자리가 보인다. 멀리 구간은 globals.css가 진하게 한다.
+        background: "var(--frame-fill)",
       }}
     >
       {/* FEAT-frame-image-template: 배경 이미지. 판 높이가 이미지 비율을 따르므로 꽉 채운다(D2 A, 원본 진하기 D3 A). */}
@@ -92,13 +96,20 @@ export function FrameCardContent({ card }: { card: Card }) {
         // 컨텍스트를 안 만듦) 이름표의 z-index가 world-layer 레벨에서 메모와
         // 직접 비교되게 한다(15 > 미선택 메모 10).
         // 이름표는 판 바깥 왼쪽 위에 둔다 — DraggableCard가 frame은 overflow visible로 둔다.
+        // PZ-3: 이름표는 화면 기준 12px — 판 윗변에 아랫변을 붙이고 줌을 거슬러 키운다.
+        // 최대 폭도 같은 배율로 나눠 화면에서 판 폭의 80%를 넘지 않게 한다.
+        data-frame-label=""
         style={{
           zIndex: 15,
-          top: -20,
+          bottom: "100%",
           left: -1,
+          paddingBottom: 4,
+          maxWidth: "calc(80% / var(--zoom-inv, 1))",
+          transform: "scale(var(--zoom-inv, 1))",
+          transformOrigin: "left bottom",
           color: selected ? "var(--color-accent-blue)" : undefined,
         }}
-        className="absolute max-w-[80%] text-[12px] font-semibold leading-4 text-text-soft"
+        className="absolute text-[12px] font-semibold leading-4 text-text-soft"
       >
         {editing ? (
           <input

@@ -165,7 +165,7 @@ export function TextCardContent({ card, editing, onCommitEdit }: CardContentProp
       />
       {/* 2026-09-22 사용자 결정: 메모지 앞면은 제목 하나만 정가운데에 보여준다.
         * 본문·펜 overlay·백링크는 더블클릭으로 여는 메모 창이 맡는다. */}
-      <div className="absolute inset-0 flex items-center justify-center">
+      <div data-memo-front-title="" className="absolute inset-0 flex items-center justify-center">
         <MemoTitleRow
           title={card.title ?? ""}
           editable={editing}
@@ -177,6 +177,11 @@ export function TextCardContent({ card, editing, onCommitEdit }: CardContentProp
           // 앞면은 제목만 고친다 — Enter는 본문으로 내려가지 않고 제목을 확정한다.
           onEnter={handleCommitEdit}
         />
+      </div>
+      {/* PZ-4: 멀리 구간에서 제목 대신 보이는 회색 줄 두 개. 평소엔 globals.css가 숨긴다. */}
+      <div data-memo-lines="" aria-hidden="true" className="pointer-events-none absolute inset-0">
+        <span />
+        <span />
       </div>
       {/* FEAT-sticky-redesign n5: 앞면 전용 배지 — 카드 박스 기준 하단에 겹쳐 올린다
         * (컬럼이 아니라 이 바깥 relative 박스 기준이라야 카드 폭 안에 항상 붙는다). */}

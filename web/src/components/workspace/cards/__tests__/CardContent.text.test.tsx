@@ -44,6 +44,21 @@ describe("TextCardContent · UX", () => {
   /* 2026-09-22 사용자 결정: 메모지 앞면은 제목 하나만 정가운데에 보여준다.
    * 본문 에디터·펜 overlay·백링크는 앞면에서 빠졌다 — 메모 창(MemoExpand)이 맡는다.
    * 아래 세 개가 새 계약이고, 옛 "앞면 본문 편집" 검사는 창 쪽 테스트가 덮는다. */
+  /* PZ-4: 멀리 구간 규칙(globals.css)은 "제목 감싸개 + 바로 뒤 줄 표시" 형제 순서에 기댄다. */
+  it("제목 감싸개 바로 뒤에 숨은 줄 표시가 있고, 제목 글씨는 감싸개 안에 있다", () => {
+    const { container } = renderCard("text", {
+      content: "본문",
+      editing: false,
+      card: { title: "회의 메모" },
+    });
+    const wrap = container.querySelector<HTMLElement>("[data-memo-front-title]")!;
+    expect(wrap.querySelector(".moss-md")?.textContent).toBe("회의 메모");
+    const lines = wrap.nextElementSibling as HTMLElement;
+    expect(lines.hasAttribute("data-memo-lines")).toBe(true);
+    expect(lines.getAttribute("aria-hidden")).toBe("true");
+    expect(lines.children).toHaveLength(2);
+  });
+
   it("앞면에는 본문 에디터가 없다", () => {
     renderCard("text", { content: "메모", editing: false });
     expect(screen.queryByTestId("text-card-editor")).toBeNull();
