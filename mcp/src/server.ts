@@ -181,6 +181,10 @@ server.registerTool(
       "본문(text 메모)을 만들고 id를 반환한다. 이미지·녹음·파일·링크는 blocks[]로 넣으면 본문 블록이 된다. boardId를 주면 그 보드에 직접 생성한다(현재 보드면 화면 즉시 렌더, 다른 보드면 전환 시 보임). 생략 시 현재 보드.",
     inputSchema: {
       content: z.string().optional().describe("본문 마크다운(코드·체크리스트·인용 포함)."),
+      title: z
+        .string()
+        .optional()
+        .describe("제목 한 줄(80자까지). 메모지 앞면에는 제목만 보이고 본문은 메모 창에서 보인다."),
       boardId: z.string().optional().describe('대상 보드 id 또는 "system"(생략 시 현재 보드)'),
       x: z.number().optional().describe("월드 좌표 x (기본 40)"),
       y: z.number().optional().describe("월드 좌표 y (기본 40)"),
@@ -197,11 +201,12 @@ server.registerTool(
         ),
     },
   },
-  async ({ content, boardId, x, y, width, height, blocks }) =>
+  async ({ content, title, boardId, x, y, width, height, blocks }) =>
     attempt(async () => {
       const resolved = blocks ? await resolveBridgeBlocks(blocks) : undefined;
       return bridge.call("notes.create", {
         content,
+        title,
         boardId,
         x,
         y,
@@ -262,13 +267,15 @@ server.registerTool(
 server.registerTool(
   "notes_update",
   {
-    description: "기존 카드의 본문을 교체한다(보드 무관, id로). 현재 보드면 화면 반영.",
+    description:
+      "기존 카드의 본문이나 제목을 바꾼다(보드 무관, id로). 준 항목만 바뀐다. title을 빈 문자열로 주면 제목이 지워진다. 현재 보드면 화면 반영.",
     inputSchema: {
       id: z.string().describe("카드 id"),
-      content: z.string().describe("새 본문(마크다운)"),
+      content: z.string().optional().describe("새 본문(마크다운)"),
+      title: z.string().optional().describe("새 제목 한 줄(80자까지). 빈 문자열이면 제목 지우기"),
     },
   },
-  async ({ id, content }) => viaBridge("notes.update", { id, content }),
+  async ({ id, content, title }) => viaBridge("notes.update", { id, content, title }),
 );
 
 server.registerTool(

@@ -284,6 +284,24 @@ describe("dispatchOp", () => {
     );
   });
 
+  it("notes.create/update title → 앞면 제목 반영, 본문은 그대로", async () => {
+    const { id } = (await dispatchOp("notes.create", {
+      content: "본문",
+      title: "  예식장\n계약  ",
+    })) as { id: string };
+    expect(useWorkspace.getState().cards[0]!.title).toBe("예식장 계약");
+    expect(((await dispatchOp("notes.list")) as BridgeNote[])[0]!.title).toBe("예식장 계약");
+
+    await dispatchOp("notes.update", { id, title: "새 제목" });
+    const card = useWorkspace.getState().cards[0]!;
+    expect(card.title).toBe("새 제목");
+    expect(card.content).toBe("본문");
+
+    await dispatchOp("notes.update", { id, title: "" });
+    expect(useWorkspace.getState().cards[0]!.title).toBeUndefined();
+    await expect(dispatchOp("notes.update", { id })).rejects.toThrow("content나 title");
+  });
+
   it("notes.delete → 카드 제거, 없으면 throw", async () => {
     const { id } = (await dispatchOp("notes.create", { content: "bye" })) as { id: string };
     await dispatchOp("notes.delete", { id });
@@ -461,6 +479,12 @@ describe("dispatchOp", () => {
       expect(notes.map((n) => n.content)).toContain("딴 보드 카드");
     });
 
+    it("notes.create title + boardId → 그 보드 DB에 제목 저장", async () => {
+      await dispatchOp("notes.create", { content: "본문", title: "계약", boardId: "b-t" });
+      const notes = await useStorage.getState().loadCards("b-t");
+      expect(notes[0]!.title).toBe("계약");
+    });
+
     it("notes.create blocks[link] + boardId → 그 보드에 text 카드 저장", async () => {
       const r = (await dispatchOp("notes.create", {
         content: "",
@@ -491,6 +515,11 @@ describe("dispatchOp", () => {
 
       await dispatchOp("notes.update", { id, content: "changed" });
       expect(((await dispatchOp("notes.get", { id })) as BridgeNote).content).toBe("changed");
+
+      await dispatchOp("notes.update", { id, title: "딴 보드 제목" });
+      const got = (await dispatchOp("notes.get", { id })) as BridgeNote;
+      expect(got.title).toBe("딴 보드 제목");
+      expect(got.content).toBe("changed");
 
       await dispatchOp("notes.delete", { id });
       await expect(dispatchOp("notes.get", { id })).rejects.toThrow("찾을 수 없습니다");

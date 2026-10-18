@@ -34,6 +34,7 @@ import {
   writeNoteRecord,
 } from "@/state/ydoc";
 import { serializeBlock } from "@/state/blocks";
+import { normalizeTitle } from "@/state/memoTitle";
 import { makeAttachmentFilename } from "@/state/db/opfs";
 import { storeAttachment } from "@/state/share/attachments";
 import {
@@ -54,6 +55,7 @@ export interface BridgeNote {
   attachmentRef?: string;
   mediaType?: string;
   boardRef?: string;
+  title?: string;
 }
 
 /**
@@ -255,6 +257,7 @@ function toBridgeNote(card: Card): BridgeNote {
     attachmentRef: card.attachmentRef,
     mediaType: card.mediaType,
     boardRef: card.boardRef,
+    title: card.title,
   };
 }
 
@@ -310,6 +313,7 @@ export async function dispatchOp(
         );
       }
       const raw = typeof params.content === "string" ? params.content : "";
+      const title = typeof params.title === "string" ? normalizeTitle(params.title) : "";
       const x = typeof params.x === "number" ? params.x : 40;
       const y = typeof params.y === "number" ? params.y : 40;
       // 메모 본문은 고정 폭(MEMO_CONTENT_WIDTH=720) 컬럼이라, 카드가 그보다 좁으면
@@ -335,6 +339,7 @@ export async function dispatchOp(
         }
         // width/height 패치 후 영속되도록 setContent를 항상 호출(빈 본문도 OK).
         ws.setContent(id, finalContent);
+        if (title) ws.setTitle(id, title);
         ws.setEditing(null);
         ws.clearSelection();
         return { id, kind: "text" };
@@ -348,6 +353,7 @@ export async function dispatchOp(
         y,
         ...(square !== undefined ? { width: square, height: square } : {}),
         content: finalContent,
+        ...(title ? { title } : {}),
         aiOptOut: false,
         rotation: 0,
       };
@@ -361,18 +367,25 @@ export async function dispatchOp(
 
     case "notes.update": {
       const id = String(params.id ?? "");
-      const content = typeof params.content === "string" ? params.content : "";
+      const content = typeof params.content === "string" ? params.content : undefined;
+      // 제목은 웹과 같은 규칙(한 줄, 80자)으로 정규화한다. 빈 문자열은 제목 지우기.
+      const title = typeof params.title === "string" ? normalizeTitle(params.title) : undefined;
       if (!id) throw new Error("id가 필요합니다");
+      if (content === undefined && title === undefined) throw new Error("content나 title이 필요합니다");
       if (ws.cards.some((c) => c.id === id)) {
-        ws.setContent(id, content);
+        if (content !== undefined) ws.setContent(id, content);
+        if (title !== undefined) ws.setTitle(id, title);
         return { id };
       }
-      // 다른 보드 카드 — 존재 확인 후 content만 병합 저장(없으면 junk 생성 방지).
+      // 다른 보드 카드 — 존재 확인 후 준 필드만 병합 저장(없으면 junk 생성 방지).
       const note = await getDB().notes.get(id);
       if (!note) throw new Error(`카드를 찾을 수 없습니다: ${id}`);
-      // n23 P1-5: saveNote가 정규화된 Note를 돌려준다.
-      const saved = await useStorage.getState().saveNote({ id, content });
-      await writeNoteRecord(saved);
+      if (content !== undefined) {
+        // n23 P1-5: saveNote가 정규화된 Note를 돌려준다.
+        const saved = await useStorage.getState().saveNote({ id, content });
+        await writeNoteRecord(saved);
+      }
+      if (title !== undefined) await useStorage.getState().updateNoteTitle(id, title);
       return { id };
     }
 
