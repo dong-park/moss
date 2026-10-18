@@ -3,6 +3,8 @@ import { loadConfig, toPgConnection } from "./config.ts";
 import { ensureDocumentsTable, PostgresDocumentStore } from "./documentStore.ts";
 import { startInternalServer } from "./internalServer.ts";
 import { createKtorIntrospector } from "./mcp.ts";
+import { createPostgresBoardSource } from "./mcpBoards.ts";
+import { readTools } from "./mcpReadTools.ts";
 import { createPostgresBoardExists, createPostgresMembership } from "./membership.ts";
 import { createSyncServer } from "./server.ts";
 
@@ -15,9 +17,10 @@ async function main(): Promise<void> {
   await ensureDocumentsTable(pool);
 
   const isMember = createPostgresMembership(pool);
+  const store = new PostgresDocumentStore(pool);
   const sync = createSyncServer({
     config,
-    store: new PostgresDocumentStore(pool),
+    store,
     isMember,
     boardExists: createPostgresBoardExists(pool),
     ...(config.mcp !== undefined
@@ -26,6 +29,8 @@ async function main(): Promise<void> {
             config: config.mcp,
             introspect: createKtorIntrospector(config.mcp, config.internalSecret),
             isMember,
+            boards: createPostgresBoardSource(pool, store),
+            tools: readTools,
           },
         }
       : {}),

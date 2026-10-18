@@ -1,5 +1,9 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Hocuspocus } from "@hocuspocus/server";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import * as Y from "yjs";
+import { z, type ZodRawShape, type ZodTypeAny } from "zod";
 import { isBoardId, isUuid } from "./auth.ts";
 import type { MembershipChecker } from "./membership.ts";
 
@@ -37,14 +41,45 @@ export class McpToolError extends Error {
   }
 }
 
+/** One board the caller can reach, as listed from the database. */
+export interface McpBoardInfo {
+  id: string;
+  name: string;
+  /** Parent board id for a board nested inside a shared board, otherwise null. */
+  parentId: string | null;
+  /** Caller's role on the shared root this board belongs to. */
+  role: string;
+}
+
+/** Database-backed lookups the read tools need. */
+export interface McpBoardSource {
+  /** Boards the user is a member of, including boards nested inside them. */
+  listBoards(userId: string): Promise<McpBoardInfo[]>;
+  /** Saved snapshot of a board document, or null when none was stored yet. */
+  fetchSnapshot(boardId: string): Promise<Uint8Array | null>;
+  /** Server file id to original file name for one board's attachments. */
+  fileNames(boardId: string): Promise<Map<string, string>>;
+}
+
 export interface McpToolContext {
   userId: string;
   clientId: string | null;
   grantId: string | null;
+  /** Boards the caller is a member of right now. */
+  listBoards(): Promise<McpBoardInfo[]>;
+  /**
+   * Read-only view of a board after a membership check. A document that is already
+   * open is returned from memory; otherwise the saved snapshot is decoded into a
+   * throwaway Y.Doc. No Hocuspocus connection is opened, so nothing is written back.
+   * Callers must not modify the returned document.
+   */
+  readDoc(boardId: string): Promise<Y.Doc>;
+  /** Server file id to original file name for the board's attachments. */
+  fileNames(boardId: string): Promise<Map<string, string>>;
   /**
    * Checks the caller's board membership right now, then opens the board through
    * Hocuspocus so edits reach connected browsers and the normal store path.
-   * The connection is closed when `fn` settles.
+   * The connection is closed when `fn` settles. Only write tools use this.
    */
   withBoard<T>(boardId: string, fn: (connection: BoardConnection) => Promise<T> | T): Promise<T>;
 }
@@ -52,20 +87,35 @@ export interface McpToolContext {
 export interface McpTool {
   name: string;
   description: string;
-  inputSchema: Record<string, unknown>;
+  /** Zod shape of the tool arguments, as `registerTool` takes it. */
+  inputSchema: ZodRawShape;
+  /** True for tools that never change a board. */
+  readOnly?: boolean;
   /** Returns the text shown to the agent. Throw [McpToolError] for expected failures. */
   call(args: Record<string, unknown>, context: McpToolContext): Promise<string>;
+}
+
+/** Keeps the argument types of `call` tied to `inputSchema`. */
+export function defineTool<Shape extends ZodRawShape>(tool: {
+  name: string;
+  description: string;
+  inputSchema: Shape;
+  readOnly?: boolean;
+  call(args: z.objectOutputType<Shape, ZodTypeAny>, context: McpToolContext): Promise<string>;
+}): McpTool {
+  return tool as unknown as McpTool;
 }
 
 export interface McpDeps {
   config: McpEndpointConfig;
   introspect: McpIntrospector;
   isMember: MembershipChecker;
-  /** Tools served by `tools/list` and `tools/call`; empty until n5/n6 add theirs. */
+  /** Database lookups for the read tools. */
+  boards: McpBoardSource;
+  /** Tools served by `tools/list` and `tools/call`. */
   tools?: readonly McpTool[];
 }
 
-export const MCP_SUPPORTED_VERSIONS = ["2025-06-18", "2025-03-26", "2024-11-05"] as const;
 export const MAX_MCP_BODY_BYTES = 1024 * 1024;
 const INTROSPECT_TIMEOUT_MS = 5000;
 
@@ -147,14 +197,6 @@ async function readBody(request: IncomingMessage): Promise<string | null> {
   });
 }
 
-type RpcOutcome = { result: unknown } | { error: { code: number; message: string } };
-
-const rpcError = (code: number, message: string): RpcOutcome => ({ error: { code, message } });
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 export interface McpEndpoint {
   /** Serves the request when its path is the MCP route; returns false for every other path. */
   handle(instance: Hocuspocus, request: IncomingMessage, response: ServerResponse): Promise<boolean>;
@@ -168,16 +210,34 @@ export function createMcpEndpoint(deps: McpDeps): McpEndpoint {
   const challenge = (error?: string) =>
     "Bearer " + (error ? `error="${error}", ` : "") + `resource_metadata="${metadataUrl}"`;
 
+  async function requireMember(boardId: string, userId: string): Promise<void> {
+    // One message for both cases so a caller cannot probe which board ids exist.
+    if (!isBoardId(boardId) || !(await deps.isMember(boardId, userId))) {
+      throw new McpToolError("board not found or not accessible");
+    }
+  }
+
   function contextFor(instance: Hocuspocus, info: McpTokenInfo): McpToolContext {
     return {
       userId: info.userId,
       clientId: info.clientId,
       grantId: info.grantId,
+      listBoards: () => deps.boards.listBoards(info.userId),
+      async readDoc(boardId) {
+        await requireMember(boardId, info.userId);
+        const live = instance.documents.get(boardId);
+        if (live !== undefined) return live;
+        const doc = new Y.Doc();
+        const snapshot = await deps.boards.fetchSnapshot(boardId);
+        if (snapshot !== null) Y.applyUpdate(doc, snapshot);
+        return doc;
+      },
+      async fileNames(boardId) {
+        await requireMember(boardId, info.userId);
+        return deps.boards.fileNames(boardId);
+      },
       async withBoard(boardId, fn) {
-        // One message for both cases so a caller cannot probe which board ids exist.
-        if (!isBoardId(boardId) || !(await deps.isMember(boardId, info.userId))) {
-          throw new McpToolError("board not found or not accessible");
-        }
+        await requireMember(boardId, info.userId);
         const connection = await instance.openDirectConnection(boardId, {
           userId: info.userId,
           boardId,
@@ -192,59 +252,32 @@ export function createMcpEndpoint(deps: McpDeps): McpEndpoint {
     };
   }
 
-  async function dispatch(
-    instance: Hocuspocus,
-    info: McpTokenInfo,
-    method: string,
-    params: Record<string, unknown>,
-  ): Promise<RpcOutcome> {
-    switch (method) {
-      case "initialize": {
-        const version = MCP_SUPPORTED_VERSIONS.find((v) => v === params.protocolVersion) ?? MCP_SUPPORTED_VERSIONS[0];
-        return {
-          result: {
-            protocolVersion: version,
-            capabilities: { tools: { listChanged: false } },
-            serverInfo: { name: "moss", version: "0.1.0" },
-          },
-        };
-      }
-      case "ping":
-        return { result: {} };
-      case "tools/list":
-        return {
-          result: {
-            tools: tools.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })),
-          },
-        };
-      case "tools/call": {
-        const tool = tools.find((candidate) => candidate.name === params.name);
-        if (tool === undefined) return rpcError(-32602, `Unknown tool: ${String(params.name)}`);
-        const args = isRecord(params.arguments) ? params.arguments : {};
-        try {
-          const text = await tool.call(args, contextFor(instance, info));
-          return { result: { content: [{ type: "text", text }] } };
-        } catch (error) {
-          if (!(error instanceof McpToolError)) {
-            console.warn(`mcp tool ${tool.name} failed:`, error instanceof Error ? error.message : error);
+  /** A fresh server per request: the endpoint keeps no sessions, and the tools close over this caller. */
+  function serverFor(instance: Hocuspocus, info: McpTokenInfo): McpServer {
+    const server = new McpServer({ name: "moss", version: "0.1.0" });
+    const context = contextFor(instance, info);
+    for (const tool of tools) {
+      server.registerTool(
+        tool.name,
+        {
+          description: tool.description,
+          inputSchema: tool.inputSchema,
+          ...(tool.readOnly === true ? { annotations: { readOnlyHint: true } } : {}),
+        },
+        async (args: Record<string, unknown>) => {
+          try {
+            return { content: [{ type: "text" as const, text: await tool.call(args, context) }] };
+          } catch (error) {
+            if (!(error instanceof McpToolError)) {
+              console.warn(`mcp tool ${tool.name} failed:`, error instanceof Error ? error.message : error);
+            }
+            const message = error instanceof McpToolError ? error.message : "tool failed";
+            return { isError: true, content: [{ type: "text" as const, text: message }] };
           }
-          const message = error instanceof McpToolError ? error.message : "tool failed";
-          return { result: { isError: true, content: [{ type: "text", text: message }] } };
-        }
-      }
-      default:
-        return rpcError(-32601, `Method not found: ${method}`);
+        },
+      );
     }
-  }
-
-  /** Answers one JSON-RPC message; notifications and client responses get no reply. */
-  async function handleMessage(instance: Hocuspocus, info: McpTokenInfo, message: unknown): Promise<unknown> {
-    if (!isRecord(message) || message.jsonrpc !== "2.0") {
-      return { jsonrpc: "2.0", id: null, error: { code: -32600, message: "Invalid Request" } };
-    }
-    if (typeof message.method !== "string" || !("id" in message)) return undefined;
-    const params = isRecord(message.params) ? message.params : {};
-    return { jsonrpc: "2.0", id: message.id, ...(await dispatch(instance, info, message.method, params)) };
+    return server;
   }
 
   return {
@@ -272,7 +305,13 @@ export function createMcpEndpoint(deps: McpDeps): McpEndpoint {
         send(response, 503, { error: "token check unavailable" }, { "retry-after": "5" });
         return true;
       }
-      if (info === null || info.resource === null || trimSlashes(info.resource) !== trimSlashes(deps.config.resourceUrl)) {
+      if (info === null) {
+        send(response, 401, undefined, { "www-authenticate": challenge("invalid_token") });
+        return true;
+      }
+      if (info.resource === null || trimSlashes(info.resource) !== trimSlashes(deps.config.resourceUrl)) {
+        // A live token for another resource, which differs from a revoked token in the logs.
+        console.warn("mcp audience mismatch", info.resource, deps.config.resourceUrl);
         send(response, 401, undefined, { "www-authenticate": challenge("invalid_token") });
         return true;
       }
@@ -289,18 +328,34 @@ export function createMcpEndpoint(deps: McpDeps): McpEndpoint {
         send(response, 400, { jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } });
         return true;
       }
-
       if (Array.isArray(payload)) {
-        const replies = (await Promise.all(payload.map((m) => handleMessage(instance, info, m)))).filter(
-          (reply) => reply !== undefined,
-        );
-        if (replies.length === 0) send(response, 202);
-        else send(response, 200, replies);
+        // JSON-RPC batches were dropped from the 2025-06-18 spec, and each entry could be a tool call.
+        send(response, 400, {
+          jsonrpc: "2.0",
+          id: null,
+          error: { code: -32600, message: "Batch requests are not supported" },
+        });
         return true;
       }
-      const reply = await handleMessage(instance, info, payload);
-      if (reply === undefined) send(response, 202);
-      else send(response, 200, reply);
+
+      const server = serverFor(instance, info);
+      const transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: undefined,
+        enableJsonResponse: true,
+      });
+      response.on("close", () => {
+        void transport.close();
+        void server.close();
+      });
+      try {
+        await server.connect(transport);
+        await transport.handleRequest(request, response, payload);
+      } catch (error) {
+        console.warn("mcp request failed:", error instanceof Error ? error.message : error);
+        if (!response.headersSent) {
+          send(response, 500, { jsonrpc: "2.0", id: null, error: { code: -32603, message: "Internal error" } });
+        }
+      }
       return true;
     },
   };

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { HocuspocusProvider, HocuspocusProviderWebsocket } from "@hocuspocus/provider";
 import * as Y from "yjs";
+import { z } from "zod";
 import { loadConfig } from "../src/config.ts";
 import { MemoryDocumentStore } from "../src/documentStore.ts";
 import {
@@ -34,7 +35,7 @@ const info = (userId: string, resource: string | null = RESOURCE): McpTokenInfo 
 const writeNote: McpTool = {
   name: "write_note",
   description: "test tool",
-  inputSchema: { type: "object", properties: { board: { type: "string" } } },
+  inputSchema: { board: z.string() },
   async call(args, context) {
     const boardId = String(args.board);
     return context.withBoard(boardId, (connection) =>
@@ -49,7 +50,7 @@ const writeNote: McpTool = {
 const failing: McpTool = {
   name: "boom",
   description: "test tool",
-  inputSchema: { type: "object" },
+  inputSchema: { expected: z.boolean().optional() },
   async call(args) {
     if (args.expected === true) throw new McpToolError("expected failure");
     throw new Error("secret internals");
@@ -81,6 +82,7 @@ describe("mcp endpoint", () => {
           return tokens.get(token) ?? null;
         },
         isMember: async (boardId, userId) => members.has(`${boardId}:${userId}`),
+        boards: { listBoards: async () => [], fetchSnapshot: async () => null, fileNames: async () => new Map() },
         tools: [writeNote, failing],
       },
     });
@@ -96,6 +98,7 @@ describe("mcp endpoint", () => {
       method: "POST",
       headers: {
         "content-type": "application/json",
+        accept: "application/json, text/event-stream",
         ...(token === null ? {} : { authorization: `Bearer ${token}` }),
       },
       body: typeof body === "string" ? body : JSON.stringify(body),
@@ -133,7 +136,7 @@ describe("mcp endpoint", () => {
   });
 
   test("a valid token connects: initialize, ping and an empty-or-listed tool list", async () => {
-    const init = await jsonOf(await post(rpc("initialize", { protocolVersion: "2025-06-18" })));
+    const init = await jsonOf(await post(rpc("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "t", version: "1" } })));
     expect(init.result.protocolVersion).toBe("2025-06-18");
     expect(init.result.capabilities.tools).toBeDefined();
 
@@ -199,8 +202,28 @@ describe("mcp endpoint", () => {
     const hidden = await callTool("boom", {});
     expect(hidden.result.isError).toBe(true);
     expect(hidden.result.content[0]?.text).toBe("tool failed");
-    const unknown = await jsonOf(await post(rpc("tools/call", { name: "nope" })));
-    expect(unknown.error.code).toBe(-32602);
+    const unknown = await jsonOf(await post(rpc("tools/call", { name: "nope", arguments: {} })));
+    expect(unknown.result.isError).toBe(true);
+    expect(unknown.result.content[0].text).toContain("nope");
+  });
+
+  test("a JSON-RPC batch is refused with 400", async () => {
+    const response = await post([rpc("ping", {}, 1), rpc("ping", {}, 2)]);
+    expect(response.status).toBe(400);
+    expect((await jsonOf(response)).error.code).toBe(-32600);
+  });
+
+  test("a token for another audience leaves a warning that tells it from a revoked token", async () => {
+    const warn = console.warn;
+    const lines: unknown[][] = [];
+    console.warn = (...args: unknown[]) => void lines.push(args);
+    try {
+      expect((await post(rpc("ping"), "wrong-aud")).status).toBe(401);
+      expect((await post(rpc("ping"), "unknown")).status).toBe(401);
+    } finally {
+      console.warn = warn;
+    }
+    expect(lines).toEqual([["mcp audience mismatch", "https://other.example/mcp", RESOURCE]]);
   });
 
   test("an oversized body is refused with 413", async () => {
