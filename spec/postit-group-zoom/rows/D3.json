@@ -1,0 +1,34 @@
+{
+  "id": "D3",
+  "confidence": "high",
+  "reversible": true,
+  "status": "끝남",
+  "blocks": [
+    "n3"
+  ],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": [
+    "2026-10-18 추천값으로 확정(사용자: 묻지 말고 완결). 보드에서 바꾸면 다시 맞춘다"
+  ],
+  "kind": "decision",
+  "title": "판을 어떻게 눈에 띄게 할까",
+  "given": "판 선이 배경과 대비 1.1:1이다",
+  "when": "판을 고르지 않은 채 본다",
+  "then": "면을 깔면 선보다 멀리서 잘 보인다.",
+  "options": [
+    {
+      "key": "A",
+      "label": "옅은 흰 면(멀리에서 더 진하게) + 선 #aeb2ba, 화면 고정",
+      "why": "목업 TO-BE"
+    },
+    {
+      "key": "B",
+      "label": "선만 진하게",
+      "why": "면 없이 가볍지만 멀리서 약하다"
+    }
+  ],
+  "recommend": "A"
+}
