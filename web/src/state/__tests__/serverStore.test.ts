@@ -671,6 +671,34 @@ describe("D9 — 다른 멤버가 있는 최상위 보드를 소유자가 지운
     expect(onServer.has("together")).toBe(true);
   });
 
+  it("보드를 지우는 도중 실행 취소를 누르면 받지 않고, 지우기가 끝난 뒤 실행 취소로 되돌린다", async () => {
+    setup(true);
+    await getDB().boards.put(makeBoard("together"));
+    const original = useStorage.getState().removeBoard;
+    useStorage.setState({
+      removeBoard: async (id) => {
+        const removing = original(id);
+        await useWorkspace.getState().undoBoardRemove(); // removeBoard가 await 중일 때 누른다
+        await removing;
+      },
+    });
+    try {
+      await useWorkspace.getState().removeBoardWithUndo("together");
+    } finally {
+      useStorage.setState({ removeBoard: original });
+    }
+
+    expect(useWorkspace.getState().pendingBoardUndo?.ready).toBe(true);
+    await syncMyBoards();
+    expect(unshare).not.toHaveBeenCalled();
+    await useWorkspace.getState().undoBoardRemove();
+    expect(await getDB().boards.get("together")).toBeDefined();
+    expect(await storedMarks()).toEqual([]);
+    await syncMyBoards();
+    expect(unshare).not.toHaveBeenCalled();
+    expect(onServer.has("together")).toBe(true);
+  });
+
   it("파일함을 지우는 도중 sync가 끼어도 서버 사본을 지우거나 되살리지 않는다", async () => {
     setup(true);
     onServer = new Set(["parent", "child"]);

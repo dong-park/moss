@@ -252,6 +252,8 @@ export interface PendingBoardUndo {
   board: Board;
   affectedNoteIds: string[];
   expiresAt: number;
+  /** 행 지우기가 끝났는가. false인 동안은 실행 취소·닫기를 받지 않는다(지우기가 이어서 행을 지운다). */
+  ready: boolean;
 }
 
 export const BOARD_UNDO_MS = 5000;
@@ -465,6 +467,7 @@ interface WorkspaceState {
   /**
    * 직전에 삭제된 보드를 5초간 복구할 수 있도록 보관하는 스냅샷.
    * UI(BoardUndoToast)가 구독하고, expiresAt 시점에 자동으로 null로 비워진다.
+   * remote-mcp n1 서버 삭제 보호도 이 값을 본다.
    */
   pendingBoardUndo: PendingBoardUndo | null;
   /** 삭제 확인 다이얼로그 대상 보드 id (null이면 닫힘). */
@@ -2398,12 +2401,13 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
     // 2) 스냅샷 저장 — 이전 undo가 있었으면 그건 영구 폐기 (스택 1개만 유지).
     //    실행 취소 기간은 행을 지우기 전에 세운다 — 지우는 도중 sync가 끼어도 서버 사본을
-    //    지우지 않는다(remote-mcp n1).
+    //    지우지 않는다(remote-mcp n1). 지우기가 끝날 때까지는 ready:false라 실행 취소를 받지 않는다.
     set({
       pendingBoardUndo: {
         board,
         affectedNoteIds: affected as string[],
         expiresAt: Date.now() + BOARD_UNDO_MS,
+        ready: false,
       },
     });
 
@@ -2413,6 +2417,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     } catch (err) {
       if (get().pendingBoardUndo?.board.id === id) set({ pendingBoardUndo: null });
       throw err;
+    }
+    const removed = get().pendingBoardUndo;
+    if (removed?.board.id === id) {
+      set({ pendingBoardUndo: { ...removed, expiresAt: Date.now() + BOARD_UNDO_MS, ready: true } });
     }
 
     // 4) 5초 자동 폐기
@@ -2428,7 +2436,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   undoBoardRemove: async () => {
     const pending = get().pendingBoardUndo;
-    if (!pending) return;
+    if (!pending?.ready) return;
     set({ pendingBoardUndo: null });
     const storage = useStorage.getState();
     if (!storage.initialized) await storage.init();
@@ -2453,6 +2461,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   clearBoardUndo: () => {
     const pending = get().pendingBoardUndo;
+    if (pending && !pending.ready) return;
     if (pending) unshareFinalizedBoards([pending.board]);
     set({ pendingBoardUndo: null });
   },
