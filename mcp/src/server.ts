@@ -268,14 +268,19 @@ server.registerTool(
   "notes_update",
   {
     description:
-      "기존 카드의 본문이나 제목을 바꾼다(보드 무관, id로). 준 항목만 바뀐다. title을 빈 문자열로 주면 제목이 지워진다. 현재 보드면 화면 반영.",
+      "기존 카드의 본문·제목·위치·크기를 바꾼다(보드 무관, id로). 준 항목만 바뀐다. title을 빈 문자열로 주면 제목이 지워진다. 메모는 정사각형이라 width를 주면 height도 같이 맞는다. 현재 보드면 화면 반영.",
     inputSchema: {
       id: z.string().describe("카드 id"),
       content: z.string().optional().describe("새 본문(마크다운)"),
       title: z.string().optional().describe("새 제목 한 줄(80자까지). 빈 문자열이면 제목 지우기"),
+      x: z.number().optional().describe("월드 좌표 x"),
+      y: z.number().optional().describe("월드 좌표 y"),
+      width: z.number().optional().describe("카드 폭(px)"),
+      height: z.number().optional().describe("카드 높이(px). 메모는 무시하고 폭에 맞춘다"),
     },
   },
-  async ({ id, content, title }) => viaBridge("notes.update", { id, content, title }),
+  async ({ id, content, title, x, y, width, height }) =>
+    viaBridge("notes.update", { id, content, title, x, y, width, height }),
 );
 
 server.registerTool(

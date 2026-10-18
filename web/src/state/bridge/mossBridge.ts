@@ -370,11 +370,31 @@ export async function dispatchOp(
       const content = typeof params.content === "string" ? params.content : undefined;
       // 제목은 웹과 같은 규칙(한 줄, 80자)으로 정규화한다. 빈 문자열은 제목 지우기.
       const title = typeof params.title === "string" ? normalizeTitle(params.title) : undefined;
+      const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
+      const x = num(params.x);
+      const y = num(params.y);
+      const width = num(params.width);
+      const height = num(params.height);
+      const moves = x !== undefined || y !== undefined || width !== undefined || height !== undefined;
       if (!id) throw new Error("id가 필요합니다");
-      if (content === undefined && title === undefined) throw new Error("content나 title이 필요합니다");
-      if (ws.cards.some((c) => c.id === id)) {
+      if (content === undefined && title === undefined && !moves) {
+        throw new Error("content·title·x·y·width·height 중 하나는 필요합니다");
+      }
+      const inStore = ws.cards.find((c) => c.id === id);
+      if (inStore) {
         if (content !== undefined) ws.setContent(id, content);
         if (title !== undefined) ws.setTitle(id, title);
+        if (width !== undefined || height !== undefined) {
+          // resizeCard가 크기를 클램프하고 메모(text)는 정사각형으로 맞춘다.
+          ws.resizeCard(id, {
+            width: width ?? inStore.width,
+            height: height ?? width ?? inStore.height ?? inStore.width,
+            x,
+            y,
+          });
+        } else if (x !== undefined || y !== undefined) {
+          ws.moveCard(id, x ?? inStore.x, y ?? inStore.y);
+        }
         return { id };
       }
       // 다른 보드 카드 — 존재 확인 후 준 필드만 병합 저장(없으면 junk 생성 방지).
@@ -386,6 +406,19 @@ export async function dispatchOp(
         await writeNoteRecord(saved);
       }
       if (title !== undefined) await useStorage.getState().updateNoteTitle(id, title);
+      if (moves) {
+        const w = width ?? note.width;
+        // 메모(text)는 정사각형 — 폭을 바꾸면 높이도 같이 맞춘다.
+        const h = note.kind === "text" && width !== undefined ? width : (height ?? note.height);
+        const saved = await useStorage.getState().saveNote({
+          id,
+          ...(x !== undefined ? { x } : {}),
+          ...(y !== undefined ? { y } : {}),
+          ...(w !== undefined ? { width: w } : {}),
+          ...(h !== undefined ? { height: h } : {}),
+        });
+        await writeNoteRecord(saved);
+      }
       return { id };
     }
 

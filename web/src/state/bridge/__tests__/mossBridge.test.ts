@@ -299,7 +299,15 @@ describe("dispatchOp", () => {
 
     await dispatchOp("notes.update", { id, title: "" });
     expect(useWorkspace.getState().cards[0]!.title).toBeUndefined();
-    await expect(dispatchOp("notes.update", { id })).rejects.toThrow("content나 title");
+    await expect(dispatchOp("notes.update", { id })).rejects.toThrow("하나는 필요합니다");
+  });
+
+  it("notes.update x/y/width → 메모를 옮기고 정사각형으로 줄인다", async () => {
+    const { id } = (await dispatchOp("notes.create", { content: "본문", width: 720 })) as { id: string };
+    await dispatchOp("notes.update", { id, x: 300, y: 400, width: 240 });
+    const card = useWorkspace.getState().cards[0]!;
+    expect([card.x, card.y, card.width, card.height]).toEqual([300, 400, 240, 240]);
+    expect(card.content).toBe("본문");
   });
 
   it("notes.delete → 카드 제거, 없으면 throw", async () => {
@@ -520,6 +528,11 @@ describe("dispatchOp", () => {
       const got = (await dispatchOp("notes.get", { id })) as BridgeNote;
       expect(got.title).toBe("딴 보드 제목");
       expect(got.content).toBe("changed");
+
+      await dispatchOp("notes.update", { id, x: 10, y: 20, width: 240 });
+      const moved = (await dispatchOp("notes.get", { id })) as BridgeNote;
+      expect([moved.x, moved.y, moved.width, moved.height]).toEqual([10, 20, 240, 240]);
+      expect(moved.title).toBe("딴 보드 제목");
 
       await dispatchOp("notes.delete", { id });
       await expect(dispatchOp("notes.get", { id })).rejects.toThrow("찾을 수 없습니다");

@@ -124,7 +124,7 @@ export function BoardCardContent({
             onCommitEdit?.();
           }}
           className="absolute rounded-md bg-white/80 text-center font-semibold text-[#173a63] outline-none"
-          style={{ left: "10%", top: "47%", width: "80%", fontSize: "clamp(10px, 7.5cqw, 22px)" }}
+          style={{ left: "10%", top: "47%", width: "80%", fontSize: "clamp(12px, 10cqw, 30px)" }}
         />
       ) : (
       <span
@@ -132,8 +132,9 @@ export function BoardCardContent({
         title={name}
         className="pointer-events-none absolute overflow-hidden text-center font-semibold leading-snug"
         style={{
-          left: "10%", top: "47%", width: "80%", maxHeight: "29%",
-          fontSize: "clamp(10px, 7.5cqw, 22px)",
+          left: "10%", top: "47%", width: "80%", maxHeight: "46%",
+          // 폴더 폭에 맞춰 커지고, 멀리 줌에서는 화면 기준 하한(--board-name-floor)을 지킨다.
+          fontSize: "max(clamp(12px, 10cqw, 30px), calc(var(--board-name-floor, 0px) * var(--zoom-inv, 1)))",
           color: rawName ? "#173a63" : "rgba(23,58,99,0.5)",
           display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: 2,
         }}
