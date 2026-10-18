@@ -42,3 +42,6 @@ server AuthRoutes.kt, AppConfig.kt
 - n7이 할 일: 목록은 GET /oauth/grants(id, clientName, createdAt, lastUsedAt), 해제는 DELETE /oauth/grants/{id}.
 - 배포: 프록시 뒤에서는 PUBLIC_BASE_URL을 바깥 주소로 맞춰야 메타데이터가 맞다. /mcp 와 /.well-known/oauth-protected-resource 가 같은 호스트에서 sync·Ktor로 갈라지게 라우팅해야 한다.
 - 갭: 동의 화면은 메일·비밀번호 로그인만 받는다 — 구글로만 가입한 사용자는 아직 연결할 수 없다(웹 동의 화면 또는 서버 페이지의 구글 로그인이 필요, 사용자 결정). 메타데이터 문서 클라이언트는 단위 테스트(가짜 fetcher)로만 확인했고 실제 클라이언트 연결은 n8. 브라우저 직접 호출용 CORS는 열지 않았다. 메타데이터 fetch는 검사 뒤 DNS 재바인딩 틈이 남아 있다. 속도 제한은 메모리 안이라 인스턴스 하나 기준이다.
+- 고쳐줘 (2026-10-18, 메인 · wave-20261018-1100 /review P1): 클라이언트 ID 메타데이터 문서 fetch의 SSRF(ClientResolver.kt:84-111). https만, 기본 포트(443)만 허용하고, DNS를 한 번 풀어 사설·루프백·링크로컬·메타데이터 주소(IPv4·IPv6 모두)를 거절한 뒤 그 푼 주소로 접속해 재바인딩을 막는다. 리다이렉트를 따르지 않고 응답 크기·시간 상한을 둔다. /oauth/authorize GET(OAuthRoutes.kt:252)에 요청 수 상한을 단다. 각 거절을 테스트로 고정한다.
+- 고쳐줘 (2026-10-18, 메인 · /review P2): refresh_token 그랜트에서 client_id를 필수로 받고 토큰을 발급한 클라이언트와 맞는지 확인한다. introspect에 인증 또는 요청 수 상한을 둔다. 프록시 뒤에서 limiter가 한 버킷으로 묶이는 문제는 배포 구성(신뢰할 프록시 헤더)이 정해지지 않아 이번에 고치지 않고, 코드 주석 대신 이 메모에만 남긴다.
+- 병렬 경계 (2026-10-18, 메인 · 수정 웨이브): gradle은 n1과 build 디렉터리가 겹치니 격리 복사본에서 돌린다. 고칠 파일은 server/src/main/kotlin/com/moss/server/oauth/ 아래와 그 테스트까지다. BoardRoutes·BoardRepository는 n1 몫이다.
