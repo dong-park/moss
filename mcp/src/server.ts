@@ -16,6 +16,7 @@ import { MossBridge, MossNotConnectedError } from "./bridge.ts";
 import { aiEmbed, aiSummarize, aiConnectionLabel, type SummarizeKind } from "./ai.ts";
 import { resolveImageInput, resolveMediaInput, fetchImageAsBase64 } from "./image.ts";
 import { layoutMindmap } from "./mindmap.ts";
+import { layoutGroups } from "./groups.ts";
 import {
   devTest,
   devLint,
@@ -203,9 +204,10 @@ server.registerTool(
         .describe(
           "본문에 박을 블록들(이미지·녹음·파일·링크). placeholder로 {{이름}} 자리에 넣고, 없으면 끝에 붙인다. 블록이 있으면 width 기본 720.",
         ),
+      color: z.enum(["blue", "lime", "purple", "pink"]).optional().describe("메모 색(생략 시 기본 노랑)"),
     },
   },
-  async ({ content, title, boardId, x, y, width, height, blocks }) =>
+  async ({ content, title, boardId, x, y, width, height, blocks, color }) =>
     attempt(async () => {
       const resolved = blocks ? await resolveBridgeBlocks(blocks) : undefined;
       return bridge.call("notes.create", {
@@ -217,6 +219,7 @@ server.registerTool(
         width,
         height,
         blocks: resolved,
+        color,
       });
     }),
 );
@@ -507,6 +510,89 @@ server.registerTool(
 );
 
 /* ── 생각 지도: 중심-갈래-세부 나무 + 갈래 사이 연결을 한 번에 그린다 ── */
+
+/** 상태 → 메모 색. 정보(info)는 기본 노랑. */
+const STATUS_COLOR = { done: "lime", todo: "pink", check: "purple", info: undefined } as const;
+
+server.registerTool(
+  "map_groups",
+  {
+    description:
+      "주제별로 묶어 정리한다. 주제(group)마다 메모판 하나를 만들고 그 안에 메모를 격자로 놓는다. 메모 색은 상태를 뜻한다(done=연두 확정, todo=분홍 할 일, check=보라 확인 필요, info=노랑). 선은 links로 준 관계만 긋는다 — 같은 판 안의 관계는 판이 이미 말하므로 판을 넘는 관계에만 쓴다. 대상 보드로 전환한 뒤 그린다. 반환은 key→id.",
+    inputSchema: {
+      boardId: z.string().optional().describe("대상 보드 id(생략 시 현재 보드). 다른 보드면 전환한다"),
+      origin: z.object({ x: z.number(), y: z.number() }).optional(),
+      center: z
+        .object({ title: z.string(), content: z.string().optional() })
+        .optional()
+        .describe("맨 위 가운데 제목 메모(선택)"),
+      groups: z
+        .array(
+          z.object({
+            key: z.string(),
+            name: z.string().describe("메모판 이름"),
+            notes: z
+              .array(
+                z.object({
+                  key: z.string(),
+                  title: z.string().describe("앞면 제목 한 줄"),
+                  content: z.string().optional().describe("본문 마크다운(창에서 보인다)"),
+                  status: z.enum(["done", "todo", "check", "info"]).optional().describe("기본 info"),
+                }),
+              )
+              .min(1),
+          }),
+        )
+        .min(1),
+      links: z
+        .array(z.object({ from: z.string(), to: z.string(), label: z.string().optional() }))
+        .optional()
+        .describe("메모 key끼리의 관계선"),
+      noteCols: z.number().int().min(1).max(5).optional().describe("판 안 한 줄 메모 수(기본 3)"),
+      groupCols: z.number().int().min(1).max(6).optional().describe("한 줄 판 수(기본 3)"),
+    },
+  },
+  async ({ boardId, origin, center, groups, links, noteCols, groupCols }) =>
+    attempt(async () => {
+      const L = layoutGroups(
+        { hasCenter: center !== undefined, groups: groups.map((g) => ({ key: g.key, notes: g.notes.map((n) => n.key) })) },
+        { origin, noteCols, groupCols },
+      );
+      const noteKeys = new Set(groups.flatMap((g) => g.notes.map((n) => n.key)));
+      for (const l of links ?? []) {
+        if (!noteKeys.has(l.from) || !noteKeys.has(l.to)) throw new Error(`links에 없는 key: ${l.from}→${l.to}`);
+      }
+      // 판은 현재 보드에만 만들 수 있다 — 대상 보드로 먼저 전환한다.
+      if (boardId) await bridge.call("boards.switch", { id: boardId });
+      const ids: Record<string, string> = {};
+      if (center && L.center) {
+        const r = (await bridge.call("notes.create", {
+          title: center.title, content: center.content ?? "", ...L.center,
+        })) as { id: string };
+        ids.center = r.id;
+      }
+      for (const g of groups) {
+        const f = L.frames[g.key]!;
+        const r = (await bridge.call("frames.create", { name: g.name, ...f })) as { id: string };
+        ids[g.key] = r.id;
+        // 판을 먼저 만들어야 그 안에 놓인 메모가 판 소속이 된다.
+        for (const n of g.notes) {
+          const p = L.notes[n.key]!;
+          const m = (await bridge.call("notes.create", {
+            title: n.title,
+            content: n.content ?? "",
+            color: STATUS_COLOR[n.status ?? "info"],
+            x: p.x, y: p.y, width: p.width,
+          })) as { id: string };
+          ids[n.key] = m.id;
+        }
+      }
+      for (const l of links ?? []) {
+        await bridge.call("connections.create", { sourceNoteId: ids[l.from], targetNoteId: ids[l.to], label: l.label });
+      }
+      return { ids, frames: groups.length, notes: noteKeys.size, connections: links?.length ?? 0 };
+    }),
+);
 
 server.registerTool(
   "map_create",

@@ -284,6 +284,22 @@ describe("dispatchOp", () => {
     );
   });
 
+  it("frames.create → 판 크기·이름, 그 안에 만든 메모는 판 소속과 색을 갖는다", async () => {
+    const { id: frame } = (await dispatchOp("frames.create", {
+      x: 0, y: 0, width: 700, height: 300, name: "예식장",
+    })) as { id: string };
+    const f = useWorkspace.getState().cards.find((c) => c.id === frame)!;
+    expect([f.kind, f.width, f.height]).toEqual(["frame", 700, 300]);
+    expect(f.content).toContain("예식장");
+    const { id } = (await dispatchOp("notes.create", {
+      title: "확정", x: 32, y: 32, width: 200, color: "lime",
+    })) as { id: string };
+    const m = useWorkspace.getState().cards.find((c) => c.id === id)!;
+    expect([m.frameId, m.color]).toEqual([frame, "lime"]);
+    await expect(dispatchOp("notes.create", { title: "x", color: "red" })).rejects.toThrow("메모 색");
+    await expect(dispatchOp("frames.create", { boardId: "b-other" })).rejects.toThrow("현재 보드");
+  });
+
   it("notes.create/update title → 앞면 제목 반영, 본문은 그대로", async () => {
     const { id } = (await dispatchOp("notes.create", {
       content: "본문",

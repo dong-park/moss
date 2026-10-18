@@ -453,7 +453,7 @@ body {
   --frame-fill: rgba(255, 255, 255, 0.7);
 }
 [data-zoom-tier="far"] [data-frame-label] {
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 800;
 }
 /* 보통·멀리: 메모 제목과 함 이름이 화면 기준 이 크기 밑으로 작아지지 않는다.

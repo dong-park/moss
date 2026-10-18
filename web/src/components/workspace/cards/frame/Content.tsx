@@ -96,7 +96,7 @@ export function FrameCardContent({ card }: { card: Card }) {
         // 컨텍스트를 안 만듦) 이름표의 z-index가 world-layer 레벨에서 메모와
         // 직접 비교되게 한다(15 > 미선택 메모 10).
         // 이름표는 판 바깥 왼쪽 위에 둔다 — DraggableCard가 frame은 overflow visible로 둔다.
-        // PZ-3: 이름표는 화면 기준 12px — 판 윗변에 아랫변을 붙이고 줌을 거슬러 키운다.
+        // PZ-3: 이름표는 화면 기준 15px — 판 윗변에 아랫변을 붙이고 줌을 거슬러 키운다.
         // 최대 폭도 같은 배율로 나눠 화면에서 판 폭의 80%를 넘지 않게 한다.
         data-frame-label=""
         style={{
@@ -109,7 +109,7 @@ export function FrameCardContent({ card }: { card: Card }) {
           transformOrigin: "left bottom",
           color: selected ? "var(--color-accent-blue)" : undefined,
         }}
-        className="absolute text-[12px] font-semibold leading-4 text-text-soft"
+        className="absolute text-[15px] font-semibold leading-5 text-text-soft"
       >
         {editing ? (
           <input
