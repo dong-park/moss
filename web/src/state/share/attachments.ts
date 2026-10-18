@@ -17,10 +17,16 @@
  *  - P1-5: 내려받을 fileId가 이미 동기화됐으면 collab/소유 상태와 무관하게 내려받는다.
  *  - P2-1: 다운로드 캐시는 보드별 네임스페이스로 분리한다(참조 충돌 방지).
  *  - B: `files` 맵 변화를 구독해 열려 있는 화면이 자리표시자를 실제 첨부로 바꾸게 한다.
+ *
+ * remote-mcp n1: 저장 용량 상한(413)에 막힌 업로드는 `files` 맵에 실패 표시
+ * (UPLOAD_FAILED_QUOTA)를 적는다. 다른 기기는 '올리는 중' 대신 '올리지 못함'을 보고,
+ * 업로더 기기는 안내를 받는다. 다음 백필이 다시 시도하고 성공하면 fileId로 덮어쓴다.
  */
 import type * as Y from "yjs";
-import { useAuth } from "@/state/auth";
+import { t } from "@/i18n";
+import { AuthRequestError, useAuth } from "@/state/auth";
 import { getBlob, getBlobUrl, putBlob } from "@/state/db/opfs";
+import { useToasts } from "@/state/notifications";
 import { getActiveBoardDoc, getOrOpenBoardDoc } from "@/state/ydoc/activeDoc";
 import { filesMap, readDocFile, readNotes, setDocFile } from "@/state/ydoc/model";
 import { writeToBoardDoc } from "@/state/ydoc/writeThrough";
@@ -32,11 +38,18 @@ export interface AttachmentDeps {
   files: FilesApi;
   /** P1-2: 보드별 자동(렌더) 다운로드 예산. 없으면 기본값. */
   maxAutoDownloadsPerBoard?: number;
+  /** 업로더에게 띄우는 안내. 테스트는 토스트 대신 기록한다. */
+  notify: (message: string) => void;
 }
 
 const DEFAULT_MAX_AUTO_DOWNLOADS = 64;
 
-const defaultDeps: AttachmentDeps = { files: realFilesApi };
+const defaultDeps: AttachmentDeps = {
+  files: realFilesApi,
+  notify: (message) => {
+    useToasts.getState().push({ tone: "calm", title: message });
+  },
+};
 let deps: AttachmentDeps = defaultDeps;
 
 /** 테스트 주입용 — n8 `configureShare`와 같은 패턴. */
@@ -49,6 +62,15 @@ export function resetAttachmentDeps(): void {
 }
 
 const OPFS_PREFIX = "opfs:";
+
+/**
+ * `files` 맵 값: 저장 용량 상한에 막혀 서버에 올리지 못한 첨부. fileId(UUID)와 겹치지 않는다.
+ * 맵을 읽는 쪽(다운로드·MCP 도구)은 이 값을 fileId로 쓰면 안 된다.
+ */
+export const UPLOAD_FAILED_QUOTA = "!quota_exceeded";
+
+/** 이 세션에서 용량 초과 안내를 띄운 보드 — 붙여 넣은 첨부 여러 개가 안내를 여러 번 띄우지 않게. */
+const quotaNotified = new Set<string>();
 
 /** 이 보드가 서버에 공유돼 있는가. n7이 연결 중이거나 n8이 shared로 표시했으면 참. */
 export function isSharedBoard(boardId: string | null | undefined): boolean {
@@ -115,7 +137,11 @@ export async function uploadAttachment(
       const session = await useAuth.getState().ensureSession();
       const saved = await deps.files.upload(boardId, blob, filename, session.accessToken);
       await writeToBoardDoc(boardId, (doc) => setDocFile(doc, localRef, saved.id));
-    } catch {
+    } catch (err) {
+      if (err instanceof AuthRequestError && err.status === 413) {
+        await markQuotaFailed(boardId, localRef);
+        return;
+      }
       // 업로드 실패 — 매핑을 쓰지 않는다(자리표시자 유지). 사용자 편집은 잃지 않는다.
     } finally {
       inflight.delete(key);
@@ -124,6 +150,19 @@ export async function uploadAttachment(
 
   inflight.set(key, task);
   return task;
+}
+
+/** 용량 초과: 다른 기기가 '올리지 못함'을 보게 맵에 표시하고, 업로더에게 한 번 알린다. */
+async function markQuotaFailed(boardId: string, localRef: string): Promise<void> {
+  if (!quotaNotified.has(boardId)) {
+    quotaNotified.add(boardId);
+    deps.notify(t("collab.attachment.quotaFailed"));
+  }
+  await writeToBoardDoc(boardId, (doc) => {
+    if (!readDocFile(doc, localRef)) setDocFile(doc, localRef, UPLOAD_FAILED_QUOTA);
+  }).catch(() => {
+    /* 문서를 못 열면 표시만 빠진다 — 다른 기기는 '올리는 중'을 본다 */
+  });
 }
 
 /**
@@ -162,7 +201,8 @@ export async function backfillBoardAttachments(boardId: string): Promise<void> {
     return; // 못 연 보드 — 다음 공유 세션에 재시도.
   }
   for (const ref of collectLocalRefs(handle.doc)) {
-    if (readDocFile(handle.doc, ref)) continue; // 이미 올라감.
+    const fileId = readDocFile(handle.doc, ref);
+    if (fileId && fileId !== UPLOAD_FAILED_QUOTA) continue; // 이미 올라감. 용량 초과로 못 올린 것은 다시 시도한다.
     const blob = await getBlob(ref).catch(() => null);
     if (!blob) continue; // 이 기기에 없는 참조는 올릴 것이 없다.
     await uploadAttachment(boardId, ref, blob, ref.slice(OPFS_PREFIX.length));
@@ -211,13 +251,15 @@ function detachFilesObserver(): void {
 
 /* ── 해석 ─────────────────────────────────────────────────────── */
 
-export type AttachmentState = "ready" | "pending" | "missing";
+export type AttachmentState = "ready" | "pending" | "failed" | "missing";
 
 export type AttachmentResolution =
   /** OPFS에서 꺼내 쓸 수 있다(또는 방금 내려받아 캐시했다). */
   | { state: "ready"; url: string }
   /** 공유 보드인데 아직 못 쓴다 — 업로드 전·진행 중·실패. '올리는 중' 자리표시자. */
   | { state: "pending"; url: null }
+  /** 업로더가 저장 용량 상한에 막혀 서버에 올리지 못했다. '올리지 못함' 자리표시자. */
+  | { state: "failed"; url: null }
   /** 이 기기에 없고 공유 보드도 아니다 — 복구 불가. */
   | { state: "missing"; url: null };
 
@@ -283,6 +325,7 @@ export async function resolveAttachmentState(
   if (!fileId) {
     return isSharedBoard(boardId) ? "pending" : "missing";
   }
+  if (fileId === UPLOAD_FAILED_QUOTA) return "failed";
 
   // P1-5: fileId가 이미 동기화됐으면 collab 연결/소유 상태와 무관하게 내려받는다.
   // P1-2: 자동(렌더) 경로는 보드별 예산까지만 — 사용자 트리거(force)는 예산을 쓰지 않는다.
@@ -323,6 +366,7 @@ export async function resolveAttachment(
 export function resetAttachments(): void {
   inflight.clear();
   autoDownloads.clear();
+  quotaNotified.clear();
   filesListeners.clear();
   detachFilesObserver();
   deps = defaultDeps;

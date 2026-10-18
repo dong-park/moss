@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { resetAuthStore, useAuth, type AuthSession } from "@/state/auth";
+import { AuthRequestError, resetAuthStore, useAuth, type AuthSession } from "@/state/auth";
 import { resetCollabStore } from "@/state/collab";
 import { putBlob, getBlob } from "@/state/db/opfs";
 import { activateBoardDoc } from "@/state/ydoc/activeDoc";
@@ -17,6 +17,7 @@ import {
   resolveAttachment,
   resolveAttachmentState,
   storeAttachment,
+  UPLOAD_FAILED_QUOTA,
   uploadAttachment,
 } from "../attachments";
 import { configureShare, resetShareStore, useShare } from "../store";
@@ -176,6 +177,52 @@ describe("storeAttachment (작업 3)", () => {
     await uploadAttachment("b1", "opfs:a.png", new Blob([new Uint8Array([1])]), "a.png");
 
     expect(readDocFile(handle.doc, "opfs:a.png")).toBeUndefined();
+  });
+});
+
+describe("저장 용량 초과 업로드 (remote-mcp n1)", () => {
+  it("413이면 업로더에게 한 번 안내하고, 원본이 없는 기기는 '올리는 중' 대신 failed를 본다", async () => {
+    const notices: string[] = [];
+    configureAttachments({ notify: (m) => notices.push(m) });
+    useShare.setState({ byBoard: { b1: { status: "shared", inviteToken: null } } });
+    const handle = await activateBoardDoc("b1");
+    upload.mockRejectedValue(new AuthRequestError("POST files 413", 413));
+
+    await uploadAttachment("b1", "opfs:a.png", new Blob([new Uint8Array([1])]), "a.png");
+    await uploadAttachment("b1", "opfs:b.png", new Blob([new Uint8Array([1])]), "b.png");
+
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toContain("이 기기에서만");
+    expect(readDocFile(handle.doc, "opfs:a.png")).toBe(UPLOAD_FAILED_QUOTA);
+    // 이 테스트 기기에는 원본 blob이 없다 — 다른 기기와 같은 처지다.
+    expect(await resolveAttachment("opfs:a.png")).toEqual({ state: "failed", url: null });
+    expect(download).not.toHaveBeenCalled();
+  });
+
+  it("다음 백필은 용량 초과로 못 올린 첨부를 다시 올리고 fileId로 덮어쓴다", async () => {
+    useShare.setState({ byBoard: { b1: { status: "shared", inviteToken: null } } });
+    const handle = await activateBoardDoc("b1");
+    await putBlob("a.png", new Blob([new Uint8Array([1])]));
+    putNote(handle.doc, {
+      id: "n1",
+      boardId: "b1",
+      kind: "text",
+      x: 0,
+      y: 0,
+      width: 720,
+      rotation: 0,
+      content: "![](opfs://a.png)",
+      aiOptOut: false,
+      createdAt: 0,
+      updatedAt: 0,
+      lastVisitedAt: 0,
+    });
+    setDocFile(handle.doc, "opfs:a.png", UPLOAD_FAILED_QUOTA);
+
+    await backfillBoardAttachments("b1");
+
+    expect(upload).toHaveBeenCalledTimes(1);
+    expect(readDocFile(handle.doc, "opfs:a.png")).toBe("f-1");
   });
 });
 

@@ -46,3 +46,10 @@ web/src/state/share/api.ts, attachments.ts, server BoardRoutes.kt, sync document
 - 고쳐줘 (2026-10-18, 메인 · wave-20261018-1100 /review P1): 협업자가 있는 최상위 보드를 소유자가 지울 때 서버 사본과 멤버 전원의 보드가 사라진다(web/src/state/membership.ts unshareRemovedSubBoards 경로). 소유자 혼자인 보드만 서버 사본을 지운다. 다른 멤버가 있는 보드는 n1 이전(c948ec1)과 같은 동작을 유지해 자동으로 공유 해제하지 않는다. 두 경우를 테스트로 고정한다.
 - 고쳐줘 (2026-10-18, 메인 · /review P1): 상한 초과가 조용히 묻힌다. /me/usage가 실패해 로컬로 만든 보드든 파일함이든, registerNewBoards나 업로드가 413 quota_exceeded를 받으면 사용자에게 안내하고 그 보드는 이 기기에만 있다는 상태로 둔다. 첨부 업로드 413도 '올리는 중'에 머물지 않고 실패 안내로 바꾼다. 안내 경로를 테스트로 고정한다.
 - 병렬 경계 (2026-10-18, 메인 · 수정 웨이브): n1·n2·n3 수정이 같은 워킹트리에서 동시에 돈다. gradle은 n3과 build 디렉터리가 겹치니 지난번처럼 격리 복사본에서 돌린다. 고칠 파일은 web/src/state/(membership.ts·workspace.ts·share/)와 관련 UI, server BoardRoutes·BoardRepository까지다.
+- 수정 (2026-10-18, runner n1 · 고쳐줘 2건):
+  - 삭제: 소유자가 지운 최상위 보드는 서버 `GET /boards/{id}/members`를 물어 소유자 말고 멤버가 없을 때만 서버 사본을 지운다. 다른 멤버가 있거나 멤버를 확인하지 못하면(오프라인) c948ec1처럼 그대로 둔다. 캐시된 멤버 목록은 늦을 수 있어 쓰지 않는다.
+  - 보드 413: registerBoards(새 보드 자동 저장·고르기 창)와 shareSubBoards(파일함)가 413이면 "{서버 사유}. 서버에 올리지 못한 보드는 이 기기에만 있어요."를 띄우고 그 보드는 공유 상태가 아닌 채(로컬) 남는다. 다음 동기화가 다시 시도하되 같은 보드 안내는 세션에 한 번만 띄운다. 파일함은 413에서 나머지 시도를 멈춘다.
+  - 첨부 413: 업로더 기기에 "저장 용량을 다 써서 첨부를 서버에 올리지 못했어요. 이 기기에서만 보여요."를 보드마다 세션에 한 번 띄우고, Y.Doc `files` 맵에 `!quota_exceeded`(UPLOAD_FAILED_QUOTA)를 적는다. 원본이 없는 기기는 새 상태 `failed`로 '올리지 못함 · 저장 용량 초과'(블록·이미지)나 사진 카드 실패 문구를 본다. 다음 백필이 다시 올리고 성공하면 fileId로 덮어쓴다.
+  - n5·n6 계약 메모: `files` 맵 값이 `!quota_exceeded`면 fileId가 아니다. MCP 도구가 첨부를 내려받을 때 이 값을 건너뛰어야 한다.
+  - 확인한 것: web `tsc --noEmit` 통과, web vitest 182파일 1466 통과(새 테스트 6개: 멤버 있는 보드 유지·멤버 확인 실패 시 유지·/me/usage 실패 뒤 413 안내 1회·파일함 413·첨부 413 failed 표시·백필 재시도). 첫 전체 실행에서 mossBridge.test.ts가 DatabaseClosedError 8건을 냈고 재실행에서는 0건 — 이번 변경과 무관한 정리 순서 문제로 본다. server·sync 코드는 이번에 바꾸지 않아 gradle·sync 테스트는 다시 돌리지 않았다.
+  - 갭: 실제 브라우저+서버+sync로 두 계정이 같은 보드를 쓰는 상태에서 소유자 삭제, 1GB 초과 첨부를 붙인 실경로는 돌리지 못했다. 테스트는 Ktor 계약을 가짜로 주입했다.

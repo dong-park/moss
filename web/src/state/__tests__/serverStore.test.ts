@@ -16,9 +16,10 @@ import {
   registerBoards,
   registerNewBoards,
   resetMembershipDeps,
+  shareSubBoards,
   unshareRemovedSubBoards,
 } from "@/state/membership";
-import { configureShare, useShare } from "@/state/share";
+import { configureShare, useShare, type BoardMember } from "@/state/share";
 import type { ShareApi } from "@/state/share";
 import { resetShareStore } from "@/state/share/store";
 import { useStorage } from "@/state/storage";
@@ -26,6 +27,10 @@ import { SYSTEM_BOARD_ID, useWorkspace } from "@/state/workspace";
 import { destroyBoardDocs } from "@/state/ydoc/activeDoc";
 
 const NOW = 1_700_000_000_000;
+
+const LOCAL_ONLY_BOARDS = "보드는 100개까지 저장할 수 있어요. 서버에 올리지 못한 보드는 이 기기에만 있어요.";
+const OWNER: BoardMember = { id: "me", name: "동환", avatar: null, role: "owner" };
+const EDITOR: BoardMember = { id: "u2", name: "지수", avatar: null, role: "editor" };
 
 function makeToken(exp: number): string {
   const enc = (obj: unknown) =>
@@ -159,7 +164,7 @@ describe("T1 · 보드를 서버에 저장한다 (초대 링크 없이)", () => 
     expect(uploadDoc).toHaveBeenCalledWith("b1", session.accessToken);
   });
 
-  it("상한(413)에 닿으면 거기서 멈추고 서버 문구를 띄운다. 이미 올라간 보드는 그대로다", async () => {
+  it("상한(413)에 닿으면 거기서 멈추고 이 기기에만 있다고 안내한다. 이미 올라간 보드는 그대로다", async () => {
     const share = vi
       .fn<ShareApi["share"]>()
       .mockResolvedValueOnce(summary("b1"))
@@ -172,7 +177,7 @@ describe("T1 · 보드를 서버에 저장한다 (초대 링크 없이)", () => 
     expect(result.registered).toEqual(["b1"]);
     expect(result.blocked).toBe("보드는 100개까지 저장할 수 있어요");
     expect(share).toHaveBeenCalledTimes(2); // b3은 시도하지 않는다
-    expect(notified).toEqual(["보드는 100개까지 저장할 수 있어요"]);
+    expect(notified).toEqual([LOCAL_ONLY_BOARDS]);
     expect(useShare.getState().byBoard.b1?.status).toBe("shared");
     expect(useShare.getState().byBoard.b2?.status).not.toBe("shared");
   });
@@ -270,6 +275,71 @@ describe("지운 최상위 보드는 서버에서도 지운다", () => {
     ]);
 
     expect(unshare.mock.calls.map((c) => c[0])).toEqual(["mine"]);
+  });
+
+  it("다른 멤버가 있는 최상위 보드는 소유자가 지워도 서버 사본을 두고 공유를 풀지 않는다", async () => {
+    const unshare = vi.fn<ShareApi["unshare"]>(async () => undefined);
+    const members = vi.fn<ShareApi["members"]>(async (id) =>
+      id === "together" ? [OWNER, EDITOR] : [OWNER],
+    );
+    install(fakeApi({ unshare, members }));
+    useShare.getState().restoreShared("together", "owner");
+    useShare.getState().restoreShared("alone", "owner");
+
+    await unshareRemovedSubBoards([makeBoard("together"), makeBoard("alone")]);
+
+    expect(unshare.mock.calls.map((c) => c[0])).toEqual(["alone"]);
+    expect(useShare.getState().byBoard.together?.status).toBe("shared");
+  });
+
+  it("멤버를 확인하지 못하면(오프라인) 최상위 보드의 서버 사본을 지우지 않는다", async () => {
+    const unshare = vi.fn<ShareApi["unshare"]>(async () => undefined);
+    install(fakeApi({ unshare, members: vi.fn(async () => { throw new TypeError("network"); }) }));
+    useShare.getState().restoreShared("mine", "owner");
+
+    await unshareRemovedSubBoards([makeBoard("mine")]);
+
+    expect(unshare).not.toHaveBeenCalled();
+  });
+});
+
+describe("저장 상한(413)은 조용히 묻히지 않는다", () => {
+  it("/me/usage가 실패해 로컬로 만든 보드가 413을 받으면 안내하고 이 기기에만 둔다. 다시 시도해도 안내는 한 번", async () => {
+    const share = vi.fn<ShareApi["share"]>(async () => {
+      throw new AuthRequestError("보드는 100개까지 저장할 수 있어요", 413);
+    });
+    install(fakeApi({ share, usage: vi.fn(async () => { throw new TypeError("network"); }) }));
+    await useStorage.getState().updateSettings({ serverStoreSince: { me: Date.now() - 1000 } });
+
+    const id = await useWorkspace.getState().createBoard("새 보드");
+
+    await vi.waitFor(() => expect(notified).toEqual([LOCAL_ONLY_BOARDS]));
+    expect(await getDB().boards.get(id)).toBeDefined();
+    expect(useShare.getState().byBoard[id]?.status).not.toBe("shared");
+
+    await registerNewBoards(); // 다음 동기화가 다시 시도한다
+    expect(share).toHaveBeenCalledTimes(2);
+    expect(notified).toHaveLength(1);
+  });
+
+  it("공유 보드 안 파일함이 413을 받으면 안내하고 그 파일함은 이 기기에만 둔다", async () => {
+    const share = vi.fn<ShareApi["share"]>(async () => {
+      throw new AuthRequestError("보드는 100개까지 저장할 수 있어요", 413);
+    });
+    install(fakeApi({ share }));
+    await getDB().boards.bulkPut([
+      makeBoard("parent"),
+      makeBoard("box1", { parentBoardId: "parent" }),
+      makeBoard("box2", { parentBoardId: "parent" }),
+    ]);
+    useShare.getState().restoreShared("parent", "owner");
+
+    await shareSubBoards();
+
+    expect(share).toHaveBeenCalledTimes(1); // 상한에 닿으면 나머지는 시도하지 않는다
+    expect(notified).toEqual([LOCAL_ONLY_BOARDS]);
+    expect(useShare.getState().byBoard.box1?.status).not.toBe("shared");
+    expect(await getDB().boards.get("box1")).toBeDefined();
   });
 });
 

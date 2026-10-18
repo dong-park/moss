@@ -307,7 +307,13 @@ export async function shareSubBoards(): Promise<void> {
         useShare.getState().restoreShared(board.id, summary.role);
         registered.push(board.id);
         progressed = true;
-      } catch {
+      } catch (err) {
+        // 저장 상한(413) — 이 파일함은 이 기기에만 남는다. 안내하고 더 시도하지 않는다.
+        if (isQuotaExceeded(err)) {
+          notifyLocalOnly(board.id, err.message);
+          progressed = false;
+          break;
+        }
         // 오프라인·권한 없음 — 다음 동기화 때 다시 시도한다.
       }
     }
@@ -330,6 +336,7 @@ export async function shareSubBoards(): Promise<void> {
  * 되살릴 수 있는 단계에서 부르면 안 된다 — undo로 사본을 되돌려도 서버에서 먼저 사라진다.
  * 부모도 같이 지워졌으면 서버 cascade가 처리하므로 건너뛴다. 최상위 보드는 소유자 기기에서만
  * 지운다 — 서버에 저장된 사본이 /me/boards로 되살아나거나 저장 상한을 차지하지 않게 한다.
+ * 다른 멤버가 있는 최상위 보드는 지우지 않는다 — 서버 사본을 지우면 멤버 전원의 보드가 사라진다.
  */
 export async function unshareRemovedSubBoards(boards: Board[]): Promise<void> {
   if (boards.length === 0) return;
@@ -339,8 +346,8 @@ export async function unshareRemovedSubBoards(boards: Board[]): Promise<void> {
     if (info?.status !== "shared") return false;
     // 최상위 보드: 모든 보드가 서버에 있으니 지운 보드의 서버 사본도 지워야 /me/boards로 되살아나지 않고
     // 저장 상한이 비워진다. 소유자만 지울 수 있다 — 편집자의 사본은 건드리지 않는다.
-    if (!b.parentBoardId || b.parentBoardId === SYSTEM_BOARD_ID) return info.role === "owner";
-    return !deleted.has(b.parentBoardId);
+    if (isTopLevel(b)) return info.role === "owner";
+    return b.parentBoardId != null && !deleted.has(b.parentBoardId);
   });
   if (targets.length === 0) return;
   let session;
@@ -351,12 +358,24 @@ export async function unshareRemovedSubBoards(boards: Board[]): Promise<void> {
   }
   for (const board of targets) {
     try {
+      // 최상위 보드는 소유자 혼자 쓸 때만 지운다. 멤버를 확인하지 못하면(오프라인) 지우지 않는다.
+      if (isTopLevel(board) && !(await ownerIsAlone(board.id, session.accessToken))) continue;
       await deps.api.unshare(board.id, session.accessToken);
       useShare.getState().forgetBoard(board.id);
     } catch {
       // 오프라인·이미 지워짐 — 다음 syncMyBoards가 정리한다.
     }
   }
+}
+
+function isTopLevel(board: Board): boolean {
+  return !board.parentBoardId || board.parentBoardId === SYSTEM_BOARD_ID;
+}
+
+/** 서버 멤버 목록에 소유자 말고 아무도 없는가. 캐시된 목록은 늦을 수 있어 서버에 묻는다. */
+async function ownerIsAlone(boardId: string, accessToken: string): Promise<boolean> {
+  const members = await deps.api.members(boardId, accessToken);
+  return members.every((m) => m.role === "owner");
 }
 
 /**
@@ -456,6 +475,21 @@ export async function openSharedBoard(boardId: string): Promise<BoardSummary | n
 }
 /* ── remote-mcp n1: 로그인한 사용자의 보드는 모두 서버에 저장한다 ─────────────────── */
 
+function isQuotaExceeded(err: unknown): err is AuthRequestError {
+  return err instanceof AuthRequestError && err.status === 413;
+}
+
+/**
+ * 저장 상한(413)에 막혀 서버에 못 올린 보드를 알린다. 그 보드는 이 기기에만 남는다.
+ * 다음 동기화가 같은 보드를 다시 시도해도 한 세션에 한 번만 띄운다.
+ */
+function notifyLocalOnly(boardId: string, reason: string): void {
+  const key = `quota:${boardId}`;
+  if (notified.has(key)) return;
+  notified.add(key);
+  deps.notify(t("collab.quota.localOnly", { reason: reason.replace(/[.。]\s*$/, "") }));
+}
+
 /** 용량을 사람이 읽는 단위로. 안내 문구에만 쓴다. */
 function formatLimitBytes(bytes: number): string {
   const gb = 1024 * 1024 * 1024;
@@ -508,7 +542,7 @@ export interface RegisterResult {
   registered: string[];
   /** 오프라인 같은 일시 오류로 못 올린 보드. 다시 시도할 수 있다. */
   failed: string[];
-  /** 저장 상한에 막혔으면 서버 안내 문구. 첫 번째 막힘에서 멈춘다. */
+  /** 저장 상한에 막혔으면 서버 안내 문구. 첫 번째 막힘에서 멈추고, 남은 보드는 이 기기에만 있다. */
   blocked: string | null;
 }
 
@@ -518,6 +552,7 @@ export interface RegisterResult {
  */
 export async function registerBoards(boardIds: string[]): Promise<RegisterResult> {
   const result: RegisterResult = { registered: [], failed: [], blocked: null };
+  let blockedId: string | null = null;
   let session;
   try {
     session = await useAuth.getState().ensureSession();
@@ -533,8 +568,9 @@ export async function registerBoards(boardIds: string[]): Promise<RegisterResult
     try {
       await useShare.getState().registerBoard(id, board.name);
     } catch (err) {
-      if (err instanceof AuthRequestError && err.status === 413) {
+      if (isQuotaExceeded(err)) {
         result.blocked = err.message;
+        blockedId = id;
         break;
       }
       result.failed.push(id); // 오프라인·일시 장애 — 다음 기회에 다시 시도한다.
@@ -549,7 +585,7 @@ export async function registerBoards(boardIds: string[]): Promise<RegisterResult
       }),
     ),
   );
-  if (result.blocked) deps.notify(result.blocked);
+  if (result.blocked && blockedId) notifyLocalOnly(blockedId, result.blocked);
   return result;
 }
 
