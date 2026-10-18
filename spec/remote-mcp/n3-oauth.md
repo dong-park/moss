@@ -52,3 +52,5 @@ server AuthRoutes.kt, AppConfig.kt
   - introspect는 이미 X-Moss-Internal 내부 비밀으로 인증하고 비밀이 없으면 꺼 두므로(기존 테스트 introspectionNeedsTheInternalSecret) 요청 수 상한은 더하지 않았다.
   - 검증: server 전체 테스트 111개 통과(격리 복사본). 실제 TLS 접속은 임시 테스트로 https://www.google.com/robots.txt 를 받아 확인했고, 다른 IP(8.8.8.8)로 고정하면 인증서 이름 불일치로 거절됐다. 그 임시 테스트는 커밋하지 않았다.
   - 남은 틈(결정 필요): 프록시 뒤에서는 remoteHost가 프록시 주소 하나라 모든 limiter(register·token·authorize·로그인)가 한 버킷으로 묶인다. 신뢰할 프록시 헤더(X-Forwarded-For 등) 구성이 정해지지 않아 이번에 고치지 않았다. 속도 제한은 여전히 메모리 안이라 인스턴스 하나 기준이다. 실제 클라이언트 ID 메타데이터 문서 연결은 n8에서 확인한다.
+- 고쳐줘 (2026-10-18, 메인 · wave-20261018-1530 /review P1): authorize limiter가 remoteHost로 키를 잡아 프록시 뒤에서 모든 사용자가 한 버킷이 된다. AppConfig에 신뢰할 프록시 홉 수 설정(env, 기본 0)을 두고, 0이면 remoteHost, 1 이상이면 X-Forwarded-For 오른쪽에서 그 홉 수만큼 건너뛴 주소를 키로 쓴다. 기본값에서 지금 동작이 바뀌지 않는 것과 헤더 위조로 상한을 피할 수 없는 것을 테스트로 고정한다. 배포 값은 n8에서 정한다.
+- 고쳐줘 (2026-10-18, 메인 · /review P2): 메타데이터 fetch의 DNS 풀기와 TLS 핸드셰이크도 5초 상한 안에 넣는다. refresh에서 client_id가 안 맞으면 재사용 감지와 같게 그 토큰 계열을 폐기한다.

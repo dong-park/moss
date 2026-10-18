@@ -53,3 +53,6 @@ web/src/state/share/api.ts, attachments.ts, server BoardRoutes.kt, sync document
   - n5·n6 계약 메모: `files` 맵 값이 `!quota_exceeded`면 fileId가 아니다. MCP 도구가 첨부를 내려받을 때 이 값을 건너뛰어야 한다.
   - 확인한 것: web `tsc --noEmit` 통과, web vitest 182파일 1466 통과(새 테스트 6개: 멤버 있는 보드 유지·멤버 확인 실패 시 유지·/me/usage 실패 뒤 413 안내 1회·파일함 413·첨부 413 failed 표시·백필 재시도). 첫 전체 실행에서 mossBridge.test.ts가 DatabaseClosedError 8건을 냈고 재실행에서는 0건 — 이번 변경과 무관한 정리 순서 문제로 본다. server·sync 코드는 이번에 바꾸지 않아 gradle·sync 테스트는 다시 돌리지 않았다.
   - 갭: 실제 브라우저+서버+sync로 두 계정이 같은 보드를 쓰는 상태에서 소유자 삭제, 1GB 초과 첨부를 붙인 실경로는 돌리지 못했다. 테스트는 Ktor 계약을 가짜로 주입했다.
+- 고쳐줘 (2026-10-18, 메인 · wave-20261018-1530 /review P1): 다른 멤버가 있는 최상위 보드를 소유자가 지우면 로컬 행만 지워져 다음 syncMyBoards가 되살린다(membership.ts:362). D9 → A로 고친다: 지우기 전에 '멤버 N명의 보드에서도 사라집니다' 확인을 받고, 실행 취소 기간이 지나면 서버 사본을 지운다(DELETE /boards/{id}/share). 확인을 거절하면 지우지 않는다. 되살아나지 않는 것을 테스트로 고정한다.
+- 고쳐줘 (2026-10-18, 메인 · /review P1): 모든 413을 저장 상한으로 읽는다(attachments.ts:141, membership.ts:479). 서버는 파일 20MB 초과·보드당 500MB 초과도 413(too_large)을 낸다. 웹 오류 객체(AuthRequestError 등)가 서버 응답 code를 들고 다니게 하고, quota_exceeded만 상한 안내와 !quota_exceeded 표시로, too_large는 '파일이 너무 커요' 안내로 나눈다. 25MB 이미지가 공유 문서에 !quota_exceeded를 쓰지 않는 것을 테스트로 고정한다. 서버 응답에 code가 없으면 서버 쪽 응답 본문에 code를 더한다(BoardRoutes 범위).
+- 고쳐줘 (2026-10-18, 메인 · /review P2): !quota_exceeded 표시 경쟁(같은 첨부를 두 기기가 동시에 실패·성공으로 쓸 때 성공이 이기게)을 고친다.
