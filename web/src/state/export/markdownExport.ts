@@ -141,6 +141,7 @@ export async function exportMarkdownZip(
   const ctx = buildMarkdownExportContext(notes, boards);
   const zip = new JSZip();
   const usedNames = new Map<string, Set<string>>();
+  const usedBackgrounds = new Set<string>();
 
   for (const note of exportNotes) {
     const path = markdownZipPath(note, ctx, usedNames);
@@ -151,7 +152,13 @@ export async function exportMarkdownZip(
     if (blob) {
       const slash = path.lastIndexOf("/");
       const folder = `${path.slice(0, slash)}/${slugify(ctx.frameNameById.get(note.id) ?? "")}`;
-      zip.file(`${folder}/_background${refExtension(note.attachmentRef!)}`, blob);
+      const ext = refExtension(note.attachmentRef!);
+      // 이름이 같거나 빈 판은 폴더를 나눠 쓴다 — 배경끼리 덮어쓰지 않게 판 id 앞 6자를 붙인다.
+      let bgPath = `${folder}/_background${ext}`;
+      if (usedBackgrounds.has(bgPath)) bgPath = `${folder}/_background-${note.id.slice(0, 6)}${ext}`;
+      usedBackgrounds.add(bgPath);
+      // 이미 압축된 이미지는 다시 DEFLATE하지 않는다.
+      zip.file(bgPath, blob, { compression: "STORE" });
     }
   }
 

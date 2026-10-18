@@ -106,5 +106,19 @@ describe("판 배경 내보내기", () => {
     const zip = await JSZip.loadAsync(await exportMarkdownZip([frame()], [board], atts));
     expect(zip.file("B/회고/_background.png")).toBeTruthy();
   });
+
+  it("이름이 같은 판 둘의 배경은 서로 덮어쓰지 않는다", async () => {
+    const atts = new Map([
+      ["opfs:bg1.png", new Blob(["one"])],
+      ["opfs:bg2.png", new Blob(["two"])],
+    ]);
+    const a = frame({ id: "fa0001", attachmentRef: "opfs:bg1.png" });
+    const b = frame({ id: "fb0002", attachmentRef: "opfs:bg2.png" });
+    const zip = await JSZip.loadAsync(await exportMarkdownZip([a, b], [board], atts));
+    const bgs = Object.keys(zip.files).filter((n) => n.includes("_background"));
+    expect(bgs).toHaveLength(2);
+    const bodies = await Promise.all(bgs.map((n) => zip.file(n)!.async("string")));
+    expect(bodies.sort()).toEqual(["one", "two"]);
+  });
 });
 
