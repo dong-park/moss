@@ -1849,13 +1849,42 @@ async function confirmBoardDeletion(boards: Board[]): Promise<boolean> {
   return (await import("./membership")).confirmBoardDeletion(boards);
 }
 
-/** 실행 취소로 되살아난 보드의 D9 삭제 확인 표시를 뺀다 — 서버 사본을 지우지 않는다. */
+/** 실행 취소로 되살아난 보드의 "이 기기에서 지운 보드" 표시를 뺀다 — 서버 사본을 지우지 않는다. */
 async function cancelServerDeletes(boards: Board[]): Promise<void> {
   try {
     await (await import("./membership")).clearServerDeletes(boards.map((b) => b.id));
   } catch {
     /* 표시가 남아도 로컬에 있는 보드는 syncMyBoards가 건드리지 않는다 */
   }
+}
+
+/**
+ * remote-mcp n1: 보드 행을 지우기 직전에 "이 기기에서 이 계정이 지운 보드"로 남겨 syncMyBoards가
+ * 서버 목록만 보고 되살리지 않게 한다. hold면 돌려준 함수를 부를 때까지 실행 취소 기간으로 본다 —
+ * 실행 취소 상태를 세우기 전에 sync가 끼어도 서버 사본을 지우지 않는다.
+ */
+async function markServerDeletes(boards: Board[], hold: boolean): Promise<() => void> {
+  if (boards.length === 0 || !useAuth.getState().session) return () => {};
+  try {
+    return await (await import("./membership")).markServerDeletes(boards, hold);
+  } catch {
+    return () => {}; /* 표시를 못 남겨도 지우기는 막지 않는다 */
+  }
+}
+
+/** rootIds 보드와 그 하위 보드 전부(parentBoardId 체인). */
+function boardSubtree(all: Board[], rootIds: string[]): Board[] {
+  const ids = new Set(rootIds);
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const b of all) {
+      if (b.parentBoardId && ids.has(b.parentBoardId) && !ids.has(b.id)) {
+        ids.add(b.id);
+        grew = true;
+      }
+    }
+  }
+  return all.filter((b) => ids.has(b.id));
 }
 
 /** 지울 함 카드 중 D9 확인이 필요한 보드 — 소유자로 서버에 저장된 최상위 보드. 동기 판정. */
@@ -1892,6 +1921,10 @@ async function cascadeDeleteFunnels(
   const notes: Note[] = [];
   const connections: Connection[] = [];
   const embeddings: EmbeddingCacheEntry[] = [];
+
+  // 지우기 전에 표시하고 실행 취소 기간을 세운다 — 행이 사라진 뒤 sync가 끼어도 되살리거나 지우지 않는다.
+  const roots = funnelCards.flatMap((fc) => (fc.boardRef ? [fc.boardRef] : []));
+  const release = await markServerDeletes(boardSubtree(await db.boards.toArray(), roots), true);
 
   for (const fc of funnelCards) {
     if (!fc.boardRef) continue;
@@ -1940,6 +1973,7 @@ async function cascadeDeleteFunnels(
       expiresAt,
     },
   });
+  release();
   setTimeout(() => {
     const cur = get().pendingSubcanvasUndo;
     if (cur && cur.expiresAt === expiresAt) {
@@ -2322,6 +2356,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     }
     const storage = useStorage.getState();
     if (!storage.initialized) await storage.init();
+    const doomed = await getDB().boards.get(id);
+    if (doomed) (await markServerDeletes([doomed], false))();
     await storage.removeBoard(id);
     const boards = await storage.loadBoards();
     const next: Partial<WorkspaceState> = { boards };
@@ -2359,17 +2395,23 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     // 2) 이전 undo가 있었으면 그건 영구 폐기 (스택 1개만 유지)
     set({ pendingBoardUndo: null });
 
-    // 3) 실제 삭제 — removeBoard는 currentBoardId === id이면 시스템으로 복귀까지 처리
-    await get().removeBoard(id);
+    // 3) 실제 삭제 — removeBoard는 currentBoardId === id이면 시스템으로 복귀까지 처리.
+    //    실행 취소 기간은 행을 지우기 전에 세운다(remote-mcp n1).
+    const release = await markServerDeletes([board], true);
+    try {
+      await get().removeBoard(id);
 
-    // 4) 스냅샷 저장 + 5초 자동 폐기
-    set({
-      pendingBoardUndo: {
-        board,
-        affectedNoteIds: affected as string[],
-        expiresAt: Date.now() + BOARD_UNDO_MS,
-      },
-    });
+      // 4) 스냅샷 저장 + 5초 자동 폐기
+      set({
+        pendingBoardUndo: {
+          board,
+          affectedNoteIds: affected as string[],
+          expiresAt: Date.now() + BOARD_UNDO_MS,
+        },
+      });
+    } finally {
+      release();
+    }
     setTimeout(() => {
       // 만료 시 — 다른 undo로 덮어쓰여 있지 않다면만 비운다.
       const cur = get().pendingBoardUndo;

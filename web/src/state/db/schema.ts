@@ -222,17 +222,24 @@ export interface Settings {
    */
   serverStoreSince?: Record<string, number>;
   /**
-   * remote-mcp n1 (D9): 소유자가 삭제를 확인한 서버 저장 보드 id. 확인한 순간부터 서버 사본을
-   * 지울 때까지 남겨, 새로고침·오프라인이어도 syncMyBoards가 그 보드를 되살리지 않고 지우기를
-   * 다시 시도한다. 서버 사본이 지워지거나 실행 취소로 보드가 돌아오면 뺀다.
-   */
-  pendingServerDeletes?: string[];
-  /**
    * P1 AC-8: 이 기기에서 지운 보드 id(최근 순, 상한 있음). 보드 행을 지우는 순간
    * 남겨, `/b/<id>`로 다시 들어올 때 "찾을 수 없는 보드예요"를 띄운다. 휴지통
    * 복원으로 보드가 돌아오면 목록에서 뺀다. optional — 없으면 판정에 영향 없다.
    */
   deletedBoardIds?: string[];
+}
+
+/**
+ * remote-mcp n1: 이 기기에서 이 계정이 지운 보드. 보드 행을 지우기 직전에 남기고, 서버 사본이
+ * 지워졌거나(서버에 없음) 소유자가 아니거나(403) 실행 취소로 돌아오면 뺀다. 남아 있는 동안
+ * syncMyBoards는 그 보드를 서버 목록만 보고 되살리지 않는다. 계정별 행이라 다른 계정의
+ * 동기화에는 영향이 없고, 행 하나씩 쓰므로 표시·정리가 동시에 돌아도 서로 덮어쓰지 않는다.
+ */
+export interface ServerDeleteMark {
+  userId: string;
+  boardId: string;
+  /** D9: 다른 멤버의 보드에서도 사라진다는 확인을 받았다. 없으면 지우기 직전 멤버를 다시 확인한다. */
+  membersConfirmed: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -254,6 +261,8 @@ export class MossDB extends Dexie {
   trash!: Table<TrashEntry, string>;
   /** 휴지통 메모에 닿아 있던 연결선. 양 끝이 다시 살아나면 connections로 돌아간다. */
   trashConnections!: Table<Connection, string>;
+  /** remote-mcp n1: 이 기기에서 계정별로 지운 서버 저장 보드. */
+  serverDeletes!: Table<ServerDeleteMark, [string, string]>;
 
   constructor(name = "moss") {
     super(name);
@@ -330,6 +339,12 @@ export class MossDB extends Dexie {
       trashConnections: "id, sourceNoteId, targetNoteId",
     };
     this.version(6).stores(storesV6);
+    // v7 (remote-mcp n1): serverDeletes 테이블 추가 — 계정별 "이 기기에서 지운 보드" 표시.
+    // 기존 테이블·데이터는 그대로 둔다.
+    this.version(7).stores({
+      ...storesV6,
+      serverDeletes: "[userId+boardId], userId, boardId",
+    });
   }
 }
 

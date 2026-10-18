@@ -15,7 +15,7 @@ import { t } from "@/i18n";
 import { AuthRequestError, useAuth } from "./auth";
 import { uploadBoardDoc } from "./collab";
 import type { BoardSummary } from "./auth/types";
-import { getDB, type Board } from "./db/schema";
+import { getDB, type Board, type ServerDeleteMark } from "./db/schema";
 import { useToasts } from "./notifications";
 import { realShareApi, type ShareApi } from "./share/api";
 import { askMemberDelete } from "./share/memberDeleteConfirm";
@@ -70,6 +70,8 @@ export function resetMembershipDeps(): void {
   deps = defaultDeps;
   notified.clear();
   tooLargeBoards.clear();
+  removing.clear();
+  membersConfirmed.clear();
 }
 
 /** 같은 보드의 해제 알림을 한 번만 띄운다 (AC-13 "한 번"). */
@@ -242,8 +244,8 @@ export async function syncMyBoards(): Promise<void> {
   const localIds = new Set(localBoards.map((b) => b.id));
   const serverIds = new Set(summaries.map((s) => s.id));
 
-  // D9: 지우기를 확인한 보드는 되살리지 않고 서버 사본 지우기를 다시 시도한다.
-  const hidden = await settlePendingServerDeletes(summaries, localIds, session.accessToken);
+  // 이 기기에서 이 계정이 지운 보드는 서버 목록에 있어도 되살리지 않는다.
+  const hidden = await settleServerDeletes(summaries, localIds, session);
 
   for (const summary of summaries) {
     if (hidden.has(summary.id)) continue;
@@ -375,100 +377,177 @@ export async function unshareRemovedSubBoards(boards: Board[]): Promise<void> {
   } catch {
     return; // 로그인 안 한 기기는 서버를 부르지 않는다.
   }
-  const confirmed = new Set(pendingServerDeleteIds());
+  const marks = new Map((await loadMarks(session.user.id)).map((m) => [m.boardId, m]));
   for (const board of targets) {
-    try {
-      // 최상위 보드는 D9 확인을 받았거나 소유자 혼자 쓸 때만 지운다.
-      // 확인 없이 멤버를 확인하지 못하면(오프라인) 지우지 않는다.
-      if (
-        isTopLevel(board) &&
-        !confirmed.has(board.id) &&
-        !(await ownerIsAlone(board.id, session.accessToken))
-      ) {
+    // 최상위 보드는 D9 확인을 받았거나 소유자 혼자 쓸 때만 지운다.
+    // 멤버를 확인하지 못하면(오프라인) 지우지 않고 다음 syncMyBoards가 다시 본다.
+    const confirmed = marks.get(board.id)?.membersConfirmed === true;
+    if (isTopLevel(board) && !confirmed) {
+      const alone = await checkOwnerAlone(board.id, session.accessToken);
+      if (alone === null) continue;
+      if (!alone) {
+        await dropMarks(session.user.id, [board.id]); // 확인 없이 멤버가 생긴 보드 — 남긴다.
         continue;
       }
-      await deps.api.unshare(board.id, session.accessToken);
-      await clearServerDeletes([board.id]);
-      useShare.getState().forgetBoard(board.id);
-    } catch {
-      // 오프라인·이미 지워짐 — 다음 syncMyBoards가 정리한다.
     }
+    await deleteServerCopy(board.id, session);
   }
 }
 
 /**
- * D9 확인을 받은 최상위 보드(settings.pendingServerDeletes). undo 만료 뒤 멤버가 있어도 서버 사본을
- * 지운다. 메모리가 아니라 저장소에 둔다 — 지우기가 실패하거나 5초 안에 새로고침해도 표시가 남아
- * syncMyBoards가 보드를 되살리지 않고 지우기를 다시 시도한다.
+ * D9 확인을 받은 보드 id. confirmBoardDeletion이 남기고 보드 행을 지울 때 markServerDeletes가
+ * 표시(membersConfirmed)로 옮긴다.
  */
-function pendingServerDeleteIds(): string[] {
-  return useStorage.getState().settings?.pendingServerDeletes ?? [];
+const membersConfirmed = new Set<string>();
+
+/**
+ * 보드 행을 지우기 시작했지만 실행 취소 상태(pendingBoardUndo·pendingSubcanvasUndo)가 아직
+ * 세워지지 않은 보드. 이 틈에 sync가 끼어도 서버 사본을 지우지 않는다.
+ */
+const removing = new Set<string>();
+
+async function loadMarks(userId: string): Promise<ServerDeleteMark[]> {
+  return getDB().serverDeletes.where("userId").equals(userId).toArray();
 }
 
-async function markServerDeletes(ids: string[]): Promise<void> {
-  const next = [...new Set([...pendingServerDeleteIds(), ...ids])];
-  await useStorage.getState().updateSettings({ pendingServerDeletes: next });
+async function dropMarks(userId: string, boardIds: string[]): Promise<void> {
+  if (boardIds.length === 0) return;
+  await getDB().serverDeletes.bulkDelete(boardIds.map((id) => [userId, id] as [string, string]));
 }
 
-/** 서버 사본이 지워졌거나 실행 취소로 보드가 돌아왔을 때 표시를 뺀다. */
-export async function clearServerDeletes(ids: string[]): Promise<void> {
-  const current = pendingServerDeleteIds();
-  const next = current.filter((id) => !ids.includes(id));
-  if (next.length === current.length) return;
-  await useStorage.getState().updateSettings({ pendingServerDeletes: next });
+/**
+ * 보드 행을 지우기 직전에 부른다. 로그인한 계정의 "이 기기에서 지운 보드"로 남긴다 — 편집자로
+ * 받은 최상위 보드는 서버에서 지울 수 없으니 남기지 않는다. hold면 돌려준 함수를 부를 때까지
+ * (실행 취소 상태를 세울 때까지) 실행 취소 기간으로 본다.
+ */
+export async function markServerDeletes(boards: Board[], hold: boolean): Promise<() => void> {
+  const ids = boards.map((b) => b.id);
+  if (hold) for (const id of ids) removing.add(id);
+  const release = () => {
+    if (hold) for (const id of ids) removing.delete(id);
+  };
+  const userId = useAuth.getState().session?.user.id;
+  if (!userId) return release;
+  const byBoard = useShare.getState().byBoard;
+  const targets = boards.filter((b) => !(isTopLevel(b) && byBoard[b.id]?.role === "editor"));
+  const db = getDB();
+  await db.transaction("rw", db.serverDeletes, async () => {
+    for (const board of targets) {
+      const prev = await db.serverDeletes.get([userId, board.id]);
+      await db.serverDeletes.put({
+        userId,
+        boardId: board.id,
+        membersConfirmed: prev?.membersConfirmed === true || membersConfirmed.has(board.id),
+      });
+    }
+  });
+  for (const board of targets) membersConfirmed.delete(board.id);
+  return release;
+}
+
+/** 실행 취소로 보드가 돌아왔다 — 어느 계정의 표시든 뺀다. 서버 사본은 건드리지 않는다. */
+export async function clearServerDeletes(boardIds: string[]): Promise<void> {
+  if (boardIds.length === 0) return;
+  await getDB().serverDeletes.where("boardId").anyOf(boardIds).delete();
 }
 
 /** 실행 취소 기간(5초) 안에 있는 보드. 이 동안은 서버 사본을 지우지 않는다. */
 function inUndoWindow(boardId: string): boolean {
   const ws = useWorkspace.getState();
   return (
+    removing.has(boardId) ||
     ws.pendingBoardUndo?.board.id === boardId ||
     ws.pendingSubcanvasUndo?.boards.some((b) => b.id === boardId) === true
   );
 }
 
 /**
- * syncMyBoards 앞단: 삭제를 확인한 보드 중 서버에 남은 것의 지우기를 다시 시도한다.
- * 돌려주는 id는 이번 동기화에서 되살리지 않을 보드다(실행 취소 기간이거나 지우기가 실패했다).
- * 서버에 이미 없는 표시는 정리하고, 로컬에 다시 있는 보드는 건드리지 않는다.
+ * 서버 사본을 지운다. 성공하거나 403·404(소유자가 아님·이미 없음)면 표시를 뺀다.
+ * 돌려주는 값: "deleted" 지웠다 · "normal" 표시를 빼고 보통 보드로 다룬다 · "retry" 일시 오류.
  */
-async function settlePendingServerDeletes(
+async function deleteServerCopy(
+  boardId: string,
+  session: { accessToken: string; user: { id: string } },
+): Promise<"deleted" | "normal" | "retry"> {
+  try {
+    await deps.api.unshare(boardId, session.accessToken);
+  } catch (err) {
+    if (err instanceof AuthRequestError && (err.status === 403 || err.status === 404)) {
+      await dropMarks(session.user.id, [boardId]);
+      return "normal";
+    }
+    console.warn("[moss] 서버 보드 지우기 재시도 대기", boardId, statusOf(err));
+    return "retry";
+  }
+  await dropMarks(session.user.id, [boardId]);
+  useShare.getState().forgetBoard(boardId);
+  return "deleted";
+}
+
+/** 소유자 말고 멤버가 없으면 true, 있으면 false, 확인하지 못하면(일시 오류) null. */
+async function checkOwnerAlone(boardId: string, accessToken: string): Promise<boolean | null> {
+  try {
+    return await ownerIsAlone(boardId, accessToken);
+  } catch (err) {
+    console.warn("[moss] 서버 보드 멤버 확인 실패", boardId, statusOf(err));
+    return null;
+  }
+}
+
+function statusOf(err: unknown): number | string {
+  return err instanceof AuthRequestError ? err.status : "network";
+}
+
+/**
+ * syncMyBoards 앞단: 이 계정이 이 기기에서 지운 보드(serverDeletes)를 정리한다.
+ * 돌려주는 id는 이번 동기화에서 되살리지 않을 보드다. 서버에 없는 표시는 빼고, 로컬에 행이
+ * 있는 보드(지우는 중이거나 되살아난 보드)는 건드리지 않는다. 실행 취소 기간이 아니면 서버 사본
+ * 지우기를 다시 시도하고, 403·404면 표시를 빼고 보통 보드처럼 되살린다.
+ */
+async function settleServerDeletes(
   summaries: BoardSummary[],
   localIds: Set<string>,
-  accessToken: string,
+  session: { accessToken: string; user: { id: string } },
 ): Promise<Set<string>> {
   const hidden = new Set<string>();
-  const marked = pendingServerDeleteIds();
-  if (marked.length === 0) return hidden;
-  const onServer = new Set(summaries.map((s) => s.id));
-  const settled: string[] = [];
-  for (const id of marked) {
-    if (!onServer.has(id)) {
-      settled.push(id);
+  const marks = await loadMarks(session.user.id);
+  if (marks.length === 0) return hidden;
+  const onServer = new Map(summaries.map((s) => [s.id, s]));
+  const markedIds = new Set(marks.map((m) => m.boardId));
+  const gone: string[] = [];
+  for (const mark of marks) {
+    const id = mark.boardId;
+    const summary = onServer.get(id);
+    if (!summary) {
+      gone.push(id);
       continue;
     }
-    if (localIds.has(id)) continue; // 아직 지우는 중이거나 되살아난 보드 — 평소처럼 다룬다.
-    if (inUndoWindow(id)) {
-      hidden.add(id);
-      continue;
+    if (localIds.has(id)) continue;
+    hidden.add(id);
+    if (inUndoWindow(id)) continue;
+    // 부모도 지웠으면 부모를 지울 때 서버가 같이 지운다.
+    if (summary.parentId && markedIds.has(summary.parentId)) continue;
+    if (!summary.parentId && !mark.membersConfirmed) {
+      const alone = await checkOwnerAlone(id, session.accessToken);
+      if (alone === null) continue;
+      if (!alone) {
+        // 확인 없이 멤버가 생긴 보드 — 멤버 모르게 지우지 않고 보통 보드로 둔다.
+        await dropMarks(session.user.id, [id]);
+        hidden.delete(id);
+        continue;
+      }
     }
-    try {
-      await deps.api.unshare(id, accessToken);
-      settled.push(id);
-      useShare.getState().forgetBoard(id);
-      hidden.add(id);
-    } catch {
-      hidden.add(id); // 오프라인 — 되살리지 않고 다음 동기화가 다시 시도한다.
-    }
+    if ((await deleteServerCopy(id, session)) === "normal") hidden.delete(id);
   }
-  if (settled.length > 0) await clearServerDeletes(settled);
+  await dropMarks(session.user.id, gone);
   return hidden;
 }
 
 /**
  * D9 → A: 소유자가 서버에 저장된 최상위 보드를 지우기 전에 부른다. 다른 멤버가 있으면
- * "멤버 N명의 보드에서도 사라집니다"를 묻고, 확정하면 undo 만료 뒤 서버 사본을 지우도록
- * 표시한다. false면 호출자는 보드를 지우지 않는다. 멤버를 확인하지 못하면 수 없이 묻는다.
+ * "멤버 N명의 보드에서도 사라집니다"를 묻고, 확정하면 보드 행을 지울 때 확인 표시를 남겨 undo
+ * 만료 뒤 멤버가 있어도 서버 사본을 지운다. false면 호출자는 보드를 지우지 않는다. 멤버를
+ * 확인하지 못하면 수 없이 묻는다.
  */
 export async function confirmBoardDeletion(boards: Board[]): Promise<boolean> {
   const byBoard = useShare.getState().byBoard;
@@ -497,7 +576,7 @@ export async function confirmBoardDeletion(boards: Board[]): Promise<boolean> {
   }
   if (others === 0) return true;
   const ok = await deps.confirmMemberDelete(others);
-  if (ok) await markServerDeletes(targets.map((b) => b.id));
+  if (ok) for (const board of targets) membersConfirmed.add(board.id);
   return ok;
 }
 

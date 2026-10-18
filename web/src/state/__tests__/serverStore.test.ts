@@ -10,8 +10,10 @@ import type { AuthSession, BoardSummary } from "@/state/auth/types";
 import { getDB, resetDB, type Board } from "@/state/db/schema";
 import {
   canCreateBoard,
+  clearServerDeletes,
   configureMembership,
   finishUploadChoice,
+  markServerDeletes,
   prepareUploadChoice,
   registerBoards,
   registerNewBoards,
@@ -505,11 +507,10 @@ describe("D9 — 다른 멤버가 있는 최상위 보드를 소유자가 지운
     expect(await getDB().boards.get("together")).toBeUndefined();
   });
 
-  /** 저장소의 삭제 확인 표시 — 메모리가 아니라 Dexie settings에서 다시 읽는다. */
-  async function storedMarks(): Promise<string[] | undefined> {
-    useStorage.setState({ initialized: false, settings: null });
-    await useStorage.getState().init();
-    return useStorage.getState().settings?.pendingServerDeletes;
+  /** "이 기기에서 이 계정(me)이 지운 보드" 표시 — Dexie에서 다시 읽는다. */
+  async function storedMarks(userId = "me"): Promise<string[]> {
+    const marks = await getDB().serverDeletes.where("userId").equals(userId).toArray();
+    return marks.map((m) => m.boardId).sort();
   }
 
   it("만료 때 서버 지우기가 실패(오프라인)해도 syncMyBoards는 되살리지 않고 다시 지운 뒤 표시를 뺀다", async () => {
@@ -581,6 +582,135 @@ describe("D9 — 다른 멤버가 있는 최상위 보드를 소유자가 지운
     await syncMyBoards();
     expect(unshare).not.toHaveBeenCalled();
     expect(await getDB().boards.get("together")).toBeDefined();
+  });
+
+  it("혼자 쓰는 보드를 지우고 5초 안에 새로고침해도 syncMyBoards는 되살리지 않고 서버 사본을 지운다", async () => {
+    setup(true);
+    install(
+      fakeApi({
+        unshare,
+        members: vi.fn(async () => [OWNER]),
+        myBoards: vi.fn(async () => [...onServer].map(summary)),
+      }),
+    );
+    await getDB().boards.put(makeBoard("together"));
+    await useWorkspace.getState().removeBoardWithUndo("together");
+    expect(confirmMemberDelete).not.toHaveBeenCalled();
+
+    useWorkspace.setState({ pendingBoardUndo: null }); // 새로고침 — undo 상태와 타이머가 사라진다
+    expect(await storedMarks()).toEqual(["together"]);
+    await syncMyBoards();
+
+    expect(unshare).toHaveBeenCalledWith("together", session.accessToken);
+    expect(await getDB().boards.get("together")).toBeUndefined();
+    expect(await storedMarks()).toEqual([]);
+  });
+
+  it("표시가 남은 채 다른 계정이 로그인하면 그 계정의 보드는 평소처럼 받고 서버 사본을 지우지 않는다", async () => {
+    setup(true);
+    await getDB().boards.put(makeBoard("together"));
+    await useWorkspace.getState().removeBoardWithUndo("together");
+    useWorkspace.setState({ pendingBoardUndo: null });
+    unshare.mockImplementation(async () => {
+      throw new TypeError("network");
+    });
+    await syncMyBoards(); // me: 지우기 실패 — 표시가 남는다
+    expect(await storedMarks()).toEqual(["together"]);
+
+    const other: AuthSession = { ...session, user: { id: "u2", name: "지수", avatar: null } };
+    useAuth.setState({ session: other, user: other.user });
+    install(
+      fakeApi({
+        unshare,
+        myBoards: vi.fn(async () => [{ ...summary("together"), role: "editor" as const }]),
+      }),
+    );
+    unshare.mockClear();
+    await syncMyBoards();
+
+    expect(unshare).not.toHaveBeenCalled();
+    expect(await getDB().boards.get("together")).toMatchObject({ remote: true });
+    expect(await storedMarks()).toEqual(["together"]); // me의 표시는 그대로다
+    expect(await storedMarks("u2")).toEqual([]);
+  });
+
+  it("표시와 정리가 동시에 돌아도 서로의 결과를 지우지 않는다", async () => {
+    setup(true);
+    await markServerDeletes([makeBoard("old")], false);
+
+    await Promise.all([
+      markServerDeletes([makeBoard("a")], false),
+      clearServerDeletes(["old"]),
+      markServerDeletes([makeBoard("b")], false),
+    ]);
+
+    expect(await storedMarks()).toEqual(["a", "b"]);
+  });
+
+  it("보드를 지우는 도중(실행 취소 상태를 세우기 전) sync가 끼어도 서버 사본을 지우거나 되살리지 않는다", async () => {
+    setup(true);
+    await getDB().boards.put(makeBoard("together"));
+    const original = useStorage.getState().removeBoard;
+    useStorage.setState({
+      removeBoard: async (id) => {
+        await original(id);
+        await syncMyBoards();
+      },
+    });
+    try {
+      await useWorkspace.getState().removeBoardWithUndo("together");
+    } finally {
+      useStorage.setState({ removeBoard: original });
+    }
+
+    expect(unshare).not.toHaveBeenCalled();
+    expect(await getDB().boards.get("together")).toBeUndefined();
+    await useWorkspace.getState().undoBoardRemove();
+    expect(await getDB().boards.get("together")).toBeDefined();
+    expect(await storedMarks()).toEqual([]);
+    expect(onServer.has("together")).toBe(true);
+  });
+
+  it("파일함을 지우는 도중 sync가 끼어도 서버 사본을 지우거나 되살리지 않는다", async () => {
+    setup(true);
+    onServer = new Set(["parent", "child"]);
+    install(
+      fakeApi({
+        unshare,
+        myBoards: vi.fn(async () =>
+          [...onServer].map((id) => (id === "child" ? { ...summary(id), parentId: "parent" } : summary(id))),
+        ),
+      }),
+    );
+    useShare.getState().restoreShared("parent", "owner");
+    useShare.getState().restoreShared("child", "owner");
+    await getDB().boards.bulkPut([makeBoard("parent"), makeBoard("child", { parentBoardId: "parent" })]);
+    const card = { id: "c1", kind: "board", boardRef: "child" } as Card;
+    useWorkspace.setState({
+      cards: [card],
+      boards: await useStorage.getState().loadBoards(),
+      currentBoardId: "parent",
+    });
+    const original = useStorage.getState().removeBoardCascade;
+    useStorage.setState({
+      removeBoardCascade: async (id) => {
+        const snap = await original(id);
+        await syncMyBoards();
+        return snap;
+      },
+    });
+    try {
+      useWorkspace.getState().remove("c1");
+      await vi.waitFor(() => expect(useWorkspace.getState().pendingSubcanvasUndo).not.toBeNull());
+    } finally {
+      useStorage.setState({ removeBoardCascade: original });
+    }
+
+    expect(unshare).not.toHaveBeenCalled();
+    expect(await getDB().boards.get("child")).toBeUndefined();
+    await useWorkspace.getState().undoSubcanvasRemove();
+    expect(await getDB().boards.get("child")).toBeDefined();
+    expect(await storedMarks()).toEqual([]);
   });
 });
 
