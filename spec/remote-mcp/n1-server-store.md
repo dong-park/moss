@@ -89,3 +89,10 @@ web/src/state/share/api.ts, attachments.ts, server BoardRoutes.kt, sync document
   - markServerDeletes 실패는 삭제를 막지 않되 console.warn("[moss] 지운 보드 표시 실패", ids, err)을 남긴다. (유지보수 P1)
   - schema.ts v7 주석에 "settings.pendingServerDeletes는 이 브랜치에서만 있었고 배포되지 않아 옮기지 않는다, v7은 되돌릴 수 없는 마이그레이션"을 남긴다. (유지보수 P1)
 - 병렬 경계 (2026-10-18, 메인 · 웨이브 6): n6과 같은 워킹트리에서 동시에 돈다. 고칠 파일은 web/src/state/membership.ts·workspace.ts·storage.ts·db/schema.ts와 그 테스트다. web/src/state/share/attachments.ts·sync/·shared/는 n6 몫이다. 임시 인덱스를 쓰면 같은 셸 명령 안에서 add와 commit을 끝낸다.
+- 수정 (2026-10-18, runner n1 · wave-20261018-2100 마지막 자동 수정 5건):
+  - 404: 서버 사본 지우기(또는 지우기 직전 멤버 확인)가 404면 "이미 없음"으로 보고 표시와 공유 상태를 빼되 보드는 숨긴 채 둔다. 403만 표시를 빼고 보통 보드로 되돌린다.
+  - D9 승인 멤버: 표시의 `membersConfirmed: boolean`을 `approvedMemberIds: string[]`(확인 당시 소유자 말고 멤버 id)로 바꿨다. 서버 사본을 지우기 직전 지금 멤버를 묻고, 승인에 없던 멤버가 하나라도 있으면 표시를 빼고 보통 보드로 둔다. 확인 없이 지운 보드는 []라 "소유자 혼자일 때만"과 같은 규칙이다. 오프라인에서 확인한 보드는 멤버를 몰라 승인을 남기지 않는다(지울 때 혼자여야 지워진다). 필드는 색인이 아니라 스키마 버전은 그대로 v7이다.
+  - 단일 보드 삭제: confirmBoardDeletion이 확인한 자리에서 승인 멤버를 표시에 바로 쓰고, removeBoardWithUndo는 실행 취소 상태를 removeBoard보다 먼저 세운다(removeBoard가 실패하면 되돌린다). 메모리 집합 membersConfirmed는 없앴다. removing/hold는 파일함 cascade에만 남고 release는 try/finally로 감쌌다.
+  - markServerDeletes 실패와 승인 쓰기 실패는 삭제를 막지 않고 console.warn("[moss] 지운 보드 표시 실패", ids, err)을 남긴다. schema.ts v7 주석에 pendingServerDeletes 미이전·되돌릴 수 없는 마이그레이션을 적었다.
+  - 확인한 것: web `tsc --noEmit`·바꾼 파일 eslint 통과, web vitest 183파일 1492 통과(건너뜀 8은 기존). 새 테스트 5개(확인 당시 멤버 저장, 확인 뒤 멤버가 늘면 지우지 않고 되돌림, 오래된 myBoards 뒤 404, 403은 되돌림, 만료 정리와 sync 동시 실행에서 늦은 404). 404를 예전처럼 "normal"로 돌리면 404 테스트 2개가, 승인 비교를 빼면 멤버 증가 테스트가 실패하는 것을 확인했다.
+  - 갭: 실제 브라우저+서버+sync 실경로는 이번에도 돌리지 못했다(Ktor 계약 가짜 주입). 실행 취소 상태를 먼저 세우므로 removeBoard가 끝나기 전(수십 ms) 실행 취소를 누르면 되돌린 행이 다시 지워질 수 있다 — 테스트하지 않았다.

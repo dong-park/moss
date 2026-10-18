@@ -71,7 +71,6 @@ export function resetMembershipDeps(): void {
   notified.clear();
   tooLargeBoards.clear();
   removing.clear();
-  membersConfirmed.clear();
 }
 
 /** 같은 보드의 해제 알림을 한 번만 띄운다 (AC-13 "한 번"). */
@@ -356,8 +355,8 @@ export async function shareSubBoards(): Promise<void> {
  * 되살릴 수 있는 단계에서 부르면 안 된다 — undo로 사본을 되돌려도 서버에서 먼저 사라진다.
  * 부모도 같이 지워졌으면 서버 cascade가 처리하므로 건너뛴다. 최상위 보드는 소유자 기기에서만
  * 지운다 — 서버에 저장된 사본이 /me/boards로 되살아나거나 저장 상한을 차지하지 않게 한다.
- * 다른 멤버가 있는 최상위 보드는 D9 확인(confirmBoardDeletion)을 받은 것만 지운다 — 확인 없이
- * 멤버가 생긴 보드는 남겨 두어 멤버 모르게 사라지지 않게 한다.
+ * 다른 멤버가 있는 최상위 보드는 그 멤버가 D9 확인(confirmBoardDeletion) 때 있던 멤버일 때만
+ * 지운다 — 확인 없이 생긴 멤버가 있으면 남겨 두어 멤버 모르게 사라지지 않게 한다.
  */
 export async function unshareRemovedSubBoards(boards: Board[]): Promise<void> {
   if (boards.length === 0) return;
@@ -379,30 +378,19 @@ export async function unshareRemovedSubBoards(boards: Board[]): Promise<void> {
   }
   const marks = new Map((await loadMarks(session.user.id)).map((m) => [m.boardId, m]));
   for (const board of targets) {
-    // 최상위 보드는 D9 확인을 받았거나 소유자 혼자 쓸 때만 지운다.
-    // 멤버를 확인하지 못하면(오프라인) 지우지 않고 다음 syncMyBoards가 다시 본다.
-    const confirmed = marks.get(board.id)?.membersConfirmed === true;
-    if (isTopLevel(board) && !confirmed) {
-      const alone = await checkOwnerAlone(board.id, session.accessToken);
-      if (alone === null) continue;
-      if (!alone) {
-        await dropMarks(session.user.id, [board.id]); // 확인 없이 멤버가 생긴 보드 — 남긴다.
-        continue;
-      }
+    // 최상위 보드는 지금 멤버를 다시 본다. 멤버를 확인하지 못하면(오프라인) 지우지 않고
+    // 다음 syncMyBoards가 다시 본다.
+    if (isTopLevel(board) && (await checkMembers(board.id, marks.get(board.id), session)) !== "ok") {
+      continue;
     }
     await deleteServerCopy(board.id, session);
   }
 }
 
 /**
- * D9 확인을 받은 보드 id. confirmBoardDeletion이 남기고 보드 행을 지울 때 markServerDeletes가
- * 표시(membersConfirmed)로 옮긴다.
- */
-const membersConfirmed = new Set<string>();
-
-/**
- * 보드 행을 지우기 시작했지만 실행 취소 상태(pendingBoardUndo·pendingSubcanvasUndo)가 아직
- * 세워지지 않은 보드. 이 틈에 sync가 끼어도 서버 사본을 지우지 않는다.
+ * 파일함 cascade가 행을 지우기 시작했지만 실행 취소 상태(pendingSubcanvasUndo)가 아직
+ * 세워지지 않은 보드. 이 틈에 sync가 끼어도 서버 사본을 지우지 않는다. 단일 보드 삭제는
+ * 실행 취소 상태를 행보다 먼저 세우므로 여기에 넣지 않는다.
  */
 const removing = new Set<string>();
 
@@ -415,10 +403,17 @@ async function dropMarks(userId: string, boardIds: string[]): Promise<void> {
   await getDB().serverDeletes.bulkDelete(boardIds.map((id) => [userId, id] as [string, string]));
 }
 
+/** 서버 사본이 지워졌거나 이미 없다 — 표시와 공유 상태를 뺀다. 보드는 되살리지 않는다. */
+async function forgetServerBoard(userId: string, boardId: string): Promise<void> {
+  await dropMarks(userId, [boardId]);
+  useShare.getState().forgetBoard(boardId);
+}
+
 /**
  * 보드 행을 지우기 직전에 부른다. 로그인한 계정의 "이 기기에서 지운 보드"로 남긴다 — 편집자로
  * 받은 최상위 보드는 서버에서 지울 수 없으니 남기지 않는다. hold면 돌려준 함수를 부를 때까지
- * (실행 취소 상태를 세울 때까지) 실행 취소 기간으로 본다.
+ * (실행 취소 상태를 세울 때까지) 실행 취소 기간으로 본다. confirmBoardDeletion이 먼저 남긴
+ * 승인 멤버(approvedMemberIds)는 그대로 둔다.
  */
 export async function markServerDeletes(boards: Board[], hold: boolean): Promise<() => void> {
   const ids = boards.map((b) => b.id);
@@ -437,11 +432,10 @@ export async function markServerDeletes(boards: Board[], hold: boolean): Promise
       await db.serverDeletes.put({
         userId,
         boardId: board.id,
-        membersConfirmed: prev?.membersConfirmed === true || membersConfirmed.has(board.id),
+        approvedMemberIds: prev?.approvedMemberIds ?? [],
       });
     }
   });
-  for (const board of targets) membersConfirmed.delete(board.id);
   return release;
 }
 
@@ -462,8 +456,9 @@ function inUndoWindow(boardId: string): boolean {
 }
 
 /**
- * 서버 사본을 지운다. 성공하거나 403·404(소유자가 아님·이미 없음)면 표시를 뺀다.
- * 돌려주는 값: "deleted" 지웠다 · "normal" 표시를 빼고 보통 보드로 다룬다 · "retry" 일시 오류.
+ * 서버 사본을 지운다. 성공하거나 404(이미 없음)면 표시를 빼고 보드는 숨긴 채 둔다. 403(소유자가
+ * 아님)이면 표시를 빼고 보통 보드로 되돌린다.
+ * 돌려주는 값: "deleted" 지웠거나 이미 없다 · "normal" 표시를 빼고 보통 보드로 다룬다 · "retry" 일시 오류.
  */
 async function deleteServerCopy(
   boardId: string,
@@ -472,26 +467,51 @@ async function deleteServerCopy(
   try {
     await deps.api.unshare(boardId, session.accessToken);
   } catch (err) {
-    if (err instanceof AuthRequestError && (err.status === 403 || err.status === 404)) {
+    if (err instanceof AuthRequestError && err.status === 404) {
+      await forgetServerBoard(session.user.id, boardId);
+      return "deleted";
+    }
+    if (err instanceof AuthRequestError && err.status === 403) {
       await dropMarks(session.user.id, [boardId]);
       return "normal";
     }
     console.warn("[moss] 서버 보드 지우기 재시도 대기", boardId, statusOf(err));
     return "retry";
   }
-  await dropMarks(session.user.id, [boardId]);
-  useShare.getState().forgetBoard(boardId);
+  await forgetServerBoard(session.user.id, boardId);
   return "deleted";
 }
 
-/** 소유자 말고 멤버가 없으면 true, 있으면 false, 확인하지 못하면(일시 오류) null. */
-async function checkOwnerAlone(boardId: string, accessToken: string): Promise<boolean | null> {
+/**
+ * 최상위 보드의 서버 사본을 지우기 직전에 지금 멤버를 서버에 묻는다(캐시된 목록은 늦을 수 있다).
+ * D9 승인은 확인 당시 멤버에 대한 것이라, 소유자 말고 승인에 없던 멤버가 있으면 표시를 빼고 보통
+ * 보드로 둔다. 확인 없이 지운 보드는 승인 멤버가 비어 있어 소유자 혼자일 때만 지운다.
+ * 돌려주는 값: "ok" 지워도 된다 · "normal" 보통 보드로 둔다 · "gone" 서버에 이미 없다 · "retry" 일시 오류.
+ */
+async function checkMembers(
+  boardId: string,
+  mark: ServerDeleteMark | undefined,
+  session: { accessToken: string; user: { id: string } },
+): Promise<"ok" | "normal" | "gone" | "retry"> {
+  let others: string[];
   try {
-    return await ownerIsAlone(boardId, accessToken);
+    others = otherMemberIds(await deps.api.members(boardId, session.accessToken));
   } catch (err) {
+    if (err instanceof AuthRequestError && err.status === 404) {
+      await forgetServerBoard(session.user.id, boardId);
+      return "gone";
+    }
     console.warn("[moss] 서버 보드 멤버 확인 실패", boardId, statusOf(err));
-    return null;
+    return "retry";
   }
+  const approved = new Set(mark?.approvedMemberIds ?? []);
+  if (others.every((id) => approved.has(id))) return "ok";
+  await dropMarks(session.user.id, [boardId]);
+  return "normal";
+}
+
+function otherMemberIds(members: { id: string; role: string }[]): string[] {
+  return members.filter((m) => m.role !== "owner").map((m) => m.id);
 }
 
 function statusOf(err: unknown): number | string {
@@ -502,7 +522,8 @@ function statusOf(err: unknown): number | string {
  * syncMyBoards 앞단: 이 계정이 이 기기에서 지운 보드(serverDeletes)를 정리한다.
  * 돌려주는 id는 이번 동기화에서 되살리지 않을 보드다. 서버에 없는 표시는 빼고, 로컬에 행이
  * 있는 보드(지우는 중이거나 되살아난 보드)는 건드리지 않는다. 실행 취소 기간이 아니면 서버 사본
- * 지우기를 다시 시도하고, 403·404면 표시를 빼고 보통 보드처럼 되살린다.
+ * 지우기를 다시 시도한다. 404(이미 없음)면 표시를 빼고 숨긴 채 두고, 403이거나 승인에 없던 멤버가
+ * 있으면 표시를 빼고 보통 보드처럼 되살린다.
  */
 async function settleServerDeletes(
   summaries: BoardSummary[],
@@ -527,15 +548,10 @@ async function settleServerDeletes(
     if (inUndoWindow(id)) continue;
     // 부모도 지웠으면 부모를 지울 때 서버가 같이 지운다.
     if (summary.parentId && markedIds.has(summary.parentId)) continue;
-    if (!summary.parentId && !mark.membersConfirmed) {
-      const alone = await checkOwnerAlone(id, session.accessToken);
-      if (alone === null) continue;
-      if (!alone) {
-        // 확인 없이 멤버가 생긴 보드 — 멤버 모르게 지우지 않고 보통 보드로 둔다.
-        await dropMarks(session.user.id, [id]);
-        hidden.delete(id);
-        continue;
-      }
+    if (!summary.parentId) {
+      const check = await checkMembers(id, mark, session);
+      if (check === "normal") hidden.delete(id); // 승인 없이 생긴 멤버 — 멤버 모르게 지우지 않는다.
+      if (check !== "ok") continue;
     }
     if ((await deleteServerCopy(id, session)) === "normal") hidden.delete(id);
   }
@@ -545,9 +561,10 @@ async function settleServerDeletes(
 
 /**
  * D9 → A: 소유자가 서버에 저장된 최상위 보드를 지우기 전에 부른다. 다른 멤버가 있으면
- * "멤버 N명의 보드에서도 사라집니다"를 묻고, 확정하면 보드 행을 지울 때 확인 표시를 남겨 undo
- * 만료 뒤 멤버가 있어도 서버 사본을 지운다. false면 호출자는 보드를 지우지 않는다. 멤버를
- * 확인하지 못하면 수 없이 묻는다.
+ * "멤버 N명의 보드에서도 사라집니다"를 묻고, 확정하면 그 자리에서 표시에 확인 당시 멤버
+ * (approvedMemberIds)를 남긴다. undo 만료 뒤 지금 멤버가 그 안에 있을 때만 서버 사본을 지운다.
+ * false면 호출자는 보드를 지우지 않는다. 멤버를 확인하지 못하면 수 없이 묻고, 승인 멤버를 남기지
+ * 않는다 — 그 보드는 지울 때 소유자 혼자여야 서버 사본이 지워진다.
  */
 export async function confirmBoardDeletion(boards: Board[]): Promise<boolean> {
   const byBoard = useShare.getState().byBoard;
@@ -562,32 +579,43 @@ export async function confirmBoardDeletion(boards: Board[]): Promise<boolean> {
   } catch {
     return true; // 로그인 안 함 — 서버 사본을 지우지 않으니 물을 것도 없다.
   }
+  const approved = new Map<string, string[]>();
   let others: number | null;
   try {
     const ids = new Set<string>();
     for (const board of targets) {
-      for (const m of await deps.api.members(board.id, session.accessToken)) {
-        if (m.role !== "owner") ids.add(m.id);
-      }
+      const boardOthers = otherMemberIds(await deps.api.members(board.id, session.accessToken));
+      approved.set(board.id, boardOthers);
+      for (const id of boardOthers) ids.add(id);
     }
     others = ids.size;
   } catch {
     others = null;
+    approved.clear();
   }
   if (others === 0) return true;
   const ok = await deps.confirmMemberDelete(others);
-  if (ok) for (const board of targets) membersConfirmed.add(board.id);
+  if (ok) await writeApprovals(session.user.id, approved);
   return ok;
+}
+
+/** D9 확인 당시 멤버를 표시에 바로 남긴다. 실패해도 지우기는 막지 않는다 — 승인 없는 표시로 다룬다. */
+async function writeApprovals(userId: string, approved: Map<string, string[]>): Promise<void> {
+  if (approved.size === 0) return;
+  const db = getDB();
+  try {
+    await db.transaction("rw", db.serverDeletes, async () => {
+      for (const [boardId, approvedMemberIds] of approved) {
+        await db.serverDeletes.put({ userId, boardId, approvedMemberIds });
+      }
+    });
+  } catch (err) {
+    console.warn("[moss] 지운 보드 표시 실패", [...approved.keys()], err);
+  }
 }
 
 function isTopLevel(board: Board): boolean {
   return !board.parentBoardId || board.parentBoardId === SYSTEM_BOARD_ID;
-}
-
-/** 서버 멤버 목록에 소유자 말고 아무도 없는가. 캐시된 목록은 늦을 수 있어 서버에 묻는다. */
-async function ownerIsAlone(boardId: string, accessToken: string): Promise<boolean> {
-  const members = await deps.api.members(boardId, accessToken);
-  return members.every((m) => m.role === "owner");
 }
 
 /**

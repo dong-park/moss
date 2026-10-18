@@ -231,15 +231,18 @@ export interface Settings {
 
 /**
  * remote-mcp n1: 이 기기에서 이 계정이 지운 보드. 보드 행을 지우기 직전에 남기고, 서버 사본이
- * 지워졌거나(서버에 없음) 소유자가 아니거나(403) 실행 취소로 돌아오면 뺀다. 남아 있는 동안
+ * 지워졌거나(서버에 없음·404) 소유자가 아니거나(403) 실행 취소로 돌아오면 뺀다. 남아 있는 동안
  * syncMyBoards는 그 보드를 서버 목록만 보고 되살리지 않는다. 계정별 행이라 다른 계정의
  * 동기화에는 영향이 없고, 행 하나씩 쓰므로 표시·정리가 동시에 돌아도 서로 덮어쓰지 않는다.
  */
 export interface ServerDeleteMark {
   userId: string;
   boardId: string;
-  /** D9: 다른 멤버의 보드에서도 사라진다는 확인을 받았다. 없으면 지우기 직전 멤버를 다시 확인한다. */
-  membersConfirmed: boolean;
+  /**
+   * D9: "다른 멤버의 보드에서도 사라진다"를 확인할 때 있던 멤버 id(소유자 제외). 서버 사본을 지우기
+   * 직전에 지금 멤버와 비교해, 여기에 없던 멤버가 있으면 지우지 않는다. 확인 없이 지운 보드는 [].
+   */
+  approvedMemberIds: string[];
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -340,7 +343,9 @@ export class MossDB extends Dexie {
     };
     this.version(6).stores(storesV6);
     // v7 (remote-mcp n1): serverDeletes 테이블 추가 — 계정별 "이 기기에서 지운 보드" 표시.
-    // 기존 테이블·데이터는 그대로 둔다.
+    // 기존 테이블·데이터는 그대로 둔다. settings.pendingServerDeletes는 이 브랜치에서만 있었고
+    // 배포되지 않아 옮기지 않는다. v7은 되돌릴 수 없는 마이그레이션이다 — 한 번 올린 브라우저는
+    // v6 코드로 DB를 열지 못한다.
     this.version(7).stores({
       ...storesV6,
       serverDeletes: "[userId+boardId], userId, boardId",

@@ -1867,8 +1867,10 @@ async function markServerDeletes(boards: Board[], hold: boolean): Promise<() => 
   if (boards.length === 0 || !useAuth.getState().session) return () => {};
   try {
     return await (await import("./membership")).markServerDeletes(boards, hold);
-  } catch {
-    return () => {}; /* 표시를 못 남겨도 지우기는 막지 않는다 */
+  } catch (err) {
+    // 표시를 못 남겨도 지우기는 막지 않는다.
+    console.warn("[moss] 지운 보드 표시 실패", boards.map((b) => b.id), err);
+    return () => {};
   }
 }
 
@@ -1925,63 +1927,65 @@ async function cascadeDeleteFunnels(
   // 지우기 전에 표시하고 실행 취소 기간을 세운다 — 행이 사라진 뒤 sync가 끼어도 되살리거나 지우지 않는다.
   const roots = funnelCards.flatMap((fc) => (fc.boardRef ? [fc.boardRef] : []));
   const release = await markServerDeletes(boardSubtree(await db.boards.toArray(), roots), true);
-
-  for (const fc of funnelCards) {
-    if (!fc.boardRef) continue;
-    const fnote = await db.notes.get(fc.id);
-    if (fnote) funnelNotes.push(fnote);
-    await db.notes.delete(fc.id);
-    // FEAT-connectors: 함 카드에 닿은 선(현재 보드)은 고아로 남기지 않고 지운다.
-    // 5초 undo는 서브 보드 안쪽 연결만 복원한다 — 함 카드 자체의 선은 복원 대상 아님.
-    const incident = await db.connections
-      .where("sourceNoteId")
-      .equals(fc.id)
-      .or("targetNoteId")
-      .equals(fc.id)
-      .toArray();
-    if (incident.length > 0) {
-      await db.connections.bulkDelete(incident.map((c) => c.id));
-      // undo 스냅샷에도 넣어야 5초 undo 시 선이 영구 유실되지 않는다.
-      connections.push(...incident);
+  try {
+    for (const fc of funnelCards) {
+      if (!fc.boardRef) continue;
+      const fnote = await db.notes.get(fc.id);
+      if (fnote) funnelNotes.push(fnote);
+      await db.notes.delete(fc.id);
+      // FEAT-connectors: 함 카드에 닿은 선(현재 보드)은 고아로 남기지 않고 지운다.
+      // 5초 undo는 서브 보드 안쪽 연결만 복원한다 — 함 카드 자체의 선은 복원 대상 아님.
+      const incident = await db.connections
+        .where("sourceNoteId")
+        .equals(fc.id)
+        .or("targetNoteId")
+        .equals(fc.id)
+        .toArray();
+      if (incident.length > 0) {
+        await db.connections.bulkDelete(incident.map((c) => c.id));
+        // undo 스냅샷에도 넣어야 5초 undo 시 선이 영구 유실되지 않는다.
+        connections.push(...incident);
+      }
+      const snap = await storage.removeBoardCascade(fc.boardRef);
+      boards.push(...snap.boards);
+      notes.push(...snap.notes);
+      connections.push(...snap.connections);
+      embeddings.push(...snap.embeddings);
     }
-    const snap = await storage.removeBoardCascade(fc.boardRef);
-    boards.push(...snap.boards);
-    notes.push(...snap.notes);
-    connections.push(...snap.connections);
-    embeddings.push(...snap.embeddings);
+
+    const freshBoards = await storage.loadBoards();
+    const counts = { ...get().subcanvasCounts };
+    for (const fc of funnelCards) if (fc.boardRef) delete counts[fc.boardRef];
+    set({ boards: freshBoards, subcanvasCounts: counts });
+
+    // 직전 undo가 남아 있으면 그건 즉시 확정(blob purge) — undo 스택은 1개만 유지.
+    const prev = get().pendingSubcanvasUndo;
+    if (prev) void storage.purgeAttachments([...prev.funnelNotes, ...prev.notes]);
+
+    const expiresAt = Date.now() + BOARD_UNDO_MS;
+    set({
+      pendingSubcanvasUndo: {
+        funnelCards,
+        boardAtDeletion,
+        funnelNotes,
+        boards,
+        notes,
+        connections,
+        embeddings,
+        expiresAt,
+      },
+    });
+    setTimeout(() => {
+      const cur = get().pendingSubcanvasUndo;
+      if (cur && cur.expiresAt === expiresAt) {
+        void storage.purgeAttachments([...cur.funnelNotes, ...cur.notes]);
+        unshareFinalizedBoards(cur.boards);
+        set({ pendingSubcanvasUndo: null });
+      }
+    }, BOARD_UNDO_MS);
+  } finally {
+    release();
   }
-
-  const freshBoards = await storage.loadBoards();
-  const counts = { ...get().subcanvasCounts };
-  for (const fc of funnelCards) if (fc.boardRef) delete counts[fc.boardRef];
-  set({ boards: freshBoards, subcanvasCounts: counts });
-
-  // 직전 undo가 남아 있으면 그건 즉시 확정(blob purge) — undo 스택은 1개만 유지.
-  const prev = get().pendingSubcanvasUndo;
-  if (prev) void storage.purgeAttachments([...prev.funnelNotes, ...prev.notes]);
-
-  const expiresAt = Date.now() + BOARD_UNDO_MS;
-  set({
-    pendingSubcanvasUndo: {
-      funnelCards,
-      boardAtDeletion,
-      funnelNotes,
-      boards,
-      notes,
-      connections,
-      embeddings,
-      expiresAt,
-    },
-  });
-  release();
-  setTimeout(() => {
-    const cur = get().pendingSubcanvasUndo;
-    if (cur && cur.expiresAt === expiresAt) {
-      void storage.purgeAttachments([...cur.funnelNotes, ...cur.notes]);
-      unshareFinalizedBoards(cur.boards);
-      set({ pendingSubcanvasUndo: null });
-    }
-  }, BOARD_UNDO_MS);
 }
 
 /**
@@ -2392,26 +2396,26 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     // remote-mcp D9: 다른 멤버가 있으면 먼저 묻는다. 거절하면 지우지 않는다.
     if (!(await confirmBoardDeletion([board]))) return;
 
-    // 2) 이전 undo가 있었으면 그건 영구 폐기 (스택 1개만 유지)
-    set({ pendingBoardUndo: null });
+    // 2) 스냅샷 저장 — 이전 undo가 있었으면 그건 영구 폐기 (스택 1개만 유지).
+    //    실행 취소 기간은 행을 지우기 전에 세운다 — 지우는 도중 sync가 끼어도 서버 사본을
+    //    지우지 않는다(remote-mcp n1).
+    set({
+      pendingBoardUndo: {
+        board,
+        affectedNoteIds: affected as string[],
+        expiresAt: Date.now() + BOARD_UNDO_MS,
+      },
+    });
 
     // 3) 실제 삭제 — removeBoard는 currentBoardId === id이면 시스템으로 복귀까지 처리.
-    //    실행 취소 기간은 행을 지우기 전에 세운다(remote-mcp n1).
-    const release = await markServerDeletes([board], true);
     try {
       await get().removeBoard(id);
-
-      // 4) 스냅샷 저장 + 5초 자동 폐기
-      set({
-        pendingBoardUndo: {
-          board,
-          affectedNoteIds: affected as string[],
-          expiresAt: Date.now() + BOARD_UNDO_MS,
-        },
-      });
-    } finally {
-      release();
+    } catch (err) {
+      if (get().pendingBoardUndo?.board.id === id) set({ pendingBoardUndo: null });
+      throw err;
     }
+
+    // 4) 5초 자동 폐기
     setTimeout(() => {
       // 만료 시 — 다른 undo로 덮어쓰여 있지 않다면만 비운다.
       const cur = get().pendingBoardUndo;

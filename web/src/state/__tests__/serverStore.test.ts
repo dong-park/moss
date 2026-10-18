@@ -712,5 +712,109 @@ describe("D9 — 다른 멤버가 있는 최상위 보드를 소유자가 지운
     expect(await getDB().boards.get("child")).toBeDefined();
     expect(await storedMarks()).toEqual([]);
   });
+
+  it("확인하면 그 자리에서 확인 당시 멤버를 표시에 남긴다", async () => {
+    setup(true);
+    await getDB().boards.put(makeBoard("together"));
+
+    await useWorkspace.getState().removeBoardWithUndo("together");
+
+    const mark = await getDB().serverDeletes.get(["me", "together"]);
+    expect(mark?.approvedMemberIds).toEqual(["u2"]);
+  });
+
+  it("확인 뒤 멤버가 늘었으면 서버 사본을 지우지 않고 표시를 빼 보통 보드로 되돌린다", async () => {
+    setup(true);
+    const members = vi.fn<ShareApi["members"]>(async () => [OWNER, EDITOR]);
+    install(
+      fakeApi({ unshare, members, myBoards: vi.fn(async () => [...onServer].map(summary)) }),
+    );
+    await getDB().boards.put(makeBoard("together"));
+    await useWorkspace.getState().removeBoardWithUndo("together");
+    expect(confirmMemberDelete).toHaveBeenCalledWith(1);
+
+    // 실행 취소 기간 동안 새 멤버가 들어왔다.
+    members.mockImplementation(async () => [
+      OWNER,
+      EDITOR,
+      { id: "u3", name: "민호", avatar: null, role: "editor" },
+    ]);
+    useWorkspace.setState({ pendingBoardUndo: null }); // 새로고침
+    await syncMyBoards();
+
+    expect(unshare).not.toHaveBeenCalled();
+    expect(await storedMarks()).toEqual([]);
+    expect(await getDB().boards.get("together")).toMatchObject({ remote: true });
+  });
+
+  it("오래된 서버 목록 뒤 지우기가 404면 표시를 빼고 보드는 되살리지 않는다", async () => {
+    setup(true);
+    // 서버는 이미 지웠지만 myBoards는 지우기 전 목록을 돌려준다.
+    install(
+      fakeApi({
+        unshare: vi.fn(async () => {
+          throw new AuthRequestError("없는 보드예요", 404);
+        }),
+        members: vi.fn(async () => [OWNER]),
+        myBoards: vi.fn(async () => [summary("together")]),
+      }),
+    );
+    await getDB().boards.put(makeBoard("together"));
+    await useWorkspace.getState().removeBoardWithUndo("together");
+    useWorkspace.setState({ pendingBoardUndo: null }); // 새로고침
+
+    await syncMyBoards();
+
+    expect(await getDB().boards.get("together")).toBeUndefined();
+    expect(await storedMarks()).toEqual([]);
+    expect(useShare.getState().byBoard.together).toBeUndefined();
+  });
+
+  it("403(소유자가 아님)이면 표시를 빼고 보통 보드로 되돌린다", async () => {
+    setup(true);
+    install(
+      fakeApi({
+        unshare: vi.fn(async () => {
+          throw new AuthRequestError("권한이 없어요", 403);
+        }),
+        members: vi.fn(async () => [OWNER]),
+        myBoards: vi.fn(async () => [summary("together")]),
+      }),
+    );
+    await getDB().boards.put(makeBoard("together"));
+    await useWorkspace.getState().removeBoardWithUndo("together");
+    useWorkspace.setState({ pendingBoardUndo: null });
+
+    await syncMyBoards();
+
+    expect(await storedMarks()).toEqual([]);
+    expect(await getDB().boards.get("together")).toMatchObject({ remote: true });
+  });
+
+  it("만료 정리와 syncMyBoards가 동시에 지워도 늦은 쪽의 404가 보드를 되살리지 않는다", async () => {
+    setup(true);
+    // 두 경로가 시작할 때의 서버 목록은 지우기 전 것이다. 그 뒤로는 서버를 따라잡는다.
+    const myBoards = vi.fn<ShareApi["myBoards"]>(async () => [...onServer].map(summary));
+    myBoards.mockResolvedValueOnce([summary("together")]);
+    unshare.mockImplementation(async (id) => {
+      if (!onServer.has(id)) throw new AuthRequestError("없는 보드예요", 404);
+      onServer.delete(id); // 서버는 바로 지우고 응답은 늦게 온다
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    install(fakeApi({ unshare, members: vi.fn(async () => [OWNER]), myBoards }));
+    await getDB().boards.put(makeBoard("together"));
+    await useWorkspace.getState().removeBoardWithUndo("together");
+    const board = useWorkspace.getState().pendingBoardUndo!.board;
+    useWorkspace.setState({ pendingBoardUndo: null }); // 실행 취소 기간이 끝났다
+
+    await Promise.all([unshareRemovedSubBoards([board]), syncMyBoards()]);
+
+    expect(unshare).toHaveBeenCalledTimes(2);
+    expect(await getDB().boards.get("together")).toBeUndefined();
+    expect(await storedMarks()).toEqual([]);
+
+    await syncMyBoards(); // 서버 목록이 따라잡은 뒤에도 그대로다
+    expect(await getDB().boards.get("together")).toBeUndefined();
+  });
 });
 
