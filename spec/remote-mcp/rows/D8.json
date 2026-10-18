@@ -1,0 +1,36 @@
+{
+  "id": "D8",
+  "confidence": "high",
+  "reversible": true,
+  "status": "끝남",
+  "blocks": [
+    "n4"
+  ],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": [
+    "2026-10-18 D8 → A (사용자, 시트에서)",
+    "2026-10-18 user.answer 반영: A"
+  ],
+  "kind": "decision",
+  "title": "sync를 여러 인스턴스로 늘릴 때를 지금 준비할까",
+  "given": "지금 sync는 인스턴스 하나다",
+  "when": "트래픽이 늘어 sync를 둘로 늘린다",
+  "then": "한 보드를 두 인스턴스가 따로 들면 MCP 변경이 일부 사용자에게 안 보인다.",
+  "options": [
+    {
+      "key": "A",
+      "label": "단일 인스턴스로 출시하고 한계를 문서에 적는다. Redis 확장은 나중에",
+      "why": "범위를 지킨다. 확장 시점은 지표로 정한다"
+    },
+    {
+      "key": "B",
+      "label": "처음부터 Redis 확장을 넣는다",
+      "why": "안전하나 이번 범위가 크게 는다"
+    }
+  ],
+  "recommend": "A",
+  "why": "사용자 수가 적은 초기에 필요 없는 작업이다."
+}

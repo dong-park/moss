@@ -1,0 +1,17 @@
+{
+  "id": "T11",
+  "confidence": "mid",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": [],
+  "kind": "task",
+  "title": "실제 Claude 커넥터로 읽기와 쓰기가 끝까지 된다",
+  "given": "배포된 환경과 Claude 계정이 있다",
+  "when": "커넥터를 추가하고 보드를 읽고 메모를 만들고 연결을 끊는다",
+  "then": "각 단계의 화면 캡처가 근거로 남는다. ChatGPT와 Cursor는 같은 순서로 확인하고 안 되는 것은 확인 불가로 적는다."
+}
