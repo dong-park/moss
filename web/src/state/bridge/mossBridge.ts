@@ -22,12 +22,14 @@
 import {
   useWorkspace,
   type Card,
+  cardCenter,
   encodeSubcanvas,
   __internal,
 } from "@/state/workspace";
 import { newBoardId } from "@/state/boardIds";
 import { useStorage } from "@/state/storage";
-import { getDB } from "@/state/db/schema";
+import { getDB, type ConnectionSide } from "@/state/db/schema";
+import { nearestSide } from "@/components/workspace/connectors/geometry";
 import {
   deleteNoteRecord,
   writeBoardRecord,
@@ -527,7 +529,7 @@ export async function dispatchOp(
       return { currentBoardId: id };
     }
 
-    /* ── connections: 캔버스 렌더 대상 아님 → storage(Dexie) 데이터 경로 ── */
+    /* ── connections: 두 카드가 현재 보드에 있으면 화면 연결선(connectCards)으로, 아니면 storage 경로 ── */
     case "connections.list": {
       const storage = useStorage.getState();
       const noteId = typeof params.noteId === "string" ? params.noteId : undefined;
@@ -541,10 +543,37 @@ export async function dispatchOp(
         throw new Error("sourceNoteId와 targetNoteId가 필요합니다");
       }
       const label = typeof params.label === "string" ? params.label : undefined;
+      const side = (v: unknown): ConnectionSide | undefined =>
+        v === "top" || v === "right" || v === "bottom" || v === "left" ? v : undefined;
+      const sourceSide = side(params.sourceSide);
+      const targetSide = side(params.targetSide);
+      const source = ws.cards.find((c) => c.id === sourceNoteId);
+      const target = ws.cards.find((c) => c.id === targetNoteId);
+      if (source && target) {
+        // 현재 보드: 사용자가 끈 선과 같은 경로라 즉시 그려진다. 변을 안 주면 마주 보는 변.
+        const id = ws.connectCards(
+          sourceNoteId,
+          sourceSide ?? nearestSide(source, cardCenter(target)),
+          targetNoteId,
+          targetSide ?? nearestSide(target, cardCenter(source)),
+        );
+        if (!id) throw new Error("자기 자신과는 연결할 수 없습니다");
+        if (label) ws.setConnectionLabel(id, label);
+        // connectCards가 새 선을 선택하므로 사용자 선택 상태를 되돌린다.
+        useWorkspace.setState({ selectedConnectionId: null });
+        return { id };
+      }
       const id = `cx-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6)}`;
       // mergeConnection이 source="manual"/status="active"/createdAt을 채운다.
       // n23 재심사 2R-6: Dexie 미러와 소유 문서 쓰기는 saveConnection 한 액션이 함께 한다.
-      await useStorage.getState().saveConnection({ id, sourceNoteId, targetNoteId, label });
+      await useStorage.getState().saveConnection({
+        id,
+        sourceNoteId,
+        targetNoteId,
+        label,
+        ...(sourceSide ? { sourceSide } : {}),
+        ...(targetSide ? { targetSide } : {}),
+      });
       return { id };
     }
 

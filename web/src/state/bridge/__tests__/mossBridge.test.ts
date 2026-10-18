@@ -445,6 +445,29 @@ describe("dispatchOp", () => {
       ).rejects.toThrow("필요");
     });
 
+    it("connections.create 현재 보드 두 카드 → 화면 연결선, 변·라벨 반영, 선택은 비움", async () => {
+      useStorage.setState({ saveConnection: vi.fn(async () => {}) });
+      const { id: a } = (await dispatchOp("notes.create", { content: "A", x: 0, y: 0 })) as { id: string };
+      const { id: b } = (await dispatchOp("notes.create", { content: "B", x: 600, y: 0 })) as { id: string };
+      const { id } = (await dispatchOp("connections.create", {
+        sourceNoteId: a,
+        targetNoteId: b,
+        label: "근거",
+      })) as { id: string };
+      const conn = useWorkspace.getState().connections.find((c) => c.id === id)!;
+      expect([conn.sourceSide, conn.targetSide, conn.label]).toEqual(["right", "left", "근거"]);
+      expect(useWorkspace.getState().selectedConnectionId).toBeNull();
+
+      const { id: up } = (await dispatchOp("connections.create", {
+        sourceNoteId: b,
+        targetNoteId: a,
+        sourceSide: "top",
+        targetSide: "top",
+      })) as { id: string };
+      const c2 = useWorkspace.getState().connections.find((c) => c.id === up)!;
+      expect([c2.sourceSide, c2.targetSide]).toEqual(["top", "top"]);
+    });
+
     it("connections.delete → removeConnection 호출", async () => {
       const removeConnection = vi.fn(async () => {});
       useStorage.setState({ removeConnection });
