@@ -33,3 +33,4 @@ web/src/state/ydoc/model.ts의 맵 정의와 필드 목록을 공용 패키지�
 web/src/state/ydoc/model.ts:118-130, sync/src/server.ts
 
 ## 구현 메모
+- 병렬 경계 (2026-10-18, 메인): n1·n2·n3이 같은 워킹트리에서 동시에 돈다. server(Ktor)와 web/src/state/share/는 고치지 않는다(n1·n3 몫). sync/src/documentStore.ts·guardedStore.ts는 n1 몫이다. 커밋은 자기 파일만 지정해 add한다.

@@ -34,3 +34,4 @@ D1, D2
 web/src/state/share/api.ts, attachments.ts, server BoardRoutes.kt, sync documentStore.ts
 
 ## 구현 메모
+- 병렬 경계 (2026-10-18, 메인): n1·n2·n3이 같은 워킹트리에서 동시에 돈다. Flyway 마이그레이션이 필요하면 V7__ 하나만 쓴다(V8은 n3 몫). server의 Application.kt·AppConfig.kt는 n3 몫이라 고치지 않는다. sync는 documentStore.ts·guardedStore.ts까지만, sync/src/server.ts는 n2 몫이다. 커밋은 자기 파일만 지정해 add한다.

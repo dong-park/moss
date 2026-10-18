@@ -33,3 +33,4 @@ D3, D4
 server AuthRoutes.kt, AppConfig.kt
 
 ## 구현 메모
+- 병렬 경계 (2026-10-18, 메인): n1·n2·n3이 같은 워킹트리에서 동시에 돈다. Flyway 마이그레이션은 V8__부터 쓴다(V7은 n1 몫). OAuth 라우트는 새 파일(server/src/main/kotlin/com/moss/server/oauth/ 아래)에 두고 Application.kt에는 등록 줄만 더한다. BoardRoutes.kt는 n1 몫이라 고치지 않는다. sync는 건드리지 않는다. 커밋은 자기 파일만 지정해 add한다.

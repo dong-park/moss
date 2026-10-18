@@ -53,6 +53,19 @@ rows/T1~T11이 기준이다. 결정은 rows/D1~D8이고 2026-10-18 모두 답을
 
 작업 위치: 이 워크트리, 브랜치는 호출자가 정한다. 의존: n1·n2·n3은 서로 독립, n4는 n2·n3 뒤, n5는 n4 뒤, n6은 n5 뒤, n7은 n3 뒤, n8은 n6·n7 뒤.
 
+## 노드 인덱스
+
+| ID | 브리프 | deps | 상태 |
+|---|---|---|---|
+| n1 | [n1-server-store.md](n1-server-store.md) | — | 아직 안 함 |
+| n2 | [n2-shared-model.md](n2-shared-model.md) | — | 아직 안 함 |
+| n3 | [n3-oauth.md](n3-oauth.md) | — | 아직 안 함 |
+| n4 | [n4-sync-endpoint.md](n4-sync-endpoint.md) | n2, n3 | 아직 안 함 |
+| n5 | [n5-read-tools.md](n5-read-tools.md) | n4 | 아직 안 함 |
+| n6 | [n6-write-tools.md](n6-write-tools.md) | n5 | 아직 안 함 |
+| n7 | [n7-connected-apps.md](n7-connected-apps.md) | n3 | 아직 안 함 |
+| n8 | [n8-real-connector.md](n8-real-connector.md) | n6, n7 | 아직 안 함 |
+
 ## 공통 완료 기준
 1. web은 `cd web && npx tsc --noEmit`, sync와 server는 각자 테스트 통과. 기준선 실패는 따로 적는다
 2. 새 로직 최소 1테스트, 커밋은 `feat(moss):` 형식, 내 파일만 경로로 add, push 금지
