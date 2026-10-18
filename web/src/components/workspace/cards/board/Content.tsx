@@ -20,10 +20,11 @@ import type { Card } from "@/state/workspace";
  * 더블클릭 진입은 DraggableCard.onDoubleClick이 담당한다.
  * ───────────────────────────────────────────────────────────── */
 
-const BACK = 'url("/cards/v2/board-back.png") 0 0 / 100% 100% no-repeat';
-const FRONT = 'url("/cards/v2/board-front.png") 0 0 / 100% 100% no-repeat';
+// 2026-10-18 macOS 오마주(Finder 블루 폴더) — 같은 640×514 비율의 SVG 레이어.
+const BACK = 'url("/cards/v2/mac/board-back.svg") 0 0 / 100% 100% no-repeat';
+const FRONT = 'url("/cards/v2/mac/board-front.svg") 0 0 / 100% 100% no-repeat';
 const PAPERS = (state: "low" | "high") =>
-  `url("/cards/v2/board-papers-${state}.png") 0 0 / 100% 100% no-repeat`;
+  `url("/cards/v2/mac/board-papers-${state}.svg") 0 0 / 100% 100% no-repeat`;
 
 /** 개수 → 삐져나온 종이 상태. 0장은 종이 없음. 4장 이상은 두툼한 high. */
 function paperState(count: number): "low" | "high" | null {
@@ -122,7 +123,7 @@ export function BoardCardContent({
             }
             onCommitEdit?.();
           }}
-          className="absolute rounded-md bg-white/80 text-center font-semibold text-[#3b3426] outline-none"
+          className="absolute rounded-md bg-white/80 text-center font-semibold text-[#173a63] outline-none"
           style={{ left: "10%", top: "47%", width: "80%", fontSize: "clamp(10px, 7.5cqw, 22px)" }}
         />
       ) : (
@@ -133,7 +134,7 @@ export function BoardCardContent({
         style={{
           left: "10%", top: "47%", width: "80%", maxHeight: "29%",
           fontSize: "clamp(10px, 7.5cqw, 22px)",
-          color: rawName ? "#3b3426" : "rgba(60,52,36,0.48)",
+          color: rawName ? "#173a63" : "rgba(23,58,99,0.5)",
           display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: 2,
         }}
       >
@@ -143,7 +144,7 @@ export function BoardCardContent({
       {/* 탭의 흰 라벨판에는 개수만. */}
       <span
         data-board-count
-        className="pointer-events-none absolute flex items-center justify-center overflow-hidden whitespace-nowrap font-semibold text-[#3b3426]"
+        className="pointer-events-none absolute flex items-center justify-center overflow-hidden whitespace-nowrap font-semibold text-[#173a63]"
         style={{ left: "8%", top: "4.5%", width: "25%", height: "8%", fontSize: "clamp(8px, 4.5cqw, 10px)" }}
       >
         {countLabel}
