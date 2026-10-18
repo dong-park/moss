@@ -428,6 +428,16 @@ describe("dispatchOp", () => {
       expect(removeBoard).toHaveBeenCalledWith("b1");
     });
 
+    it("boards.delete 현재 보드 → 시스템 보드 전환이 끝난 뒤에야 돌려준다", async () => {
+      useWorkspace.setState({ currentBoardId: "b-cur" });
+      const removeBoard = vi.fn(async () => {
+        setTimeout(() => useWorkspace.setState({ currentBoardId: SYSTEM_BOARD_ID }), 20);
+      });
+      useWorkspace.setState({ removeBoard });
+      await dispatchOp("boards.delete", { id: "b-cur" });
+      expect(useWorkspace.getState().currentBoardId).toBe(SYSTEM_BOARD_ID);
+    });
+
     it("boards.switch → setCurrentBoard 호출 + 현재 보드 반환", async () => {
       const setCurrentBoard = vi.fn(async (id: string) => {
         useWorkspace.setState({ currentBoardId: id });

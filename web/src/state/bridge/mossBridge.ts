@@ -26,7 +26,7 @@ import {
   encodeSubcanvas,
   __internal,
 } from "@/state/workspace";
-import { newBoardId } from "@/state/boardIds";
+import { newBoardId, SYSTEM_BOARD_ID } from "@/state/boardIds";
 import { useStorage } from "@/state/storage";
 import { getDB, type ConnectionSide } from "@/state/db/schema";
 import { nearestSide } from "@/components/workspace/connectors/geometry";
@@ -564,7 +564,11 @@ export async function dispatchOp(
     case "boards.delete": {
       const id = String(params.id ?? "");
       if (!id) throw new Error("id가 필요합니다");
+      const wasCurrent = ws.currentBoardId === id;
       await ws.removeBoard(id);
+      // 현재 보드를 지우면 시스템 보드로 돌아간다. 그 전환이 끝나기 전에 다음 op가
+      // 들어오면 늦게 끝난 전환이 새 보드를 덮는다.
+      if (wasCurrent) await waitForCurrentBoard(SYSTEM_BOARD_ID);
       return { id };
     }
 
