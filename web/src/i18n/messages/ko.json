@@ -282,6 +282,11 @@
       "purple": "보라",
       "pink": "분홍"
     },
+    "frameBg": {
+      "upload": "배경 이미지 올리기…",
+      "replace": "배경 이미지 바꾸기…",
+      "clear": "배경 이미지 지우기"
+    },
     "frameSkin": {
       "menu": "판 모양",
       "free": "자유",
