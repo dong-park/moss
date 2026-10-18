@@ -26,7 +26,7 @@ import {
   encodeSubcanvas,
   __internal,
 } from "@/state/workspace";
-import { newBoardId } from "@/state/boardIds";
+import { newBoardId, SYSTEM_BOARD_ID } from "@/state/boardIds";
 import { useStorage } from "@/state/storage";
 import { getDB, type ConnectionSide } from "@/state/db/schema";
 import { nearestSide } from "@/components/workspace/connectors/geometry";
@@ -37,6 +37,7 @@ import {
 } from "@/state/ydoc";
 import { serializeBlock } from "@/state/blocks";
 import { normalizeTitle } from "@/state/memoTitle";
+import { isMemoColor } from "@/components/workspace/memoVariety";
 import { makeAttachmentFilename } from "@/state/db/opfs";
 import { storeAttachment } from "@/state/share/attachments";
 import {
@@ -337,6 +338,10 @@ export async function dispatchOp(
       }
       const raw = typeof params.content === "string" ? params.content : "";
       const title = typeof params.title === "string" ? normalizeTitle(params.title) : "";
+      if (params.color !== undefined && !isMemoColor(params.color)) {
+        throw new Error(`지원하지 않는 메모 색: ${String(params.color)} (blue·lime·purple·pink)`);
+      }
+      const color = isMemoColor(params.color) ? params.color : undefined;
       const x = typeof params.x === "number" ? params.x : 40;
       const y = typeof params.y === "number" ? params.y : 40;
       // 메모 본문은 고정 폭(MEMO_CONTENT_WIDTH=720) 컬럼이라, 카드가 그보다 좁으면
@@ -363,6 +368,7 @@ export async function dispatchOp(
         // width/height 패치 후 영속되도록 setContent를 항상 호출(빈 본문도 OK).
         ws.setContent(id, finalContent);
         if (title) ws.setTitle(id, title);
+        if (color) ws.setMemoColor([id], color);
         ws.setEditing(null);
         ws.clearSelection();
         return { id, kind: "text" };
@@ -377,6 +383,7 @@ export async function dispatchOp(
         ...(square !== undefined ? { width: square, height: square } : {}),
         content: finalContent,
         ...(title ? { title } : {}),
+        ...(color ? { color } : {}),
         aiOptOut: false,
         rotation: 0,
       };
@@ -462,6 +469,25 @@ export async function dispatchOp(
       return { id };
     }
 
+    // 메모판(frame): 현재 보드에만 만든다. 판을 먼저 만든 뒤 그 안에 만든 메모는
+    // addCardAt의 소속 판정으로 판에 들어간다(판을 옮기면 같이 움직인다).
+    case "frames.create": {
+      const { isCurrent } = resolveBoard(params.boardId);
+      if (!isCurrent) throw new Error("메모판은 현재 보드에만 만들 수 있습니다. boards_switch로 먼저 전환하세요");
+      const num = (v: unknown, d: number) => (typeof v === "number" && Number.isFinite(v) ? v : d);
+      const id = ws.addFrameAt(num(params.x, 40), num(params.y, 40));
+      if (typeof params.width === "number" || typeof params.height === "number") {
+        const frame = useWorkspace.getState().cards.find((c) => c.id === id)!;
+        ws.resizeFrame(id, {
+          width: num(params.width, frame.width),
+          height: num(params.height, frame.height ?? 220),
+        });
+      }
+      if (typeof params.name === "string") ws.renameFrame(id, params.name);
+      ws.clearSelection();
+      return { id, kind: "frame" };
+    }
+
     // 함(board) 카드: 서브 캔버스를 가리키는 funnel + 빈 서브 보드 생성.
     // 현재 보드면 createSubcanvas(즉시 렌더), 타 보드면 saveBoard+saveNote.
     // 서브 보드 이름은 비움 — 필요하면 boards_rename(boardRef, name)으로.
@@ -538,7 +564,11 @@ export async function dispatchOp(
     case "boards.delete": {
       const id = String(params.id ?? "");
       if (!id) throw new Error("id가 필요합니다");
+      const wasCurrent = ws.currentBoardId === id;
       await ws.removeBoard(id);
+      // 현재 보드를 지우면 시스템 보드로 돌아간다. 그 전환이 끝나기 전에 다음 op가
+      // 들어오면 늦게 끝난 전환이 새 보드를 덮는다.
+      if (wasCurrent) await waitForCurrentBoard(SYSTEM_BOARD_ID);
       return { id };
     }
 

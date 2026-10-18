@@ -521,6 +521,33 @@ describe("FEAT-boards · 보드 store", () => {
     });
   });
 
+  it("setCurrentBoard — 동시에 두 번 바꾸면 나중 요청이 이긴다", async () => {
+    const idA = await useWorkspace.getState().createBoard("A");
+    await waitFade();
+    const idB = await useWorkspace.getState().createBoard("B");
+    await waitFade();
+    await useWorkspace.getState().setCurrentBoard(SYSTEM_BOARD_ID);
+    await waitFade();
+    // A 전환을 늦게 끝나게 만든 뒤(보드 확인을 50ms 늦춤) B로 바꾼다. 늦게 끝난 A가 B를 덮으면 안 된다.
+    const realLoadBoards = useStorage.getState().loadBoards;
+    let first = true;
+    useStorage.setState({
+      loadBoards: async () => {
+        if (first) {
+          first = false;
+          await new Promise((r) => setTimeout(r, 50));
+        }
+        return realLoadBoards();
+      },
+    });
+    const a = useWorkspace.getState().setCurrentBoard(idA);
+    const b = useWorkspace.getState().setCurrentBoard(idB);
+    await Promise.all([a, b]);
+    useStorage.setState({ loadBoards: realLoadBoards });
+    await waitFade();
+    expect(useWorkspace.getState().currentBoardId).toBe(idB);
+  });
+
   it("setCurrentBoard — 한계 밖 viewport는 범위로 clamp (AC-5)", async () => {
     const idA = await useWorkspace.getState().createBoard("A");
     await waitFade();

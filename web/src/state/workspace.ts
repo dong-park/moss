@@ -1131,6 +1131,8 @@ export function needsFirstBoard(boards: Board[], cards: Card[]): boolean {
 let counter = 1;
 const nextId = () => `c-${Date.now().toString(36)}-${counter++}`;
 let connCounter = 1;
+/** setCurrentBoard 요청 번호 — 늦게 끝난 옛 전환이 나중 전환을 덮지 않게 한다. */
+let boardLoadSeq = 0;
 
 const clamp = (n: number, lo: number, hi: number) =>
   Math.max(lo, Math.min(hi, n));
@@ -2149,6 +2151,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     if (get().migrationPending) return;
     const current = get().currentBoardId;
     if (current === id) return;
+    const seq = ++boardLoadSeq;
 
     // n5 AC-8: 로컬에 없는 보드는 열지 않는다 — 빈 보드 행·문서를 만들지 않는다.
     // URL 판정(RouteBoardSync)이 먼저 막지만, 직접 호출 경로도 여기서 방어한다.
@@ -2178,6 +2181,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     }
     const cards = pruned.cards;
     const connections = await loadBoardConnections(cards.map((c) => c.id));
+    // 로딩 중에 다른 보드 전환이 시작됐으면 이 결과는 버린다. 늦게 끝난 옛 전환이
+    // 나중 보드를 덮어쓰면 그 사이 새 보드에 만든 카드가 엉뚱한 보드로 간다.
+    if (seq !== boardLoadSeq) return;
 
     // 3-1) 보드 메타도 문서가 원본 — 목록의 이 보드 이름을 문서 값으로 맞춘다.
     if (storageBid !== null) {
