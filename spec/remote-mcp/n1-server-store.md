@@ -82,3 +82,10 @@ web/src/state/share/api.ts, attachments.ts, server BoardRoutes.kt, sync document
   - syncMyBoards는 settleServerDeletes 한 지점에서 이 계정의 표시만 본다. 서버에 없으면 표시를 빼고, 로컬에 행이 있으면 건드리지 않고, 그 밖에는 되살리지 않는다. 실행 취소 기간이 아니면 서버 사본 지우기를 다시 시도한다(부모도 지운 파일함은 부모 쪽 cascade에 맡긴다). 확인 없는 최상위 보드는 지우기 직전 멤버를 다시 묻고, 멤버가 있으면 표시를 빼고 보통 보드로 둔다. 403·404면 표시를 빼고 보통 보드처럼 되살린다. 네트워크·5xx만 숨긴 채 다음 동기화로 넘기고 console.warn에 id·status를 남긴다. undo 만료 경로(unshareRemovedSubBoards)도 같은 표시·같은 지우기 함수를 쓴다.
   - 확인한 것: web `tsc --noEmit`·바꾼 파일 eslint 통과, web vitest 183파일 1487 통과. 새 테스트 5개(혼자 쓰는 보드 삭제 뒤 5초 안 새로고침, 표시가 남은 채 다른 계정 로그인, 표시·정리 동시 실행, 보드 삭제 도중 sync, 파일함 삭제 도중 sync)와 기존 D9 테스트 4개를 새 저장소로 고쳤다. syncMyBoards의 숨김을 끄면 6개, 붙들기를 끄면 삭제 도중 테스트 2개, 표시를 계정 구분 없이 읽으면 다른 계정 테스트가 실패하는 것을 확인했다. v7 때문에 DB 버전·테이블 목록을 고정한 schema 테스트 4파일을 7로 고쳤다.
   - 갭: 실제 브라우저+서버+sync 실경로는 돌리지 못했다(Ktor 계약은 가짜 주입). 로그아웃 상태에서 지운 서버 보드는 표시가 없어 다음 로그인 sync가 되살린다. 실행 취소를 새 삭제로 덮어쓴 이전 보드는 그 세션에서 서버 사본을 바로 지우지 않고 다음 syncMyBoards가 지운다.
+- 고쳐줘 (2026-10-18, 메인 · wave-20261018-2100 /review, 마지막 자동 수정): 다시 짠 구조는 유지하고 아래만 고친다. 이번 리뷰에서도 P1이 남으면 메인이 사용자에게 넘긴다.
+  - 404는 "이미 없음"이다. 표시를 지우되 보드는 숨긴 채로 둔다("deleted"). 403만 보통 보드로 되돌린다. 오래된 myBoards 목록 뒤 404, 두 삭제 경로 동시 실행을 테스트로 고정한다. (정합성 P1)
+  - D9 승인은 그때의 멤버에 대한 것이다. 표시에 확인 당시 멤버 수(또는 멤버 id)를 함께 저장하고, 서버 사본을 지우기 직전에 지금 멤버와 비교한다. 늘었으면 표시를 빼고 보통 보드로 다룬다. (보안 P1)
+  - 단일 보드 삭제는 실행 취소 상태를 removeBoard보다 먼저 세우고, 확인할 때 표시를 바로 쓴다(membersConfirmed 값과 함께). 그러면 메모리 집합 membersConfirmed는 없앤다. removing/hold는 파일함 cascade에만 남기고, cascadeDeleteFunnels의 release는 try/finally로 감싼다. (Devil P1, 정합성 P2, 유지보수 P2)
+  - markServerDeletes 실패는 삭제를 막지 않되 console.warn("[moss] 지운 보드 표시 실패", ids, err)을 남긴다. (유지보수 P1)
+  - schema.ts v7 주석에 "settings.pendingServerDeletes는 이 브랜치에서만 있었고 배포되지 않아 옮기지 않는다, v7은 되돌릴 수 없는 마이그레이션"을 남긴다. (유지보수 P1)
+- 병렬 경계 (2026-10-18, 메인 · 웨이브 6): n6과 같은 워킹트리에서 동시에 돈다. 고칠 파일은 web/src/state/membership.ts·workspace.ts·storage.ts·db/schema.ts와 그 테스트다. web/src/state/share/attachments.ts·sync/·shared/는 n6 몫이다. 임시 인덱스를 쓰면 같은 셸 명령 안에서 add와 commit을 끝낸다.
