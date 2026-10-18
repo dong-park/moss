@@ -6,7 +6,7 @@
 **id**: FT-6
 **상위**: spec/frame-image-template/spec.md
 **deps**: n4, n5, n7
-**상태**: 확인 대기
+**상태**: 끝남
 **담당 행**: T8
 **사람 확인**: 필요
 
