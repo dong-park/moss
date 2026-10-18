@@ -11,7 +11,6 @@ import {
 } from "motion/react";
 import {
   kindForTool,
-  TEXT_GLYPH_ICON,
   useWorkspace,
   widthForKind,
   type ToolId,
@@ -82,18 +81,20 @@ type DockItem = {
 };
 
 const DOCK_ITEMS: DockItem[] = [
-  { toolId: "frame", icon: "/icons/dock/whiteboard.png", labelKey: "workspace.tool.frame", draggable: true },
-  { toolId: "text", icon: "/icons/dock/memo.png", labelKey: "capture.tool.text", draggable: true },
-  { toolId: "todo", icon: "/icons/sidebar/todo-v2.png", labelKey: "workspace.tool.todo", draggable: true },
-  { toolId: "linkMemo", icon: "/icons/sidebar/link-v2.png", labelKey: "workspace.tool.link", draggable: true },
-  { toolId: "photo", icon: "/icons/sidebar/image-v2.png", labelKey: "workspace.tool.photo", draggable: true },
-  // FEAT-text-tool §2/§7: 캔버스 평문 텍스트 — "T" 글리프 아이콘. 끌어놓기 생성.
-  { toolId: "textbox", icon: TEXT_GLYPH_ICON, labelKey: "workspace.tool.textbox", draggable: true },
-  { toolId: "board", icon: "/icons/dock/filebox-folder.png", labelKey: "workspace.tool.board", draggable: true },
+  // 2026-10-18 macOS 오마주 아이콘(mockup/mac-homage-assets.html). sw.js가 /icons/를 SWR로
+  // 내주므로 옛 파일을 덮어쓰지 않고 mac/ 아래 새 이름을 쓴다.
+  { toolId: "frame", icon: "/icons/dock/mac/board.svg", labelKey: "workspace.tool.frame", draggable: true },
+  { toolId: "text", icon: "/icons/dock/mac/memo.svg", labelKey: "capture.tool.text", draggable: true },
+  { toolId: "todo", icon: "/icons/dock/mac/todo.svg", labelKey: "workspace.tool.todo", draggable: true },
+  { toolId: "linkMemo", icon: "/icons/dock/mac/link.svg", labelKey: "workspace.tool.link", draggable: true },
+  { toolId: "photo", icon: "/icons/dock/mac/photo.svg", labelKey: "workspace.tool.photo", draggable: true },
+  // FEAT-text-tool §2/§7: 캔버스 평문 텍스트 — "T" 아이콘. 끌어놓기 생성.
+  { toolId: "textbox", icon: "/icons/dock/mac/text.svg", labelKey: "workspace.tool.textbox", draggable: true },
+  { toolId: "board", icon: "/icons/dock/mac/folder.svg", labelKey: "workspace.tool.board", draggable: true },
   { toolId: "pen", icon: "/icons/sidebar/draw-v2.png", labelKey: "workspace.tool.pen", draggable: false },
   { toolId: "signals", icon: "/icons/sidebar/signals-v2.png", labelKey: "signals.sidebar.label", draggable: false },
   // FEAT-trash: 독 맨 끝 휴지통 — 클릭 전용(카드를 끌어 위에 놓으면 버린다, FEAT-trash-drag).
-  { toolId: "trash", icon: "/icons/sidebar/trash-v2.png", labelKey: "workspace.tool.trash", draggable: false },
+  { toolId: "trash", icon: "/icons/dock/mac/trash.svg", labelKey: "workspace.tool.trash", draggable: false },
 ];
 
 /**
@@ -480,13 +481,17 @@ export function Dock({
         mouseX.set(Infinity);
         centersValidRef.current = false;
       }}
-      className="fixed z-[var(--z-panel)] flex items-center gap-1 rounded-full px-3"
+      className="fixed z-[var(--z-panel)] flex items-center gap-1 rounded-[22px] px-3"
       style={{
         left: dockLeft,
         bottom: layout.dock.bottomMargin,
         height: layout.dock.height,
-        background: "var(--gradient-paper)",
-        boxShadow: "var(--shadow-card)",
+        // macOS 독 오마주 — 반투명 유리.
+        background: "linear-gradient(rgba(255,255,255,0.86), rgba(255,255,255,0.7))",
+        backdropFilter: "blur(24px) saturate(180%)",
+        WebkitBackdropFilter: "blur(24px) saturate(180%)",
+        boxShadow:
+          "inset 0 0 0 0.5px rgba(255,255,255,0.8), inset 0 1px 0 rgba(255,255,255,0.9), 0 0 0 0.5px rgba(0,0,0,0.12), 0 12px 36px rgba(20,30,60,0.16)",
         x: shiftX,
       }}
     >
@@ -707,7 +712,7 @@ function DockButton({
           height: size,
           filter: pressed
             ? "drop-shadow(0 4px 8px rgba(0,0,0,0.18))"
-            : "drop-shadow(0 1px 2px rgba(0,0,0,0.08))",
+            : "drop-shadow(0 1px 1px rgba(0,0,0,0.14)) drop-shadow(0 3px 5px rgba(0,0,0,0.1))",
         }}
       >
         <Image

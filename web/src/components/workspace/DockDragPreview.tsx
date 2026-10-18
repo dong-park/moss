@@ -129,7 +129,8 @@ export function DockDragPreview() {
   );
   const width = baseW * scale;
   const height = baseH * scale;
-  const imageSrc = `/cards/v2/${kind}.png`;
+  // 파일함은 2026-10-18 macOS 오마주 SVG(닫힌 폴더)를 쓴다.
+  const imageSrc = kind === "board" ? "/cards/v2/mac/board.svg" : `/cards/v2/${kind}.png`;
   const backgroundSize = "contain";
 
   return (
