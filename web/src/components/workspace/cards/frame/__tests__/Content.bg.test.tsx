@@ -60,3 +60,26 @@ describe("FrameCardContent · 배경 그리기 (T5)", () => {
     expect(container.querySelector("[data-frame-bg]")).toBeNull();
   });
 });
+
+describe("FrameCardContent · 옛 세로 칸 판 (T6)", () => {
+  it("skin: columns로 저장된 판도 칸 그림 없이 그룹 선 판으로 그린다", () => {
+    const legacy: Card = {
+      ...card(false),
+      width: 1920,
+      content: JSON.stringify({
+        name: "옛 판",
+        skin: "columns",
+        columns: [
+          { id: "c0", name: "씨앗" },
+          { id: "c1", name: "묵힘" },
+        ],
+      }),
+    };
+    const { container } = view(legacy);
+    expect(container.querySelector('[data-frame-line="true"]')).toBeTruthy();
+    expect(container.querySelector('[data-frame-columns], [data-frame-column-boundary]')).toBeNull();
+    expect(container.textContent).toContain("옛 판");
+    expect(container.textContent).not.toContain("씨앗");
+  });
+});
+

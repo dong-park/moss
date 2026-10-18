@@ -8,12 +8,11 @@ import {
   CARD_MIN_WIDTH,
   FRAME_MIN_HEIGHT,
   aspectForKind,
+  clampFrameWidth,
   useWorkspace,
   type Card,
 } from "@/state/workspace";
 import { memoFace } from "./cards/text/face";
-import { readFrameContent } from "@/state/frameContent";
-import { clampFrameWidth } from "@/state/frameSkins";
 
 type HandleDir = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
 
@@ -139,7 +138,6 @@ export function ResizeHandles({
         ? card.width
         : (card.height ?? measuredHeight);
 
-    const frameCfg = isFrame ? readFrameContent(card.content) : undefined;
     // FEAT-photo-card: 사진은 저장된 width÷height를 비율로 쓴다(사진마다 다름).
     const ratio =
       card.kind === "photo" && card.height
@@ -165,9 +163,8 @@ export function ResizeHandles({
         if (d.dir.includes("w")) w = d.originW - dx;
         if (d.dir.includes("s")) h = d.originH + dy;
         if (d.dir.includes("n")) h = d.originH - dy;
-        // FEAT-frame-skins: 폭 한계는 스킨이 정한다(AC-9·AC-10). 핸들을 잡는 순간
-        // 시작 폭이 자유 판 상한이 되어 튀지 않는다. 설정은 mousedown에 한 번만 읽는다.
-        w = clampFrameWidth(frameCfg!, d.originW, w);
+        // 핸들을 잡는 순간의 시작 폭이 상한 기준이 되어 튀지 않는다.
+        w = clampFrameWidth(d.originW, w);
         h = clamp(h, FRAME_MIN_HEIGHT, CARD_MAX_HEIGHT);
         let x = d.originCardX;
         let y = d.originCardY;

@@ -1175,7 +1175,7 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
   );
 
   // FEAT-eject: 서브캔버스 밖(루트/시스템)이면 우클릭 메뉴 없이 카드만 렌더.
-  // FEAT-frame-skins: 판은 서브캔버스 밖에서도 "판 모양" 메뉴가 필요하다.
+  // 판은 서브캔버스 밖에서도 배경 이미지 메뉴가 필요하다.
   // 편집/펜 모드에선 트리거를 비활성화해 브라우저 기본 메뉴(복사·붙여넣기 등)를 살린다.
   const isFrame = card.kind === "frame";
   // 파일함은 어디서든 우클릭으로 이름을 바꾼다.

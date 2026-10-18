@@ -119,13 +119,29 @@ describe("setFrameBackground — 올리기", () => {
   it("이름과 칸 목록은 그대로 남고, 이름을 바꿔도 bg가 안 지워진다", async () => {
     await init();
     const id = useWorkspace.getState().addFrameAt(0, 0);
-    useWorkspace.getState().setFrameSkin(id, "columns");
+    useWorkspace.setState((s) => ({
+      cards: s.cards.map((c) =>
+        c.id === id
+          ? {
+              ...c,
+              content: JSON.stringify({
+                name: "판",
+                skin: "columns",
+                columns: [
+                  { id: "a", name: "A" },
+                  { id: "b", name: "B" },
+                ],
+              }),
+            }
+          : c,
+      ),
+    }));
     useWorkspace.getState().setFrameBackground(id, photo("opfs:a.png"));
     useWorkspace.getState().renameFrame(id, "회고");
     const cfg = readFrameContent(frameOf(id).content);
     expect(cfg.name).toBe("회고");
     expect(cfg.bg).toEqual({ w: 800, h: 400 });
-    expect(cfg.columns).toHaveLength(3);
+    expect(cfg.columns).toHaveLength(2);
   });
 
   it("멤버 메모 좌표는 그대로, 커져서 새로 안에 든 메모는 손 리사이즈와 같이 소속된다", async () => {
