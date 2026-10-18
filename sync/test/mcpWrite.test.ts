@@ -1,7 +1,7 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import * as Y from "yjs";
-import { PROVENANCE_FIELDS } from "@moss/doc-model";
-import { McpToolError } from "../src/mcp.ts";
+import { PROVENANCE_FIELDS, fileBlockMarkdown, unescapeBlockLabel } from "@moss/doc-model";
+import { McpToolError, type McpFileStore } from "../src/mcp.ts";
 import { MAX_ATTACHMENT_BYTES, findFreeSpot, writeTools } from "../src/mcpWriteTools.ts";
 import { waitFor } from "./helpers.ts";
 import { idIn, noteOf, putConnection, putNote, startMcp, USER, type McpHarness } from "./mcpHarness.ts";
@@ -42,6 +42,51 @@ describe("findFreeSpot", () => {
   test("a note that fits nowhere in the band goes under everything", () => {
     const boxes = Array.from({ length: 20 }, (_, i) => ({ x: i * 100, y: 0, width: 100, height: 100 }));
     expect(findFreeSpot(boxes, 2000, 100).y).toBeGreaterThanOrEqual(100);
+  });
+
+  type Box = { x: number; y: number; width: number; height: number };
+
+  /** The scan findFreeSpot used to run: every grid point, row by row. The faster search must land on the same spot. */
+  function everyGridPoint(boxes: Box[], width: number, height: number): { x: number; y: number } {
+    if (boxes.length === 0) return { x: 320, y: 140 };
+    const minX = Math.min(...boxes.map((box) => box.x));
+    const minY = Math.min(...boxes.map((box) => box.y));
+    const maxY = Math.max(...boxes.map((box) => box.y + box.height));
+    const free = (x: number, y: number) =>
+      boxes.every((box) =>
+        x + width <= box.x - 24 || box.x + box.width + 24 <= x || y + height <= box.y - 24 || box.y + box.height + 24 <= y,
+      );
+    for (let y = minY; y <= maxY; y += 40) {
+      for (let x = minX; x + width <= minX + Math.max(1600, width); x += 40) if (free(x, y)) return { x, y };
+    }
+    return { x: minX, y: maxY + 24 };
+  }
+
+  test("finds the same spot as trying every grid point, on random boards", () => {
+    let seed = 7;
+    const random = (below: number) => {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      return seed % below;
+    };
+    for (let round = 0; round < 300; round += 1) {
+      const boxes = Array.from({ length: 1 + random(60) }, () => ({
+        x: random(2400) - 400, y: random(2400) - 400, width: 40 + random(400), height: 40 + random(400),
+      }));
+      for (const [width, height] of [[240, 240], [320, 48], [2000, 100]] as const) {
+        expect(findFreeSpot(boxes, width, height)).toEqual(everyGridPoint(boxes, width, height));
+      }
+    }
+  });
+
+  test("one call on a board of 3000 notes takes under 50ms", () => {
+    // A packed board: every row of the search band is taken, which was the slowest case for the grid scan.
+    const boxes = Array.from({ length: 3000 }, (_, i) => ({ x: (i % 60) * 264, y: Math.floor(i / 60) * 264, width: 240, height: 240 }));
+    findFreeSpot(boxes, 240, 240);
+    const started = performance.now();
+    const spot = findFreeSpot(boxes, 240, 240);
+    expect(performance.now() - started).toBeLessThan(50);
+    // Nothing fits in the band, so the note goes under the last row: its bottom plus the gap.
+    expect(spot).toEqual({ x: 0, y: 49 * 264 + 240 + 24 });
   });
 });
 
@@ -138,18 +183,31 @@ describe("mcp write tools", () => {
     expect(saved.getMap("connections").size).toBe(0);
   });
 
-  test("a request over the change limit applies the first part, leaves the rest, and says so", async () => {
+  test("a request over the change limit applies the first part and reports what was deleted and what is left", async () => {
     const doc = boardDoc();
     for (let i = 0; i < 5; i += 1) putNote(doc, { id: "x-" + i, kind: "text", x: i * 300, y: 900, width: 240, height: 240, content: "t", createdAt: 10 + i });
     harness = await start({ docs: { [BOARD]: doc }, limits: { maxChangesPerRequest: 3 } });
     const reply = await harness.call("delete_note", { board: BOARD, ids: ["x-0", "x-1", "x-2", "x-3", "x-4"] });
-    expect(reply.isError).toBe(true);
+    // Not an error: the first three are gone for good, and the agent needs both lists to continue.
+    expect(reply.isError).toBe(false);
+    expect(reply.text).toContain("메모 3개를 지웠어요: [x-0] [x-1] [x-2]");
     expect(reply.text).toContain("3개까지만");
-    expect(reply.text).toContain("[x-3]");
+    expect(reply.text).toContain("남은 2개는 지우지 않았어요: [x-3] [x-4]");
     await waitFor(() => harness!.store.stores > 0, { label: "stored" });
     const saved = await harness.saved(BOARD);
     for (const id of ["x-0", "x-1", "x-2"]) expect(noteOf(saved, id)).toBeUndefined();
     for (const id of ["x-3", "x-4"]) expect(noteOf(saved, id)).toBeDefined();
+  });
+
+  test("a write stores the board once, and a refused write stores nothing", async () => {
+    harness = await start();
+    expect((await harness.call("create_note", { board: BOARD, content: "한 번만 저장" })).isError).toBe(false);
+    // Debounced and unload stores would land in this window too.
+    await Bun.sleep(150);
+    expect(harness.store.stores).toBe(1);
+    expect((await harness.call("update_note", { board: BOARD, id: "ghost", content: "x" })).isError).toBe(true);
+    await Bun.sleep(150);
+    expect(harness.store.stores).toBe(1);
   });
 
   test("over the per-minute write limit a call is refused with the reason and a retry time, and nothing is applied", async () => {
@@ -242,25 +300,34 @@ describe("mcp write tools", () => {
 
 describe("upload_attachment", () => {
   const png = Buffer.from("fake-png-bytes").toString("base64");
+  const store = (upload: McpFileStore["upload"], removed: string[] = []): McpFileStore => ({
+    upload,
+    remove: async (_caller, _boardId, fileId) => {
+      removed.push(fileId);
+    },
+  });
 
   test("stores the file on the server and adds a memo whose block resolves through the files map", async () => {
-    const uploads: Array<{ userId: string; boardId: string; name: string; type: string; size: number }> = [];
+    const uploads: Array<{ userId: string; grantId: string | null; boardId: string; name: string; type: string; size: number }> = [];
     harness = await start({
-      uploadFile: async (userId, boardId, file) => {
-        uploads.push({ userId, boardId, name: file.name, type: file.type, size: file.bytes.byteLength });
+      files: store(async (caller, boardId, file) => {
+        uploads.push({ userId: caller.userId, grantId: caller.grantId, boardId, name: file.name, type: file.type, size: file.bytes.byteLength });
         return { id: "server-file-1", name: file.name, size: file.bytes.byteLength, contentType: file.type };
-      },
+      }),
     });
     const image = await harness.call("upload_attachment", { board: BOARD, filename: "../고양이 [1].png", dataBase64: png, mimeType: "image/png", caption: "우리 고양이" });
     expect(image.isError).toBe(false);
-    const doc = await harness.call("upload_attachment", { board: BOARD, filename: "보고서.pdf", dataBase64: png, mimeType: "application/pdf" });
+    const doc = await harness.call("upload_attachment", { board: BOARD, filename: "보고서 (최종) \"v2\".pdf", dataBase64: png, mimeType: "application/pdf" });
     expect(doc.isError).toBe(false);
     expect(uploads).toEqual([
-      { userId: USER, boardId: BOARD, name: "고양이 [1].png", type: "image/png", size: 14 },
-      { userId: USER, boardId: BOARD, name: "보고서.pdf", type: "application/pdf", size: 14 },
+      { userId: USER, grantId: "g", boardId: BOARD, name: "고양이 [1].png", type: "image/png", size: 14 },
+      { userId: USER, grantId: "g", boardId: BOARD, name: "보고서 (최종) \"v2\".pdf", type: "application/pdf", size: 14 },
     ]);
 
     await waitFor(() => harness!.store.stores > 0, { label: "stored" });
+    // One store per upload: the room check, the upload and the note share one connection.
+    await Bun.sleep(150);
+    expect(harness.store.stores).toBe(2);
     const saved = await harness.saved(BOARD);
     const files = saved.getMap<string>("files").toJSON();
     const refs = Object.keys(files);
@@ -275,18 +342,22 @@ describe("upload_attachment", () => {
     expect(refs).toContain(imageRef);
     expect(imageBlock).toEndWith("우리 고양이");
     const fileBlock = contents.find((content) => content.includes('"moss-file"'))!;
-    const match = /^\[보고서\.pdf\]\(opfs:\/\/([^)]+) "moss-file"\)$/.exec(fileBlock);
+    // Same pattern as FILE_RE in web/src/state/blocks.ts, so the web shows this as a file block.
+    const match = new RegExp(String.raw`^\[((?:[^\\\]"()]|\\.)*)\]\((opfs:\/\/\S+) "moss-file"\)$`).exec(fileBlock);
     expect(match).not.toBeNull();
-    expect(refs).toContain("opfs:" + match![1]);
+    expect(unescapeBlockLabel(match![1]!)).toBe("보고서 (최종) \"v2\".pdf");
+    const fileRef = "opfs:" + match![2]!.slice("opfs://".length);
+    expect(refs).toContain(fileRef);
+    expect(fileBlock).toBe(fileBlockMarkdown(fileRef, "보고서 (최종) \"v2\".pdf"));
   });
 
   test("refuses bad base64, empty and oversized files before any upload", async () => {
     let uploads = 0;
     harness = await start({
-      uploadFile: async () => {
+      files: store(async () => {
         uploads += 1;
         return { id: "x", name: "x", size: 1, contentType: "x" };
-      },
+      }),
     });
     expect((await harness.call("upload_attachment", { board: BOARD, filename: "a.txt", dataBase64: "not base64!!" })).isError).toBe(true);
     expect((await harness.call("upload_attachment", { board: BOARD, filename: "a.txt", dataBase64: "=" })).isError).toBe(true);
@@ -297,13 +368,57 @@ describe("upload_attachment", () => {
 
   test("a quota refusal from the server reaches the agent and no memo is added", async () => {
     harness = await start({
-      uploadFile: async () => {
+      files: store(async () => {
         throw new McpToolError("저장 용량(1GB)을 다 썼어요");
-      },
+      }),
     });
     const reply = await harness.call("upload_attachment", { board: BOARD, filename: "a.png", dataBase64: png, mimeType: "image/png" });
     expect(reply).toEqual({ isError: true, text: "저장 용량(1GB)을 다 썼어요" });
     expect((await harness.saved(BOARD)).getMap("notes").size).toBe(3);
+  });
+
+  /** A file store whose upload fills the live board first, as another member's large paste would, so the note no longer fits. */
+  const fillingStore = (removed: string[], remove?: McpFileStore["remove"]): McpFileStore => ({
+    upload: async (_caller, boardId, file) => {
+      harness!.sync.server.hocuspocus.documents.get(boardId)!.getMap("meta").set("pad", "x".repeat(8000));
+      return { id: "server-file-9", name: file.name, size: file.bytes.byteLength, contentType: file.type };
+    },
+    remove:
+      remove ??
+      (async (_caller, _boardId, fileId) => {
+        removed.push(fileId);
+      }),
+  });
+
+  test("when the note cannot be written after the upload, the stored file is deleted again", async () => {
+    const removed: string[] = [];
+    harness = await start({ maxDocumentBytes: 8000, files: fillingStore(removed) });
+    const reply = await harness.call("upload_attachment", { board: BOARD, filename: "a.png", dataBase64: png, mimeType: "image/png" });
+    expect(reply.isError).toBe(true);
+    expect(reply.text).toContain("보드가 가득 차서");
+    expect(removed).toEqual(["server-file-9"]);
+    const saved = await harness.saved(BOARD);
+    expect(saved.getMap("notes").size).toBe(3);
+    expect(saved.getMap("files").size).toBe(0);
+  });
+
+  test("if deleting the orphan file fails too, its id is left in a warning", async () => {
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      harness = await start({
+        maxDocumentBytes: 8000,
+        files: fillingStore([], async () => {
+          throw new Error("ktor down");
+        }),
+      });
+      const reply = await harness.call("upload_attachment", { board: BOARD, filename: "a.png", dataBase64: png, mimeType: "image/png" });
+      expect(reply.text).toContain("보드가 가득 차서");
+      const orphan = warn.mock.calls.find((args) => String(args[0]).includes("orphan"));
+      expect(orphan).toBeDefined();
+      expect(orphan!.map(String)).toContain("server-file-9");
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   test("without an uploader the tool says uploads are unavailable", async () => {

@@ -1,7 +1,7 @@
 import { HocuspocusProvider, HocuspocusProviderWebsocket } from "@hocuspocus/provider";
 import * as Y from "yjs";
 import { MemoryDocumentStore } from "../src/documentStore.ts";
-import type { McpBoardInfo, McpFileUploader, McpTool } from "../src/mcp.ts";
+import type { McpBoardInfo, McpFileStore, McpTool } from "../src/mcp.ts";
 import type { McpLimits } from "../src/mcpLimits.ts";
 import { createSyncServer, type SyncServer } from "../src/server.ts";
 import { makeConfig, signBoardToken, waitFor } from "./helpers.ts";
@@ -19,7 +19,7 @@ export interface McpHarnessOptions {
   boards?: McpBoardInfo[];
   limits?: Partial<McpLimits>;
   maxDocumentBytes?: number;
-  uploadFile?: McpFileUploader;
+  files?: McpFileStore;
 }
 
 export class CountingStore extends MemoryDocumentStore {
@@ -87,7 +87,7 @@ export async function startMcp(options: McpHarnessOptions): Promise<McpHarness> 
         fetchSnapshot: (boardId) => store.fetch(boardId),
         fileNames: async () => new Map(),
       },
-      ...(options.uploadFile === undefined ? {} : { uploadFile: options.uploadFile }),
+      ...(options.files === undefined ? {} : { files: options.files }),
       ...(options.limits === undefined ? {} : { limits: options.limits }),
       tools: options.tools,
     },

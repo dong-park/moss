@@ -80,8 +80,16 @@ export interface McpUploadedFile {
   contentType: string;
 }
 
-/** Stores a file on the Ktor server as the given board member. Throws [McpToolError] for refusals the agent can act on. */
-export type McpFileUploader = (userId: string, boardId: string, file: McpUploadFile) => Promise<McpUploadedFile>;
+/** Who a file operation runs for: the token's user and the connector grant it belongs to. */
+export type McpCaller = Pick<McpTokenInfo, "userId" | "clientId" | "grantId">;
+
+/** Attachment storage on the Ktor server, reached as the calling member. */
+export interface McpFileStore {
+  /** Stores a file. Throws [McpToolError] for refusals the agent can act on. */
+  upload(caller: McpCaller, boardId: string, file: McpUploadFile): Promise<McpUploadedFile>;
+  /** Deletes a file this endpoint just stored. A file that is already gone counts as deleted. */
+  remove(caller: McpCaller, boardId: string, fileId: string): Promise<void>;
+}
 
 /** Thrown when one search has read as many snapshot bytes as its budget allows. */
 export class McpBudgetExceeded extends McpToolError {
@@ -128,6 +136,8 @@ export interface McpWriteContext extends McpReadContext {
   withBoard<T>(boardId: string, fn: (connection: BoardConnection) => Promise<T> | T): Promise<T>;
   /** Checks membership, then stores the file on the Ktor server as the caller. */
   uploadFile(boardId: string, file: McpUploadFile): Promise<McpUploadedFile>;
+  /** Deletes a file `uploadFile` stored, for when the note that should show it could not be written. */
+  removeFile(boardId: string, fileId: string): Promise<void>;
 }
 
 export interface McpTool {
@@ -167,8 +177,8 @@ export interface McpDeps {
   isMember: MembershipChecker;
   /** Database lookups for the read tools. */
   boards: McpBoardSource;
-  /** Stores attachments on the Ktor server. Without it, `upload_attachment` reports that uploads are unavailable. */
-  uploadFile?: McpFileUploader;
+  /** Attachment storage on the Ktor server. Without it, `upload_attachment` reports that uploads are unavailable. */
+  files?: McpFileStore;
   /** Request caps; omitted fields use `DEFAULT_MCP_LIMITS`. */
   limits?: Partial<McpLimits>;
   /** Board document size limit, set from the sync config. Omitted means no up-front size check. */
@@ -342,8 +352,12 @@ export function createMcpEndpoint(deps: McpDeps): McpEndpoint {
       },
       async uploadFile(boardId, file) {
         await requireMember(boardId, info.userId);
-        if (deps.uploadFile === undefined) throw new McpToolError("file upload is not available on this server");
-        return deps.uploadFile(info.userId, boardId, file);
+        if (deps.files === undefined) throw new McpToolError("file upload is not available on this server");
+        return deps.files.upload(info, boardId, file);
+      },
+      async removeFile(boardId, fileId) {
+        if (deps.files === undefined) throw new Error("file storage is not configured");
+        await deps.files.remove(info, boardId, fileId);
       },
     };
   }

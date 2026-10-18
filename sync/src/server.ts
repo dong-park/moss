@@ -1,5 +1,6 @@
 import { Database } from "@hocuspocus/extension-database";
 import { Server } from "@hocuspocus/server";
+import * as Y from "yjs";
 import { verifyBoardToken } from "./auth.ts";
 import type { SyncConfig } from "./config.ts";
 import type { DocumentStore } from "./documentStore.ts";
@@ -106,6 +107,13 @@ export function createSyncServer(deps: SyncServerDeps): SyncServer {
           // Hocuspocus `Connection.close()` path only forwards a reason string.
           connection.webSocket.close(BOARD_FULL_CODE, "board full");
         }
+      },
+      // The loaded state is what the store holds, so closing a board nobody changed writes nothing.
+      async afterLoadDocument({ documentName, document }) {
+        guardedStore.remember(documentName, Y.encodeStateAsUpdate(document));
+      },
+      async afterUnloadDocument({ documentName }) {
+        guardedStore.forget(documentName);
       },
       extensions: [
         new Database({

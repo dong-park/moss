@@ -24,14 +24,13 @@ export function createPostgresBoardSource(db: Queryable, store: Pick<DocumentSto
         // One more than shown, so the caller can tell that the list was cut.
         [userId, MAX_LISTED_BOARDS + 1],
       );
-      const boards: McpBoardInfo[] = result.rows.map((row) => ({
+      // The query's ORDER BY name, id is the list order; nothing is re-sorted here.
+      return result.rows.map((row): McpBoardInfo => ({
         id: String(row.id),
         name: String(row.name),
         parentId: typeof row.parent_id === "string" ? row.parent_id : null,
         role: String(row.role),
       }));
-      boards.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
-      return boards;
     },
     fetchSnapshot: (boardId) => store.fetch(boardId),
     async fileNames(boardId) {

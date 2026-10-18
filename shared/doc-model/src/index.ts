@@ -35,6 +35,47 @@ export function localRefName(localRef: string): string {
 }
 
 /**
+ * 메모 본문(마크다운) 안의 첨부 블록 형식 — web 블록 모듈과 sync MCP가 같은 정의로 쓰고 읽는다.
+ * 본문의 URL은 `opfs://<파일>`(콜론+슬래시 2개)이고, files 맵의 참조 키는 `opfs:<파일>`(콜론 1개)이다.
+ *  - 이미지: `![](opfs://<파일>)`
+ *  - 파일:   `[<원본 파일명>](opfs://<파일> "moss-file")`
+ */
+export const OPFS_URL_PREFIX = "opfs://";
+export const FILE_BLOCK_TITLE = "moss-file";
+
+/** `opfs://abc.png` → `opfs:abc.png` (참조 키). */
+export function toLocalRef(markdownUrl: string): string {
+  return LOCAL_REF_PREFIX + markdownUrl.slice(OPFS_URL_PREFIX.length);
+}
+
+/** `opfs:abc.png` → `opfs://abc.png` (본문 URL). */
+export function toMarkdownUrl(localRef: string): string {
+  return OPFS_URL_PREFIX + localRef.slice(LOCAL_REF_PREFIX.length);
+}
+
+/**
+ * 블록 라벨(파일명·링크 제목) 이스케이프. `]`·`"`·`(`·`)`·역슬래시는 링크 문법이나 제목 표식을 깨므로
+ * 역슬래시 하나를 붙이고, 개행·제어문자는 블록을 두 줄로 쪼개므로 공백으로 바꾼다.
+ */
+export function escapeBlockLabel(label: string): string {
+  return label.replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/[\\\]"()]/g, (m) => "\\" + m);
+}
+
+export function unescapeBlockLabel(label: string): string {
+  return label.replace(/\\(.)/g, "$1");
+}
+
+/** 참조 키(`opfs:<파일>`)로 이미지 블록 한 줄을 만든다. */
+export function imageBlockMarkdown(localRef: string): string {
+  return "![](" + toMarkdownUrl(localRef) + ")";
+}
+
+/** 참조 키와 원본 파일명으로 파일 블록 한 줄을 만든다. */
+export function fileBlockMarkdown(localRef: string, filename: string): string {
+  return "[" + escapeBlockLabel(filename) + "](" + toMarkdownUrl(localRef) + ' "' + FILE_BLOCK_TITLE + '")';
+}
+
+/**
  * 원격 MCP(에이전트)가 메모·연결을 쓸 때 남기는 변경 출처 칸(D6 → A). 값은 마지막으로 쓴 커넥터 이름과 시각이다.
  * NOTE_FIELDS·CONNECTION_FIELDS 밖에 둬서 web의 읽기·쓰기가 건드리지 않는다 — web이 메모를 고쳐도 칸이 남으므로
  * 읽는 쪽은 `updatedAt`이 `mcpAt`보다 크면 그 뒤에 다른 곳에서 고쳐졌다고 본다.

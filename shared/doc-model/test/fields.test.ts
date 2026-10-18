@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
-  BOARD_FIELDS, CONNECTION_FIELDS, LOCAL_REF_PREFIX, NOTE_FIELDS, PROVENANCE_FIELDS, isUploadFailedKey,
-  localRefName, readFields, uploadFailedKey, writeFields,
+  BOARD_FIELDS, CONNECTION_FIELDS, LOCAL_REF_PREFIX, NOTE_FIELDS, PROVENANCE_FIELDS, escapeBlockLabel,
+  fileBlockMarkdown, imageBlockMarkdown, isUploadFailedKey, localRefName, readFields, toLocalRef, toMarkdownUrl,
+  unescapeBlockLabel, uploadFailedKey, writeFields,
 } from "../src/index.ts";
 
 describe("doc-model fields", () => {
@@ -39,5 +40,23 @@ describe("doc-model files map keys", () => {
       expect(NOTE_FIELDS as readonly string[]).not.toContain(field);
       expect(CONNECTION_FIELDS as readonly string[]).not.toContain(field);
     }
+  });
+});
+
+describe("doc-model block markdown", () => {
+  test("참조 키와 본문 URL을 오가고, 이미지·파일 블록을 web 형식 그대로 만든다", () => {
+    const ref = `${LOCAL_REF_PREFIX}mcp-1-a.pdf`;
+    expect(toMarkdownUrl(ref)).toBe("opfs://mcp-1-a.pdf");
+    expect(toLocalRef(toMarkdownUrl(ref))).toBe(ref);
+    expect(imageBlockMarkdown(ref)).toBe("![](opfs://mcp-1-a.pdf)");
+    expect(fileBlockMarkdown(ref, "a.pdf")).toBe('[a.pdf](opfs://mcp-1-a.pdf "moss-file")');
+  });
+
+  test("파일명의 괄호·따옴표·대괄호·역슬래시는 이스케이프되어 되돌아오고, 개행은 공백이 된다", () => {
+    const name = '보고서 (최종) "v2" [초안] \\ 끝';
+    const label = escapeBlockLabel(name);
+    expect(label).toBe('보고서 \\(최종\\) \\"v2\\" [초안\\] \\\\ 끝');
+    expect(unescapeBlockLabel(label)).toBe(name);
+    expect(escapeBlockLabel("한 줄\n두 줄")).toBe("한 줄 두 줄");
   });
 });

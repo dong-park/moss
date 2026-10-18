@@ -254,6 +254,19 @@ class OAuthStore(private val config: AppConfig) {
             }
     }
 
+    /** 내부 MCP 파일 경로(RM-6): 이 사용자의 끊기지 않은 연결이면 그 행, 끊겼거나 남의 연결이면 null. */
+    suspend fun activeGrant(grantId: UUID, userId: UUID): GrantRow? = dbQuery {
+        OAuthGrants.selectAll()
+            .where { (OAuthGrants.id eq grantId) and (OAuthGrants.userId eq userId) and OAuthGrants.revokedAt.isNull() }
+            .singleOrNull()
+            ?.let {
+                GrantRow(
+                    it[OAuthGrants.id], it[OAuthGrants.clientId], it[OAuthGrants.clientName],
+                    it[OAuthGrants.createdAt], it[OAuthGrants.lastUsedAt],
+                )
+            }
+    }
+
     /** T6: 사용자가 연결을 끊는다. 이 연결의 토큰이 모두 죽어 다음 호출부터 인증 실패다. */
     suspend fun revokeGrant(userId: UUID, grantId: UUID): Boolean = dbQuery {
         val owned = OAuthGrants.selectAll()

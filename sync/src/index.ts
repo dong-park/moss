@@ -3,7 +3,7 @@ import { loadConfig, toPgConnection } from "./config.ts";
 import { ensureDocumentsTable, PostgresDocumentStore } from "./documentStore.ts";
 import { startInternalServer } from "./internalServer.ts";
 import { createKtorIntrospector } from "./mcp.ts";
-import { createKtorFileUploader } from "./mcpFiles.ts";
+import { createKtorFileStore } from "./mcpFiles.ts";
 import { createPostgresBoardSource } from "./mcpBoards.ts";
 import { readTools } from "./mcpReadTools.ts";
 import { writeTools } from "./mcpWriteTools.ts";
@@ -32,7 +32,7 @@ async function main(): Promise<void> {
             introspect: createKtorIntrospector(config.mcp, config.internalSecret),
             isMember,
             boards: createPostgresBoardSource(pool, store),
-            uploadFile: createKtorFileUploader(config.mcp, config.jwtSecret),
+            files: createKtorFileStore(config.mcp, config.internalSecret),
             tools: [...readTools, ...writeTools],
           },
         }

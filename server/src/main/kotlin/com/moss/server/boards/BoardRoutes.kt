@@ -29,6 +29,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.content.PartData
 import io.ktor.http.content.forEachPart
+import io.ktor.server.application.ApplicationCall
 import io.ktor.server.request.receive
 import io.ktor.server.request.receiveMultipart
 import io.ktor.server.response.respond
@@ -71,6 +72,73 @@ private suspend fun streamToTemp(part: PartData.FileItem, tmp: Path, maxBytes: L
         throw e
     }
     return total
+}
+
+/**
+ * Reads the one multipart file part named "file" and stores it on [boardId] under a server-owned fileId,
+ * within the per-file, per-board and per-user quotas. The caller checks who may upload before calling.
+ * A failure leaves neither temp nor promoted bytes, nor a row without bytes.
+ */
+internal suspend fun ApplicationCall.receiveBoardFile(server: MossServer, boardId: String): FileDto {
+    val tmp = server.fileStore.tempFile()
+    var stored: Path? = null
+    try {
+        var name: String? = null
+        var rawType: String? = null
+        var size = -1L
+        var hasFile = false
+        receiveMultipart().forEachPart { part ->
+            try {
+                if (part is PartData.FileItem) {
+                    if (hasFile) throw InvalidRequestException("파일은 하나만 올릴 수 있어요")
+                    hasFile = true
+                    name = part.originalFileName
+                    rawType = part.headers[HttpHeaders.ContentType]
+                    size = streamToTemp(part, tmp, server.config.maxFileBytes)
+                }
+            } finally {
+                part.dispose()
+            }
+        }
+        if (!hasFile) throw InvalidRequestException("파일이 필요해요")
+        val fileName = name?.takeIf { it.isNotBlank() } ?: "file"
+        // Never echo the attacker's type: only the allowlist survives.
+        val contentType = AttachmentTypes.sanitize(rawType)
+
+        val fileId = newId()
+        when (server.repo.saveFile(boardId, fileId, fileName, size, contentType)) {
+            SaveFileResult.QUOTA_EXCEEDED -> {
+                Files.deleteIfExists(tmp)
+                throw PayloadTooLargeException("보드 용량(500MB)을 넘었어요")
+            }
+            SaveFileResult.USER_QUOTA_EXCEEDED -> {
+                Files.deleteIfExists(tmp)
+                throw QuotaExceededException(
+                    "저장 용량(${BoardRepository.formatBytes(server.repo.fileBytesLimit)})을 다 썼어요",
+                )
+            }
+            SaveFileResult.BOARD_MISSING -> {
+                Files.deleteIfExists(tmp)
+                throw NotFoundException("보드를 찾을 수 없어요")
+            }
+            SaveFileResult.ACCEPTED -> {
+                try {
+                    server.fileStore.moveInto(boardId, fileId, tmp)
+                } catch (e: Exception) {
+                    // 행은 이미 커밋됐다 — 바이트 없이 쿼터만 먹는 행을 남기지 않는다.
+                    server.repo.deleteFile(boardId, fileId)
+                    throw e
+                }
+                stored = server.fileStore.uploadPath(boardId, fileId)
+            }
+        }
+        return FileDto(fileId.toString(), fileName, size, contentType)
+    } catch (e: Exception) {
+        // A failed upload leaves neither temp nor promoted bytes behind.
+        Files.deleteIfExists(tmp)
+        stored?.let { Files.deleteIfExists(it) }
+        throw e
+    }
 }
 
 /**
@@ -172,69 +240,9 @@ fun Route.boardRoutes(server: MossServer) {
         val boardId = parseBoardId(call.parameters["id"])
         val userId = call.requireUserId(server)
         if (server.repo.roleOf(boardId, userId) == null) throw ForbiddenException("이 보드의 멤버가 아니에요")
-
-        val tmp = server.fileStore.tempFile()
-        var stored: Path? = null
-        var result: FileDto? = null
-        try {
-            var name: String? = null
-            var rawType: String? = null
-            var size = -1L
-            var hasFile = false
-            call.receiveMultipart().forEachPart { part ->
-                try {
-                    if (part is PartData.FileItem) {
-                        if (hasFile) throw InvalidRequestException("파일은 하나만 올릴 수 있어요")
-                        hasFile = true
-                        name = part.originalFileName
-                        rawType = part.headers[HttpHeaders.ContentType]
-                        size = streamToTemp(part, tmp, server.config.maxFileBytes)
-                    }
-                } finally {
-                    part.dispose()
-                }
-            }
-            if (!hasFile) throw InvalidRequestException("파일이 필요해요")
-            val fileName = name?.takeIf { it.isNotBlank() } ?: "file"
-            // Never echo the attacker's type: only the allowlist survives.
-            val contentType = AttachmentTypes.sanitize(rawType)
-
-            val fileId = newId()
-            when (server.repo.saveFile(boardId, fileId, fileName, size, contentType)) {
-                SaveFileResult.QUOTA_EXCEEDED -> {
-                    Files.deleteIfExists(tmp)
-                    throw PayloadTooLargeException("보드 용량(500MB)을 넘었어요")
-                }
-                SaveFileResult.USER_QUOTA_EXCEEDED -> {
-                    Files.deleteIfExists(tmp)
-                    throw QuotaExceededException(
-                        "저장 용량(${BoardRepository.formatBytes(server.repo.fileBytesLimit)})을 다 썼어요",
-                    )
-                }
-                SaveFileResult.BOARD_MISSING -> {
-                    Files.deleteIfExists(tmp)
-                    throw NotFoundException("보드를 찾을 수 없어요")
-                }
-                SaveFileResult.ACCEPTED -> {
-                    try {
-                        server.fileStore.moveInto(boardId, fileId, tmp)
-                    } catch (e: Exception) {
-                        // 행은 이미 커밋됐다 — 바이트 없이 쿼터만 먹는 행을 남기지 않는다.
-                        server.repo.deleteFile(boardId, fileId)
-                        throw e
-                    }
-                    stored = server.fileStore.uploadPath(boardId, fileId)
-                }
-            }
-            result = FileDto(fileId.toString(), fileName, size, contentType)
-        } catch (e: Exception) {
-            // A failed upload leaves neither temp nor promoted bytes behind.
-            Files.deleteIfExists(tmp)
-            stored?.let { Files.deleteIfExists(it) }
-            throw e
-        }
+        val result = call.receiveBoardFile(server, boardId)
         // 응답 실패(클라이언트 끊김)로 이미 저장된 파일을 지우지 않게 try 밖에서 보낸다.
-        call.respond(HttpStatusCode.Created, result!!)
+        call.respond(HttpStatusCode.Created, result)
     }
 
     // Members download an attachment (task 1). The stored name is a UUID; the
