@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>AS-IS / TO-BE — 포스트잇 · 그룹 · 줌 정책</title>
+<style>
+:root{--bg:#ebecee;--dot:#d6d8dc;--border:#dadbde;--strong:#aeb2ba;--blue:#4f7cf3;--soft:#8a8d94;--text:#2b2d31}
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,"Apple SD Gothic Neo","Pretendard",sans-serif;background:#f6f6f7;color:var(--text);padding:28px 32px 60px}
+h1{font-size:22px;margin:0 0 4px}
+.sub{color:#666;font-size:13px;margin:0 0 28px}
+section{margin-bottom:40px}
+h2{font-size:17px;margin:0 0 4px}
+.why{font-size:13px;color:#555;margin:0 0 14px;line-height:1.55}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.col h3{font-size:13px;margin:0 0 8px;display:flex;gap:8px;align-items:center}
+.tag{font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px}
+.asis .tag{background:#f3dede;color:#a33}
+.tobe .tag{background:#dcefe0;color:#276b3a}
+.stage{position:relative;background:var(--bg) radial-gradient(var(--dot) 1px,transparent 1.2px) 0 0/24px 24px;border-radius:10px;overflow:hidden;border:1px solid #e0e1e4}
+.note{font-size:12px;color:#555;margin:8px 0 0;line-height:1.5}
+/* dock */
+.dock{display:flex;gap:10px;padding:10px 16px;margin:26px auto;width:max-content;background:rgba(255,255,255,.72);backdrop-filter:blur(12px);border-radius:22px;box-shadow:0 6px 24px rgba(0,0,0,.08),inset 0 0 0 1px rgba(255,255,255,.8)}
+.dock img{width:48px;height:48px;display:block}
+.dock .hl{outline:2px dashed #e0533d;outline-offset:4px;border-radius:10px}
+.zoomlbl{position:absolute;right:10px;top:8px;font-size:11px;font-weight:700;background:#fff;border-radius:6px;padding:2px 7px;color:#444;box-shadow:0 1px 3px rgba(0,0,0,.08);z-index:50}
+.big img{width:96px;height:96px}
+table{border-collapse:collapse;font-size:13px;width:100%;background:#fff;border-radius:8px;overflow:hidden}
+th,td{border-bottom:1px solid #eee;padding:8px 10px;text-align:left;vertical-align:top}
+th{background:#fafafa;font-size:12px;color:#555}
+</style></head><body>
+<h1>AS-IS / TO-BE 목업</h1>
+<p class="sub">moss 캔버스 · 2026-10-18 · ① 포스트잇 카드를 예전 종이로 ② 그룹(메모판) 가시성 ③ 줌 구간별 표시 정책 · 도크 아이콘은 그대로. TO-BE 수치는 결정 전 제안값입니다.</p>
+
+<section>
+<h2>① 포스트잇 카드(메모 앞면)</h2>
+<p class="why">원인: 오늘 커밋 e37d124(FT-7)이 메모 앞면을 종이 사진 <code>cards/v2/text.png</code>와 옅은 색조(multiply)에서 CSS 면(접착 띠, 잡음 결, 진한 노랑)으로 바꿨습니다. 팔레트도 진한 색으로 바뀌었습니다. 도크 아이콘은 그대로 둡니다.</p>
+<div class="row">
+ <div class="col asis"><h3><span class="tag">AS-IS</span>CSS 포스트잇 (e37d124)</h3><div class="stage" id="p-asis" style="height:300px"></div></div>
+ <div class="col tobe"><h3><span class="tag">TO-BE</span>예전 종이 사진 + 옅은 색조 (e37d124 이전)</h3><div class="stage" id="p-tobe" style="height:300px"></div>
+ <p class="note">되돌리는 범위: <code>text/Content.tsx</code>의 종이 배경과 색조 층, <code>memoVariety.ts</code> 팔레트(노랑 6단계와 파랑·라임·보라·분홍), <code>DockDragPreview.tsx</code> 끌기 미리보기. 메모에 저장된 값은 색 이름이라 데이터를 고칠 필요가 없습니다.</p></div>
+</div>
+</section>
+
+<section>
+<h2>② 그룹(메모판) 가시성</h2>
+<p class="why">원인: 판 선 <code>#dadbde</code> 1px과 배경 <code>#ebecee</code>의 대비가 약 1.1:1입니다. 이름표는 12px 회색이고 줌과 함께 작아집니다(50%에서 선 0.5px, 글씨 6px).</p>
+<div class="row">
+ <div class="col asis"><h3><span class="tag">AS-IS</span>100% · 50%</h3><div class="stage" id="g-asis-100" style="height:250px"></div><div class="stage" id="g-asis-50" style="height:170px;margin-top:10px"></div></div>
+ <div class="col tobe"><h3><span class="tag">TO-BE</span>옅은 면 + 진한 선 + 화면 고정 이름표</h3><div class="stage" id="g-tobe-100" style="height:250px"></div><div class="stage" id="g-tobe-50" style="height:170px;margin-top:10px"></div>
+ <p class="note">판 안쪽에 흰 면(45%)을 깔고 선은 <code>#aeb2ba</code>로 바꿨습니다. 선은 화면 기준 1px, 이름표는 화면 기준 12px로 고정해 줌을 줄여도 같은 크기로 보입니다.</p></div>
+</div>
+</section>
+
+<section>
+<h2>③ 줌 구간별 표시 정책</h2>
+<p class="why">원인: 캔버스 전체에 CSS <code>scale()</code> 하나만 걸려 있어 모든 요소가 같은 비율로 작아집니다. 범위는 0.5~1.1배이고, 축소했을 때의 요약 표시(LOD)가 없습니다.</p>
+<div class="row">
+ <div class="col asis"><h3><span class="tag">AS-IS</span>균일 축소</h3>
+  <div class="stage" id="z-asis-100" style="height:300px"></div>
+  <div class="stage" id="z-asis-50" style="height:300px;margin-top:10px"></div>
+  <div class="stage" id="z-asis-25" style="height:300px;margin-top:10px"></div></div>
+ <div class="col tobe"><h3><span class="tag">TO-BE</span>구간마다 다르게 그림</h3>
+  <div class="stage" id="z-tobe-100" style="height:300px"></div>
+  <div class="stage" id="z-tobe-50" style="height:300px;margin-top:10px"></div>
+  <div class="stage" id="z-tobe-25" style="height:300px;margin-top:10px"></div></div>
+</div>
+<table style="margin-top:14px">
+<tr><th>구간(제안)</th><th>메모</th><th>판</th><th>그림자·기울기·결</th></tr>
+<tr><td>가까이 ≥ 80%</td><td>그대로</td><td>선 1px, 이름표 12px (화면 고정)</td><td>켬</td></tr>
+<tr><td>보통 40~80%</td><td>본문 글씨는 화면 기준 최소 10px로 키우고, 넘치는 줄은 자름</td><td>화면 고정</td><td>그림자 약하게</td></tr>
+<tr><td>멀리 &lt; 40%</td><td>글씨 대신 회색 줄 2개(형태만)</td><td>면 색 진하게 + 이름표 13px 굵게. 이름으로 지도처럼 읽음</td><td>끔 (성능)</td></tr>
+</table>
+<p class="note">AS-IS의 25% 칸은 현재 최소 줌(50%)보다 작아 실제로는 갈 수 없는 화면입니다. 최소 줌을 낮출지는 따로 결정할 사항입니다.</p>
+</section>
+
+<script>
+const NEW={y:"#ffe95c",o:"#ffd24a",l:"#ffee70",p:"#ffa8c5",g:"#c4e86b",b:"#8fd3f4",v:"#c9a9f0"};
+const OLD={y:"#ffef9e",o:"#ffcf6e",l:"#fff7bf",p:"#f3e3e3",g:"#e8eee0",b:"#e5edf2",v:"#ece5f0"};
+const GRAIN='url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27120%27 height=%27120%27%3E%3Cfilter id=%27n%27%3E%3CfeTurbulence type=%27fractalNoise%27 baseFrequency=%270.9%27 numOctaves=%272%27 stitchTiles=%27stitch%27/%3E%3CfeColorMatrix values=%270 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.07 0%27/%3E%3C/filter%3E%3Crect width=%27120%27 height=%27120%27 filter=%27url(%23n)%27/%3E%3C/svg%3E")';
+const PAPER='url("../web/public/cards/v2/text.png") 0 0 / 100% 100% no-repeat';
+function face(d,c,old,scale){
+  if(old){
+    Object.assign(d.style,{background:PAPER,isolation:"isolate",borderRadius:6*scale+"px",overflow:"visible"});
+    const t=document.createElement("div");
+    Object.assign(t.style,{position:"absolute",inset:0,background:OLD[c],mixBlendMode:"multiply",zIndex:-1,WebkitMask:PAPER,mask:PAPER});
+    d.appendChild(t);
+  }else{
+    Object.assign(d.style,{backgroundColor:NEW[c],backgroundImage:"linear-gradient(to bottom, rgba(0,0,0,0.07) 0, rgba(0,0,0,0.07) 14%, rgba(0,0,0,0) 14%), "+GRAIN,borderRadius:2*scale+"px"});
+  }
+}
+// world scene
+const SCENE={
+ frames:[{x:30,y:40,w:520,h:330,name:"이번 주 할 일"},{x:620,y:40,w:430,h:330,name:"아이디어"}],
+ memos:[
+  {x:60,y:80,c:"y",t:"디자인 리뷰 준비하기 — 시안 3개 비교",r:-1.5},
+  {x:230,y:100,c:"o",t:"API 응답 형식 확인",r:1},
+  {x:400,y:90,c:"p",t:"QA 일정 잡기",r:-.5},
+  {x:120,y:220,c:"l",t:"배포 체크리스트",r:.8},
+  {x:660,y:90,c:"g",t:"줌 정책 Figma처럼",r:1.2},
+  {x:850,y:110,c:"y",t:"색 팔레트 정리",r:-1},
+  {x:740,y:230,c:"o",t:"그룹 선 진하게",r:.5}],
+};
+function render(id,scale,mode,origin){
+ const el=document.getElementById(id);origin=origin||{x:10,y:10};
+ const tobe=mode==="tobe";
+ const tier=scale>=.8?"near":scale>=.4?"mid":"far";
+ const lbl=document.createElement("div");lbl.className="zoomlbl";lbl.textContent=Math.round(scale*100)+"%"+(tobe?" · "+({near:"가까이",mid:"보통",far:"멀리"})[tier]:"");el.appendChild(lbl);
+ const P=(v,o)=>o+v*scale;
+ for(const f of SCENE.frames){
+  const d=document.createElement("div");
+  Object.assign(d.style,{position:"absolute",left:P(f.x,origin.x)+"px",top:P(f.y,origin.y)+"px",width:f.w*scale+"px",height:f.h*scale+"px",borderRadius:4*scale+"px"});
+  if(!tobe){d.style.border=(1*scale)+"px solid #dadbde";}
+  else{d.style.border="1px solid #aeb2ba";d.style.background=tier==="far"?"rgba(255,255,255,.7)":"rgba(255,255,255,.45)";}
+  const n=document.createElement("div");n.textContent=f.name;
+  const fs=tobe?(tier==="far"?13:12):12*scale;
+  Object.assign(n.style,{position:"absolute",left:0,top:-(fs+6)+"px",fontSize:fs+"px",fontWeight:tobe&&tier==="far"?800:600,color:tobe?"#5d6069":"#8a8d94",whiteSpace:"nowrap"});
+  d.appendChild(n);el.appendChild(d);
+ }
+ for(const m of SCENE.memos){
+  const s=130*scale,d=document.createElement("div");
+  const shadow=!tobe||tier==="near"?"0 "+3*scale+"px "+10*scale+"px rgba(0,0,0,.12)":tier==="mid"?"0 1px 3px rgba(0,0,0,.1)":"none";
+  Object.assign(d.style,{position:"absolute",left:P(m.x,origin.x)+"px",top:P(m.y,origin.y)+"px",width:s+"px",height:s*(tobe?1021/957:1)+"px",boxShadow:tobe?"none":shadow,filter:tobe&&tier!=="far"?"drop-shadow(0 "+2*scale+"px "+4*scale+"px rgba(0,0,0,.12))":"none",transform:(!tobe||tier!=="far")?"rotate("+m.r+"deg)":"none",});
+  face(d,m.c,tobe,scale);
+  if(!tobe){const band=document.createElement("div");Object.assign(band.style,{height:16*scale+"px"});d.appendChild(band);}else{const sp=document.createElement("div");sp.style.height=16*scale+"px";d.appendChild(sp);}
+  if(tobe&&tier==="far"){
+   for(const w of [70,45]){const b=document.createElement("div");Object.assign(b.style,{height:"3px",width:w+"%",background:"rgba(0,0,0,.18)",borderRadius:"2px",margin:"6px 0 0 14%"});d.appendChild(b);}
+  }else{
+   const fs=tobe?Math.max(14*scale,10):14*scale;
+   const t=document.createElement("div");t.textContent=m.t;
+   Object.assign(t.style,{padding:(10*scale)+"px "+(10*scale)+"px",fontSize:fs+"px",fontWeight:700,lineHeight:1.3,color:"#2b2d31",display:"-webkit-box",WebkitLineClamp:tobe&&tier==="mid"?3:99,WebkitBoxOrient:"vertical",overflow:"hidden"});
+   d.appendChild(t);
+  }
+  el.appendChild(d);
+ }
+}
+for(const [id,old] of [["p-asis",false],["p-tobe",true]]){
+  const el=document.getElementById(id);
+  [["y","무슨 생각이 드나요?",-1.5],["o","디자인 리뷰 준비",1],["l","QA 일정 잡기",-.6],["p","분홍",.8],["b","파랑",-1],["g","라임",.5],["v","보라",1.2]].forEach(([c,t,r],i)=>{
+    const big=i<3, w=big?150:72, d=document.createElement("div");
+    const x=big?24+i*178:24+(i-3)*92, y=big?22:205;
+    Object.assign(d.style,{position:"absolute",left:x+"px",top:y+"px",width:w+"px",height:(old?w*1021/957:w)+"px",transform:"rotate("+r+"deg)",
+      filter:old?"drop-shadow(0 2px 4px rgba(0,0,0,.12))":"none",boxShadow:old?"none":"0 1px 1px rgba(0,0,0,0.12), 0 8px 10px -6px rgba(0,0,0,0.28)",display:"flex",alignItems:"center",justifyContent:"center"});
+    face(d,c,old,1);
+    const tx=document.createElement("div");tx.textContent=t;Object.assign(tx.style,{fontSize:(big?14:11)+"px",fontWeight:700,color:"#2b2d31",textAlign:"center",padding:"0 8px"});
+    d.appendChild(tx);el.appendChild(d);
+  });
+}
+// group section uses only first frame + its memos
+const full=JSON.parse(JSON.stringify(SCENE));
+SCENE.frames=[full.frames[0]];SCENE.memos=full.memos.slice(0,4);
+render("g-asis-100",.42*1.0+.0,"asis",{x:20,y:30});
+render("g-tobe-100",.42,"tobe",{x:20,y:30});
+// fake 100%/50% labels for group demo: draw 100% as scale 1 cropped
+document.getElementById("g-asis-100").innerHTML="";document.getElementById("g-tobe-100").innerHTML="";
+render("g-asis-100",1,"asis",{x:-10,y:-10});render("g-tobe-100",1,"tobe",{x:-10,y:-10});
+render("g-asis-50",.5,"asis",{x:10,y:20});render("g-tobe-50",.5,"tobe",{x:10,y:20});
+SCENE.frames=full.frames;SCENE.memos=full.memos;
+render("z-asis-100",1,"asis",{x:-10,y:-10});render("z-tobe-100",1,"tobe",{x:-10,y:-10});
+render("z-asis-50",.5,"asis",{x:10,y:30});render("z-tobe-50",.5,"tobe",{x:10,y:30});
+render("z-asis-25",.25,"asis",{x:20,y:40});render("z-tobe-25",.25,"tobe",{x:20,y:40});
+</script></body></html>

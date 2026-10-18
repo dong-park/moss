@@ -1,0 +1,17 @@
+{
+  "id": "T5",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": [],
+  "kind": "task",
+  "title": "실화면 캡처로 확인한다",
+  "given": "dev 서버와 로컬 계정",
+  "when": "100%·50%·25%로 같은 판을 본다",
+  "then": "장면별 캡처가 evidence/n5에 있고 사람이 실제 브라우저에서 확인한다."
+}
