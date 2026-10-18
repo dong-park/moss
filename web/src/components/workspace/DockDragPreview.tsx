@@ -12,7 +12,6 @@ import {
   FRAME_DEFAULT_WIDTH,
 } from "@/state/workspace";
 import { useT } from "@/i18n/Provider";
-import { MEMO_TINTS } from "./memoVariety";
 
 /**
  * FEAT-sticky-redesign n8: 독(Dock) 도구를 끄는 동안 커서를 따라다니는 카드 프리뷰.
@@ -132,8 +131,6 @@ export function DockDragPreview() {
   // 파일함은 2026-10-18 macOS 오마주 SVG(닫힌 폴더)를 쓴다.
   const imageSrc = kind === "board" ? "/cards/v2/mac/board.svg" : `/cards/v2/${kind}.png`;
   const backgroundSize = "contain";
-  // FT-7: 메모는 종이 사진이 없다 — 놓으면 생길 노란 포스트잇 면을 그대로 띄운다.
-  const isMemo = kind === "text";
 
   return (
     <div
@@ -144,10 +141,7 @@ export function DockDragPreview() {
         top: drag.screenY - DROP_TOP_OFFSET * scale,
         width,
         height,
-        background: isMemo
-          ? MEMO_TINTS[1]
-          : `url("${imageSrc}") center/${backgroundSize} no-repeat`,
-        borderRadius: isMemo ? 2 : undefined,
+        background: `url("${imageSrc}") center/${backgroundSize} no-repeat`,
         // 살짝 기울이고 키워 "집어 든 종이"처럼 보이게 한다. 놓으면 카드가 제자리에
         // 반듯이 앉는다 — 위치는 이미 같으므로 기울기만 펴진다.
         transform: "rotate(-2deg) scale(1.02)",

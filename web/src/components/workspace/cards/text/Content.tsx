@@ -15,11 +15,8 @@ import { memoFace } from "./face";
 import { TodoFace } from "./TodoFace";
 import { LinkInputFace } from "./LinkInputFace";
 
-// FT-7: 포스트잇 면 — 종이 사진 대신 CSS. 윗부분 접착 띠(D6=A) + 옅은 잡음 결 + 아래 그림자.
-const POSTIT_GRAIN =
-  'url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27120%27 height=%27120%27%3E%3Cfilter id=%27n%27%3E%3CfeTurbulence type=%27fractalNoise%27 baseFrequency=%270.9%27 numOctaves=%272%27 stitchTiles=%27stitch%27/%3E%3CfeColorMatrix values=%270 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.07 0%27/%3E%3C/filter%3E%3Crect width=%27120%27 height=%27120%27 filter=%27url(%23n)%27/%3E%3C/svg%3E")';
-const POSTIT_BAND =
-  "linear-gradient(to bottom, rgba(0,0,0,0.07) 0, rgba(0,0,0,0.07) 14%, rgba(0,0,0,0) 14%)";
+// 종이 사진. 색조 층 mask도 같은 파일이어야 종이 바깥 투명부에 색이 안 칠해진다.
+const MEMO_PAPER = 'url("/cards/v2/text.png") 0 0 / 100% 100% no-repeat';
 
 /* ─────────────────────────────────────────────────────────────
  * 글(포스트잇) 카드 — Milkdown 인라인 에디터.
@@ -133,12 +130,13 @@ export function TextCardContent({ card, editing, onCommitEdit }: CardContentProp
       className="relative h-full overflow-hidden"
       style={{
         minHeight: 80,
-        borderRadius: 2,
-        backgroundColor: memoTint(card.id, card.color),
-        backgroundImage: `${POSTIT_BAND}, ${POSTIT_GRAIN}`,
-        boxShadow: "0 1px 1px rgba(0,0,0,0.12), 0 8px 10px -6px rgba(0,0,0,0.28)",
+        borderRadius: 6,
+        // background-size 100% 100%로 카드 박스에 맞춰 늘어나게 — content가
+        // 커져 카드가 auto-grow하면 포스트잇 비주얼도 같이 늘어난다.
+        background: MEMO_PAPER,
+        // 색조 층(z-index:-1)이 이 배경 위, 모든 자식 아래에 깔리게 스택을 가둔다.
+        isolation: "isolate",
       }}
-      data-memo-tint
       onClick={onFrontClick}
       onAuxClick={onFrontClick}
       onKeyDown={(e) => {
@@ -149,6 +147,22 @@ export function TextCardContent({ card, editing, onCommitEdit }: CardContentProp
         }
       }}
     >
+      {/* FEAT-memo-variety: 노랑 색조 — 종이 png와 같은 mask로 잘라 바깥 투명부엔
+        * 칠하지 않고, multiply로 종이 결을 비친다. z-index:-1 + 루트 isolation이라
+        * 형제 순서·position과 무관하게 모든 내용 아래에 있다. */}
+      <div
+        aria-hidden="true"
+        data-memo-tint
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background: memoTint(card.id, card.color),
+          mixBlendMode: "multiply",
+          zIndex: -1,
+          borderRadius: 6,
+          WebkitMask: MEMO_PAPER,
+          mask: MEMO_PAPER,
+        }}
+      />
       {/* 2026-09-22 사용자 결정: 메모지 앞면은 제목 하나만 정가운데에 보여준다.
         * 본문·펜 overlay·백링크는 더블클릭으로 여는 메모 창이 맡는다. */}
       <div className="absolute inset-0 flex items-center justify-center">
