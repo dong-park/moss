@@ -69,7 +69,8 @@ export function MemoTitleRow({
       return (
         <div
           className={[
-            "moss-md select-none overflow-hidden break-keep font-bold leading-tight",
+            // break-keep은 낱말 사이에서 줄을 바꾸고, 카드보다 긴 낱말("2,600,000원")은 잘라 넘긴다.
+            "moss-md select-none overflow-hidden break-keep [overflow-wrap:anywhere] font-bold leading-tight",
             title ? "text-text" : "text-text-faint",
           ].join(" ")}
           style={{
