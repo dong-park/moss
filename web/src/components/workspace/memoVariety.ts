@@ -11,14 +11,17 @@ import { layout } from "@/design/tokens";
  * - 펜 모드에서는 각도를 0으로 세운다(펜 좌표 1:1, useDrawing.toLocal).
  * ───────────────────────────────────────────────────────────── */
 
-/** 노랑 계열 6단계 — 레몬 → 꿀. 종이 결 위에 multiply로 얹힌다. */
+/**
+ * 포스트잇 노랑 6단계 — 같은 계열 안에서 살짝 다르다(FT-7, D7=A 또렷한 색).
+ * 한 색으로 줄일지는 사람 판단에 맡기고 id 해시 변주는 그대로 둔다.
+ */
 export const MEMO_TINTS = [
-  "#fff7bf",
-  "#ffef9e",
-  "#ffe27a",
-  "#ffd98f",
-  "#ffcf6e",
-  "#ffe8b0",
+  "#ffee70",
+  "#ffe95c",
+  "#ffe24a",
+  "#ffd95e",
+  "#ffd24a",
+  "#fff07f",
 ] as const;
 
 export const MEMO_TINT_COUNT = MEMO_TINTS.length;
@@ -73,10 +76,10 @@ export function memoRotationDeg(id: string): number {
  * 톤을 다듬어도 저장된 데이터를 고칠 필요가 없다. 기본 노랑은 저장하지 않는다(빈 칸 = 기본).
  */
 export const MEMO_COLORS = {
-  blue: "#e5edf2",
-  lime: "#e8eee0",
-  purple: "#ece5f0",
-  pink: "#f3e3e3",
+  blue: "#8fd3f4",
+  lime: "#c4e86b",
+  purple: "#c9a9f0",
+  pink: "#ffa8c5",
 } as const;
 
 export type MemoColor = keyof typeof MEMO_COLORS;

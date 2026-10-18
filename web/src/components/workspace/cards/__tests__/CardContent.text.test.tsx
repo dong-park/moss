@@ -32,13 +32,13 @@ vi.mock("@/components/workspace/cards/_shared/MarkdownEditor", () => ({
  * 이전 블록 스택을 Milkdown으로 교체. content는 markdown 문자열로 의미 변경 —
  * onChange 페이로드를 그대로 검증한다(parseBlocks 불필요). */
 describe("TextCardContent · UX", () => {
-  it("render — 카드 표면 background에 cards/v2/text.png 포함", () => {
+  it("render — 카드 표면에 종이 사진(text.png)이 없다", () => {
     const { container } = renderCard("text", {
       content: "안녕",
       editing: false,
     });
     const root = container.firstChild as HTMLElement;
-    expect(root.style.background).toContain("cards/v2/text.png");
+    expect(root.outerHTML).not.toContain("text.png");
   });
 
   /* 2026-09-22 사용자 결정: 메모지 앞면은 제목 하나만 정가운데에 보여준다.
