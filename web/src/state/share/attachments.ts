@@ -25,6 +25,7 @@
  * 크기 초과(413 too_large 등)는 업로더에게만 알리고 맵에 쓰지 않는다.
  */
 import type * as Y from "yjs";
+import { LOCAL_REF_PREFIX, UPLOAD_FAILED_QUOTA, uploadFailedKey } from "@moss/doc-model";
 import { t } from "@/i18n";
 import { AuthRequestError, useAuth } from "@/state/auth";
 import { getBlob, getBlobUrl, putBlob } from "@/state/db/opfs";
@@ -64,21 +65,10 @@ export function resetAttachmentDeps(): void {
   deps = defaultDeps;
 }
 
-const OPFS_PREFIX = "opfs:";
+const OPFS_PREFIX = LOCAL_REF_PREFIX;
 
-/**
- * 저장 용량 상한에 막혀 서버에 올리지 못한 첨부의 실패 표시 값. `files` 맵의
- * `uploadFailedKey(ref)` 키에만 쓴다 — 참조 키(`opfs:<file>`)의 값은 언제나 fileId다.
- */
-export const UPLOAD_FAILED_QUOTA = "!quota_exceeded";
-
-/**
- * `files` 맵의 실패 표시 키. `!`로 시작해 첨부 참조와 겹치지 않는다. 맵을 훑는 쪽(MCP 도구)은
- * `!`로 시작하는 키를 첨부로 읽으면 안 된다.
- */
-export function uploadFailedKey(localRef: string): string {
-  return `!failed:${localRef}`;
-}
+// 키 규칙(참조 접두사·실패 표시)은 sync MCP와 같은 정의를 쓰도록 @moss/doc-model에 있다.
+export { UPLOAD_FAILED_QUOTA, uploadFailedKey };
 
 /** 이 세션에서 안내를 띄운 보드·사유 — 붙여 넣은 첨부 여러 개가 안내를 여러 번 띄우지 않게. */
 const uploadNotified = new Set<string>();

@@ -5,6 +5,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import * as Y from "yjs";
 import { z, type ZodRawShape, type ZodTypeAny } from "zod";
 import { isBoardId, isUuid } from "./auth.ts";
+import { McpLimiter, McpRateLimitError, Semaphore, SnapshotBudget, type McpLimits } from "./mcpLimits.ts";
 import type { MembershipChecker } from "./membership.ts";
 
 /** Streamable HTTP MCP endpoint that lives inside the sync process (RM-4). */
@@ -53,7 +54,10 @@ export interface McpBoardInfo {
 
 /** Database-backed lookups the read tools need. */
 export interface McpBoardSource {
-  /** Boards the user is a member of, including boards nested inside them. */
+  /**
+   * Boards the user is a member of, including boards nested inside them, by name.
+   * At most one more than `MAX_LISTED_BOARDS`, so callers can tell the list was cut.
+   */
   listBoards(userId: string): Promise<McpBoardInfo[]>;
   /** Saved snapshot of a board document, or null when none was stored yet. */
   fetchSnapshot(boardId: string): Promise<Uint8Array | null>;
@@ -61,11 +65,38 @@ export interface McpBoardSource {
   fileNames(boardId: string): Promise<Map<string, string>>;
 }
 
-export interface McpToolContext {
+/** A file the agent sends for a board, already decoded from base64. */
+export interface McpUploadFile {
+  name: string;
+  type: string;
+  bytes: Uint8Array;
+}
+
+/** File the Ktor server stored. */
+export interface McpUploadedFile {
+  id: string;
+  name: string;
+  size: number;
+  contentType: string;
+}
+
+/** Stores a file on the Ktor server as the given board member. Throws [McpToolError] for refusals the agent can act on. */
+export type McpFileUploader = (userId: string, boardId: string, file: McpUploadFile) => Promise<McpUploadedFile>;
+
+/** Thrown when one search has read as many snapshot bytes as its budget allows. */
+export class McpBudgetExceeded extends McpToolError {
+  constructor() {
+    super("snapshot read budget reached");
+    this.name = "McpBudgetExceeded";
+  }
+}
+
+/** What a read tool may use. It has no way to open a board for writing. */
+export interface McpReadContext {
   userId: string;
   clientId: string | null;
   grantId: string | null;
-  /** Boards the caller is a member of right now. */
+  /** Boards the caller is a member of right now (see `McpBoardSource.listBoards` for the cap). */
   listBoards(): Promise<McpBoardInfo[]>;
   /**
    * Read-only view of a board after a membership check. A document that is already
@@ -73,15 +104,30 @@ export interface McpToolContext {
    * throwaway Y.Doc. No Hocuspocus connection is opened, so nothing is written back.
    * Callers must not modify the returned document.
    */
-  readDoc(boardId: string): Promise<Y.Doc>;
-  /** Server file id to original file name for the board's attachments. */
-  fileNames(boardId: string): Promise<Map<string, string>>;
+  readDoc(board: string | McpBoardInfo, budget?: SnapshotBudget): Promise<Y.Doc>;
+  /** Snapshot bytes one search may read. */
+  maxSearchSnapshotBytes: number;
+  /**
+   * Server file id to original file name for the board's attachments.
+   * Like `readDoc`, a board object from `listBoards()` skips the membership check that call already made.
+   */
+  fileNames(board: string | McpBoardInfo): Promise<Map<string, string>>;
+}
+
+/** What a write tool may use: the read view plus the ways to change a board. */
+export interface McpWriteContext extends McpReadContext {
+  /** Changes one write call may apply; the rest is left unapplied. */
+  maxChanges: number;
+  /** Board document size limit. A change that would not fit is refused up front, because the store drops such a snapshot silently. */
+  maxDocumentBytes: number;
   /**
    * Checks the caller's board membership right now, then opens the board through
    * Hocuspocus so edits reach connected browsers and the normal store path.
    * The connection is closed when `fn` settles. Only write tools use this.
    */
   withBoard<T>(boardId: string, fn: (connection: BoardConnection) => Promise<T> | T): Promise<T>;
+  /** Checks membership, then stores the file on the Ktor server as the caller. */
+  uploadFile(boardId: string, file: McpUploadFile): Promise<McpUploadedFile>;
 }
 
 export interface McpTool {
@@ -92,18 +138,27 @@ export interface McpTool {
   /** True for tools that never change a board. */
   readOnly?: boolean;
   /** Returns the text shown to the agent. Throw [McpToolError] for expected failures. */
-  call(args: Record<string, unknown>, context: McpToolContext): Promise<string>;
+  call(args: Record<string, unknown>, context: McpWriteContext): Promise<string>;
 }
 
-/** Keeps the argument types of `call` tied to `inputSchema`. */
+/** Defines a tool that may change boards. Keeps the argument types of `call` tied to `inputSchema`. */
 export function defineTool<Shape extends ZodRawShape>(tool: {
   name: string;
   description: string;
   inputSchema: Shape;
-  readOnly?: boolean;
-  call(args: z.objectOutputType<Shape, ZodTypeAny>, context: McpToolContext): Promise<string>;
+  call(args: z.objectOutputType<Shape, ZodTypeAny>, context: McpWriteContext): Promise<string>;
 }): McpTool {
   return tool as unknown as McpTool;
+}
+
+/** Defines a read-only tool. Its context type has no `withBoard`, so it cannot open a board for writing. */
+export function defineReadTool<Shape extends ZodRawShape>(tool: {
+  name: string;
+  description: string;
+  inputSchema: Shape;
+  call(args: z.objectOutputType<Shape, ZodTypeAny>, context: McpReadContext): Promise<string>;
+}): McpTool {
+  return { ...tool, readOnly: true } as unknown as McpTool;
 }
 
 export interface McpDeps {
@@ -112,6 +167,12 @@ export interface McpDeps {
   isMember: MembershipChecker;
   /** Database lookups for the read tools. */
   boards: McpBoardSource;
+  /** Stores attachments on the Ktor server. Without it, `upload_attachment` reports that uploads are unavailable. */
+  uploadFile?: McpFileUploader;
+  /** Request caps; omitted fields use `DEFAULT_MCP_LIMITS`. */
+  limits?: Partial<McpLimits>;
+  /** Board document size limit, set from the sync config. Omitted means no up-front size check. */
+  maxDocumentBytes?: number;
   /** Tools served by `tools/list` and `tools/call`. */
   tools?: readonly McpTool[];
 }
@@ -205,6 +266,8 @@ export interface McpEndpoint {
 export function createMcpEndpoint(deps: McpDeps): McpEndpoint {
   const route = mcpPath(deps.config);
   const tools = deps.tools ?? [];
+  const limiter = new McpLimiter(deps.limits);
+  const snapshotSlots = new Semaphore(limiter.limits.maxConcurrentSnapshotReads);
   const metadataUrl = new URL("/.well-known/oauth-protected-resource", deps.config.publicBaseUrl).toString();
 
   const challenge = (error?: string) =>
@@ -217,24 +280,52 @@ export function createMcpEndpoint(deps: McpDeps): McpEndpoint {
     }
   }
 
-  function contextFor(instance: Hocuspocus, info: McpTokenInfo): McpToolContext {
+  async function loadDoc(instance: Hocuspocus, boardId: string, budget?: SnapshotBudget): Promise<Y.Doc> {
+    const live = instance.documents.get(boardId);
+    if (live !== undefined) return live;
+    // The fetch and the decode both sit inside a slot, so only a few snapshots are in memory at once.
+    return snapshotSlots.run(async () => {
+      const doc = new Y.Doc();
+      const snapshot = await deps.boards.fetchSnapshot(boardId);
+      if (snapshot !== null) {
+        if (budget !== undefined) {
+          if (budget.used + snapshot.byteLength > budget.limitBytes) throw new McpBudgetExceeded();
+          budget.used += snapshot.byteLength;
+        }
+        Y.applyUpdate(doc, snapshot);
+      }
+      return doc;
+    });
+  }
+
+  function contextFor(instance: Hocuspocus, info: McpTokenInfo): McpWriteContext {
+    // Boards this caller's own listBoards() returned: membership was just proven for them.
+    const listed = new WeakSet<McpBoardInfo>();
+    const boardIdFor = async (board: string | McpBoardInfo): Promise<string> => {
+      if (typeof board !== "string") {
+        if (!listed.has(board)) throw new Error("a board object must come from listBoards()");
+        return board.id;
+      }
+      await requireMember(board, info.userId);
+      return board;
+    };
     return {
       userId: info.userId,
       clientId: info.clientId,
       grantId: info.grantId,
-      listBoards: () => deps.boards.listBoards(info.userId),
-      async readDoc(boardId) {
-        await requireMember(boardId, info.userId);
-        const live = instance.documents.get(boardId);
-        if (live !== undefined) return live;
-        const doc = new Y.Doc();
-        const snapshot = await deps.boards.fetchSnapshot(boardId);
-        if (snapshot !== null) Y.applyUpdate(doc, snapshot);
-        return doc;
+      maxChanges: limiter.limits.maxChangesPerRequest,
+      maxSearchSnapshotBytes: limiter.limits.maxSearchSnapshotBytes,
+      maxDocumentBytes: deps.maxDocumentBytes ?? Number.MAX_SAFE_INTEGER,
+      async listBoards() {
+        const boards = await deps.boards.listBoards(info.userId);
+        for (const board of boards) listed.add(board);
+        return boards;
       },
-      async fileNames(boardId) {
-        await requireMember(boardId, info.userId);
-        return deps.boards.fileNames(boardId);
+      async readDoc(board, budget) {
+        return loadDoc(instance, await boardIdFor(board), budget);
+      },
+      async fileNames(board) {
+        return deps.boards.fileNames(await boardIdFor(board));
       },
       async withBoard(boardId, fn) {
         await requireMember(boardId, info.userId);
@@ -248,6 +339,11 @@ export function createMcpEndpoint(deps: McpDeps): McpEndpoint {
         } finally {
           await connection.disconnect();
         }
+      },
+      async uploadFile(boardId, file) {
+        await requireMember(boardId, info.userId);
+        if (deps.uploadFile === undefined) throw new McpToolError("file upload is not available on this server");
+        return deps.uploadFile(info.userId, boardId, file);
       },
     };
   }
@@ -266,12 +362,14 @@ export function createMcpEndpoint(deps: McpDeps): McpEndpoint {
         },
         async (args: Record<string, unknown>) => {
           try {
+            limiter.consume(info.userId, tool.readOnly !== true);
             return { content: [{ type: "text" as const, text: await tool.call(args, context) }] };
           } catch (error) {
-            if (!(error instanceof McpToolError)) {
+            const expected = error instanceof McpToolError || error instanceof McpRateLimitError;
+            if (!expected) {
               console.warn(`mcp tool ${tool.name} failed:`, error instanceof Error ? error.message : error);
             }
-            const message = error instanceof McpToolError ? error.message : "tool failed";
+            const message = expected ? error.message : "tool failed";
             return { isError: true, content: [{ type: "text" as const, text: message }] };
           }
         },
@@ -315,6 +413,13 @@ export function createMcpEndpoint(deps: McpDeps): McpEndpoint {
         send(response, 401, undefined, { "www-authenticate": challenge("invalid_token") });
         return true;
       }
+      // One user's overlapping requests (a search loop, a retry storm) must not starve sync for everyone.
+      const release = limiter.enter(info.userId);
+      if (release === null) {
+        send(response, 429, { error: "too many concurrent requests" }, { "retry-after": "1" });
+        return true;
+      }
+      response.once("close", release);
 
       const raw = await readBody(request);
       if (raw === null) {

@@ -1,7 +1,7 @@
 import type { DocumentStore, Queryable } from "./documentStore.ts";
 import type { McpBoardInfo, McpBoardSource } from "./mcp.ts";
 
-/** Upper bound on listed boards; a member of more than this sees the first ones by name. */
+/** Boards `list_boards` shows; a member of more than this sees the first ones by name and is told the list was cut. */
 export const MAX_LISTED_BOARDS = 200;
 
 /** Postgres-backed board lookups for the MCP read tools. Snapshots come from the same store the sync server uses. */
@@ -18,8 +18,11 @@ export function createPostgresBoardSource(db: Queryable, store: Pick<DocumentSto
            SELECT b.id, b.parent_id, b.name, t.role, t.depth + 1
              FROM boards b JOIN tree t ON b.parent_id = t.id WHERE t.depth < 32
          )
-         SELECT DISTINCT ON (id) id, parent_id, name, role FROM tree ORDER BY id, depth`,
-        [userId],
+         SELECT id, parent_id, name, role FROM (
+           SELECT DISTINCT ON (id) id, parent_id, name, role FROM tree ORDER BY id, depth
+         ) distinct_boards ORDER BY name, id LIMIT $2`,
+        // One more than shown, so the caller can tell that the list was cut.
+        [userId, MAX_LISTED_BOARDS + 1],
       );
       const boards: McpBoardInfo[] = result.rows.map((row) => ({
         id: String(row.id),
@@ -28,7 +31,7 @@ export function createPostgresBoardSource(db: Queryable, store: Pick<DocumentSto
         role: String(row.role),
       }));
       boards.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
-      return boards.slice(0, MAX_LISTED_BOARDS);
+      return boards;
     },
     fetchSnapshot: (boardId) => store.fetch(boardId),
     async fileNames(boardId) {

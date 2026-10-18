@@ -24,19 +24,21 @@ D4, D6
 
 ## 완료 기준
 
-- [ ] spec 공통 완료 기준 전부
-- [ ] 담당 행의 Then이 실제로 보인다
-- [ ] 새 로직 최소 1테스트
+- [x] spec 공통 완료 기준 전부 — sync 102개·doc-model 4개 통과, web tsc 통과. 실제 커넥터 증거는 아니다(n8 몫)
+- [x] 담당 행의 Then이 실제로 보인다 — T4·T8·T9를 sync 테스트로 확인(헤드리스 provider·저장 스냅샷 기준, 실제 브라우저 화면 아님)
+- [x] 새 로직 최소 1테스트
 
 ## 파일 포인터
 
 mcp/src 도구 정의, server POST /boards/{id}/files
 
 ## 구현 메모
-- 먼저 할 것 (2026-10-18, 메인 · wave-20261018-2100 /review, n5 후속): 쓰기 도구 전에 읽기 경로를 고친다.
-  - search 전체 검색과 동시 요청이 sync를 멈출 수 있다(성능·보안 P1 교차). 사용자별 동시 MCP 요청 상한(예: 2, 넘으면 429)과 스냅샷 디코딩 전역 세마포어를 둔다. 검색 한 번이 읽는 스냅샷 총량에 상한(예: 30MB)을 두고, 닿으면 멈추고 안내한다. listBoards가 이미 증명한 멤버십은 보드마다 다시 묻지 않는다. 이 동시 상한은 이 노드의 쓰기 요청 상한과 같은 장치로 묶는다.
-  - read_board는 MAX_READ_CHARS를 넘는 순간 쌓기를 멈춘다. 이름은 보드 한 줄 조회나 meta.name 한 곳에서만 얻고 재귀 목록 쿼리를 부르지 않는다. (성능·Devil P2)
-  - board를 지정한 search는 requireMember로 권한을 판정하고, 200개 목록 상한은 표시에만 쓴다. list_boards가 목록을 잘랐으면 그 사실을 알린다. (유지보수 P1)
-  - files 맵 키 규칙(opfs: 접두사, !failed: 키)을 @moss/doc-model로 옮기고 web/src/state/share/attachments.ts와 sync가 같이 가져온다. (Devil P1)
-  - 읽기 도구 컨텍스트 타입에서 withBoard를 빼 읽기 경로를 타입으로 강제한다. sync의 @modelcontextprotocol/sdk 버전을 고정하거나 지원 프로토콜 버전을 테스트로 고정한다. (유지보수 P2)
-- 병렬 경계 (2026-10-18, 메인 · 웨이브 6): n1 수정과 같은 워킹트리에서 동시에 돈다. n6 몫은 sync/, shared/doc-model, web/src/state/share/attachments.ts(키 규칙 import만)다. web/src/state/membership.ts·workspace.ts·storage.ts·db/schema.ts는 n1 몫이다. 임시 인덱스를 쓰면 같은 셸 명령 안에서 add와 commit을 끝낸다.
+
+- 쓰기 도구 6개: create_note·update_note·delete_note(ids)·create_connection·delete_connection·upload_attachment (sync/src/mcpWriteTools.ts). 메모 종류는 text와 textbox만 만들고, 메모판·함 카드는 고치지도 지우지도 않는다.
+- 자리는 기존 메모(메모판 제외) 사이 24px 간격을 두고 위쪽 왼쪽부터 격자(40px)로 찾고, 밴드(1600px)에 없으면 맨 아래에 놓는다. 폭은 text 240, textbox 320.
+- 상한은 sync/src/mcpLimits.ts 한 곳: 사용자별 동시 요청 2(넘으면 429), 분당 호출 120, 분당 쓰기 30, 요청당 변경 20(넘는 몫은 적용하지 않고 오류로 알림, 적용된 몫은 유지). 분당 상한 오류에는 다시 시도할 시각(UTC)이 들어간다. 스냅샷 해석은 전역 4개 동시, 검색 한 번의 스냅샷 총량은 30MB.
+- D6 → A: 메모·연결에 mcpClient·mcpAt을 적는다. NOTE_FIELDS 밖이라 web이 읽지도 쓰지도 않는다(UI 표시 없음). web에서 고친 뒤에는 updatedAt이 mcpAt보다 커진다.
+- 보드 크기 한도: 변경 전에 현재 문서 크기 + 추가분이 maxDocumentBytes를 넘으면 거절한다(저장소가 넘친 스냅샷을 조용히 버리기 때문).
+- 첨부 업로드는 sync가 Ktor POST /boards/{id}/files를 부른다. 이 경로는 웹 세션 접근 토큰만 받아서, sync가 JWT_SECRET으로 그 사용자 이름의 60초짜리 접근 토큰을 만들어 보낸다(mcpFiles.ts). 파일은 요청 본문 1MB 한도 때문에 약 750KB까지다. 첨부 메모는 text 메모의 이미지·파일 블록이고 files 맵에 opfs:mcp-… → fileId를 적는다.
+- 읽기 경로(n5 리뷰 후속) 반영: 동시 요청 상한·스냅샷 세마포어·검색 30MB 상한, listBoards로 증명된 멤버십은 보드마다 다시 묻지 않음, read_board는 한도에서 쌓기를 멈추고 이름은 meta.name만 쓰며 목록 쿼리를 부르지 않음, board 지정 검색은 requireMember로 판정하고 200개 상한은 list_boards 표시에만 쓰며 잘렸다고 알림, files 맵 키 규칙(opfs: 접두사·!failed: 키)은 @moss/doc-model로 옮겨 web attachments.ts와 sync가 같이 쓴다, 읽기 도구 컨텍스트에서 withBoard를 뺐고(defineReadTool), sync의 MCP SDK를 1.32.1로 고정하고 지원 프로토콜 버전을 테스트로 고정했다.
+- 남은 것: 실제 커넥터·브라우저 화면 확인은 n8. delete_note는 Yjs에서 바로 지워 사용자의 휴지통에 가지 않는다(D6 되돌리기 범위 밖).

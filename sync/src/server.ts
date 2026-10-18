@@ -68,7 +68,10 @@ export function createSyncServer(deps: SyncServerDeps): SyncServer {
     maxBytes: limits.storeBytes,
     boardExists: deps.boardExists,
   });
-  const mcpEndpoint = deps.mcp === undefined ? undefined : createMcpEndpoint(deps.mcp);
+  const mcpEndpoint =
+    deps.mcp === undefined
+      ? undefined
+      : createMcpEndpoint({ maxDocumentBytes: config.maxDocumentBytes, ...deps.mcp });
 
   const server = new Server(
     {

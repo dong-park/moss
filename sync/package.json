@@ -13,7 +13,7 @@
     "@hocuspocus/common": "^3.1.0",
     "@hocuspocus/extension-database": "^3.1.0",
     "@hocuspocus/server": "^3.1.0",
-    "@modelcontextprotocol/sdk": "^1.12.0",
+    "@modelcontextprotocol/sdk": "1.32.1",
     "@moss/doc-model": "file:../shared/doc-model",
     "jose": "^6.1.0",
     "pg": "^8.16.0",

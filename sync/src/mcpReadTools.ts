@@ -7,9 +7,13 @@ import {
   META_MAP,
   NOTES_MAP,
   NOTE_FIELDS,
+  localRefName,
   readFields,
+  uploadFailedKey,
 } from "@moss/doc-model";
-import { defineTool, McpToolError, type McpBoardInfo, type McpTool } from "./mcp.ts";
+import { defineReadTool, McpBudgetExceeded, McpToolError, type McpBoardInfo, type McpTool } from "./mcp.ts";
+import { SnapshotBudget } from "./mcpLimits.ts";
+import { MAX_LISTED_BOARDS } from "./mcpBoards.ts";
 
 /** Read tools of the remote MCP endpoint (RM-5): list_boards, read_board, search. */
 
@@ -106,55 +110,85 @@ function attachmentName(note: NoteView, view: BoardView, serverNames: Map<string
   const ref = note.attachmentRef;
   if (ref === undefined || ref === "") return undefined;
   const fileId = view.files.get(ref);
-  if (fileId !== undefined) return serverNames.get(fileId) ?? ref.replace(/^opfs:/, "");
-  return view.files.has("!failed:" + ref) ? ref.replace(/^opfs:/, "") + " (올리지 못함)" : ref.replace(/^opfs:/, "") + " (올리는 중)";
+  const name = localRefName(ref);
+  if (fileId !== undefined) return serverNames.get(fileId) ?? name;
+  return name + (view.files.has(uploadFailedKey(ref)) ? " (올리지 못함)" : " (올리는 중)");
 }
 
 const oneLine = (text: string): string => text.replace(/\s+/g, " ").trim();
 
+/** Notes and connections are added only while they fit; the rest of a long board is never rendered. */
 export function renderBoard(boardId: string, view: BoardView, serverNames: Map<string, string>): string {
   const byId = new Map(view.notes.map((note) => [note.id, note]));
   const head =
     "# " + view.name + " (" + boardId + ")\n\n" +
     "메모 " + view.notes.length + "개 · 연결 " + view.connections.length + "개";
+  let room = MAX_READ_CHARS - head.length;
+  let shownNotes = 0;
+  let cut = false;
 
-  const parts: string[] = [];
-  for (const note of view.notes) {
-    const lines = ["### " + oneLine(noteLabel(note)) + " [" + note.id + "]"];
-    const facts = ["종류 " + note.kind];
-    if (note.color) facts.push("색 " + note.color);
-    if (note.textSize) facts.push("글자 크기 " + note.textSize);
-    if (typeof note.x === "number" && typeof note.y === "number") facts.push("위치 (" + note.x + ", " + note.y + ")");
-    if (typeof note.width === "number") facts.push("크기 " + note.width + "×" + (note.height ?? "자동"));
-    const frame = note.frameId === undefined ? undefined : byId.get(note.frameId);
-    if (frame !== undefined) facts.push("메모판 " + oneLine(noteLabel(frame)));
-    lines.push("- " + facts.join(" · "));
-    const attachment = attachmentName(note, view, serverNames);
-    if (attachment !== undefined) lines.push("- 첨부: " + attachment + (note.mediaType ? " (" + note.mediaType + ")" : ""));
-    if (note.kind !== "frame" && note.content) lines.push("", note.content);
-    parts.push(lines.join("\n"));
-  }
+  /** Adds items while they fit. The first item of a section is cut short rather than dropped when it alone is too long. */
+  const take = (items: Iterable<string>, count: { shown: number }): string[] => {
+    const out: string[] = [];
+    for (const item of items) {
+      if (item.length + 2 > room) {
+        if (out.length === 0 && room > 200) out.push(item.slice(0, room - 2));
+        cut = true;
+        room = 0;
+        break;
+      }
+      out.push(item);
+      count.shown += 1;
+      room -= item.length + 2;
+    }
+    return out;
+  };
 
-  const connectionLines = view.connections
-    .filter((connection) => connection.status !== "rejected")
-    .map((connection) => {
-      const source = byId.get(connection.sourceNoteId);
-      const target = byId.get(connection.targetNoteId);
-      const name = (note: NoteView | undefined, id: string) =>
-        note === undefined ? id : oneLine(noteLabel(note)) + " [" + id + "]";
-      const label = connection.label ? " (" + connection.label + ")" : "";
-      return "- " + name(source, connection.sourceNoteId) + " → " + name(target, connection.targetNoteId) + label;
-    });
+  const noteCount = { shown: 0 };
+  const noteParts = take(
+    (function* () {
+      for (const note of view.notes) {
+        const lines = ["### " + oneLine(noteLabel(note)) + " [" + note.id + "]"];
+        const facts = ["종류 " + note.kind];
+        if (note.color) facts.push("색 " + note.color);
+        if (note.textSize) facts.push("글자 크기 " + note.textSize);
+        if (typeof note.x === "number" && typeof note.y === "number") facts.push("위치 (" + note.x + ", " + note.y + ")");
+        if (typeof note.width === "number") facts.push("크기 " + note.width + "×" + (note.height ?? "자동"));
+        const frame = note.frameId === undefined ? undefined : byId.get(note.frameId);
+        if (frame !== undefined) facts.push("메모판 " + oneLine(noteLabel(frame)));
+        lines.push("- " + facts.join(" · "));
+        const attachment = attachmentName(note, view, serverNames);
+        if (attachment !== undefined) lines.push("- 첨부: " + attachment + (note.mediaType ? " (" + note.mediaType + ")" : ""));
+        if (note.kind !== "frame" && note.content) lines.push("", note.content);
+        yield lines.join("\n");
+      }
+    })(),
+    noteCount,
+  );
+  shownNotes = noteCount.shown;
+
+  const connectionLines = take(
+    (function* () {
+      for (const connection of view.connections) {
+        if (connection.status === "rejected") continue;
+        const source = byId.get(connection.sourceNoteId);
+        const target = byId.get(connection.targetNoteId);
+        const name = (note: NoteView | undefined, id: string) =>
+          note === undefined ? id : oneLine(noteLabel(note)) + " [" + id + "]";
+        const label = connection.label ? " (" + connection.label + ")" : "";
+        yield "- " + name(source, connection.sourceNoteId) + " → " + name(target, connection.targetNoteId) + label;
+      }
+    })(),
+    { shown: 0 },
+  );
 
   const sections = [head];
-  if (parts.length > 0) sections.push("## 메모\n\n" + parts.join("\n\n"));
+  if (noteParts.length > 0) sections.push("## 메모\n\n" + noteParts.join("\n\n"));
   if (connectionLines.length > 0) sections.push("## 연결\n\n" + connectionLines.join("\n"));
-
-  let text = sections.join("\n\n");
-  if (text.length > MAX_READ_CHARS) {
-    text = text.slice(0, MAX_READ_CHARS) + "\n\n…(보드가 길어서 여기서 잘랐어요. search로 필요한 메모를 찾으세요.)";
+  if (cut) {
+    sections.push("…(보드가 길어서 메모 " + shownNotes + "개까지만 보여요. search로 필요한 메모를 찾으세요.)");
   }
-  return text;
+  return sections.join("\n\n");
 }
 
 function boardLine(board: McpBoardInfo, byId: Map<string, McpBoardInfo>): string {
@@ -165,29 +199,33 @@ function boardLine(board: McpBoardInfo, byId: Map<string, McpBoardInfo>): string
 
 const boardArg = z.string().min(1).max(64).describe("보드 id. list_boards가 돌려준 값");
 
-export const listBoardsTool = defineTool({
+export const listBoardsTool = defineReadTool({
   name: "list_boards",
   description: "내가 멤버인 moss 보드의 목록(id, 이름)을 돌려준다. 다른 도구에 넣을 보드 id를 여기서 얻는다.",
   inputSchema: {},
-  readOnly: true,
   async call(_args, context) {
-    const boards = await context.listBoards();
-    if (boards.length === 0) return "멤버인 보드가 없어요.";
+    const all = await context.listBoards();
+    if (all.length === 0) return "멤버인 보드가 없어요.";
+    const boards = all.slice(0, MAX_LISTED_BOARDS);
     const byId = new Map(boards.map((board) => [board.id, board]));
-    return "보드 " + boards.length + "개\n\n" + boards.map((board) => boardLine(board, byId)).join("\n");
+    const cut = all.length > boards.length;
+    return (
+      "보드 " + boards.length + "개" + (cut ? " (이름순 앞쪽만)" : "") + "\n\n" +
+      boards.map((board) => boardLine(board, byId)).join("\n") +
+      (cut ? "\n\n멤버인 보드가 더 있지만 앞 " + MAX_LISTED_BOARDS + "개만 보여요. 다른 보드는 board id를 알면 read_board·search로 열 수 있어요." : "")
+    );
   },
 });
 
-export const readBoardTool = defineTool({
+export const readBoardTool = defineReadTool({
   name: "read_board",
   description:
     "보드 하나를 마크다운으로 통째로 읽는다. 메모(제목·본문·색·글자 크기·위치·첨부 이름), 연결선, 메모판 소속이 들어 있다.",
   inputSchema: { board: boardArg },
-  readOnly: true,
   async call({ board }, context) {
+    // The board's own meta.name is the only name source; no board list query runs here.
     const doc = await context.readDoc(board);
-    const info = (await context.listBoards()).find((candidate) => candidate.id === board);
-    return renderBoard(board, viewBoard(doc, info?.name ?? board), await context.fileNames(board));
+    return renderBoard(board, viewBoard(doc, board), await context.fileNames(board));
   },
 });
 
@@ -199,7 +237,7 @@ function snippet(text: string, query: string): string {
   return (start > 0 ? "…" : "") + flat.slice(start, at + query.length + 80) + (at + query.length + 80 < flat.length ? "…" : "");
 }
 
-export const searchTool = defineTool({
+export const searchTool = defineReadTool({
   name: "search",
   description:
     "메모 제목·본문, 연결선 이름표, 첨부 이름에서 글자를 찾는다(대소문자 무시). board를 주면 그 보드만, 안 주면 멤버인 보드 전체를 찾는다.",
@@ -207,31 +245,40 @@ export const searchTool = defineTool({
     query: z.string().trim().min(1).max(200).describe("찾을 글자"),
     board: boardArg.optional().describe("한 보드로 좁힐 때만"),
   },
-  readOnly: true,
   async call({ query, board }, context) {
-    const all = await context.listBoards();
-    let targets = all;
-    if (board !== undefined) {
-      targets = all.filter((candidate) => candidate.id === board);
-      if (targets.length === 0) throw new McpToolError("board not found or not accessible");
-    }
     const notices: string[] = [];
-    if (targets.length > MAX_SEARCH_BOARDS) {
-      notices.push("보드가 많아 이름순 앞 " + MAX_SEARCH_BOARDS + "개만 찾았어요. board로 좁혀 다시 찾아보세요.");
-      targets = targets.slice(0, MAX_SEARCH_BOARDS);
+    // A named board is judged by membership alone; the board list (and its cap) is only for a search over everything.
+    let targets: Array<string | McpBoardInfo>;
+    if (board !== undefined) {
+      targets = [board];
+    } else {
+      targets = await context.listBoards();
+      if (targets.length > MAX_SEARCH_BOARDS) {
+        notices.push("보드가 많아 이름순 앞 " + MAX_SEARCH_BOARDS + "개만 찾았어요. board로 좁혀 다시 찾아보세요.");
+        targets = targets.slice(0, MAX_SEARCH_BOARDS);
+      }
     }
+    const budget = new SnapshotBudget(context.maxSearchSnapshotBytes);
 
     const needle = query.toLowerCase();
     const hits: string[] = [];
     let total = 0;
     for (const target of targets) {
-      const doc = await context.readDoc(target.id);
-      const view = viewBoard(doc, target.name);
-      const names = view.notes.some((note) => note.attachmentRef) ? await context.fileNames(target.id) : new Map<string, string>();
+      const boardId = typeof target === "string" ? target : target.id;
+      let doc;
+      try {
+        doc = await context.readDoc(target, budget);
+      } catch (error) {
+        if (!(error instanceof McpBudgetExceeded)) throw error;
+        notices.push("읽은 보드 데이터가 " + Math.round(budget.limitBytes / (1024 * 1024)) + "MB에 닿아 여기서 멈췄어요. 이 뒤의 보드는 찾지 못했어요. board로 좁혀 다시 찾아보세요.");
+        break;
+      }
+      const view = viewBoard(doc, typeof target === "string" ? target : target.name);
+      const names = view.notes.some((note) => note.attachmentRef) ? await context.fileNames(target) : new Map<string, string>();
       const byId = new Map(view.notes.map((note) => [note.id, note]));
       const record = (where: string, text: string) => {
         total += 1;
-        if (hits.length < MAX_SEARCH_HITS) hits.push("- " + target.name + " (" + target.id + ") · " + where + " · " + snippet(text, query));
+        if (hits.length < MAX_SEARCH_HITS) hits.push("- " + view.name + " (" + boardId + ") · " + where + " · " + snippet(text, query));
       };
       for (const note of view.notes) {
         const attachment = attachmentName(note, view, names);
@@ -250,8 +297,8 @@ export const searchTool = defineTool({
       for (const connection of view.connections) {
         if (connection.label && connection.status !== "rejected" && connection.label.toLowerCase().includes(needle)) {
           const source = byId.get(connection.sourceNoteId);
-          const target2 = byId.get(connection.targetNoteId);
-          const ends = [source, target2].map((note, i) => note === undefined ? "?" : oneLine(noteLabel(note)) + (i === 0 ? " →" : "")).join(" ");
+          const targetNote = byId.get(connection.targetNoteId);
+          const ends = [source, targetNote].map((note, i) => note === undefined ? "?" : oneLine(noteLabel(note)) + (i === 0 ? " →" : "")).join(" ");
           record("연결 " + ends + " 이름표", connection.label);
         }
       }

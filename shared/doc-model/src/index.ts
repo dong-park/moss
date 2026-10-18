@@ -8,6 +8,39 @@ export const CONNECTIONS_MAP = "connections";
 export const META_MAP = "meta";
 export const FILES_MAP = "files";
 
+/**
+ * `files` 맵 키 규칙 — 쓰는 쪽(web 업로더)과 읽는 쪽(sync MCP)이 같은 정의를 가져온다.
+ * 첨부 참조 키는 `opfs:<파일>`, 값은 서버 fileId다. `!`로 시작하는 키는 첨부가 아니라 표시다.
+ */
+export const LOCAL_REF_PREFIX = "opfs:";
+
+/** 저장 용량 상한에 막혀 올리지 못한 첨부의 실패 표시 값. `uploadFailedKey(ref)` 키에만 쓴다. */
+export const UPLOAD_FAILED_QUOTA = "!quota_exceeded";
+
+const UPLOAD_FAILED_PREFIX = "!failed:";
+
+/** 실패 표시 키. 참조 키(`opfs:…`)와 겹치지 않는다. */
+export function uploadFailedKey(localRef: string): string {
+  return UPLOAD_FAILED_PREFIX + localRef;
+}
+
+/** `files` 맵을 훑는 쪽이 첨부 참조와 표시를 가르는 데 쓴다. */
+export function isUploadFailedKey(key: string): boolean {
+  return key.startsWith(UPLOAD_FAILED_PREFIX);
+}
+
+/** 참조에서 로컬 파일 이름만 꺼낸다. 접두사가 없으면 그대로 돌려준다. */
+export function localRefName(localRef: string): string {
+  return localRef.startsWith(LOCAL_REF_PREFIX) ? localRef.slice(LOCAL_REF_PREFIX.length) : localRef;
+}
+
+/**
+ * 원격 MCP(에이전트)가 메모·연결을 쓸 때 남기는 변경 출처 칸(D6 → A). 값은 마지막으로 쓴 커넥터 이름과 시각이다.
+ * NOTE_FIELDS·CONNECTION_FIELDS 밖에 둬서 web의 읽기·쓰기가 건드리지 않는다 — web이 메모를 고쳐도 칸이 남으므로
+ * 읽는 쪽은 `updatedAt`이 `mcpAt`보다 크면 그 뒤에 다른 곳에서 고쳐졌다고 본다.
+ */
+export const PROVENANCE_FIELDS = ["mcpClient", "mcpAt"] as const;
+
 /** 기기 로컬 필드(lastVisitedAt, lastOpenedAt, remote)는 문서에 쓰지 않는다. */
 export const NOTE_FIELDS = [
   "id", "boardId", "kind", "x", "y", "width", "height",

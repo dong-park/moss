@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { Client } from "pg";
 import { MemoryDocumentStore } from "../src/documentStore.ts";
-import { createPostgresBoardSource } from "../src/mcpBoards.ts";
+import { createPostgresBoardSource, MAX_LISTED_BOARDS } from "../src/mcpBoards.ts";
 import { startEmbeddedPg, type EmbeddedPgHandle } from "./helpers.ts";
 
 const ME = "11111111-1111-4111-8111-111111111111";
@@ -45,6 +45,23 @@ describe("createPostgresBoardSource (embedded Postgres)", () => {
     expect(grand).toEqual({ id: "b-grand", name: "파일함 안 파일함", parentId: "b-child", role: "owner" });
     expect(boards.find((board) => board.id === "b-shared")?.role).toBe("editor");
     expect(await source.listBoards("99999999-9999-4999-8999-999999999999")).toEqual([]);
+  });
+
+  test("a member of many boards gets the first ones by name, plus one extra so the cut is visible", async () => {
+    const many = "44444444-4444-4444-8444-444444444444";
+    const total = MAX_LISTED_BOARDS + 5;
+    await client.query(
+      `insert into boards (id, name) select 'b-bulk' || lpad(i::text, 4, '0'), 'z보드 ' || lpad(i::text, 4, '0') from generate_series(1, $1) i`,
+      [total],
+    );
+    await client.query(
+      `insert into members (board_id, user_id, role) select 'b-bulk' || lpad(i::text, 4, '0'), $2::uuid, 'owner' from generate_series(1, $1) i`,
+      [total, many],
+    );
+    const boards = await createPostgresBoardSource(client, new MemoryDocumentStore()).listBoards(many);
+    expect(boards).toHaveLength(MAX_LISTED_BOARDS + 1);
+    expect(boards[0]?.name).toBe("z보드 0001");
+    expect(boards.at(-1)?.name).toBe("z보드 " + String(MAX_LISTED_BOARDS + 1).padStart(4, "0"));
   });
 
   test("maps file ids to names for one board", async () => {
