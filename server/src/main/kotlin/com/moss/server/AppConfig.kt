@@ -40,6 +40,8 @@ data class AppConfig(
     // D4: 범위 없이 읽기쓰기 하나. 수명은 D4가 정하지 않아 접근 1시간, 갱신 30일로 두고 설정값으로 뺐다.
     val mcpAccessTtlSeconds: Long = 60 * 60,
     val mcpRefreshTtlSeconds: Long = 30L * 24 * 60 * 60,
+    // 앞단 프록시 중 X-Forwarded-For를 믿을 홉 수. 0이면 헤더를 보지 않고 접속 주소를 쓴다(OAuth 요청 수 상한의 키).
+    val trustedProxyHops: Int = 0,
 ) {
     companion object {
         const val MIN_JWT_SECRET_BYTES = 32
@@ -91,6 +93,9 @@ data class AppConfig(
                     ?: (60L * 60),
                 mcpRefreshTtlSeconds = env["MCP_REFRESH_TTL_SECONDS"]?.let { positiveBytes("MCP_REFRESH_TTL_SECONDS", it) }
                     ?: (30L * 24 * 60 * 60),
+                trustedProxyHops = env["TRUSTED_PROXY_HOPS"]?.takeIf { it.isNotBlank() }?.let { raw ->
+                    requireNotNull(raw.trim().toIntOrNull()?.takeIf { it >= 0 }) { "TRUSTED_PROXY_HOPS must be a non-negative integer, got '$raw'" }
+                } ?: 0,
             )
         }
 

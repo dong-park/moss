@@ -19,6 +19,14 @@ import java.net.Socket
 import java.net.SocketTimeoutException
 import java.net.URI
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ExecutionException
+import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.ScheduledThreadPoolExecutor
+import java.util.concurrent.SynchronousQueue
+import java.util.concurrent.ThreadFactory
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 import javax.net.ssl.SNIHostName
 import javax.net.ssl.SSLSocket
 import javax.net.ssl.SSLSocketFactory
@@ -79,7 +87,7 @@ fun interface ClientMetadataFetcher {
  * - https, 기본 포트(443)만 받는다.
  * - DNS를 한 번만 풀어 모든 주소가 공개 주소일 때만 쓰고, 그 푼 주소로 직접 접속한다(HttpClient가 다시 풀지 않으니 재바인딩 틈이 없다).
  *   TLS는 원래 호스트 이름으로 SNI와 인증서 이름을 검사한다.
- * - 리다이렉트는 따르지 않고(200만 받음), 응답 크기와 전체 소요 시간에 상한을 둔다.
+ * - 리다이렉트는 따르지 않고(200만 받음), 응답 크기와 전체 소요 시간에 상한을 둔다. 시간 상한은 DNS 풀기와 TLS 핸드셰이크까지 포함한다.
  * 요청은 HTTP/1.0 이라 응답이 청크 없이 연결 종료로 끝난다.
  */
 class PinnedMetadataFetcher(
@@ -95,15 +103,11 @@ class PinnedMetadataFetcher(
         if (uri.scheme != "https" || host.isNullOrBlank() || uri.userInfo != null || uri.fragment != null ||
             (uri.port != -1 && uri.port != HTTPS_PORT)
         ) throw ClientMetadataException("클라이언트 주소가 올바르지 않아요")
-        val addresses = try {
-            resolve(host)
-        } catch (e: Exception) {
-            throw ClientMetadataException("클라이언트 주소를 찾을 수 없어요")
-        }
+        val deadline = System.nanoTime() + timeoutMillis * 1_000_000
+        val addresses = resolveBefore(host, deadline)
         if (addresses.isEmpty() || addresses.any { !isPublicAddress(it) }) {
             throw ClientMetadataException("클라이언트 주소가 공개 주소가 아니에요")
         }
-        val deadline = System.nanoTime() + timeoutMillis * 1_000_000
         val socket = connect(addresses, host, deadline)
         try {
             socket.use { exchange(it, host, uri, deadline) }
@@ -118,6 +122,23 @@ class PinnedMetadataFetcher(
         val left = (deadline - System.nanoTime()) / 1_000_000
         if (left <= 0) throw ClientMetadataException("클라이언트 문서가 너무 느려요")
         return left.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+    }
+
+    /** DNS 풀기는 끊을 수 없는 호출이라 따로 돌리고 남은 시간만큼만 기다린다. 늦게 끝난 결과는 버린다. */
+    private fun resolveBefore(host: String, deadline: Long): List<InetAddress> {
+        val pending = try {
+            dnsPool.submit<List<InetAddress>> { resolve(host) }
+        } catch (e: RejectedExecutionException) {
+            throw ClientMetadataException("잠시 뒤 다시 시도해 주세요")
+        }
+        return try {
+            pending.get(remainingMillis(deadline).toLong(), TimeUnit.MILLISECONDS)
+        } catch (e: TimeoutException) {
+            pending.cancel(true)
+            throw ClientMetadataException("클라이언트 주소를 찾는 데 너무 오래 걸려요")
+        } catch (e: ExecutionException) {
+            throw ClientMetadataException("클라이언트 주소를 찾을 수 없어요")
+        }
     }
 
     /** 검사한 주소만 차례로 시도한다. 호스트 이름은 다시 풀지 않는다. */
@@ -184,9 +205,21 @@ class PinnedMetadataFetcher(
         private const val HTTPS_PORT = 443
         private val STATUS_RE = Regex("^HTTP/1\\.[01] 200( .*)?$")
 
-        /** 검사한 주소로 직접 연결하고, TLS 이름 검사는 원래 호스트로 한다. */
-        private fun openTlsSocket(address: InetAddress, port: Int, host: String, timeoutMillis: Int): Socket {
+        private fun daemon(name: String) = ThreadFactory { r -> Thread(r, name).apply { isDaemon = true } }
+
+        /** DNS 풀기용. 느린 이름 서버에 스레드가 쌓이지 않게 동시에 8개까지만 돌리고 넘치면 거절한다. */
+        private val dnsPool = ThreadPoolExecutor(0, 8, 30, TimeUnit.SECONDS, SynchronousQueue(), daemon("oauth-dns"))
+
+        /** 접속·핸드셰이크가 시간 상한을 넘으면 소켓을 닫아 막힌 호출을 풀어 준다. */
+        private val watchdog = ScheduledThreadPoolExecutor(1, daemon("oauth-fetch-watchdog")).apply { removeOnCancelPolicy = true }
+
+        /**
+         * 검사한 주소로 직접 연결하고, TLS 이름 검사는 원래 호스트로 한다.
+         * soTimeout은 읽기 한 번마다 걸려서 핸드셰이크를 조금씩 흘려 보내면 넘길 수 있으므로, 접속부터 핸드셰이크까지 [timeoutMillis]가 지나면 소켓을 닫는다.
+         */
+        internal fun openTlsSocket(address: InetAddress, port: Int, host: String, timeoutMillis: Int): Socket {
             val raw = Socket()
+            val guard = watchdog.schedule({ runCatching { raw.close() } }, timeoutMillis.toLong(), TimeUnit.MILLISECONDS)
             try {
                 raw.connect(InetSocketAddress(address, port), timeoutMillis)
                 raw.soTimeout = timeoutMillis
@@ -196,8 +229,11 @@ class PinnedMetadataFetcher(
                     runCatching { SNIHostName(host) }.getOrNull()?.let { serverNames = listOf(it) }
                 }
                 tls.startHandshake()
+                // 감시 작업이 이미 돌았다면 소켓이 닫혀 있으니 실패로 본다.
+                if (!guard.cancel(false) || raw.isClosed) throw SocketTimeoutException("handshake deadline")
                 return tls
             } catch (e: Exception) {
+                guard.cancel(false)
                 runCatching { raw.close() }
                 throw if (e is IOException) e else IOException(e)
             }

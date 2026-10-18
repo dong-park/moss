@@ -110,6 +110,18 @@ class AttemptLimiter(private val limit: Int, private val windowMillis: Long, pri
     private companion object { const val MAX_KEYS = 10_000 }
 }
 
+/**
+ * 요청 수 상한의 키로 쓸 클라이언트 주소.
+ * 믿을 프록시가 [trustedHops]개면 그 프록시들이 X-Forwarded-For 오른쪽에 하나씩 덧붙이므로, 오른쪽에서 [trustedHops]번째가
+ * 첫 프록시가 본 클라이언트 주소다. 그보다 왼쪽은 클라이언트가 마음대로 쓸 수 있어 보지 않는다.
+ * 0이거나 항목이 모자라면(프록시를 거치지 않은 요청) 접속 주소를 쓴다.
+ */
+fun clientAddress(remoteHost: String, forwardedFor: List<String>, trustedHops: Int): String {
+    if (trustedHops <= 0) return remoteHost
+    val hops = forwardedFor.flatMap { it.split(',') }.map { it.trim() }.filter { it.isNotEmpty() }
+    return hops.getOrNull(hops.size - trustedHops) ?: remoteHost
+}
+
 private val CODE_CHALLENGE_RE = Regex("^[A-Za-z0-9_-]{43,128}$")
 private val CODE_VERIFIER_RE = Regex("^[A-Za-z0-9._~-]{43,128}$")
 
@@ -147,6 +159,8 @@ fun Route.oauthRoutes(
     resolver: ClientResolver = ClientResolver(store),
 ) {
     val config = server.config
+    fun ApplicationCall.clientKey(): String =
+        clientAddress(request.origin.remoteHost, request.headers.getAll("X-Forwarded-For").orEmpty(), config.trustedProxyHops)
     val registerLimiter = AttemptLimiter(limit = 20, windowMillis = 60 * 60_000L)
     val consentLoginLimiter = AttemptLimiter(limit = 10, windowMillis = 60_000L)
     val tokenLimiter = AttemptLimiter(limit = 120, windowMillis = 60_000L)
@@ -173,7 +187,7 @@ fun Route.oauthRoutes(
     // ---- 클라이언트 등록(DCR, RFC 7591) ----
     post("/oauth/register") {
         try {
-            if (!registerLimiter.tryAcquire(call.request.origin.remoteHost)) {
+            if (!registerLimiter.tryAcquire(call.clientKey())) {
                 throw OAuthException("rate_limited", "잠시 뒤 다시 시도해 주세요", HttpStatusCode.TooManyRequests)
             }
             val doc = runCatching { Json.parseToJsonElement(call.receiveText()) }.getOrNull() as? JsonObject
@@ -252,7 +266,7 @@ fun Route.oauthRoutes(
     }
 
     suspend fun ApplicationCall.authorizeAllowed(): Boolean {
-        if (authorizeLimiter.tryAcquire(request.origin.remoteHost)) return true
+        if (authorizeLimiter.tryAcquire(clientKey())) return true
         respondPage(HttpStatusCode.TooManyRequests, OAuthPages.errorPage("요청이 너무 많아요. 잠시 뒤 다시 해 주세요"))
         return false
     }
@@ -275,7 +289,7 @@ fun Route.oauthRoutes(
         }
         val email = normalizeEmail(params["email"].orEmpty())
         val password = params["password"].orEmpty()
-        if (!consentLoginLimiter.tryAcquire("${call.request.origin.remoteHost}:${email.take(200)}")) {
+        if (!consentLoginLimiter.tryAcquire("${call.clientKey()}:${email.take(200)}")) {
             return@post call.respondAuthz(authz, params, email, "시도가 너무 많아요. 잠시 뒤 다시 해 주세요", HttpStatusCode.TooManyRequests)
         }
         val failed = "메일이나 비밀번호가 맞지 않아요"
@@ -302,7 +316,7 @@ fun Route.oauthRoutes(
     // ---- 토큰 발급·갱신 ----
     post("/oauth/token") {
         try {
-            if (!tokenLimiter.tryAcquire(call.request.origin.remoteHost)) {
+            if (!tokenLimiter.tryAcquire(call.clientKey())) {
                 throw OAuthException("rate_limited", "잠시 뒤 다시 시도해 주세요", HttpStatusCode.TooManyRequests)
             }
             val p = call.receiveParameters()
@@ -330,6 +344,7 @@ fun Route.oauthRoutes(
                         is RefreshResult.Ok -> result.tokens
                         RefreshResult.Invalid -> throw OAuthException("invalid_grant", "갱신 토큰이 유효하지 않아요")
                         RefreshResult.Reused -> throw OAuthException("invalid_grant", "이미 쓴 갱신 토큰이라 연결을 해제했어요. 다시 연결해 주세요")
+                        RefreshResult.WrongClient -> throw OAuthException("invalid_grant", "다른 클라이언트의 갱신 토큰이라 연결을 해제했어요. 다시 연결해 주세요")
                     }
                 }
                 else -> throw OAuthException("unsupported_grant_type", "authorization_code 와 refresh_token 만 받아요")

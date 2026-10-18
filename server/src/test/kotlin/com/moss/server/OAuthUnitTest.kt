@@ -6,6 +6,7 @@ import com.moss.server.oauth.ClientResolver
 import com.moss.server.oauth.OAuthStore
 import com.moss.server.oauth.PinnedMetadataFetcher
 import com.moss.server.oauth.RedirectUris
+import com.moss.server.oauth.clientAddress
 import com.moss.server.oauth.pkceChallenge
 import kotlinx.coroutines.runBlocking
 import java.net.InetAddress
@@ -224,6 +225,54 @@ class OAuthUnitTest {
     }
 
     @Test
+    fun metadataFetchGivesUpOnSlowDns() {
+        // 이름 서버가 응답하지 않아도 전체 시간 상한 안에서 끝나야 한다.
+        val fetcher = PinnedMetadataFetcher(
+            resolve = { Thread.sleep(3_000); listOf(publicIp) },
+            openSocket = { _, _, _, _ -> error("접속까지 가면 안 된다") },
+            timeoutMillis = 300,
+        )
+        val started = System.nanoTime()
+        assertFailsWith<ClientMetadataException> { runBlocking { fetcher.fetch("https://slow-dns.example/c.json") } }
+        assertTrue((System.nanoTime() - started) / 1_000_000 < 2_000)
+    }
+
+    @Test
+    fun tlsHandshakeIsBoundedByTheTotalDeadline() {
+        // TLS 레코드를 100ms마다 한 바이트씩 흘리는 서버: 읽기마다 걸리는 soTimeout(300ms)으로는 끊기지 않으니 전체 상한이 끊어야 한다.
+        ServerSocket(0).use { server ->
+            Thread {
+                runCatching {
+                    server.accept().use { s ->
+                        val out = s.getOutputStream()
+                        out.write(byteArrayOf(0x16, 0x03, 0x03, 0x01, 0x00)); out.flush()
+                        repeat(256) { out.write(0x02); out.flush(); Thread.sleep(100) }
+                    }
+                }
+            }.apply { isDaemon = true }.start()
+            val started = System.nanoTime()
+            assertFailsWith<java.io.IOException> {
+                PinnedMetadataFetcher.openTlsSocket(InetAddress.getLoopbackAddress(), server.localPort, "app.example", 300)
+            }
+            assertTrue((System.nanoTime() - started) / 1_000_000 < 2_000)
+        }
+    }
+
+    @Test
+    fun limiterKeyUsesForwardedForOnlyForTrustedHops() {
+        // 기본(0)은 헤더를 보지 않는다.
+        assertEquals("10.0.0.1", clientAddress("10.0.0.1", listOf("1.2.3.4"), 0))
+        // 믿을 프록시 하나: 그 프록시가 덧붙인 맨 오른쪽. 클라이언트가 앞에 써 넣은 값은 무시한다.
+        assertEquals("203.0.113.7", clientAddress("10.0.0.1", listOf("forged, 203.0.113.7"), 1))
+        assertEquals("203.0.113.7", clientAddress("10.0.0.1", listOf("forged", "203.0.113.7"), 1))
+        // 믿을 프록시 둘: 오른쪽에서 두 번째.
+        assertEquals("203.0.113.7", clientAddress("10.0.0.1", listOf("forged, 203.0.113.7, 10.0.0.9"), 2))
+        // 프록시를 거치지 않아 항목이 모자라면 접속 주소.
+        assertEquals("10.0.0.1", clientAddress("10.0.0.1", emptyList(), 1))
+        assertEquals("10.0.0.1", clientAddress("10.0.0.1", listOf("203.0.113.7"), 2))
+    }
+
+    @Test
     fun limiterBlocksAfterTheLimitAndResetsAfterTheWindow() {
         var now = 0L
         val limiter = AttemptLimiter(limit = 2, windowMillis = 1000, now = { now })
@@ -242,6 +291,11 @@ class OAuthUnitTest {
         assertEquals("http://localhost:8080/mcp", d.mcpResourceUrl)
         assertEquals(3600L, d.mcpAccessTtlSeconds)
         assertEquals(30L * 24 * 3600, d.mcpRefreshTtlSeconds)
+        assertEquals(0, d.trustedProxyHops)
+        assertEquals(1, AppConfig.fromEnv(mapOf("JWT_SECRET" to strongSecret, "TRUSTED_PROXY_HOPS" to "1")).trustedProxyHops)
+        assertFailsWith<IllegalArgumentException> {
+            AppConfig.fromEnv(mapOf("JWT_SECRET" to strongSecret, "TRUSTED_PROXY_HOPS" to "-1"))
+        }
 
         val c = AppConfig.fromEnv(
             mapOf(

@@ -49,8 +49,8 @@ class OAuthFlowTest : ApiTest() {
     private val challenge = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
     private val redirect = "https://claude.example/callback"
 
-    private fun oauthApp(block: suspend ApplicationTestBuilder.() -> Unit) = testApplication {
-        application { mossModule(cfg, google, TestDb.dataSource) }
+    private fun oauthApp(appConfig: AppConfig = cfg, block: suspend ApplicationTestBuilder.() -> Unit) = testApplication {
+        application { mossModule(appConfig, google, TestDb.dataSource) }
         block()
     }
 
@@ -305,7 +305,7 @@ class OAuthFlowTest : ApiTest() {
     }
 
     @Test
-    fun refreshNeedsTheClientThatWasIssuedTheToken() = oauthApp {
+    fun refreshFromAnotherClientEndsTheConnection() = oauthApp {
         val client = plain()
         client.signup()
         val clientId = client.register()
@@ -317,12 +317,15 @@ class OAuthFlowTest : ApiTest() {
         val missing = client.refresh(refresh, null)
         assertEquals(HttpStatusCode.BadRequest, missing.status)
         assertEquals("invalid_request", missing.obj()["error"]!!.jsonPrimitive.content)
+        // client_id 가 빠진 요청은 형식 오류일 뿐이라 연결을 건드리지 않는다.
+        assertEquals("true", client.introspect(access).obj()["active"]!!.jsonPrimitive.content)
+
+        // 다른 클라이언트가 갱신 토큰을 내면 샌 것으로 보고 재사용과 같게 연결 전체를 끊는다.
         val other = client.refresh(refresh, otherClientId)
         assertEquals(HttpStatusCode.BadRequest, other.status)
         assertEquals("invalid_grant", other.obj()["error"]!!.jsonPrimitive.content)
-        // 거절된 시도는 토큰을 쓰지도 연결을 끊지도 않는다.
-        assertEquals("true", client.introspect(access).obj()["active"]!!.jsonPrimitive.content)
-        assertEquals(HttpStatusCode.OK, client.refresh(refresh, clientId).status)
+        assertEquals("false", client.introspect(access).obj()["active"]!!.jsonPrimitive.content)
+        assertEquals(HttpStatusCode.BadRequest, client.refresh(refresh, clientId).status)
     }
 
     @Test
@@ -331,6 +334,28 @@ class OAuthFlowTest : ApiTest() {
         repeat(60) { assertEquals(HttpStatusCode.BadRequest, client.get("/oauth/authorize?client_id=moss_nope").status) }
         assertEquals(HttpStatusCode.TooManyRequests, client.get("/oauth/authorize?client_id=moss_nope").status)
         assertEquals(HttpStatusCode.TooManyRequests, client.decide("moss_nope").status)
+    }
+
+    @Test
+    fun forgedForwardedForDoesNotEscapeTheAuthorizeLimit() = oauthApp {
+        // 기본값(믿을 프록시 0)에서는 헤더를 보지 않으므로 요청마다 다른 값을 넣어도 한 버킷이다.
+        val client = plain()
+        repeat(60) { i ->
+            assertEquals(HttpStatusCode.BadRequest, client.get("/oauth/authorize?client_id=moss_nope") { header("X-Forwarded-For", "198.51.100.$i") }.status)
+        }
+        assertEquals(HttpStatusCode.TooManyRequests, client.get("/oauth/authorize?client_id=moss_nope") { header("X-Forwarded-For", "198.51.100.99") }.status)
+    }
+
+    @Test
+    fun trustedProxyHopsSplitTheAuthorizeLimitPerClient() = oauthApp(cfg.copy(trustedProxyHops = 1)) {
+        val client = plain()
+        // 프록시가 덧붙인 맨 오른쪽 주소가 같으면, 왼쪽을 위조해도 같은 버킷이다.
+        repeat(60) { i ->
+            assertEquals(HttpStatusCode.BadRequest, client.get("/oauth/authorize?client_id=moss_nope") { header("X-Forwarded-For", "forged-$i, 203.0.113.7") }.status)
+        }
+        assertEquals(HttpStatusCode.TooManyRequests, client.get("/oauth/authorize?client_id=moss_nope") { header("X-Forwarded-For", "forged-x, 203.0.113.7") }.status)
+        // 프록시 뒤의 다른 사용자는 자기 버킷을 쓴다.
+        assertEquals(HttpStatusCode.BadRequest, client.get("/oauth/authorize?client_id=moss_nope") { header("X-Forwarded-For", "203.0.113.8") }.status)
     }
 
     @Test

@@ -93,6 +93,8 @@ sealed interface RefreshResult {
     data object Invalid : RefreshResult
     /** 이미 쓴 갱신 토큰이 다시 왔다. 연결 전체를 폐기했다. */
     data object Reused : RefreshResult
+    /** 발급받지 않은 클라이언트가 갱신 토큰을 냈다. 토큰이 샜다고 보고 재사용과 같게 연결 전체를 폐기했다. */
+    data object WrongClient : RefreshResult
 }
 
 /**
@@ -195,7 +197,7 @@ class OAuthStore(private val config: AppConfig) {
         return TokenPair(access, refresh, config.mcpAccessTtlSeconds)
     }
 
-    /** 갱신 토큰을 한 번 쓰고 새 쌍을 낸다. 이미 쓴 토큰이 다시 오면 연결 전체를 폐기한다. */
+    /** 갱신 토큰을 한 번 쓰고 새 쌍을 낸다. 이미 쓴 토큰이 다시 오거나 다른 클라이언트가 내면 연결 전체를 폐기한다. */
     suspend fun refresh(refreshToken: String, clientId: String): RefreshResult = dbQuery {
         val hash = sha256(refreshToken)
         val now = System.currentTimeMillis()
@@ -206,7 +208,10 @@ class OAuthStore(private val config: AppConfig) {
         if (row[OAuthGrants.revokedAt] != null || row[OAuthTokens.expiresAt] < now) {
             return@dbQuery RefreshResult.Invalid
         }
-        if (clientId != row[OAuthGrants.clientId]) return@dbQuery RefreshResult.Invalid
+        if (clientId != row[OAuthGrants.clientId]) {
+            revokeInTx(grantId)
+            return@dbQuery RefreshResult.WrongClient
+        }
         // 동시에 두 번 오면 먼저 표시한 쪽만 통과하고 나머지는 재사용으로 본다.
         val claimed = OAuthTokens.update({ (OAuthTokens.tokenHash eq hash) and OAuthTokens.consumedAt.isNull() }) {
             it[consumedAt] = now

@@ -54,3 +54,9 @@ server AuthRoutes.kt, AppConfig.kt
   - 남은 틈(결정 필요): 프록시 뒤에서는 remoteHost가 프록시 주소 하나라 모든 limiter(register·token·authorize·로그인)가 한 버킷으로 묶인다. 신뢰할 프록시 헤더(X-Forwarded-For 등) 구성이 정해지지 않아 이번에 고치지 않았다. 속도 제한은 여전히 메모리 안이라 인스턴스 하나 기준이다. 실제 클라이언트 ID 메타데이터 문서 연결은 n8에서 확인한다.
 - 고쳐줘 (2026-10-18, 메인 · wave-20261018-1530 /review P1): authorize limiter가 remoteHost로 키를 잡아 프록시 뒤에서 모든 사용자가 한 버킷이 된다. AppConfig에 신뢰할 프록시 홉 수 설정(env, 기본 0)을 두고, 0이면 remoteHost, 1 이상이면 X-Forwarded-For 오른쪽에서 그 홉 수만큼 건너뛴 주소를 키로 쓴다. 기본값에서 지금 동작이 바뀌지 않는 것과 헤더 위조로 상한을 피할 수 없는 것을 테스트로 고정한다. 배포 값은 n8에서 정한다.
 - 고쳐줘 (2026-10-18, 메인 · /review P2): 메타데이터 fetch의 DNS 풀기와 TLS 핸드셰이크도 5초 상한 안에 넣는다. refresh에서 client_id가 안 맞으면 재사용 감지와 같게 그 토큰 계열을 폐기한다.
+- 수정 (2026-10-18, runner · wave-20261018-1530 고쳐줘 반영):
+  - 프록시 홉: AppConfig에 `TRUSTED_PROXY_HOPS`(trustedProxyHops, 기본 0, 음수면 기동 거절). OAuthRoutes의 `clientAddress`가 0이면 remoteHost, N이면 X-Forwarded-For(여러 줄이면 이어 붙임)의 오른쪽에서 N번째를 키로 쓴다. 믿을 프록시 N개가 오른쪽에 하나씩 덧붙이므로 그 N개 중 가장 왼쪽이 첫 프록시가 본 클라이언트 주소이고, 그보다 왼쪽은 클라이언트가 쓴 값이라 보지 않는다. 브리프 문구 "N만큼 건너뛴 주소"를 글자대로 읽으면 N=1에서 클라이언트가 쓴 값을 집어 위조로 상한을 피할 수 있어서 이렇게 해석했다. 항목이 N개보다 적으면(프록시를 거치지 않은 요청) remoteHost. authorize만이 아니라 같은 문제가 있던 register·token·동의 로그인 limiter도 같은 키를 쓴다. 웹 로그인(AuthRoutes)의 RateLimit 키는 n3 범위 밖이라 그대로 remoteHost다.
+  - 배포 주의(n8): N을 실제 프록시 수보다 크게 잡으면 클라이언트가 쓴 값을 믿게 되고, Ktor 포트가 프록시를 거치지 않고 바깥에 열려 있으면 헤더 위조로 키를 바꿀 수 있다.
+  - fetch 시간 상한: deadline을 DNS 풀기 전에 잡는다. DNS는 동시 8개 상한의 데몬 스레드에서 돌리고 남은 시간만 기다린다(넘치면 거절). 접속·TLS 핸드셰이크는 남은 시간이 지나면 감시 작업이 소켓을 닫는다(soTimeout은 읽기마다라 조금씩 흘리는 핸드셰이크를 못 끊었다).
+  - refresh client_id 불일치: 재사용 감지와 같게 연결 전체를 폐기하고 invalid_grant(RefreshResult.WrongClient). client_id가 빠진 요청은 형식 오류(invalid_request)라 연결을 건드리지 않는다.
+  - 검증: server 전체 116개 통과(격리 복사본 /tmp/moss-n3-build). 새 테스트: 느린 DNS, 100ms마다 한 바이트 흘리는 TLS 핸드셰이크(감시 작업을 빼면 26.5초 걸려 실패하는 것 확인), 홉 키 고르기, TRUSTED_PROXY_HOPS 설정, 기본값에서 X-Forwarded-For 위조로 상한을 못 피함, 홉 1에서 왼쪽 위조는 같은 버킷·다른 사용자는 다른 버킷, 다른 클라이언트의 refresh 뒤 접근·갱신 토큰 모두 무효.
