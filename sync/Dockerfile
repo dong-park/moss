@@ -3,10 +3,11 @@ FROM oven/bun:1.3.14-alpine
 WORKDIR /app
 
 # Runtime deps only: embedded-postgres is a devDependency for tests.
-COPY package.json bun.lock ./
+COPY shared/doc-model ../shared/doc-model
+COPY sync/package.json sync/bun.lock ./
 RUN bun install --frozen-lockfile --production
 
-COPY src ./src
+COPY sync/src ./src
 
 ENV NODE_ENV=production \
     PORT=1234 \

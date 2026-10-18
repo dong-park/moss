@@ -1,9 +1,10 @@
 # 로컬 OrbStack 배포용. NEXT_PUBLIC_* 는 빌드 때 번들에 박히므로 build arg로 받는다.
 FROM oven/bun:1 AS build
 WORKDIR /app
-COPY package.json bun.lock* ./
+COPY shared/doc-model ../shared/doc-model
+COPY web/package.json web/bun.lock* ./
 RUN bun install
-COPY . .
+COPY web/ .
 ARG NEXT_PUBLIC_MOSS_API_URL
 ARG NEXT_PUBLIC_MOSS_SYNC_URL
 ARG NEXT_PUBLIC_GOOGLE_CLIENT_ID

@@ -50,7 +50,8 @@ services:
 
   sync:
     build:
-      context: ./sync
+      context: .
+      dockerfile: sync/Dockerfile
     environment:
       PORT: "1234"
       INTERNAL_PORT: "1235"
@@ -75,7 +76,8 @@ services:
   # 로컬 배포용 웹. 3000은 next dev가 쓰므로 3001로 연다.
   web:
     build:
-      context: ./web
+      context: .
+      dockerfile: web/Dockerfile
       args:
         NEXT_PUBLIC_MOSS_API_URL: ${NEXT_PUBLIC_MOSS_API_URL:-http://localhost:8080}
         NEXT_PUBLIC_MOSS_SYNC_URL: ${NEXT_PUBLIC_MOSS_SYNC_URL:-ws://localhost:1234}

@@ -14,6 +14,7 @@
         "@milkdown/react": "^7.21.1",
         "@milkdown/theme-nord": "^7.21.1",
         "@milkdown/utils": "^7.21.1",
+        "@moss/doc-model": "file:../shared/doc-model",
         "@radix-ui/react-context-menu": "^2.2.16",
         "@radix-ui/react-dialog": "^1.1.15",
         "@radix-ui/react-dropdown-menu": "^2.1.16",
@@ -370,6 +371,8 @@
     "@milkdown/transformer": ["@milkdown/transformer@7.21.1", "", { "dependencies": { "@milkdown/exception": "7.21.1", "@milkdown/prose": "7.21.1", "remark": "^15.0.1", "unified": "^11.0.3" } }, "sha512-pI8uUVyy557s+F/NvyIoUKr3w4Imy2GXEZpFC6LX0/o0hWrQGlq18Lp02NCnhcMvlPtL25LiLVNB6+C/ksgfTg=="],
 
     "@milkdown/utils": ["@milkdown/utils@7.21.1", "", { "dependencies": { "@milkdown/core": "7.21.1", "@milkdown/ctx": "7.21.1", "@milkdown/exception": "7.21.1", "@milkdown/prose": "7.21.1", "@milkdown/transformer": "7.21.1", "nanoid": "^5.0.9" } }, "sha512-BQzsziiPLyXhsiKnQnqqOsN7YY3nF2qk5vdx3MkxTuGAEC6t7wGJDLG+c0+4f73KBKxCMAuPNEGx5Q191/amXQ=="],
+
+    "@moss/doc-model": ["@moss/doc-model@file:../shared/doc-model", {}],
 
     "@napi-rs/wasm-runtime": ["@napi-rs/wasm-runtime@1.1.4", "", { "dependencies": { "@tybys/wasm-util": "^0.10.1" }, "peerDependencies": { "@emnapi/core": "^1.7.1", "@emnapi/runtime": "^1.7.1" } }, "sha512-3NQNNgA1YSlJb/kMH1ildASP9HW7/7kYnRI2szWJaofaS1hWmbGI4H+d3+22aGzXXN9IJ+n+GiFVcGipJP18ow=="],
 
