@@ -469,6 +469,33 @@ export async function dispatchOp(
       return { id };
     }
 
+    // 사진 카드(photo): 사진 자체가 카드다. 현재 보드에만 만든다. 판 안에 놓으면
+    // addPhotoAt의 소속 판정으로 판에 들어간다. naturalW/H로 원본 비율을 지킨다.
+    case "photos.create": {
+      const { isCurrent } = resolveBoard(params.boardId);
+      if (!isCurrent) throw new Error("사진 카드는 현재 보드에만 만들 수 있습니다. boards_switch로 먼저 전환하세요");
+      const dataBase64 = typeof params.dataBase64 === "string" ? params.dataBase64 : "";
+      const mimeType = typeof params.mimeType === "string" ? params.mimeType : "";
+      if (!dataBase64 || !mimeType) throw new Error("사진에는 dataBase64와 mimeType이 필요합니다");
+      if (!SUPPORTED_IMAGE_TYPES.has(mimeType)) throw new Error(`지원하지 않는 이미지 형식입니다: ${mimeType}`);
+      const blob = base64ToBlob(dataBase64, mimeType);
+      if (blob.size > MAX_IMAGE_BYTES) {
+        throw new Error(`이미지가 너무 큽니다(${blob.size} bytes > ${MAX_IMAGE_BYTES}).`);
+      }
+      const num = (v: unknown, d: number) => (typeof v === "number" && Number.isFinite(v) ? v : d);
+      const naturalW = num(params.naturalW, 0);
+      const naturalH = num(params.naturalH, 0);
+      const ref = await storeAttachment(ws.currentBoardId, makeAttachmentFilename(mimeType), blob);
+      const id = ws.addPhotoAt(num(params.x, 40), num(params.y, 40), { ref, mediaType: mimeType, naturalW, naturalH });
+      if (typeof params.width === "number" && Number.isFinite(params.width)) {
+        const ratio = naturalW > 0 && naturalH > 0 ? naturalH / naturalW : 1;
+        ws.resizeCard(id, { width: params.width, height: params.width * ratio });
+      }
+      if (typeof params.caption === "string" && params.caption.trim()) ws.setContent(id, params.caption.trim());
+      ws.clearSelection();
+      return { id, kind: "photo" };
+    }
+
     // 메모판(frame): 현재 보드에만 만든다. 판을 먼저 만든 뒤 그 안에 만든 메모는
     // addCardAt의 소속 판정으로 판에 들어간다(판을 옮기면 같이 움직인다).
     case "frames.create": {

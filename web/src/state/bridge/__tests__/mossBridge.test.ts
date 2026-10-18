@@ -284,6 +284,19 @@ describe("dispatchOp", () => {
     );
   });
 
+  it("photos.create → 비율 지킨 사진 카드, 캡션, 판 소속", async () => {
+    const { id: frame } = (await dispatchOp("frames.create", { x: 0, y: 0, width: 700, height: 500 })) as { id: string };
+    const { id } = (await dispatchOp("photos.create", {
+      dataBase64: PNG_B64, mimeType: "image/png", naturalW: 400, naturalH: 600,
+      x: 40, y: 40, width: 200, caption: "라뮤즈 씬",
+    })) as { id: string };
+    const p = useWorkspace.getState().cards.find((c) => c.id === id)!;
+    expect([p.kind, p.width, p.height, p.content, p.frameId]).toEqual(["photo", 200, 300, "라뮤즈 씬", frame]);
+    expect(p.attachmentRef).toBeTruthy();
+    await expect(dispatchOp("photos.create", { dataBase64: PNG_B64, mimeType: "image/tiff" })).rejects.toThrow("형식");
+    await expect(dispatchOp("photos.create", { boardId: "b-o", dataBase64: PNG_B64, mimeType: "image/png" })).rejects.toThrow("현재 보드");
+  });
+
   it("frames.create → 판 크기·이름, 그 안에 만든 메모는 판 소속과 색을 갖는다", async () => {
     const { id: frame } = (await dispatchOp("frames.create", {
       x: 0, y: 0, width: 700, height: 300, name: "예식장",
