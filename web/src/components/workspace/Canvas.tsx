@@ -6,6 +6,7 @@ import {
   SYSTEM_BOARD_ID,
   widthForKind,
   PHOTO_DEFAULT_WIDTH,
+  zoomTier,
 } from "@/state/workspace";
 import { useToasts } from "@/state/notifications";
 import { useT } from "@/i18n/Provider";
@@ -659,10 +660,13 @@ export function Canvas() {
           FEAT-boards AC-4: 보드 전환 시 200ms ease-out fade. */}
       <div
         data-board-transitioning={boardTransitioning ? "true" : "false"}
+        data-zoom-tier={zoomTier(viewport.scale)}
         className="absolute left-0 top-0 origin-top-left transition-opacity duration-200 ease-out"
         style={{
           transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.scale})`,
           transformOrigin: "0 0",
+          // 화면 크기를 고정할 요소(판 선·이름표, 메모 제목)가 곱해 쓰는 줌의 역수.
+          "--zoom-inv": 1 / viewport.scale,
           willChange: "transform, opacity",
           opacity: boardTransitioning ? 0 : 1,
         } as CSSProperties}

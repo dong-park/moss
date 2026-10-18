@@ -274,7 +274,15 @@ export interface PendingSubcanvasUndo {
   expiresAt: number;
 }
 
-export const MIN_SCALE = 0.5;
+export const MIN_SCALE = 0.25;
+
+/** 줌 구간 — 구간마다 판·메모를 다르게 그린다(globals.css의 data-zoom-tier 규칙). */
+export type ZoomTier = "near" | "mid" | "far";
+export function zoomTier(scale: number): ZoomTier {
+  if (scale >= 0.8) return "near";
+  if (scale >= 0.4) return "mid";
+  return "far";
+}
 export const MAX_SCALE = 1.1;
 
 /** 카드 리사이즈 한계. SPEC AC-3. */
