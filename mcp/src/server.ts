@@ -520,6 +520,7 @@ async function createPhotoCard(
   path: string,
   at: { x: number; y: number },
   opts: { width?: number; fit?: number; caption?: string; boardId?: string } = {},
+  rotation?: number,
 ) {
   const p = await preparePhoto(path);
   const ratio = p.width > 0 && p.height > 0 ? p.height / p.width : 1;
@@ -540,6 +541,7 @@ async function createPhotoCard(
     y: Math.round(y),
     width: width !== undefined ? Math.round(width) : undefined,
     caption: opts.caption,
+    rotation,
   })) as { id: string };
 }
 
@@ -601,10 +603,15 @@ server.registerTool(
         .describe("메모 key끼리의 관계선"),
       noteCols: z.number().int().min(1).max(5).optional().describe("판 안 한 줄 메모 수(기본 3)"),
       groupCols: z.number().int().min(1).max(6).optional().describe("한 줄 판 수(기본 3)"),
+      style: z
+        .enum(["grid", "wall"])
+        .optional()
+        .describe("grid=줄 맞춘 판(기본), wall=손으로 붙인 벽(메모·사진을 ±2° 기울이고 살짝 흩뜨림, 판 테두리 없이 이름표만)"),
     },
   },
-  async ({ boardId, origin, center, groups, links, noteCols, groupCols }) =>
+  async ({ boardId, origin, center, groups, links, noteCols, groupCols, style }) =>
     attempt(async () => {
+      const wall = style === "wall";
       const L = layoutGroups(
         {
           hasCenter: center !== undefined,
@@ -613,7 +620,12 @@ server.registerTool(
             notes: [...g.notes.map((n) => n.key), ...(g.photos ?? []).map((_, i) => `${g.key}#photo${i}`)],
           })),
         },
-        { origin, noteCols, groupCols },
+        {
+          origin,
+          noteCols,
+          groupCols,
+          ...(wall ? { jitter: { pos: 12, rot: 2, group: 30 }, groupGapX: 180, groupGapY: 200 } : {}),
+        },
       );
       const noteKeys = new Set(groups.flatMap((g) => g.notes.map((n) => n.key)));
       for (const l of links ?? []) {
@@ -625,12 +637,13 @@ server.registerTool(
       if (center && L.center) {
         const r = (await bridge.call("notes.create", {
           title: center.title, content: center.content ?? "", ...L.center,
+          ...(wall ? { rotation: -1 } : {}),
         })) as { id: string };
         ids.center = r.id;
       }
       for (const g of groups) {
         const f = L.frames[g.key]!;
-        const r = (await bridge.call("frames.create", { name: g.name, ...f })) as { id: string };
+        const r = (await bridge.call("frames.create", { name: g.name, ...f, ...(wall ? { look: "bare" } : {}) })) as { id: string };
         ids[g.key] = r.id;
         // 판을 먼저 만들어야 그 안에 놓인 메모가 판 소속이 된다.
         for (const n of g.notes) {
@@ -639,13 +652,13 @@ server.registerTool(
             title: n.title,
             content: n.content ?? "",
             color: STATUS_COLOR[n.status ?? "info"],
-            x: p.x, y: p.y, width: p.width,
+            x: p.x, y: p.y, width: p.width, rotation: p.rotation,
           })) as { id: string };
           ids[n.key] = m.id;
         }
         for (const [i, ph] of (g.photos ?? []).entries()) {
           const cell = L.notes[`${g.key}#photo${i}`]!;
-          const r = await createPhotoCard(ph.path, cell, { fit: cell.width, caption: ph.caption });
+          const r = await createPhotoCard(ph.path, cell, { fit: cell.width, caption: ph.caption }, cell.rotation);
           ids[`${g.key}#photo${i}`] = r.id;
         }
       }

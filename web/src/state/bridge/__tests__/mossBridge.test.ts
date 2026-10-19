@@ -284,6 +284,19 @@ describe("dispatchOp", () => {
     );
   });
 
+  it("손으로 붙인 벽: 메모·사진 기울기 저장, bare 판", async () => {
+    const { id: frame } = (await dispatchOp("frames.create", { x: 0, y: 0, width: 700, height: 500, name: "예물", look: "bare" })) as { id: string };
+    const f = useWorkspace.getState().cards.find((c) => c.id === frame)!;
+    expect(JSON.parse(f.content)).toEqual({ name: "예물", look: "bare" });
+    const { id: m } = (await dispatchOp("notes.create", { title: "a", x: 40, y: 40, width: 200, rotation: -1.7 })) as { id: string };
+    const { id: p } = (await dispatchOp("photos.create", {
+      dataBase64: PNG_B64, mimeType: "image/png", x: 300, y: 40, width: 120, rotation: 2.3,
+    })) as { id: string };
+    const cards = useWorkspace.getState().cards;
+    expect(cards.find((c) => c.id === m)!.rotation).toBe(-1.7);
+    expect(cards.find((c) => c.id === p)!.rotation).toBe(2.3);
+  });
+
   it("photos.create → 비율 지킨 사진 카드, 캡션, 판 소속", async () => {
     const { id: frame } = (await dispatchOp("frames.create", { x: 0, y: 0, width: 700, height: 500 })) as { id: string };
     const { id } = (await dispatchOp("photos.create", {

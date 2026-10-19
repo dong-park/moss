@@ -21,6 +21,11 @@ export interface FrameContentJson {
   columns?: unknown;
   /** FEAT-frame-image-template: 배경 이미지 원본 크기. 파일 참조는 판 행의 attachmentRef에 둔다. */
   bg?: FrameBackgroundSize;
+  /**
+   * 판 생김새. "bare"면 선·면 없이 이름표만 쪽지처럼 보인다(손으로 붙인 벽).
+   * 묶음 동작(소속·함께 옮기기)은 같다.
+   */
+  look?: "bare";
 }
 
 /** 배경 이미지 원본 픽셀 크기. 비율 맞춤에 쓴다. */
@@ -33,6 +38,7 @@ export interface FrameBackgroundSize {
 export interface FrameConfig {
   name: string;
   bg?: FrameBackgroundSize;
+  look?: "bare";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -71,6 +77,7 @@ export function decodeFrameConfig(content: string): FrameConfig {
   const cfg: FrameConfig = { name: normalizeName(raw.name) };
   const bg = normalizeFrameBg(raw.bg);
   if (bg) cfg.bg = bg;
+  if (raw.look === "bare") cfg.look = "bare";
   return cfg;
 }
 
@@ -93,5 +100,6 @@ export function encodeFrameContent(content: FrameContentJson | string = {}): str
   if (cfg.columns !== undefined) out.columns = cfg.columns;
   const bg = normalizeFrameBg(cfg.bg);
   if (bg) out.bg = bg;
+  if (cfg.look === "bare") out.look = "bare";
   return JSON.stringify(out);
 }
