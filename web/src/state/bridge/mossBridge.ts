@@ -36,7 +36,6 @@ import {
   writeNoteRecord,
 } from "@/state/ydoc";
 import { serializeBlock } from "@/state/blocks";
-import { encodeFrameContent, readFrameContent } from "@/state/frameContent";
 import { normalizeTitle } from "@/state/memoTitle";
 import { isMemoColor } from "@/components/workspace/memoVariety";
 import { makeAttachmentFilename } from "@/state/db/opfs";
@@ -516,10 +515,6 @@ export async function dispatchOp(
         });
       }
       if (typeof params.name === "string") ws.renameFrame(id, params.name);
-      if (params.look === "bare") {
-        const frame = useWorkspace.getState().cards.find((c) => c.id === id)!;
-        ws.setContent(id, encodeFrameContent({ ...readFrameContent(frame.content), look: "bare" }));
-      }
       ws.clearSelection();
       return { id, kind: "frame" };
     }

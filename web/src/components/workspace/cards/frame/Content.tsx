@@ -20,8 +20,6 @@ export function FrameCardContent({ card }: { card: Card }) {
   // 드래그 중에도 판은 다시 렌더된다 — content가 같으면 다시 파싱하지 않는다.
   const config = useMemo(() => decodeFrameConfig(card.content), [card.content]);
   const name = config.name;
-  // 손으로 붙인 벽: 선·면 없이 이름표만 쪽지처럼. 고르면 점선으로 자리를 보여 준다.
-  const bare = config.look === "bare";
   const selected = useWorkspace((s) => s.selectedIds.includes(card.id));
   const bg = usePhotoUrl(card.attachmentRef);
   const [editing, setEditing] = useState(false);
@@ -48,18 +46,14 @@ export function FrameCardContent({ card }: { card: Card }) {
     <div
       className="relative h-full w-full"
       data-frame-line="true"
-      data-frame-look={bare ? "bare" : undefined}
       style={{
         // 그룹 선: 화면 기준 1px 실선(PZ-3, --zoom-inv로 줌을 거슬러 곱한다). 고르면 선택 파랑.
-        border: bare
-          ? selected
-            ? "calc(1px * var(--zoom-inv, 1)) dashed var(--color-accent-blue)"
-            : "calc(1px * var(--zoom-inv, 1)) solid transparent"
-          : "calc(1px * var(--zoom-inv, 1)) solid " +
-            (selected ? "var(--color-accent-blue)" : "var(--color-frame-line)"),
+        border:
+          "calc(1px * var(--zoom-inv, 1)) solid " +
+          (selected ? "var(--color-accent-blue)" : "var(--color-frame-line)"),
         borderRadius: 4,
         // 옅은 흰 면 — 선보다 멀리서 판 자리가 보인다. 멀리 구간은 globals.css가 진하게 한다.
-        background: bare ? "transparent" : "var(--frame-fill)",
+        background: "var(--frame-fill)",
       }}
     >
       {/* FEAT-frame-image-template: 배경 이미지. 판 높이가 이미지 비율을 따르므로 꽉 채운다(D2 A, 원본 진하기 D3 A). */}
@@ -110,36 +104,13 @@ export function FrameCardContent({ card }: { card: Card }) {
           bottom: "100%",
           left: -1,
           paddingBottom: 4,
-          // 손으로 붙인 벽: 흰 쪽지 이름표 + 마스킹테이프, 살짝 기울임.
-          ...(bare
-            ? {
-                marginBottom: 10,
-                padding: "5px 12px 6px",
-                background: "#fdfdfb",
-                borderRadius: 2,
-                boxShadow: "0 1px 2px rgba(0,0,0,0.15)",
-                color: selected ? "var(--color-accent-blue)" : "var(--color-text)",
-              }
-            : {}),
           maxWidth: "calc(80% / var(--zoom-inv, 1))",
-          transform: bare ? "scale(var(--zoom-inv, 1)) rotate(-1.5deg)" : "scale(var(--zoom-inv, 1))",
+          transform: "scale(var(--zoom-inv, 1))",
           transformOrigin: "left bottom",
-          ...(bare ? {} : { color: selected ? "var(--color-accent-blue)" : undefined }),
+          color: selected ? "var(--color-accent-blue)" : undefined,
         }}
-        className={
-          bare
-            ? "absolute text-[17px] font-extrabold leading-5"
-            : "absolute text-[15px] font-semibold leading-5 text-text-soft"
-        }
+        className="absolute text-[15px] font-semibold leading-5 text-text-soft"
       >
-        {bare && (
-          <span
-            aria-hidden="true"
-            data-frame-tape=""
-            className="pointer-events-none absolute left-1/2 top-[-8px] h-[14px] w-[44px] -translate-x-1/2 -rotate-3"
-            style={{ background: "rgba(205, 222, 238, 0.75)" }}
-          />
-        )}
         {editing ? (
           <input
             ref={inputRef}

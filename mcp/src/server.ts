@@ -606,7 +606,7 @@ server.registerTool(
       style: z
         .enum(["grid", "wall"])
         .optional()
-        .describe("grid=줄 맞춘 판(기본), wall=손으로 붙인 벽(메모·사진을 ±2° 기울이고 살짝 흩뜨림, 판 테두리 없이 이름표만)"),
+        .describe("grid=줄 맞춘 판(기본), wall=손으로 붙인 벽(메모·사진을 ±2° 기울이고 살짝 흩뜨림)"),
     },
   },
   async ({ boardId, origin, center, groups, links, noteCols, groupCols, style }) =>
@@ -643,7 +643,7 @@ server.registerTool(
       }
       for (const g of groups) {
         const f = L.frames[g.key]!;
-        const r = (await bridge.call("frames.create", { name: g.name, ...f, ...(wall ? { look: "bare" } : {}) })) as { id: string };
+        const r = (await bridge.call("frames.create", { name: g.name, ...f })) as { id: string };
         ids[g.key] = r.id;
         // 판을 먼저 만들어야 그 안에 놓인 메모가 판 소속이 된다.
         for (const n of g.notes) {
