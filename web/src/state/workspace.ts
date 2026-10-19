@@ -195,6 +195,11 @@ export interface Card {
   frameId?: string;
   /** FEAT-memo-title: 메모 제목. 평문 한 줄(최대 80자). 비면 undefined. */
   title?: string;
+  /**
+   * 저장된 기울기(도). 없거나 0이면 id 해시 각도(memoVariety)를 쓴다. MCP의 "손으로 붙인 벽"
+   * 배치가 메모·사진에 쓴다. 사진은 이 값이 있을 때만 기운다.
+   */
+  rotation?: number;
   author?: string;
   time?: string;
   aiOptOut?: boolean;
@@ -640,6 +645,8 @@ interface WorkspaceState {
    * 메모가 아닌 카드와 이미 그 색인 메모는 건드리지 않는다.
    */
   setMemoColor: (ids: string[], color: MemoColor | null) => void;
+  /** 카드 기울기를 저장한다(도, ±10으로 자른다). 0이면 id 해시 각도로 돌아간다. 메모판은 기울이지 않는다. */
+  setCardRotation: (id: string, deg: number) => void;
   /**
    * textbox 폭 변경. number면 autoWidth=false(고정 폭, 줄바꿈), "auto"면 자동 폭.
    * 고정 폭은 CARD_MIN_WIDTH~CARD_MAX_WIDTH로 클램프한다(AC-4).
@@ -1238,6 +1245,7 @@ function decodeNoteToCard(note: Note): Card {
     frameId: note.frameId,
     // FEAT-memo-title: 제목. 옛 행은 필드가 없다 — undefined = 제목 없음.
     title: note.title,
+    rotation: note.rotation ? note.rotation : undefined,
     aiOptOut: note.aiOptOut || undefined,
     lastVisitedAt: note.lastVisitedAt,
   };
@@ -1392,7 +1400,7 @@ function persistCardDexie(card: Card, boardId: string | null): Promise<Note> {
     frameId: card.frameId,
     title: card.title,
     aiOptOut: !!card.aiOptOut,
-    rotation: 0,
+    rotation: card.rotation ?? 0,
   });
 }
 
@@ -1453,7 +1461,7 @@ function initialNoteFromCard(card: Card, boardId: string | null): Note {
     y: card.y,
     width: card.width,
     height: memoHeight(card.kind, card.width, card.height),
-    rotation: 0,
+    rotation: card.rotation ?? 0,
     content: encodeCardContent(card),
     // FEAT-text-tool: textbox 색·크기·폭 모드도 공유 필드다. 없으면 싣지 않는다.
     ...(card.color !== undefined ? { color: card.color } : {}),
@@ -3049,6 +3057,20 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     // ponytail: 카드마다 디바운스 영속 — 여러 장이어도 상태 갱신은 한 번이다. 수백 장이 느리면 일괄 쓰기로.
     const boardId = get().currentBoardId;
     for (const card of changed) persistCardDebounced(card, boardId);
+  },
+
+  setCardRotation: (id, deg) => {
+    if (!Number.isFinite(deg)) return;
+    const next = clamp(Math.round(deg * 100) / 100, -10, 10);
+    let updated: Card | undefined;
+    set((s) => ({
+      cards: s.cards.map((c) => {
+        if (c.id !== id || c.kind === "frame") return c;
+        updated = { ...c, rotation: next === 0 ? undefined : next };
+        return updated;
+      }),
+    }));
+    if (updated) persistCardDebounced(updated, get().currentBoardId);
   },
 
   /* ─────────── FEAT-text-tool: 평문 텍스트(textbox) ─────────── */

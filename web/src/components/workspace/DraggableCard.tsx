@@ -17,7 +17,7 @@ import { isExpandable } from "./cards/_shared/expandable";
 import { ResizeHandles } from "./ResizeHandles";
 import { storePhoto } from "./canvasCapture";
 import {
-  cardRotationDeg,
+  cardTilt,
   formatDeg,
   isMemoColor,
   MEMO_COLORS,
@@ -184,7 +184,7 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
   const baseTransform = memoBaseTransform(card, penMode);
   const liftedTransform = memoLiftedTransform(card, penMode);
   // FEAT-drag-tilt: 흔들림이 얹힐 고유 각도. memoBaseTransform과 같은 규칙(메모·함).
-  const baseDeg = penMode ? 0 : cardRotationDeg(card.id, card.kind);
+  const baseDeg = penMode ? 0 : cardTilt(card);
   const getScale = () => useWorkspace.getState().viewport.scale;
 
   /**
@@ -294,8 +294,8 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
     useWorkspace.getState().clearSnapCard();
     const el = containerRef.current;
     if (!el || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
-    playSnap(el, penMode ? 0 : cardRotationDeg(card.id, card.kind));
-  }, [snapNow, penMode, card.id, card.kind]);
+    playSnap(el, penMode ? 0 : cardTilt(card));
+  }, [snapNow, penMode, card]);
 
   const dragRef = useRef<{
     startX: number;
@@ -808,7 +808,7 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
           ? containerRef.current
           : document.querySelector<HTMLElement>(`[data-card-id="${id}"]`);
       if (!el) return;
-      const deg = penMode ? 0 : cardRotationDeg(id, target.kind);
+      const deg = penMode ? 0 : cardTilt(target);
       playSnap(el, deg);
     };
 

@@ -22,9 +22,24 @@ export interface GroupsOptions {
   pad?: number;
   groupGapX?: number;
   groupGapY?: number;
+  /**
+   * 손으로 붙인 벽: key 해시로 정해지는 흔들림. 같은 입력이면 같은 결과다.
+   * pos = 메모 위치(±px), rot = 기울기(±도), group = 묶음 위치(±px).
+   */
+  jitter?: { pos: number; rot: number; group: number };
 }
 
-export interface Rect { x: number; y: number; width: number; height: number }
+export interface Rect { x: number; y: number; width: number; height: number; rotation?: number }
+
+/** FNV-1a → [-1, 1]. 같은 문자열은 항상 같은 값. */
+export function wobble(s: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return ((h >>> 0) / 0xffffffff) * 2 - 1;
+}
 
 export interface GroupsLayout {
   center?: Rect;
@@ -42,6 +57,8 @@ export function layoutGroups(input: GroupsInput, opts: GroupsOptions = {}): Grou
   const gx = opts.groupGapX ?? 120;
   const gy = opts.groupGapY ?? 120;
   const origin = opts.origin ?? { x: 40, y: 40 };
+  const jt = opts.jitter;
+  const shake = (key: string, amp: number) => (jt ? Math.round(wobble(key) * amp * 100) / 100 : 0);
 
   const seen = new Set<string>();
   for (const g of input.groups) {
@@ -71,14 +88,18 @@ export function layoutGroups(input: GroupsInput, opts: GroupsOptions = {}): Grou
     const row = input.groups.slice(r * groupCols, (r + 1) * groupCols);
     const h = Math.max(...row.map((g) => frameH(g.notes.length)));
     row.forEach((g, c) => {
-      const fx = origin.x + c * (frameW + gx);
-      out.frames[g.key] = { x: fx, y, width: frameW, height: h };
+      const fx = origin.x + c * (frameW + gx) + Math.round(shake(g.key + "#gx", jt?.group ?? 0));
+      const fy = y + Math.round(shake(g.key + "#gy", jt?.group ?? 0));
+      out.frames[g.key] = { x: fx, y: fy, width: frameW, height: h };
       g.notes.forEach((n, i) => {
+        const row2 = Math.floor(i / noteCols);
         out.notes[n] = {
-          x: fx + pad + (i % noteCols) * (size + gap),
-          y: y + pad + Math.floor(i / noteCols) * (size + gap),
+          // 벽: 홀수 줄은 살짝 밀어 벽돌처럼 어긋나게 한다.
+          x: fx + pad + (i % noteCols) * (size + gap) + Math.round(shake(n + "#x", jt?.pos ?? 0)) + (jt && row2 % 2 ? Math.round(gap / 2) : 0),
+          y: fy + pad + row2 * (size + gap) + Math.round(shake(n + "#y", jt?.pos ?? 0)),
           width: size,
           height: size,
+          ...(jt ? { rotation: shake(n + "#r", jt.rot) } : {}),
         };
       });
     });

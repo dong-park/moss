@@ -342,6 +342,8 @@ export async function dispatchOp(
         throw new Error(`지원하지 않는 메모 색: ${String(params.color)} (blue·lime·purple·pink)`);
       }
       const color = isMemoColor(params.color) ? params.color : undefined;
+      const rotation =
+        typeof params.rotation === "number" && Number.isFinite(params.rotation) ? params.rotation : undefined;
       const x = typeof params.x === "number" ? params.x : 40;
       const y = typeof params.y === "number" ? params.y : 40;
       // 메모 본문은 고정 폭(MEMO_CONTENT_WIDTH=720) 컬럼이라, 카드가 그보다 좁으면
@@ -369,6 +371,7 @@ export async function dispatchOp(
         ws.setContent(id, finalContent);
         if (title) ws.setTitle(id, title);
         if (color) ws.setMemoColor([id], color);
+        if (rotation) ws.setCardRotation(id, rotation);
         ws.setEditing(null);
         ws.clearSelection();
         return { id, kind: "text" };
@@ -385,7 +388,7 @@ export async function dispatchOp(
         ...(title ? { title } : {}),
         ...(color ? { color } : {}),
         aiOptOut: false,
-        rotation: 0,
+        rotation: rotation ?? 0,
       };
       const storage = useStorage.getState();
       // n23 P1-5: saveNote가 정규화된 Note를 돌려준다 — Dexie read-back이 비어
@@ -492,6 +495,7 @@ export async function dispatchOp(
         ws.resizeCard(id, { width: params.width, height: params.width * ratio });
       }
       if (typeof params.caption === "string" && params.caption.trim()) ws.setContent(id, params.caption.trim());
+      if (typeof params.rotation === "number") ws.setCardRotation(id, params.rotation);
       ws.clearSelection();
       return { id, kind: "photo" };
     }
