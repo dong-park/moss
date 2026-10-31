@@ -1,4 +1,5 @@
 import { summarizeTexts, type SummarizeKind } from "@/server/ai/summarize";
+import { guardAiRequest } from "../guard";
 
 /**
  * POST /api/ai/summarize (FEAT-ai-pipeline §6).
@@ -20,6 +21,9 @@ const KINDS: ReadonlySet<SummarizeKind> = new Set([
 ]);
 
 export async function POST(req: Request) {
+  const denied = await guardAiRequest(req);
+  if (denied) return denied;
+
   let payload: unknown;
   try {
     payload = await req.json();

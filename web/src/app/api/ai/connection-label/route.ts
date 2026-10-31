@@ -1,4 +1,5 @@
 import { connectionLabel } from "@/server/ai/connectionLabel";
+import { guardAiRequest } from "../guard";
 
 /**
  * POST /api/ai/connection-label (FEAT-ai-pipeline §6).
@@ -15,6 +16,9 @@ export const dynamic = "force-dynamic";
 const MAX_TEXT_LEN = 4000;
 
 export async function POST(req: Request) {
+  const denied = await guardAiRequest(req);
+  if (denied) return denied;
+
   let payload: unknown;
   try {
     payload = await req.json();
