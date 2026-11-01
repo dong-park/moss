@@ -8,6 +8,7 @@ import com.moss.server.GoogleVerificationException
 import com.moss.server.MossServer
 import com.moss.server.RefreshRequest
 import com.moss.server.UnauthorizedException
+import com.moss.server.boards.SignupConsent
 import com.moss.server.boards.UserRow
 import com.moss.server.toDto
 import io.ktor.http.HttpStatusCode
@@ -80,7 +81,7 @@ fun Route.authRoutes(server: MossServer) {
         } catch (e: GoogleVerificationException) {
             throw UnauthorizedException("구글 로그인을 확인할 수 없어요")
         }
-        val user = server.repo.upsertUser(googleUser)
+        val user = server.repo.upsertUser(googleUser, consentOf(body.termsAccepted, body.termsVersion))
         call.respondAuth(server, user)
     }
 
@@ -95,11 +96,14 @@ fun Route.authRoutes(server: MossServer) {
     rateLimit(EmailSignupRateLimit) {
         post("/auth/signup") {
             val body = call.receive<EmailSignupRequest>()
+            val consent = consentOf(body.termsAccepted, body.termsVersion)
+            // 해시 비용을 쓰기 전에 닫힘과 동의를 먼저 거른다. 저장 때 잠금 안에서 다시 확인한다.
+            server.repo.signupPolicy.requireConsent(consent)
             val email = normalizeEmail(body.email)
             validateEmail(email)
             validatePassword(body.password)
             val name = normalizeName(body.name)
-            val user = server.repo.createEmailUser(email, PasswordHasher.hash(body.password), name)
+            val user = server.repo.createEmailUser(email, PasswordHasher.hash(body.password), name, consent)
             call.respondAuth(server, user)
         }
     }
@@ -127,6 +131,9 @@ fun Route.authRoutes(server: MossServer) {
         }
     }
 }
+
+private fun consentOf(accepted: Boolean?, version: String?): SignupConsent? =
+    if (accepted == true && !version.isNullOrBlank()) SignupConsent(version.trim()) else null
 
 private suspend fun ApplicationCall.respondAuth(server: MossServer, user: UserRow) {
     respond(

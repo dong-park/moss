@@ -27,7 +27,7 @@ class EmailAuthTest : ApiTest() {
     private suspend fun HttpClient.signup(email: String, password: String, name: String): HttpResponse =
         post("/auth/signup") {
             contentType(ContentType.Application.Json)
-            setBody(EmailSignupRequest(email, password, name))
+            setBody(EmailSignupRequest(email, password, name, true, TERMS_V))
         }
 
     private suspend fun HttpClient.loginRequest(email: String, password: String): HttpResponse =
@@ -35,6 +35,15 @@ class EmailAuthTest : ApiTest() {
             contentType(ContentType.Application.Json)
             setBody(EmailLoginRequest(email, password))
         }
+
+    @Test
+    fun signupRejectsWhenTermsNotAccepted() = app {
+        val response = client().post("/auth/signup") {
+            contentType(ContentType.Application.Json)
+            setBody(EmailSignupRequest("new@example.com", "password123", "Moss"))
+        }
+        assertEquals(HttpStatusCode.BadRequest, response.status)
+    }
 
     @Test
     fun signupReturnsTokensThatWork() = app {

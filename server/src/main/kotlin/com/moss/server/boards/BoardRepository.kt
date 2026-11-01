@@ -2,6 +2,9 @@ package com.moss.server.boards
 
 import com.moss.server.Boards
 import com.moss.server.ConflictException
+import com.moss.server.ConsentRequiredException
+import com.moss.server.SignupClosedException
+import com.moss.server.SignupPolicyLock
 import com.moss.server.Files
 import com.moss.server.GoogleUser
 import com.moss.server.Invites
@@ -66,36 +69,77 @@ object InviteTokens {
     }
 }
 
+/** 클라이언트가 보낸 명시적 동의. 동의 시각은 서버가 기록한다. */
+data class SignupConsent(val version: String)
+
+/** 신규가입 정책. [termsVersion]이 null이면 신규가입만 닫는다. */
+data class SignupPolicy(
+    val accountCap: Long = com.moss.server.AppConfig.DEFAULT_ACCOUNT_CAP,
+    val termsVersion: String? = null,
+) {
+    /** 동의 값과 버전이 정책과 맞아야 통과한다. 닫힌 상태는 동의보다 먼저 알린다. */
+    fun requireConsent(consent: SignupConsent?) {
+        val current = termsVersion ?: throw SignupClosedException("지금은 새 계정을 받을 수 없어요")
+        if (consent == null) throw ConsentRequiredException("약관에 동의해야 가입할 수 있어요")
+        if (consent.version != current) throw ConsentRequiredException("약관이 바뀌었어요. 다시 확인하고 동의해 주세요")
+    }
+}
+
 class BoardRepository(
     private val maxMembersPerBoard: Int,
     private val maxBoardFileBytes: Long = DEFAULT_MAX_BOARD_FILE_BYTES,
     private val maxBoardsPerUser: Int = DEFAULT_MAX_BOARDS_PER_USER,
     private val maxUserFileBytes: Long = DEFAULT_MAX_USER_FILE_BYTES,
+    val signupPolicy: SignupPolicy = SignupPolicy(),
 ) {
 
-    suspend fun upsertUser(google: GoogleUser): UserRow = dbQuery {
-        val existing = Users.selectAll().where { Users.googleSub eq google.sub }.singleOrNull()
-        if (existing != null) {
-            val id = existing[Users.id]
-            val avatar = google.avatar
-            Users.update({ Users.id eq id }) {
-                it[name] = google.name
-                if (avatar != null) it[Users.avatar] = avatar
-            }
-            UserRow(id, google.sub, google.name, avatar ?: existing[Users.avatar])
-        } else {
-            val id = newId()
-            // Concurrent logins for a brand-new google_sub may race on the unique index;
-            // ignore the loser's insert and read back the winner's row.
-            Users.insertIgnore {
-                it[Users.id] = id
-                it[googleSub] = google.sub
-                it[name] = google.name
-                it[avatar] = google.avatar
-                it[createdAt] = System.currentTimeMillis()
-            }
-            val row = Users.selectAll().where { Users.googleSub eq google.sub }.single()
-            UserRow(row[Users.id], row[Users.googleSub], row[Users.name], row[Users.avatar])
+    /**
+     * Google 로그인. 기존 계정은 상한과 동의 없이 그대로 로그인한다.
+     * 신규 계정은 가입 잠금 안에서 다시 조회한 뒤 동의·상한을 확인하고 만든다.
+     */
+    suspend fun upsertUser(google: GoogleUser, consent: SignupConsent? = null): UserRow = dbQuery {
+        val existing = findGoogle(google.sub)
+        if (existing != null) return@dbQuery refreshGoogle(existing, google)
+        lockSignup()
+        // 잠금을 기다리는 동안 같은 sub의 다른 요청이 계정을 만들었을 수 있다.
+        val raced = findGoogle(google.sub)
+        if (raced != null) return@dbQuery refreshGoogle(raced, google)
+        signupPolicy.requireConsent(consent)
+        requireCapacity()
+        val id = newId()
+        val now = System.currentTimeMillis()
+        Users.insert {
+            it[Users.id] = id
+            it[googleSub] = google.sub
+            it[name] = google.name
+            it[avatar] = google.avatar
+            it[createdAt] = now
+            it[termsVersion] = consent!!.version
+            it[termsAcceptedAt] = now
+        }
+        UserRow(id, google.sub, google.name, google.avatar)
+    }
+
+    private fun findGoogle(sub: String) = Users.selectAll().where { Users.googleSub eq sub }.singleOrNull()
+
+    private fun refreshGoogle(existing: org.jetbrains.exposed.sql.ResultRow, google: GoogleUser): UserRow {
+        val id = existing[Users.id]
+        val avatar = google.avatar
+        Users.update({ Users.id eq id }) {
+            it[name] = google.name
+            if (avatar != null) it[Users.avatar] = avatar
+        }
+        return UserRow(id, google.sub, google.name, avatar ?: existing[Users.avatar])
+    }
+
+    /** 신규가입 경로가 모두 거치는 행 잠금. 트랜잭션이 끝나면 풀린다. */
+    private fun lockSignup() {
+        SignupPolicyLock.selectAll().where { SignupPolicyLock.id eq 1.toShort() }.forUpdate().single()
+    }
+
+    private fun requireCapacity() {
+        if (Users.selectAll().count() >= signupPolicy.accountCap) {
+            throw SignupClosedException("지금은 새 계정을 받을 수 없어요", "signup_capacity")
         }
     }
 
@@ -106,16 +150,28 @@ class BoardRepository(
 
     /**
      * D4~D7: 메일 가입 계정 생성. 저장 전에 이메일은 정규화되어 있어야 한다(D2).
+     * 가입 잠금 안에서 동의와 전체 계정 수 상한을 확인하고 같은 트랜잭션에서 만든다.
      * 고유 인덱스 충돌은 insertIgnore로 잡아 409로 알린다 — 동시 가입 경쟁에도 계정은 하나만 생긴다.
      */
-    suspend fun createEmailUser(email: String, passwordHash: String, name: String): UserRow = dbQuery {
+    suspend fun createEmailUser(
+        email: String,
+        passwordHash: String,
+        name: String,
+        consent: SignupConsent?,
+    ): UserRow = dbQuery {
+        lockSignup()
+        signupPolicy.requireConsent(consent)
+        requireCapacity()
         val id = newId()
+        val now = System.currentTimeMillis()
         val inserted = Users.insertIgnore {
             it[Users.id] = id
             it[Users.email] = email
             it[Users.passwordHash] = passwordHash
             it[Users.name] = name
-            it[createdAt] = System.currentTimeMillis()
+            it[createdAt] = now
+            it[termsVersion] = consent!!.version
+            it[termsAcceptedAt] = now
         }.insertedCount
         if (inserted == 0) throw ConflictException("이미 가입된 메일이에요")
         UserRow(id, null, name, null)

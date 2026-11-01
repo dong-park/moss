@@ -136,12 +136,19 @@ describe("auth/store", () => {
     expect(await loadSession()).not.toBeNull();
   });
 
+  test("loginWithGoogle은 버전을 주면 동의 버전을 api에 넘긴다", async () => {
+    const api = fakeApi();
+    configureAuth({ api });
+    await useAuth.getState().loginWithGoogle("v1");
+    expect(api.googleLogin).toHaveBeenCalledWith("google-id-token", "v1");
+  });
+
   test("signupWithEmail이 세션을 저장하고 authenticated", async () => {
     const api = fakeApi();
     configureAuth({ api });
-    const user = await useAuth.getState().signupWithEmail("a@x.com", "secret123", "동환");
+    const user = await useAuth.getState().signupWithEmail("a@x.com", "secret123", "동환", "v1");
     expect(user.name).toBe("동환");
-    expect(api.signup).toHaveBeenCalledWith("a@x.com", "secret123", "동환");
+    expect(api.signup).toHaveBeenCalledWith("a@x.com", "secret123", "동환", "v1");
     expect(useAuth.getState().status).toBe("authenticated");
     expect(await loadSession()).not.toBeNull();
   });

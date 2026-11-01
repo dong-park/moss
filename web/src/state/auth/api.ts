@@ -53,8 +53,9 @@ export class InviteFullError extends Error {
 }
 
 export interface AuthApi {
-  googleLogin(idToken: string): Promise<AuthSession>;
-  signup(email: string, password: string, name: string): Promise<AuthSession>;
+  /** `termsVersion`은 신규가입 동의일 때만 보낸다. 기존 계정 로그인에는 필요 없다. */
+  googleLogin(idToken: string, termsVersion?: string): Promise<AuthSession>;
+  signup(email: string, password: string, name: string, termsVersion: string): Promise<AuthSession>;
   login(email: string, password: string): Promise<AuthSession>;
   refresh(refreshToken: string): Promise<AuthSession>;
   previewInvite(token: string): Promise<InvitePreview>;
@@ -97,7 +98,8 @@ async function postJson<T>(
     body: JSON.stringify(body),
   });
   if (!res.ok) {
-    throw new AuthRequestError((await readErrorMessage(res)) ?? "", res.status);
+    const { code, message } = await readErrorBody(res);
+    throw new AuthRequestError(message ?? "", res.status, code);
   }
   return (await res.json()) as T;
 }
@@ -110,9 +112,13 @@ function mapInviteStatus(err: unknown): Error {
 }
 
 export const realAuthApi: AuthApi = {
-  googleLogin: (idToken) => postJson<AuthSession>("/auth/google", { idToken }),
-  signup: (email, password, name) =>
-    postJson<AuthSession>("/auth/signup", { email, password, name }),
+  googleLogin: (idToken, termsVersion) =>
+    postJson<AuthSession>(
+      "/auth/google",
+      termsVersion ? { idToken, termsAccepted: true, termsVersion } : { idToken },
+    ),
+  signup: (email, password, name, termsVersion) =>
+    postJson<AuthSession>("/auth/signup", { email, password, name, termsAccepted: true, termsVersion }),
   login: (email, password) => postJson<AuthSession>("/auth/login", { email, password }),
   refresh: (refreshToken) => postJson<AuthSession>("/auth/refresh", { refreshToken }),
   previewInvite: async (token) => {

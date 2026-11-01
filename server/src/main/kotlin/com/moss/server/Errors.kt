@@ -40,5 +40,13 @@ class PayloadTooLargeException(message: String) :
 class QuotaExceededException(message: String) :
     ApiFailure(HttpStatusCode.PayloadTooLarge, "quota_exceeded", message)
 
+/** 신규가입이 닫혀 있다(정책 버전 미설정, 상한 도달). 기존 로그인은 영향 없다. 503. */
+class SignupClosedException(message: String, code: String = "signup_closed") :
+    ApiFailure(HttpStatusCode.ServiceUnavailable, code, message)
+
+/** 신규가입에 약관 동의가 없거나 버전이 맞지 않다. 웹은 동의를 받아 다시 요청한다. 400. */
+class ConsentRequiredException(message: String) :
+    ApiFailure(HttpStatusCode.BadRequest, "consent_required", message)
+
 /** Raised by a [GoogleVerifier] when an ID token cannot be trusted. */
 class GoogleVerificationException(message: String) : RuntimeException(message)

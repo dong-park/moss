@@ -6,6 +6,7 @@ import com.moss.server.auth.TokenService
 import com.moss.server.auth.authRoutes
 import com.moss.server.auth.installAuthRateLimits
 import com.moss.server.boards.BoardRepository
+import com.moss.server.boards.SignupPolicy
 import com.moss.server.boards.boardRoutes
 import com.moss.server.boards.mcpFileRoutes
 import com.moss.server.oauth.oauthRoutes
@@ -65,7 +66,11 @@ fun Application.mossModule(
             refreshTtlSeconds = config.refreshTtlSeconds,
             boardTtlSeconds = config.boardTokenTtlSeconds,
         ),
-        repo = BoardRepository(config.maxMembersPerBoard, config.maxBoardFileBytes),
+        repo = BoardRepository(
+            config.maxMembersPerBoard,
+            config.maxBoardFileBytes,
+            signupPolicy = SignupPolicy(config.accountCap, config.termsVersion),
+        ),
         googleVerifier = googleVerifier,
         syncClose = SyncCloseClient(config.syncInternalUrl, config.syncInternalSecret),
         fileStore = FileStore(java.nio.file.Path.of(config.filesDir)),

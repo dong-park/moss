@@ -62,7 +62,7 @@ class OAuthFlowTest : ApiTest() {
     private suspend fun HttpClient.signup(email: String = "moss@example.com", password: String = "password123"): AuthResponse =
         post("/auth/signup") {
             contentType(ContentType.Application.Json)
-            setBody(EmailSignupRequest(email, password, "Moss"))
+            setBody(EmailSignupRequest(email, password, "Moss", true, TERMS_V))
         }.body()
 
     private suspend fun HttpClient.register(uris: String = "[\"$redirect\"]"): String {

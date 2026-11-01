@@ -568,6 +568,7 @@
         "loginButton": "로그인",
         "signupButton": "가입하기",
         "toSignup": "처음이에요? 가입하기",
+        "termsRequired": "약관에 동의해야 가입할 수 있어요",
         "toLogin": "이미 계정이 있어요",
         "invalidEmail": "메일 주소를 확인해 주세요",
         "passwordTooShort": "비밀번호는 8자 이상이에요",

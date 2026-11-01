@@ -21,6 +21,14 @@ object Users : Table("users") {
     val name = text("name")
     val avatar = text("avatar").nullable()
     val createdAt = long("created_at")
+    val termsVersion = text("terms_version").nullable()
+    val termsAcceptedAt = long("terms_accepted_at").nullable()
+    override val primaryKey = PrimaryKey(id)
+}
+
+/** 신규가입 직렬화용 잠금 행(id=1). */
+object SignupPolicyLock : Table("signup_policy") {
+    val id = short("id")
     override val primaryKey = PrimaryKey(id)
 }
 

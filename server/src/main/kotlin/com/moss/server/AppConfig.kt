@@ -42,11 +42,16 @@ data class AppConfig(
     val mcpRefreshTtlSeconds: Long = 30L * 24 * 60 * 60,
     // 앞단 프록시 중 X-Forwarded-For를 믿을 홉 수. 0이면 헤더를 보지 않고 접속 주소를 쓴다(OAuth 요청 수 상한의 키).
     val trustedProxyHops: Int = 0,
+    // 전체 계정 수 상한. 1000은 운영자가 숫자를 정하기 전의 임시값이다. 0이면 신규가입을 닫는다.
+    val accountCap: Long = DEFAULT_ACCOUNT_CAP,
+    // 운영자가 승인한 약관 버전. null이면 신규가입만 닫는다. 기존 로그인과 갱신은 계속된다.
+    val termsVersion: String? = null,
 ) {
     companion object {
         const val MIN_JWT_SECRET_BYTES = 32
         const val DEFAULT_ALLOWED_ORIGIN = "http://localhost:3000"
         const val DEFAULT_PUBLIC_BASE_URL = "http://localhost:8080"
+        const val DEFAULT_ACCOUNT_CAP: Long = 1000
 
         /** D12: 20 MB per file. */
         const val DEFAULT_MAX_FILE_BYTES: Long = 20L * 1024 * 1024
@@ -96,7 +101,17 @@ data class AppConfig(
                 trustedProxyHops = env["TRUSTED_PROXY_HOPS"]?.takeIf { it.isNotBlank() }?.let { raw ->
                     requireNotNull(raw.trim().toIntOrNull()?.takeIf { it >= 0 }) { "TRUSTED_PROXY_HOPS must be a non-negative integer, got '$raw'" }
                 } ?: 0,
+                accountCap = parseAccountCap(env["MOSS_ACCOUNT_CAP"]),
+                termsVersion = env["MOSS_TERMS_VERSION"]?.trim()?.takeIf { it.isNotEmpty() },
             )
+        }
+
+        /** 없으면 임시 기본값. 음수와 숫자가 아닌 값은 설정 오류다. 0은 유효하고 신규가입을 닫는다. */
+        fun parseAccountCap(raw: String?): Long {
+            if (raw == null) return DEFAULT_ACCOUNT_CAP
+            return requireNotNull(raw.trim().toLongOrNull()?.takeIf { it >= 0 }) {
+                "MOSS_ACCOUNT_CAP must be a non-negative integer, got '$raw'"
+            }
         }
 
         fun parseAllowedOrigins(raw: String?): List<String> {

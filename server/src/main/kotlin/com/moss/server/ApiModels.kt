@@ -50,13 +50,25 @@ data class HealthResponse(val status: String)
 data class ErrorResponse(val error: String, val message: String)
 
 @Serializable
-data class GoogleLoginRequest(val idToken: String)
+data class GoogleLoginRequest(
+    val idToken: String,
+    /** 신규가입일 때만 읽는다. 기존 계정 로그인에는 필요 없다. */
+    val termsAccepted: Boolean? = null,
+    val termsVersion: String? = null,
+)
 
 @Serializable
 data class RefreshRequest(val refreshToken: String)
 
 @Serializable
-data class EmailSignupRequest(val email: String, val password: String, val name: String)
+data class EmailSignupRequest(
+    val email: String,
+    val password: String,
+    val name: String,
+    /** 명시적 동의. true가 아니면 가입을 거부한다. 동의 시각은 서버가 적는다. */
+    val termsAccepted: Boolean? = null,
+    val termsVersion: String? = null,
+)
 
 @Serializable
 data class EmailLoginRequest(val email: String, val password: String)
