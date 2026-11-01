@@ -10,11 +10,12 @@ import { useWorkspace, SYSTEM_BOARD_ID } from "@/state/workspace";
 import { useStorage } from "@/state/storage";
 import { resetDB } from "@/state/db/schema";
 import { countBlocks } from "@/state/blocks";
-import { flushCard } from "@/state/cardPersist";
+import { flushAll, flushCard } from "@/state/cardPersist";
 import { putBlob } from "@/state/db/opfs";
 import { configureAttachments, resetAttachments } from "@/state/share/attachments";
 import { resetShareStore, useShare } from "@/state/share/store";
 import { useAuth } from "@/state/auth";
+import { configureAIClient } from "@/state/ai/client";
 import type { BoardFile, FilesApi } from "@/state/share/files";
 import { dispatchOp, type BridgeNote } from "@/state/bridge/mossBridge";
 
@@ -393,6 +394,71 @@ describe("dispatchOp", () => {
     });
   });
 
+  describe("ai.embed / ai.summarize / ai.connectionLabel (탭 로그인 세션)", () => {
+    const realFetch = globalThis.fetch;
+    afterEach(() => {
+      vi.unstubAllGlobals();
+      vi.restoreAllMocks();
+      configureAIClient({ fetcher: realFetch });
+    });
+
+    function stubFetch(body: unknown, status = 200) {
+      const m = vi.fn(async (...args: [string, RequestInit?]) => (void args, new Response(JSON.stringify(body), { status })));
+      vi.stubGlobal("fetch", m);
+      configureAIClient({ fetcher: m as unknown as typeof fetch });
+      return m;
+    }
+    function withSession() {
+      vi.spyOn(useAuth.getState(), "ensureSession").mockResolvedValue({
+        accessToken: "tok-1",
+      } as never);
+    }
+    function authOf(m: ReturnType<typeof stubFetch>) {
+      const init = m.mock.calls[0]![1] as RequestInit;
+      return (init.headers as Record<string, string>).Authorization;
+    }
+
+    it("embed: Bearer를 달아 보내고 결과에 토큰이 없다", async () => {
+      withSession();
+      const m = stubFetch({ vectors: [[1]], tokensUsed: 1, mocked: false });
+      const r = await dispatchOp("ai.embed", { texts: ["a"] });
+      expect(m.mock.calls[0]![0]).toBe("/api/ai/embed");
+      expect(authOf(m)).toBe("Bearer tok-1");
+      expect(JSON.stringify(r)).not.toContain("tok-1");
+    });
+
+    it("summarize: Bearer를 달아 보낸다", async () => {
+      withSession();
+      const m = stubFetch({ text: "요약", tokensUsed: 1, mocked: false });
+      const r = (await dispatchOp("ai.summarize", { texts: ["a"], kind: "flow" })) as { text: string };
+      expect(r.text).toBe("요약");
+      expect(m.mock.calls[0]![0]).toBe("/api/ai/summarize");
+      expect(authOf(m)).toBe("Bearer tok-1");
+    });
+
+    it("connectionLabel: Bearer를 달아 보낸다", async () => {
+      withSession();
+      const m = stubFetch({ label: "관련", tokensUsed: 1, mocked: false });
+      const r = (await dispatchOp("ai.connectionLabel", { textA: "x", textB: "y" })) as { label: string };
+      expect(r.label).toBe("관련");
+      expect(m.mock.calls[0]![0]).toBe("/api/ai/connection-label");
+      expect(authOf(m)).toBe("Bearer tok-1");
+    });
+
+    it("로그인 세션이 없으면 토큰 없이 가고 서버 401이 오류로 올라온다", async () => {
+      vi.spyOn(useAuth.getState(), "ensureSession").mockRejectedValue(new Error("no session"));
+      const m = stubFetch({ error: "unauthorized" }, 401);
+      await expect(dispatchOp("ai.embed", { texts: ["a"] })).rejects.toThrow("401");
+      expect(authOf(m)).toBeUndefined();
+    });
+
+    it("잘못된 인자는 거부한다", async () => {
+      await expect(dispatchOp("ai.embed", {})).rejects.toThrow("texts");
+      await expect(dispatchOp("ai.summarize", { texts: ["a"], kind: "x" })).rejects.toThrow("kind");
+      await expect(dispatchOp("ai.connectionLabel", { textA: "x" })).rejects.toThrow("textB");
+    });
+  });
+
   describe("boards (useWorkspace 액션 경유)", () => {
     it("boards.list → 사용자 보드 + current", async () => {
       useWorkspace.setState({
@@ -556,6 +622,8 @@ describe("dispatchOp", () => {
       useWorkspace.setState({ cards: [], currentBoardId: SYSTEM_BOARD_ID });
     });
     afterEach(async () => {
+      // 300ms 디바운스에 걸린 저장이 DB를 닫은 뒤나 다음 테스트의 새 DB에서 터지지 않게 먼저 비운다.
+      await flushAll();
       await resetDB();
       resetShareStore();
       resetAttachments();

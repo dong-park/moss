@@ -36,6 +36,10 @@ data class InviteResponse(val inviteToken: String)
 @Serializable
 data class UsageDto(val boards: Int, val maxBoards: Int, val fileBytes: Long, val maxFileBytes: Long)
 
+/** GET /me — 서명이 검증된 access 토큰의 사용자 id. 웹 AI 가드가 한도 키로 쓴다. */
+@Serializable
+data class MeDto(val userId: String)
+
 @Serializable
 data class BoardTokenResponse(val boardToken: String, val expiresInSeconds: Long)
 

@@ -53,11 +53,11 @@ moss의 사용자 데이터는 브라우저 IndexedDB(Dexie)에만 산다 — No
 > WebKit(WKWebView/pharos webview/Safari)에서는 실패한다(moss 전반의 webview 한계).
 > connections는 캔버스에 렌더되지 않는 데이터(현재 AI 파이프라인이 사용).
 
-### AI (HTTP — dev 서버만 필요, 브라우저 불필요)
+### AI (브리지 경유 — moss 탭과 로그인 필요)
 
 | 도구 | 라우트 |
 |---|---|
-| `ai_embed` | `POST /api/ai/embed` |
+| `ai_embed` | `POST /api/ai/embed` (탭의 로그인 세션으로 호출) |
 | `ai_summarize` | `POST /api/ai/summarize` (kind: flow/cluster/rhythm) |
 | `ai_connection_label` | `POST /api/ai/connection-label` |
 | `ai_preview` | `GET /api/preview` — same-origin 가드 때문에 **브리지 경유**(moss 탭 필요) |
@@ -73,8 +73,10 @@ moss의 사용자 데이터는 브라우저 IndexedDB(Dexie)에만 산다 — No
 | `dev_read_doc` | 레포 내 문서 읽기(경로 가드) |
 | `dev_list_docs` | 주요 문서/스펙 목록 |
 
-> **요약**: 데이터·`ai_preview`는 moss 탭(브리지)이 필요하고, `ai_embed/summarize/connection_label`은
-> dev 서버 HTTP만, `dev_*`는 서버 없이도 동작한다.
+> **요약**: 데이터·`ai_*`는 moss 탭(브리지)이 필요하고, `dev_*`는 서버 없이도 동작한다.
+> AI 라우트는 로그인이 필요하다. `ai_embed/summarize/connection_label`은 탭이 가진 로그인 세션으로
+> 호출하며 토큰은 도구 인자·로그·결과에 나오지 않는다. 탭이 없으면 "실행 중인 moss 탭이 브리지에
+> 접속하지 않았습니다" 오류가 나고, 탭이 로그아웃 상태면 `embed 401` 처럼 상태 코드 오류가 난다.
 
 ## 실행
 

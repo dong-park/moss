@@ -12,6 +12,7 @@ import com.moss.server.GoneException
 import com.moss.server.InvitePreviewRequest
 import com.moss.server.InvitePreviewResponse
 import com.moss.server.InviteResponse
+import com.moss.server.MeDto
 import com.moss.server.MemberDto
 import com.moss.server.MossServer
 import com.moss.server.NotFoundException
@@ -337,6 +338,12 @@ fun Route.boardRoutes(server: MossServer) {
         val userId = call.requireUserId(server)
         val boards: List<BoardDto> = server.repo.boardsForUser(userId).map { it.toDto() }
         call.respond(HttpStatusCode.OK, boards)
+    }
+
+    // 검증된 access 토큰의 사용자 id. 토큰 문자열이 아니라 서명 검증을 거친 sub를 돌려준다.
+    get("/me") {
+        val userId = call.requireUserId(server)
+        call.respond(HttpStatusCode.OK, MeDto(userId.toString()))
     }
 
     // 서버에 저장된 내 보드 수와 첨부 합계, 그 상한. 상한에 닿으면 웹이 새 보드 만들기를 막는다.

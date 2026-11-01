@@ -1,6 +1,8 @@
 /* ─────────────────────────────────────────────────────────────
  * moss-mcp T6 — AI/preview 도구. moss의 기존 서버 라우트를 HTTP로 래핑한다.
- * 브라우저·브리지 불필요(실행 중 dev 서버만 있으면 됨).
+ * AI 라우트는 로그인이 필요하다. server.ts는 bridge 옵션을 넘겨 moss 탭의 로그인
+ * 세션으로 호출한다(op ai.embed/ai.summarize/ai.connectionLabel). bridge 없이 부르면
+ * 토큰 없는 HTTP라 서버가 401로 막는다. 토큰은 인자·로그·결과에 싣지 않는다.
  *
  *   POST /api/ai/embed            { texts }            → { vectors, tokensUsed, mocked }
  *   POST /api/ai/summarize        { texts, kind }      → { text, tokensUsed, mocked }
@@ -12,9 +14,16 @@
 
 type Fetcher = typeof fetch;
 
+/** 로그인 세션을 가진 moss 탭으로 op를 보내는 브리지. 있으면 HTTP 대신 이 경로를 쓴다. */
+export interface AiBridge {
+  call(op: string, params?: Record<string, unknown>): Promise<unknown>;
+}
+
 export interface AiOptions {
   baseUrl?: string;
   fetcher?: Fetcher;
+  /** 주어지면 AI 호출을 moss 탭의 로그인 세션으로 보낸다. 토큰은 MCP 프로세스를 지나지 않는다. */
+  bridge?: AiBridge;
 }
 
 export type SummarizeKind = "flow" | "cluster" | "rhythm";
@@ -52,6 +61,7 @@ async function postJson(
 }
 
 export function aiEmbed(texts: string[], o?: AiOptions): Promise<unknown> {
+  if (o?.bridge) return o.bridge.call("ai.embed", { texts });
   return postJson("/api/ai/embed", { texts }, o);
 }
 
@@ -60,6 +70,7 @@ export function aiSummarize(
   kind: SummarizeKind,
   o?: AiOptions,
 ): Promise<unknown> {
+  if (o?.bridge) return o.bridge.call("ai.summarize", { texts, kind });
   return postJson("/api/ai/summarize", { texts, kind }, o);
 }
 
@@ -68,6 +79,7 @@ export function aiConnectionLabel(
   textB: string,
   o?: AiOptions,
 ): Promise<unknown> {
+  if (o?.bridge) return o.bridge.call("ai.connectionLabel", { textA, textB });
   return postJson("/api/ai/connection-label", { textA, textB }, o);
 }
 
