@@ -77,16 +77,9 @@ data class EmailSignupRequest(
 @Serializable
 data class EmailLoginRequest(val email: String, val password: String)
 
-/** 재설정 요청. 계정이 없어도 응답은 같다. 원문 토큰은 발송 수단이 있을 때만 나간다. */
+/** 재설정 요청. 계정이 없어도 응답은 같다. 원문 토큰은 응답에 넣지 않는다. */
 @Serializable
 data class PasswordResetRequestBody(val email: String)
-
-/**
- * 로컬 검증용 응답. 메일 발송 수단이 정해지기 전에는 원문 토큰을 여기로만 돌려준다.
- * 발송 수단이 생기면 이 필드를 응답에서 빼고 메일로만 보낸다.
- */
-@Serializable
-data class PasswordResetRequestResponse(val token: String?)
 
 @Serializable
 data class PasswordResetConfirmRequest(val token: String, val password: String)

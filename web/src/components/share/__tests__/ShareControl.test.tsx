@@ -40,7 +40,7 @@ function fakeAuthApi(): AuthApi {
     googleLogin: vi.fn(async () => session),
     signup: vi.fn(async () => session),
     login: vi.fn(async () => session),
-    requestPasswordReset: vi.fn(async () => ({ token: null })),
+    requestPasswordReset: vi.fn(async () => {}),
     confirmPasswordReset: vi.fn(async () => undefined),
     refresh: vi.fn(async () => session),
     logout: vi.fn(async () => undefined),

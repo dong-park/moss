@@ -62,10 +62,13 @@ data class UserUsage(val boards: Int, val fileBytes: Long)
 object InviteTokens {
     private val random = SecureRandom()
 
-    fun generate(): String {
+    fun generate(): String = next()
+
+    /** 테스트가 원문을 알 수 있게 바꾼다. 응답에는 원문을 넣지 않는다. */
+    var next: () -> String = {
         val bytes = ByteArray(32)
         random.nextBytes(bytes)
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
+        Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
     }
 
     fun hash(raw: String): String {

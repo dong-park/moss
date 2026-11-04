@@ -14,8 +14,6 @@ import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.update
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class PasswordResetTest : ApiTest() {
@@ -32,11 +30,22 @@ class PasswordResetTest : ApiTest() {
             setBody(EmailLoginRequest(email, password))
         }
 
-    private suspend fun HttpClient.requestReset(email: String) =
-        post("/auth/password/reset-request") {
-            contentType(ContentType.Application.Json)
-            setBody(PasswordResetRequestBody(email))
+    /** 응답 본문은 비어 있다. 원문은 테스트가 저장 직전에 정한다. */
+    private suspend fun HttpClient.requestReset(email: String, token: String = "raw-token"): String {
+        val previous = com.moss.server.boards.InviteTokens.next
+        com.moss.server.boards.InviteTokens.next = { token }
+        try {
+            val response = post("/auth/password/reset-request") {
+                contentType(ContentType.Application.Json)
+                setBody(PasswordResetRequestBody(email))
+            }
+            assertEquals(HttpStatusCode.OK, response.status)
+            assertEquals("", response.body<String>())
+            return token
+        } finally {
+            com.moss.server.boards.InviteTokens.next = previous
         }
+    }
 
     private suspend fun HttpClient.confirmReset(token: String, password: String) =
         post("/auth/password/reset") {
@@ -49,10 +58,7 @@ class PasswordResetTest : ApiTest() {
         val client = client()
         assertEquals(HttpStatusCode.OK, client.signup("reset@example.com", "password123").status)
 
-        val issued = client.requestReset(" Reset@Example.com ")
-        assertEquals(HttpStatusCode.OK, issued.status)
-        val token = issued.body<PasswordResetRequestResponse>().token
-        assertNotNull(token)
+        val token = client.requestReset(" Reset@Example.com ")
 
         assertEquals(HttpStatusCode.OK, client.confirmReset(token, "newpassword1").status)
         assertEquals(HttpStatusCode.Unauthorized, client.login("reset@example.com", "password123").status)
@@ -63,7 +69,7 @@ class PasswordResetTest : ApiTest() {
     fun usedTokenIsRejectedTheSecondTime() = app {
         val client = client()
         client.signup("once@example.com", "password123")
-        val token = client.requestReset("once@example.com").body<PasswordResetRequestResponse>().token!!
+        val token = client.requestReset("once@example.com")
 
         assertEquals(HttpStatusCode.OK, client.confirmReset(token, "newpassword1").status)
         val again = client.confirmReset(token, "anotherpass1")
@@ -76,7 +82,7 @@ class PasswordResetTest : ApiTest() {
     fun expiredTokenIsRejected() = app {
         val client = client()
         client.signup("old@example.com", "password123")
-        val token = client.requestReset("old@example.com").body<PasswordResetRequestResponse>().token!!
+        val token = client.requestReset("old@example.com")
         transaction {
             PasswordResets.update({ PasswordResets.tokenHash eq com.moss.server.boards.InviteTokens.hash(token) }) {
                 it[expiresAt] = System.currentTimeMillis() - 1
@@ -89,23 +95,40 @@ class PasswordResetTest : ApiTest() {
     }
 
     @Test
+    fun responseBodyNeverContainsTheToken() = app {
+        val client = client()
+        client.signup("hidden@example.com", "password123")
+        val token = "hidden-token"
+        val previous = com.moss.server.boards.InviteTokens.next
+        com.moss.server.boards.InviteTokens.next = { token }
+        try {
+            val response = client.post("/auth/password/reset-request") {
+                contentType(ContentType.Application.Json)
+                setBody(PasswordResetRequestBody("hidden@example.com"))
+            }
+            assertEquals(HttpStatusCode.OK, response.status)
+            val body = response.body<String>()
+            assertTrue(token !in body)
+            assertEquals("", body)
+        } finally {
+            com.moss.server.boards.InviteTokens.next = previous
+        }
+    }
+
+    @Test
     fun unknownEmailReturnsOkWithoutToken() = app {
         val client = client()
-        val missing = client.requestReset("nobody@example.com")
-        assertEquals(HttpStatusCode.OK, missing.status)
-        assertNull(missing.body<PasswordResetRequestResponse>().token)
-
-        val bad = client.requestReset("not-an-email")
-        assertEquals(HttpStatusCode.OK, bad.status)
-        assertNull(bad.body<PasswordResetRequestResponse>().token)
+        client.requestReset("nobody@example.com")
+        client.requestReset("not-an-email")
+        assertEquals(0, transaction { PasswordResets.selectAll().count() })
     }
 
     @Test
     fun newerRequestInvalidatesThePreviousToken() = app {
         val client = client()
         client.signup("twice@example.com", "password123")
-        val first = client.requestReset("twice@example.com").body<PasswordResetRequestResponse>().token!!
-        val second = client.requestReset("twice@example.com").body<PasswordResetRequestResponse>().token!!
+        val first = client.requestReset("twice@example.com", "first-token")
+        val second = client.requestReset("twice@example.com", "second-token")
 
         assertEquals(HttpStatusCode.Gone, client.confirmReset(first, "newpassword1").status)
         assertEquals(HttpStatusCode.OK, client.confirmReset(second, "newpassword1").status)
@@ -116,7 +139,7 @@ class PasswordResetTest : ApiTest() {
         val client = client()
         client.signup("hash@example.com", "password123")
         val before = System.currentTimeMillis()
-        val token = client.requestReset("hash@example.com").body<PasswordResetRequestResponse>().token!!
+        val token = client.requestReset("hash@example.com", "hash-token")
         val row = transaction { PasswordResets.selectAll().single() }
         assertEquals(com.moss.server.boards.InviteTokens.hash(token), row[PasswordResets.tokenHash])
         assertTrue(row[PasswordResets.tokenHash] != token)
@@ -129,7 +152,7 @@ class PasswordResetTest : ApiTest() {
     fun shortNewPasswordIsRejectedAndTokenStaysUsable() = app {
         val client = client()
         client.signup("short@example.com", "password123")
-        val token = client.requestReset("short@example.com").body<PasswordResetRequestResponse>().token!!
+        val token = client.requestReset("short@example.com")
 
         assertEquals(HttpStatusCode.BadRequest, client.confirmReset(token, "short").status)
         assertEquals(HttpStatusCode.OK, client.confirmReset(token, "newpassword1").status)

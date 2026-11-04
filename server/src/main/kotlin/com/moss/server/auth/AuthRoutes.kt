@@ -9,7 +9,6 @@ import com.moss.server.GoogleVerificationException
 import com.moss.server.MossServer
 import com.moss.server.PasswordResetConfirmRequest
 import com.moss.server.PasswordResetRequestBody
-import com.moss.server.PasswordResetRequestResponse
 import com.moss.server.LogoutRequest
 import com.moss.server.RefreshRequest
 import com.moss.server.UnauthorizedException
@@ -166,13 +165,10 @@ fun Route.authRoutes(server: MossServer) {
             val body = call.receive<PasswordResetRequestBody>()
             val email = normalizeEmail(body.email)
             // 형식이 틀린 메일은 계정이 없는 것과 같은 응답을 준다. 존재 여부를 가르지 않는다.
-            val token = if (runCatching { validateEmail(email) }.isSuccess) {
+            if (runCatching { validateEmail(email) }.isSuccess) {
                 server.repo.createPasswordReset(email, System.currentTimeMillis(), PASSWORD_RESET_TTL_MILLIS)
-            } else {
-                null
             }
-            // 발송 수단이 정해지기 전에는 원문을 응답으로만 돌려준다. 없는 계정도 200이다.
-            call.respond(HttpStatusCode.OK, PasswordResetRequestResponse(token))
+            call.respond(HttpStatusCode.OK)
         }
     }
 

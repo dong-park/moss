@@ -28,7 +28,7 @@ function fakeApi(overrides: Partial<AuthApi> = {}): AuthApi {
     refresh: vi.fn(async (): Promise<AuthSession> => {
       throw new AuthRequestError("refresh 401", 401);
     }),
-    requestPasswordReset: vi.fn(async () => ({ token: null })),
+    requestPasswordReset: vi.fn(async () => {}),
     confirmPasswordReset: vi.fn(async () => undefined),
     logout: vi.fn(async () => undefined),
     previewInvite: vi.fn(async () => ({ boardName: "이번 주 기획", ownerName: "동환" })),
