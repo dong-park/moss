@@ -2,6 +2,7 @@ plugins {
     kotlin("jvm") version "2.2.20"
     kotlin("plugin.serialization") version "2.2.20"
     application
+    id("org.owasp.dependencycheck") version "12.1.3"
 }
 
 group = "com.moss"
