@@ -47,6 +47,7 @@ class TokenService(
         val builder = JWT.create()
             .withIssuer(ISSUER)
             .withSubject(userId.toString())
+            .withJWTId(UUID.randomUUID().toString())
             .withClaim(CLAIM_TYPE, type.claim)
             .withIssuedAt(Date.from(now))
             .withExpiresAt(Date.from(now.plusSeconds(ttlSeconds(type))))

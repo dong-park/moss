@@ -224,8 +224,17 @@ export const useAuth = create<AuthState>((set, get) => ({
   },
 
   logout: async () => {
+    const refreshToken = get().session?.refreshToken;
     // 진행 중 refresh가 로그아웃 뒤 persist하지 못하게 무효화한다.
     invalidateRefresh();
+    if (refreshToken) {
+      // 서버가 거절하거나 끊겨도 이 기기의 세션은 지운다.
+      try {
+        await deps.api.logout(refreshToken);
+      } catch {
+        // 로컬 로그아웃은 계속한다.
+      }
+    }
     await clearSession();
     set({ status: "anonymous", user: null, session: null });
   },
