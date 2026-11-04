@@ -10,3 +10,6 @@ node_modules/
 
 # local secrets for docker compose
 .env
+
+# database dumps from scripts/backup.sh
+backups/
