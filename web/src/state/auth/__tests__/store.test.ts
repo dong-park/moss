@@ -28,6 +28,9 @@ function fakeApi(overrides: Partial<AuthApi> = {}): AuthApi {
     refresh: vi.fn(async (): Promise<AuthSession> => {
       throw new AuthRequestError("refresh 401", 401);
     }),
+    requestPasswordReset: vi.fn(async () => ({ token: null })),
+    confirmPasswordReset: vi.fn(async () => undefined),
+    logout: vi.fn(async () => undefined),
     previewInvite: vi.fn(async () => ({ boardName: "이번 주 기획", ownerName: "동환" })),
     acceptInvite: vi.fn(async (): Promise<BoardSummary> => ({
       id: "b1",
@@ -215,6 +218,22 @@ describe("auth/store", () => {
     await pending;
 
     expect(useAuth.getState().session).toBeNull();
+    expect(useAuth.getState().status).toBe("anonymous");
+    expect(await loadSession()).toBeNull();
+  });
+
+  test("로그아웃이 서버에 리프레시 토큰을 보내고, 서버가 죽어도 로컬 세션은 지운다", async () => {
+    const logout = vi.fn(async () => {
+      throw new TypeError("network");
+    });
+    configureAuth({ api: fakeApi({ logout }) });
+    const session = sessionWith(NOW / 1000 + 600, NOW / 1000 + 600);
+    useAuth.setState({ session, user: session.user, status: "authenticated" });
+    await saveSession(session);
+
+    await useAuth.getState().logout();
+
+    expect(logout).toHaveBeenCalledWith(session.refreshToken);
     expect(useAuth.getState().status).toBe("anonymous");
     expect(await loadSession()).toBeNull();
   });

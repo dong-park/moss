@@ -26,6 +26,28 @@ object Users : Table("users") {
     override val primaryKey = PrimaryKey(id)
 }
 
+/**
+ * 비밀번호 재설정 토큰. 원문은 저장하지 않고 SHA-256 해시만 둔다.
+ * 한 행은 한 번만 쓰인다. 같은 메일의 새 요청은 아직 안 쓴 행을 무효로 만든다.
+ */
+object PasswordResets : Table("password_resets") {
+    val tokenHash = text("token_hash")
+    val userId = uuid("user_id")
+    val expiresAt = long("expires_at")
+    val usedAt = long("used_at").nullable()
+    val createdAt = long("created_at")
+    override val primaryKey = PrimaryKey(tokenHash)
+}
+
+/** 로그아웃으로 폐기한 리프레시 토큰. 원문은 저장하지 않고 jti 해시만 둔다. */
+object RevokedRefreshTokens : Table("revoked_refresh_tokens") {
+    val jtiHash = text("jti_hash")
+    val userId = uuid("user_id")
+    val expiresAt = long("expires_at")
+    val revokedAt = long("revoked_at")
+    override val primaryKey = PrimaryKey(jtiHash)
+}
+
 /** 신규가입 직렬화용 잠금 행(id=1). */
 object SignupPolicyLock : Table("signup_policy") {
     val id = short("id")

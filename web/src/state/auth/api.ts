@@ -57,7 +57,12 @@ export interface AuthApi {
   googleLogin(idToken: string, termsVersion?: string): Promise<AuthSession>;
   signup(email: string, password: string, name: string, termsVersion: string): Promise<AuthSession>;
   login(email: string, password: string): Promise<AuthSession>;
+  /** 계정이 없어도 성공한다. 발송 수단이 생기기 전에는 원문 토큰을 돌려준다. */
+  requestPasswordReset(email: string): Promise<{ token: string | null }>;
+  confirmPasswordReset(token: string, password: string): Promise<void>;
   refresh(refreshToken: string): Promise<AuthSession>;
+  /** 서버가 이 리프레시 토큰만 폐기한다. 네트워크가 죽어도 호출자는 로컬 세션을 지운다. */
+  logout(refreshToken: string): Promise<void>;
   previewInvite(token: string): Promise<InvitePreview>;
   acceptInvite(token: string, accessToken: string): Promise<BoardSummary>;
 }
@@ -120,7 +125,31 @@ export const realAuthApi: AuthApi = {
   signup: (email, password, name, termsVersion) =>
     postJson<AuthSession>("/auth/signup", { email, password, name, termsAccepted: true, termsVersion }),
   login: (email, password) => postJson<AuthSession>("/auth/login", { email, password }),
+  requestPasswordReset: (email) =>
+    postJson<{ token: string | null }>("/auth/password/reset-request", { email }),
+  confirmPasswordReset: async (token, password) => {
+    const res = await fetch(`${apiBaseUrl()}/auth/password/reset`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token, password }),
+    });
+    if (!res.ok) {
+      const { code, message } = await readErrorBody(res);
+      throw new AuthRequestError(message ?? "", res.status, code);
+    }
+  },
   refresh: (refreshToken) => postJson<AuthSession>("/auth/refresh", { refreshToken }),
+  logout: async (refreshToken) => {
+    const res = await fetch(`${apiBaseUrl()}/auth/logout`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshToken }),
+    });
+    if (!res.ok) {
+      const { code, message } = await readErrorBody(res);
+      throw new AuthRequestError(message ?? "", res.status, code);
+    }
+  },
   previewInvite: async (token) => {
     try {
       return await postJson<InvitePreview>("/invites/preview", { token });

@@ -3,6 +3,10 @@ package com.moss.server.boards
 import com.moss.server.Boards
 import com.moss.server.ConflictException
 import com.moss.server.ConsentRequiredException
+import com.moss.server.GoneException
+import com.moss.server.PasswordResets
+import com.moss.server.RevokedRefreshTokens
+import com.moss.server.UnauthorizedException
 import com.moss.server.SignupClosedException
 import com.moss.server.SignupPolicyLock
 import com.moss.server.Files
@@ -19,6 +23,7 @@ import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.inList
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.deleteWhere
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.lessEq
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.insertIgnore
 import org.jetbrains.exposed.sql.select
@@ -186,6 +191,69 @@ class BoardRepository(
             UserRow(row[Users.id], row[Users.googleSub], row[Users.name], row[Users.avatar]),
             hash,
         )
+    }
+
+    /**
+     * 비밀번호 재설정 토큰을 만든다. 원문은 반환만 하고 해시만 저장한다.
+     * 비밀번호가 없는 계정은 null이다. 같은 계정의 아직 안 쓴 토큰은 바로 무효가 된다.
+     */
+    suspend fun createPasswordReset(email: String, now: Long, ttlMillis: Long): String? = dbQuery {
+        val row = Users.selectAll().where { Users.email eq email }.singleOrNull() ?: return@dbQuery null
+        if (row[Users.passwordHash] == null) return@dbQuery null
+        val userId = row[Users.id]
+        PasswordResets.update({ (PasswordResets.userId eq userId) and PasswordResets.usedAt.isNull() }) {
+            it[usedAt] = now
+        }
+        val raw = InviteTokens.generate()
+        PasswordResets.insert {
+            it[tokenHash] = InviteTokens.hash(raw)
+            it[PasswordResets.userId] = userId
+            it[expiresAt] = now + ttlMillis
+            it[createdAt] = now
+        }
+        raw
+    }
+
+    /**
+     * 재설정 토큰으로 비밀번호를 바꾼다. 만료됐거나 이미 쓴 토큰은 거부한다.
+     * 확인과 해시 교체와 사용 표시를 한 트랜잭션에서 끝낸다.
+     */
+    suspend fun consumePasswordReset(rawToken: String, newPasswordHash: String, now: Long) = dbQuery {
+        val row = PasswordResets.selectAll()
+            .where { PasswordResets.tokenHash eq InviteTokens.hash(rawToken) }
+            .forUpdate()
+            .singleOrNull() ?: throw GoneException("재설정 링크가 유효하지 않아요")
+        if (row[PasswordResets.usedAt] != null || row[PasswordResets.expiresAt] <= now) {
+            throw GoneException("재설정 링크가 유효하지 않아요")
+        }
+        val userId = row[PasswordResets.userId]
+        Users.update({ Users.id eq userId }) { it[passwordHash] = newPasswordHash }
+        PasswordResets.update({ PasswordResets.tokenHash eq row[PasswordResets.tokenHash] }) {
+            it[usedAt] = now
+        }
+    }
+
+    /**
+     * 로그아웃한 리프레시 토큰의 jti 해시를 남긴다. 원문은 저장하지 않는다.
+     * 같은 토큰을 다시 폐기해도 한 행이다. 이미 만료된 폐기 기록은 지운다.
+     */
+    suspend fun revokeRefresh(userId: UUID, jti: String, expiresAtMillis: Long, now: Long) = dbQuery {
+        RevokedRefreshTokens.deleteWhere { RevokedRefreshTokens.expiresAt lessEq now }
+        RevokedRefreshTokens.insertIgnore {
+            it[jtiHash] = InviteTokens.hash(jti)
+            it[RevokedRefreshTokens.userId] = userId
+            it[expiresAt] = expiresAtMillis
+            it[revokedAt] = now
+        }
+    }
+
+    /** 폐기된 리프레시 토큰이면 갱신을 거부한다. 만료된 기록은 폐기와 같지 않다. */
+    suspend fun requireRefreshActive(jti: String, now: Long) = dbQuery {
+        val row = RevokedRefreshTokens.selectAll()
+            .where { RevokedRefreshTokens.jtiHash eq InviteTokens.hash(jti) }
+            .singleOrNull() ?: return@dbQuery
+        if (row[RevokedRefreshTokens.expiresAt] <= now) return@dbQuery
+        throw UnauthorizedException("로그인이 취소됐어요")
     }
 
     suspend fun board(boardId: String): BoardRow? = dbQuery {

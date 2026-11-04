@@ -3,9 +3,14 @@ package com.moss.server.auth
 import com.moss.server.AuthResponse
 import com.moss.server.EmailLoginRequest
 import com.moss.server.EmailSignupRequest
+import com.moss.server.GoneException
 import com.moss.server.GoogleLoginRequest
 import com.moss.server.GoogleVerificationException
 import com.moss.server.MossServer
+import com.moss.server.PasswordResetConfirmRequest
+import com.moss.server.PasswordResetRequestBody
+import com.moss.server.PasswordResetRequestResponse
+import com.moss.server.LogoutRequest
 import com.moss.server.RefreshRequest
 import com.moss.server.UnauthorizedException
 import com.moss.server.boards.SignupConsent
@@ -37,6 +42,12 @@ val EmailSignupRateLimit = RateLimitName("email-signup")
  */
 val EmailLoginIpRateLimit = RateLimitName("email-login-ip")
 
+/** 재설정 요청은 IP당 1시간 10회. 메일 열거와 bcrypt 비용 폭주를 같이 막는다. */
+val PasswordResetRateLimit = RateLimitName("password-reset")
+
+/** 재설정 토큰 유효 시간. */
+val PASSWORD_RESET_TTL_MILLIS = 1.hours.inWholeMilliseconds
+
 /**
  * RateLimit의 requestKey가 로그인 본문을 읽어야 한다. 본문은 한 번만 읽히므로 [receiveEmailLogin]이
  * 첫 읽기를 call 속성에 담고 핸들러도 같은 함수로 받는다. DoubleReceive 플러그인을 전역에 깔았다가
@@ -64,6 +75,10 @@ fun Application.installAuthRateLimits() {
             rateLimiter(limit = 20, refillPeriod = 1.hours)
             requestKey { call -> call.request.origin.remoteHost }
         }
+        register(PasswordResetRateLimit) {
+            rateLimiter(limit = 10, refillPeriod = 1.hours)
+            requestKey { call -> call.request.origin.remoteHost }
+        }
     }
 }
 
@@ -89,8 +104,23 @@ fun Route.authRoutes(server: MossServer) {
         val body = call.receive<RefreshRequest>()
         val decoded = server.tokens.verify(body.refreshToken, TokenService.TokenType.REFRESH)
         val userId = server.tokens.userId(decoded)
+        val jti = decoded.id ?: throw UnauthorizedException("토큰이 유효하지 않아요")
+        server.repo.requireRefreshActive(jti, System.currentTimeMillis())
         val user = server.repo.userById(userId) ?: throw UnauthorizedException("사용자를 찾을 수 없어요")
         call.respondAuth(server, user)
+    }
+
+    post("/auth/logout") {
+        val body = call.receive<LogoutRequest>()
+        val decoded = runCatching {
+            server.tokens.verify(body.refreshToken, TokenService.TokenType.REFRESH)
+        }.getOrNull()
+        if (decoded != null && decoded.id != null) {
+            val expiresAt = decoded.expiresAt?.time ?: System.currentTimeMillis()
+            server.repo.revokeRefresh(server.tokens.userId(decoded), decoded.id, expiresAt, System.currentTimeMillis())
+        }
+        // 이미 깨진 토큰도 로그아웃은 끝난다. 브라우저가 로컬 세션을 지우게 한다.
+        call.respond(HttpStatusCode.OK)
     }
 
     rateLimit(EmailSignupRateLimit) {
@@ -129,6 +159,29 @@ fun Route.authRoutes(server: MossServer) {
                 call.respondAuth(server, credential.user)
             }
         }
+    }
+
+    rateLimit(PasswordResetRateLimit) {
+        post("/auth/password/reset-request") {
+            val body = call.receive<PasswordResetRequestBody>()
+            val email = normalizeEmail(body.email)
+            // 형식이 틀린 메일은 계정이 없는 것과 같은 응답을 준다. 존재 여부를 가르지 않는다.
+            val token = if (runCatching { validateEmail(email) }.isSuccess) {
+                server.repo.createPasswordReset(email, System.currentTimeMillis(), PASSWORD_RESET_TTL_MILLIS)
+            } else {
+                null
+            }
+            // 발송 수단이 정해지기 전에는 원문을 응답으로만 돌려준다. 없는 계정도 200이다.
+            call.respond(HttpStatusCode.OK, PasswordResetRequestResponse(token))
+        }
+    }
+
+    post("/auth/password/reset") {
+        val body = call.receive<PasswordResetConfirmRequest>()
+        if (body.token.isBlank()) throw GoneException("재설정 링크가 유효하지 않아요")
+        validatePassword(body.password)
+        server.repo.consumePasswordReset(body.token, PasswordHasher.hash(body.password), System.currentTimeMillis())
+        call.respond(HttpStatusCode.OK)
     }
 }
 

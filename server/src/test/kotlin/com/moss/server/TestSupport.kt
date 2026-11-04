@@ -83,6 +83,8 @@ abstract class ApiTest {
             Invites.deleteAll()
             Files.deleteAll()
             Boards.deleteAll()
+            PasswordResets.deleteAll()
+            RevokedRefreshTokens.deleteAll()
             Users.deleteAll()
         }
     }

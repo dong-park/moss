@@ -53,7 +53,10 @@ describe("AC-12 · 리프레시 만료 로그인 카드", () => {
       googleLogin: vi.fn(async () => fresh),
       signup: vi.fn(async () => fresh),
       login: vi.fn(async () => fresh),
+      requestPasswordReset: vi.fn(async () => ({ token: null })),
+      confirmPasswordReset: vi.fn(async () => undefined),
       refresh: vi.fn(async () => fresh),
+      logout: vi.fn(async () => undefined),
       previewInvite: vi.fn(),
       acceptInvite: vi.fn(),
     };
@@ -74,7 +77,10 @@ describe("AC-12 · 리프레시 만료 로그인 카드", () => {
       googleLogin: vi.fn(async () => fresh),
       signup: vi.fn(async () => fresh),
       login: vi.fn(async () => fresh),
+      requestPasswordReset: vi.fn(async () => ({ token: null })),
+      confirmPasswordReset: vi.fn(async () => undefined),
       refresh: vi.fn(async () => fresh),
+      logout: vi.fn(async () => undefined),
       previewInvite: vi.fn(),
       acceptInvite: vi.fn(),
     };
