@@ -5,6 +5,7 @@ import com.moss.server.ConflictException
 import com.moss.server.ConsentRequiredException
 import com.moss.server.GoneException
 import com.moss.server.PasswordResets
+import com.moss.server.RefreshInvalidations
 import com.moss.server.RevokedRefreshTokens
 import com.moss.server.UnauthorizedException
 import com.moss.server.SignupClosedException
@@ -26,6 +27,7 @@ import org.jetbrains.exposed.sql.deleteWhere
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.lessEq
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.insertIgnore
+import org.jetbrains.exposed.sql.upsert
 import org.jetbrains.exposed.sql.select
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.sum
@@ -233,6 +235,20 @@ class BoardRepository(
         Users.update({ Users.id eq userId }) { it[passwordHash] = newPasswordHash }
         PasswordResets.update({ PasswordResets.tokenHash eq row[PasswordResets.tokenHash] }) {
             it[usedAt] = now
+        }
+        RefreshInvalidations.upsert {
+            it[RefreshInvalidations.userId] = userId
+            it[invalidBefore] = now
+        }
+    }
+
+    /** 비밀번호를 바꾼 시각 이전에 발급한 리프레시 토큰이면 갱신을 거부한다. */
+    suspend fun requireRefreshIssuedAfterReset(userId: UUID, issuedAtMillis: Long) = dbQuery {
+        val row = RefreshInvalidations.selectAll()
+            .where { RefreshInvalidations.userId eq userId }
+            .singleOrNull() ?: return@dbQuery
+        if (issuedAtMillis < row[RefreshInvalidations.invalidBefore]) {
+            throw UnauthorizedException("로그인이 취소됐어요")
         }
     }
 

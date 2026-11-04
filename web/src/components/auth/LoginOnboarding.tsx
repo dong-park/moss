@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useT } from "@/i18n/Provider";
 import type { Translator } from "@/i18n";
 import { AuthRequestError, GoogleUnavailableError, useAuth } from "@/state/auth";
-import { realAuthApi } from "@/state/auth/api";
 import { termsVersion } from "@/state/auth/terms";
 import { useOnlineStatus } from "@/state/network";
 import { FloatingCards } from "./FloatingCards";
@@ -17,7 +16,7 @@ import { GoogleButton } from "./GoogleButton";
  * 로그인하면 게이트가 워크스페이스로 바뀌고 `usePathname`의 보드가 열린다 — P1:
  * 별도 `next` 전달·이동이 필요 없어 그 배선을 지웠다.
  */
-type Mode = "closed" | "login" | "signup" | "reset";
+type Mode = "closed" | "login" | "signup";
 type FieldErrors = { email?: string; password?: string; name?: string };
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -139,7 +138,6 @@ export function LoginActions() {
   const [googleConsent, setGoogleConsent] = useState(false);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
-  const [resetSent, setResetSent] = useState(false);
   const [googleError, setGoogleError] = useState<string | null>(null);
 
   const handleLogin = async () => {
@@ -169,13 +167,12 @@ export function LoginActions() {
     setMode(next);
     setErrors({});
     setFormError(null);
-    setResetSent(false);
   };
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!online) return;
-    const found = mode === "reset" ? validate("login", email, "", name, t) : validate(mode, email, password, name, t);
+    const found = validate(mode, email, password, name, t);
     setErrors(found);
     setFormError(null);
     if (Object.keys(found).length > 0) return;
@@ -185,12 +182,6 @@ export function LoginActions() {
     }
     setBusy(true);
     try {
-      if (mode === "reset") {
-        await realAuthApi.requestPasswordReset(email.trim());
-        setResetSent(true);
-        setBusy(false);
-        return;
-      }
       if (mode === "signup") {
         await useAuth.getState().signupWithEmail(email.trim(), password, name.trim(), termsVersion());
       } else {
@@ -248,7 +239,6 @@ export function LoginActions() {
             )}
           </div>
 
-          {mode !== "reset" && (
           <div>
             <label htmlFor="moss-auth-password" className="text-[11px] text-[#8e8e93]">
               {t("collab.auth.email.passwordLabel")}
@@ -268,7 +258,6 @@ export function LoginActions() {
               </p>
             )}
           </div>
-          )}
 
           {mode === "signup" && (
           <div>
@@ -293,11 +282,6 @@ export function LoginActions() {
           )}
 
           {mode === "signup" && <TermsCheckbox accepted={accepted} onChange={setAccepted} />}
-          {mode === "reset" && resetSent && (
-            <p role="status" className="text-[11px] text-[#2c2e33]">
-              {t("collab.auth.email.resetSent")}
-            </p>
-          )}
 
           {formError && (
             <p role="alert" className="text-[11px] text-[#c0392b]">
@@ -312,20 +296,8 @@ export function LoginActions() {
           >
             {mode === "signup"
               ? t("collab.auth.email.signupButton")
-              : mode === "reset"
-                ? t("collab.auth.email.forgot")
-                : t("collab.auth.email.loginButton")}
+              : t("collab.auth.email.loginButton")}
           </button>
-
-          {mode === "login" && (
-            <button
-              type="button"
-              onClick={() => switchMode("reset")}
-              className="w-full text-center text-[11px] text-[#2c2e33] underline"
-            >
-              {t("collab.auth.email.forgot")}
-            </button>
-          )}
 
           <button
             type="button"

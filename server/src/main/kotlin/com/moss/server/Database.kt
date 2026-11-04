@@ -49,6 +49,16 @@ object RevokedRefreshTokens : Table("revoked_refresh_tokens") {
 }
 
 /** 신규가입 직렬화용 잠금 행(id=1). */
+/**
+ * 비밀번호를 바꾼 시각. 이 시각 이전에 발급한 리프레시 토큰은 갱신하지 않는다.
+ * 행이 없으면 재설정으로 끊은 적이 없다.
+ */
+object RefreshInvalidations : Table("refresh_invalidations") {
+    val userId = uuid("user_id")
+    val invalidBefore = long("invalid_before")
+    override val primaryKey = PrimaryKey(userId)
+}
+
 object SignupPolicyLock : Table("signup_policy") {
     val id = short("id")
     override val primaryKey = PrimaryKey(id)

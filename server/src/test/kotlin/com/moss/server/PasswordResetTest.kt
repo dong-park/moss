@@ -60,9 +60,15 @@ class PasswordResetTest : ApiTest() {
 
         val token = client.requestReset(" Reset@Example.com ")
 
+        val session = client.login("reset@example.com", "password123").body<AuthResponse>()
         assertEquals(HttpStatusCode.OK, client.confirmReset(token, "newpassword1").status)
         assertEquals(HttpStatusCode.Unauthorized, client.login("reset@example.com", "password123").status)
         assertEquals(HttpStatusCode.OK, client.login("reset@example.com", "newpassword1").status)
+        val kept = client.post("/auth/refresh") {
+            contentType(ContentType.Application.Json)
+            setBody(RefreshRequest(session.refreshToken))
+        }
+        assertEquals(HttpStatusCode.Unauthorized, kept.status)
     }
 
     @Test

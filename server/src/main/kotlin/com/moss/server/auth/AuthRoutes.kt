@@ -104,7 +104,9 @@ fun Route.authRoutes(server: MossServer) {
         val decoded = server.tokens.verify(body.refreshToken, TokenService.TokenType.REFRESH)
         val userId = server.tokens.userId(decoded)
         val jti = decoded.id ?: throw UnauthorizedException("토큰이 유효하지 않아요")
-        server.repo.requireRefreshActive(jti, System.currentTimeMillis())
+        val now = System.currentTimeMillis()
+        server.repo.requireRefreshActive(jti, now)
+        server.repo.requireRefreshIssuedAfterReset(userId, decoded.issuedAt?.time ?: 0L)
         val user = server.repo.userById(userId) ?: throw UnauthorizedException("사용자를 찾을 수 없어요")
         call.respondAuth(server, user)
     }
