@@ -35,6 +35,8 @@ services:
       # 원격 MCP(RM-4): 인가 서버(server)와 엔드포인트(sync)가 같은 공개 주소를 봐야 토큰 대상이 맞는다.
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8080}
       MCP_RESOURCE_URL: ${MCP_RESOURCE_URL:-}
+      # 로컬 증명용. 비우면 신규가입이 닫힌다. 운영 값은 운영자가 정한다.
+      MOSS_TERMS_VERSION: ${MOSS_TERMS_VERSION:-2026-11-04}
     ports:
       - "8080:8080"
     volumes:
