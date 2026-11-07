@@ -25,6 +25,8 @@ application {
 dependencies {
     // netty를 4.2.x 최신 패치로 맞춘다. ktor-server-netty가 끌어오는 netty가 runtimeClasspath에 남는 유일한 CVE 대상이다. BOM으로 모든 netty 모듈을 한 버전으로 고정한다.
     implementation(platform("io.netty:netty-bom:4.2.20.Final"))
+    // ktor-server-core가 kotlin-reflect 2.3.21을 끌어온다. 이 버전은 CVE-2026-53914에 걸린다. 플러그인과 같은 버전으로 맞춘다.
+    implementation(kotlin("reflect"))
 
     implementation("io.ktor:ktor-server-core:$ktorVersion")
     implementation("io.ktor:ktor-server-netty:$ktorVersion")
