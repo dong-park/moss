@@ -313,25 +313,42 @@ class OAuthFlowTest : ApiTest() {
         val access = tokens["access_token"]!!.jsonPrimitive.content
         val refresh = tokens["refresh_token"]!!.jsonPrimitive.content
 
-        val previous = com.moss.server.boards.InviteTokens.next
-        com.moss.server.boards.InviteTokens.next = { "mcp-reset-token" }
-        try {
-            client.post("/auth/password/reset-request") {
-                contentType(ContentType.Application.Json)
-                setBody(PasswordResetRequestBody("moss@example.com"))
-            }
-        } finally {
-            com.moss.server.boards.InviteTokens.next = previous
-        }
-        val reset = client.post("/auth/password/reset") {
-            contentType(ContentType.Application.Json)
-            setBody(PasswordResetConfirmRequest("mcp-reset-token", "newpassword1"))
-        }
-        assertEquals(HttpStatusCode.OK, reset.status)
+        client.resetPassword()
 
         // 비밀번호를 바꾸기 전에 받은 MCP 갱신 토큰과 접근 토큰은 둘 다 끝난다.
         assertEquals(HttpStatusCode.BadRequest, client.refresh(refresh, clientId).status)
         assertEquals("false", client.introspect(access).obj()["active"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun codeUsedBeforeResetCannotOpenAConnectionAfterIt() = oauthApp {
+        val client = plain()
+        client.signup()
+        val clientId = client.register()
+        val code = client.decide(clientId).location().params().getValue("code")
+        // 토큰 교환이 코드를 쓴 직후, 연결을 만들기 직전에 재설정이 끝난 순서를 그대로 밟는다.
+        val store = com.moss.server.oauth.OAuthStore(cfg)
+        val rec = assertNotNull(store.consumeCode(code))
+        client.resetPassword()
+        assertNull(store.createGrant(rec))
+    }
+
+    private suspend fun HttpClient.resetPassword(email: String = "moss@example.com") {
+        val previous = com.moss.server.boards.InviteTokens.next
+        com.moss.server.boards.InviteTokens.next = { "mcp-reset-token" }
+        try {
+            post("/auth/password/reset-request") {
+                contentType(ContentType.Application.Json)
+                setBody(PasswordResetRequestBody(email))
+            }
+        } finally {
+            com.moss.server.boards.InviteTokens.next = previous
+        }
+        val reset = post("/auth/password/reset") {
+            contentType(ContentType.Application.Json)
+            setBody(PasswordResetConfirmRequest("mcp-reset-token", "newpassword1"))
+        }
+        assertEquals(HttpStatusCode.OK, reset.status)
     }
 
     @Test

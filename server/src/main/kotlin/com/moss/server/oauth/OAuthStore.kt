@@ -1,6 +1,7 @@
 package com.moss.server.oauth
 
 import com.moss.server.AppConfig
+import com.moss.server.RefreshInvalidations
 import com.moss.server.Users
 import com.moss.server.dbQuery
 import com.moss.server.newId
@@ -75,6 +76,8 @@ data class CodeRecord(
     val redirectUri: String,
     val codeChallenge: String,
     val resource: String,
+    /** 코드 발급 시각(밀리초). 비밀번호 재설정 전에 받은 코드인지 가른다. */
+    val issuedAt: Long = 0L,
 )
 
 data class TokenPair(val accessToken: String, val refreshToken: String, val expiresInSeconds: Long)
@@ -159,12 +162,23 @@ class OAuthStore(private val config: AppConfig) {
         CodeRecord(
             row[OAuthCodes.userId], row[OAuthCodes.clientId], row[OAuthCodes.clientName],
             row[OAuthCodes.redirectUri], row[OAuthCodes.codeChallenge], row[OAuthCodes.resource],
+            issuedAt = row[OAuthCodes.expiresAt] - CODE_TTL_MILLIS,
         )
     }
 
     // ---- 연결과 토큰 ----
 
-    suspend fun createGrant(rec: CodeRecord): TokenPair = dbQuery {
+    /**
+     * 재설정 전에 받은 코드면 null. 코드를 쓴 뒤 연결을 만들기 전에 재설정이 끝날 수 있다.
+     * 사용자 행을 잠가 재설정 트랜잭션과 순서를 정한다. 재설정이 먼저면 여기서 막고,
+     * 이쪽이 먼저면 재설정이 이 연결까지 끊는다.
+     */
+    suspend fun createGrant(rec: CodeRecord): TokenPair? = dbQuery {
+        Users.selectAll().where { Users.id eq rec.userId }.forUpdate().singleOrNull()
+        val invalidBefore = RefreshInvalidations.selectAll()
+            .where { RefreshInvalidations.userId eq rec.userId }
+            .singleOrNull()?.get(RefreshInvalidations.invalidBefore)
+        if (invalidBefore != null && rec.issuedAt < invalidBefore) return@dbQuery null
         purgeExpired()
         val grantId = newId()
         OAuthGrants.insert {

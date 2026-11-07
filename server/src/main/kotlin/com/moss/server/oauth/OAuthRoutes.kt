@@ -333,7 +333,7 @@ fun Route.oauthRoutes(
                         throw OAuthException("invalid_grant", "code_verifier 가 맞지 않아요")
                     }
                     p["resource"]?.let { if (it.trimEnd('/') != rec.resource) throw OAuthException("invalid_target", "resource 가 맞지 않아요") }
-                    store.createGrant(rec)
+                    store.createGrant(rec) ?: throw OAuthException("invalid_grant", "코드가 유효하지 않아요")
                 }
                 "refresh_token" -> {
                     val token = p["refresh_token"] ?: throw OAuthException("invalid_request", "refresh_token 이 필요해요")
