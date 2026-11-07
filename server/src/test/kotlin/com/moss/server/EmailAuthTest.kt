@@ -160,6 +160,22 @@ class EmailAuthTest : ApiTest() {
     }
 
     @Test
+    fun signupLimitIsPerClientBehindTrustedProxy() = io.ktor.server.testing.testApplication {
+        application { mossModule(config.copy(trustedProxyHops = 1), google, TestDb.dataSource) }
+        val http = client()
+        suspend fun signupFrom(ip: String, i: Int) = http.post("/auth/signup") {
+            contentType(ContentType.Application.Json)
+            // 프록시가 맨 오른쪽에 진짜 주소를 붙인다. 왼쪽은 클라이언트가 위조할 수 있다.
+            header("X-Forwarded-For", "forged-$i, $ip")
+            setBody(EmailSignupRequest("p$i@example.com", "password123", "P$i", true, TERMS_V))
+        }
+        repeat(20) { i -> assertEquals(HttpStatusCode.OK, signupFrom("203.0.113.7", i).status, "signup $i") }
+        assertEquals(HttpStatusCode.TooManyRequests, signupFrom("203.0.113.7", 20).status)
+        // 같은 프록시 뒤의 다른 사용자는 자기 버킷을 쓴다.
+        assertEquals(HttpStatusCode.OK, signupFrom("203.0.113.8", 21).status)
+    }
+
+    @Test
     fun signupIsRateLimitedAfterTwentyFromOneIp() = app {
         val http = client()
         repeat(20) { index ->

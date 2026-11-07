@@ -80,7 +80,7 @@ fun Application.mossModule(
         json(Json { ignoreUnknownKeys = true; encodeDefaults = true })
     }
     install(CallLogging) { level = Level.INFO }
-    installAuthRateLimits()
+    installAuthRateLimits(config.trustedProxyHops)
     install(CORS) {
         config.allowedOrigins.forEach { origin ->
             val (scheme, host) = origin.split("://", limit = 2)

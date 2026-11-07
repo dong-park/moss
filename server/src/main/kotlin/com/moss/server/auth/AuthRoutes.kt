@@ -19,6 +19,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.install
+import com.moss.server.oauth.clientAddress
 import io.ktor.util.AttributeKey
 import io.ktor.server.plugins.origin
 import io.ktor.server.plugins.ratelimit.RateLimit
@@ -52,31 +53,33 @@ val PASSWORD_RESET_TTL_MILLIS = 1.hours.inWholeMilliseconds
  * 첫 읽기를 call 속성에 담고 핸들러도 같은 함수로 받는다. DoubleReceive 플러그인을 전역에 깔았다가
  * 업로드 본문까지 힙에 통째로 복사해 되돌렸다.
  *
- * IP는 `origin.remoteHost`다. 지금은 compose가 8080 직결이라 프록시가 없어 이 값이 진짜
- * 클라이언트 IP다. 프록시 뒤로 옮기면 전원이 한 버킷이 되므로 `XForwardedHeaders`를
- * 설치해야 하는데, 무조건 믿으면 헤더 위조로 우회된다. 도입 시 신뢰 프록시 수를 정해
- * 그만큼의 홉만 반영해야 한다 — 스펙 D8·11절 참고.
+ * IP는 [clientAddress]가 정한다. `TRUSTED_PROXY_HOPS`가 0이면 `origin.remoteHost`다.
+ * 프록시 뒤에서 0으로 두면 전원이 프록시 주소 하나의 버킷을 쓴다. 홉 수만큼만 X-Forwarded-For를
+ * 오른쪽에서 읽으므로 왼쪽을 위조해도 우회되지 않는다 — 스펙 D8·11절 참고.
  */
-fun Application.installAuthRateLimits() {
+fun Application.installAuthRateLimits(trustedProxyHops: Int = 0) {
+    // 운영은 TLS를 끝내는 프록시 뒤에 선다. 신뢰한 홉 수만큼만 X-Forwarded-For를 읽어 진짜 클라이언트를 가른다.
+    fun ApplicationCall.clientIp(): String =
+        clientAddress(request.origin.remoteHost, request.headers.getAll("X-Forwarded-For").orEmpty(), trustedProxyHops)
     install(RateLimit) {
         register(EmailLoginRateLimit) {
             rateLimiter(limit = 10, refillPeriod = 1.minutes)
             requestKey { call ->
                 val email = rateLimitEmail(call.receiveEmailLogin().email)
-                "${call.request.origin.remoteHost}:$email"
+                "${call.clientIp()}:$email"
             }
         }
         register(EmailLoginIpRateLimit) {
             rateLimiter(limit = 60, refillPeriod = 1.minutes)
-            requestKey { call -> call.request.origin.remoteHost }
+            requestKey { call -> call.clientIp() }
         }
         register(EmailSignupRateLimit) {
             rateLimiter(limit = 20, refillPeriod = 1.hours)
-            requestKey { call -> call.request.origin.remoteHost }
+            requestKey { call -> call.clientIp() }
         }
         register(PasswordResetRateLimit) {
             rateLimiter(limit = 10, refillPeriod = 1.hours)
-            requestKey { call -> call.request.origin.remoteHost }
+            requestKey { call -> call.clientIp() }
         }
     }
 }
