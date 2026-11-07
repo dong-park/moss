@@ -35,8 +35,10 @@ services:
       # 원격 MCP(RM-4): 인가 서버(server)와 엔드포인트(sync)가 같은 공개 주소를 봐야 토큰 대상이 맞는다.
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8080}
       MCP_RESOURCE_URL: ${MCP_RESOURCE_URL:-}
-      # 로컬 증명용. 비우면 신규가입이 닫힌다. 운영 값은 운영자가 정한다.
-      MOSS_TERMS_VERSION: ${MOSS_TERMS_VERSION:-2026-11-04}
+      # 로컬 증명용. 운영 값은 운영자가 정한다. MOSS_TERMS_VERSION=로 비우면 가입이 닫힌다.
+      # 변수가 아예 없을 때만 확인용 버전을 쓴다.
+      MOSS_TERMS_VERSION: ${MOSS_TERMS_VERSION-2026-11-04}
+      MOSS_ACCOUNT_CAP: ${MOSS_ACCOUNT_CAP:-1000}
     ports:
       - "8080:8080"
     volumes:
@@ -91,11 +93,13 @@ services:
         NEXT_PUBLIC_MOSS_API_URL: ${NEXT_PUBLIC_MOSS_API_URL:-http://localhost:8080}
         NEXT_PUBLIC_MOSS_SYNC_URL: ${NEXT_PUBLIC_MOSS_SYNC_URL:-ws://localhost:1234}
         NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
-        NEXT_PUBLIC_MOSS_TERMS_VERSION: ${MOSS_TERMS_VERSION:-2026-11-04}
+        NEXT_PUBLIC_MOSS_TERMS_VERSION: ${MOSS_TERMS_VERSION-2026-11-04}
     # AI 라우트는 요청 때 이 키를 읽는다. 비어 있으면 가짜 결과를 돌려준다.
     environment:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # AI 가드가 토큰을 확인할 서버 주소. localhost는 웹 컨테이너 자신이다.
+      MOSS_INTERNAL_API_URL: http://server:8080
     ports:
       - "3001:3000"
     depends_on:

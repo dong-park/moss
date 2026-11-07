@@ -1,4 +1,6 @@
 # 운영 구성. 시크릿과 도메인은 운영자가 .env에 넣는다. Postgres 포트는 호스트에 열지 않는다.
+# 앱 포트는 기본으로 127.0.0.1에만 연다. 같은 호스트의 TLS 프록시가 받아 넘긴다고 본다.
+# 프록시 없이 직접 열려면 BIND_ADDR=0.0.0.0, TRUSTED_PROXY_HOPS=0으로 함께 바꾼다.
 services:
   postgres:
     image: postgres:18-alpine
@@ -34,8 +36,10 @@ services:
       MOSS_TERMS_VERSION: ${MOSS_TERMS_VERSION:-}
       # 빈 문자열은 설정 오류라 서버 기본값과 같은 1000을 넣는다.
       MOSS_ACCOUNT_CAP: ${MOSS_ACCOUNT_CAP:-1000}
+      # 횟수 제한이 프록시가 붙인 X-Forwarded-For에서 클라이언트를 가른다. 앞의 프록시 수와 같아야 한다.
+      TRUSTED_PROXY_HOPS: ${TRUSTED_PROXY_HOPS:-1}
     ports:
-      - "8080:8080"
+      - "${BIND_ADDR:-127.0.0.1}:8080:8080"
     volumes:
       - filedata:/data/files
     depends_on:
@@ -59,13 +63,16 @@ services:
       INTERNAL_PORT: "1235"
       SYNC_INTERNAL_HOST: "0.0.0.0"
       SYNC_INTERNAL_SECRET: ${SYNC_INTERNAL_SECRET:?SYNC_INTERNAL_SECRET is required}
-      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-moss}
+      # 비밀번호를 URL에 넣으면 # / + 같은 글자에서 주소가 깨진다. 따로 넘긴다.
+      DATABASE_URL: postgres://postgres:5432/${POSTGRES_DB:-moss}
+      DATABASE_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
       KTOR_INTERNAL_URL: http://server:8080
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?PUBLIC_BASE_URL is required}
       MCP_RESOURCE_URL: ${MCP_RESOURCE_URL:-}
     ports:
-      - "1234:1234"
+      - "${BIND_ADDR:-127.0.0.1}:1234:1234"
     depends_on:
       postgres:
         condition: service_healthy
@@ -85,8 +92,10 @@ services:
     environment:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # AI 가드가 토큰을 확인할 서버 주소. 공개 주소는 컨테이너 밖을 가리킨다.
+      MOSS_INTERNAL_API_URL: http://server:8080
     ports:
-      - "3001:3000"
+      - "${BIND_ADDR:-127.0.0.1}:3001:3000"
     depends_on:
       server:
         condition: service_healthy
