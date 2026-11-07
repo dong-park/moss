@@ -81,6 +81,10 @@ services:
         NEXT_PUBLIC_MOSS_SYNC_URL: ${NEXT_PUBLIC_MOSS_SYNC_URL:?NEXT_PUBLIC_MOSS_SYNC_URL is required}
         NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
         NEXT_PUBLIC_MOSS_TERMS_VERSION: ${MOSS_TERMS_VERSION:-}
+    # AI 라우트는 요청 때 이 키를 읽는다. 비어 있으면 가짜 결과를 돌려준다.
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     ports:
       - "3001:3000"
     depends_on:
