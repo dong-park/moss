@@ -63,3 +63,9 @@ tasks.test {
         exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
     }
 }
+
+// CI는 -PfailBuildOnCVSS로 기준을 준다. 플러그인은 이 프로젝트 속성을 스스로 읽지 않아 기본값 11에 머문다.
+// CVSS 최대가 10이라 11이면 어떤 취약점도 빌드를 멈추지 않는다. 기본은 high(7) 이상에서 실패한다.
+dependencyCheck {
+    failBuildOnCVSS = (findProperty("failBuildOnCVSS") as String?)?.toFloat() ?: 7f
+}
