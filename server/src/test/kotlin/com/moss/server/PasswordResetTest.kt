@@ -12,6 +12,7 @@ import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.update
+import org.jetbrains.exposed.sql.upsert
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -54,16 +55,24 @@ class PasswordResetTest : ApiTest() {
         }
 
     @Test
-    fun refreshIssuedRightAfterResetStillWorks() = app {
+    fun refreshIssuedRightAfterResetInTheSameSecondStillWorks() = app {
         val client = client()
-        assertEquals(HttpStatusCode.OK, client.signup("fresh@example.com", "password123").status)
-        val token = client.requestReset("fresh@example.com")
-        assertEquals(HttpStatusCode.OK, client.confirmReset(token, "newpassword1").status)
-        // 재설정과 같은 초 안에 발급돼도 새 로그인은 살아 있어야 한다.
-        val auth = client.login("fresh@example.com", "newpassword1").body<AuthResponse>()
+        val userId = client.signup("fresh@example.com", "password123").body<AuthResponse>().user.id
+        // 초 경계에서 100ms 이상 떨어진 시각에 재설정이 일어난 것으로 둔다.
+        // 그래야 바로 뒤에 발급한 토큰이 반드시 같은 초에 들어간다.
+        while (System.currentTimeMillis() % 1000 !in 100L..800L) Thread.sleep(5)
+        val resetAt = System.currentTimeMillis()
+        transaction {
+            RefreshInvalidations.upsert {
+                it[RefreshInvalidations.userId] = java.util.UUID.fromString(userId)
+                it[invalidBefore] = resetAt
+            }
+        }
+        val refreshToken = com.moss.server.auth.TokenService(config.jwtSecret)
+            .refreshToken(java.util.UUID.fromString(userId))
         val refreshed = client.post("/auth/refresh") {
             contentType(ContentType.Application.Json)
-            setBody(RefreshRequest(auth.refreshToken))
+            setBody(RefreshRequest(refreshToken))
         }
         assertEquals(HttpStatusCode.OK, refreshed.status)
     }
