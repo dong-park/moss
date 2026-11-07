@@ -36,4 +36,21 @@ jobs:
           distribution: temurin
           java-version: "17"
       - uses: gradle/actions/setup-gradle@v4
+      # 키 없이 NVD를 받으면 요청이 막혀 분석이 실패한다. 이유를 바로 보이게 먼저 멈춘다.
+      - name: require NVD API key
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        run: |
+          if [ -z "$NVD_API_KEY" ]; then
+            echo "::error::NVD_API_KEY 저장소 시크릿이 없다. https://nvd.nist.gov/developers/request-an-api-key 에서 받아 등록한다."
+            exit 1
+          fi
+      # 전체 NVD 다운로드는 키가 있어도 수십 분 걸린다. 받은 데이터를 다음 실행에 다시 쓴다.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.gradle/dependency-check-data
+          key: nvd-${{ github.run_id }}
+          restore-keys: nvd-
       - run: ./gradlew dependencyCheckAnalyze -PfailBuildOnCVSS=7
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}

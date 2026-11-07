@@ -66,6 +66,8 @@ tasks.test {
 
 // CI는 -PfailBuildOnCVSS로 기준을 준다. 플러그인은 이 프로젝트 속성을 스스로 읽지 않아 기본값 11에 머문다.
 // CVSS 최대가 10이라 11이면 어떤 취약점도 빌드를 멈추지 않는다. 기본은 high(7) 이상에서 실패한다.
+// NVD는 키가 없으면 요청을 막아 CI에서 분석이 2분 만에 실패한다. 키는 환경 변수로만 받는다.
 dependencyCheck {
     failBuildOnCVSS = (findProperty("failBuildOnCVSS") as String?)?.toFloat() ?: 7f
+    nvd.apiKey = System.getenv("NVD_API_KEY")?.takeIf { it.isNotBlank() }
 }
