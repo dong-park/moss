@@ -8,7 +8,12 @@ import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
+import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.update
@@ -53,6 +58,25 @@ class PasswordResetTest : ApiTest() {
             contentType(ContentType.Application.Json)
             setBody(PasswordResetConfirmRequest(token, password))
         }
+
+    @Test
+    fun concurrentResetRequestsLeaveOnlyOneUsableLink() = app {
+        val userId = client().signup("race@example.com", "password123").body<AuthResponse>().user.id
+        val repo = com.moss.server.boards.BoardRepository(config.maxMembersPerBoard)
+        // 요청 8개를 IO 스레드에서 한꺼번에 저장한다. 다섯 번 되풀이해 겹칠 기회를 늘린다.
+        repeat(5) { round ->
+            withContext(Dispatchers.IO) {
+                (1..8).map { async { repo.createPasswordReset("race@example.com", System.currentTimeMillis(), PASSWORD_RESET_TTL_MILLIS) } }
+                    .awaitAll()
+            }
+            val active = transaction {
+                PasswordResets.selectAll()
+                    .where { (PasswordResets.userId eq java.util.UUID.fromString(userId)) and PasswordResets.usedAt.isNull() }
+                    .count()
+            }
+            assertEquals(1L, active, "round $round")
+        }
+    }
 
     @Test
     fun refreshIssuedRightAfterResetInTheSameSecondStillWorks() = app {

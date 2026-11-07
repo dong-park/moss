@@ -204,7 +204,9 @@ class BoardRepository(
      * 비밀번호가 없는 계정은 null이다. 같은 계정의 아직 안 쓴 토큰은 바로 무효가 된다.
      */
     suspend fun createPasswordReset(email: String, now: Long, ttlMillis: Long): String? = dbQuery {
-        val row = Users.selectAll().where { Users.email eq email }.singleOrNull() ?: return@dbQuery null
+        // 사용자 행을 잠근다. 동시에 온 요청이 서로의 새 토큰을 못 보고 둘 다 살아남지 않게 한다.
+        val row = Users.selectAll().where { Users.email eq email }.forUpdate().singleOrNull()
+            ?: return@dbQuery null
         if (row[Users.passwordHash] == null) return@dbQuery null
         val userId = row[Users.id]
         PasswordResets.update({ (PasswordResets.userId eq userId) and PasswordResets.usedAt.isNull() }) {
