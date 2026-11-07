@@ -71,6 +71,9 @@ export function bucketCount(): number {
 }
 
 function apiBaseUrl(): string {
+  // 컨테이너 안에서는 공개 주소 대신 compose 내부 주소로 서버를 부른다. 공개 주소는 컨테이너 밖을 가리킨다.
+  const internal = process.env.MOSS_INTERNAL_API_URL;
+  if (internal) return internal;
   const configured = process.env.NEXT_PUBLIC_MOSS_API_URL;
   if (configured) return configured;
   // 운영에서 주소가 빠졌을 때 localhost로 조용히 붙지 않는다. 호출부가 503으로 닫는다.

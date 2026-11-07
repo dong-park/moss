@@ -128,6 +128,19 @@ describe("사용자 식별", () => {
     expect(init.signal).toBeInstanceOf(AbortSignal);
   });
 
+  test("컨테이너 내부 주소가 있으면 공개 주소 대신 그쪽 /me를 부른다", async () => {
+    vi.stubEnv("NEXT_PUBLIC_MOSS_API_URL", "https://public.test");
+    vi.stubEnv("MOSS_INTERNAL_API_URL", "http://server:8080");
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ userId: "u-9" }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    useServerTokenChecker();
+    expect(await guardAiRequest(authed(TOKEN))).toBeNull();
+    const [url] = fetchMock.mock.calls[0] as unknown as [string];
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+    expect(url).toBe("http://server:8080/me");
+  });
+
   test("운영에서 API 주소가 없으면 localhost로 붙지 않고 503", async () => {
     vi.stubEnv("NODE_ENV", "production");
     vi.stubEnv("NEXT_PUBLIC_MOSS_API_URL", "");
