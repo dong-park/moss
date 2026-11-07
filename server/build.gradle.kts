@@ -1,6 +1,6 @@
 plugins {
-    kotlin("jvm") version "2.2.20"
-    kotlin("plugin.serialization") version "2.2.20"
+    kotlin("jvm") version "2.4.21"
+    kotlin("plugin.serialization") version "2.4.21"
     application
     id("org.owasp.dependencycheck") version "12.2.2"
 }
@@ -12,7 +12,7 @@ repositories {
     mavenCentral()
 }
 
-val ktorVersion = "3.3.3"
+val ktorVersion = "3.6.1"
 
 kotlin {
     jvmToolchain(17)
@@ -23,6 +23,9 @@ application {
 }
 
 dependencies {
+    // netty를 4.2.x 최신 패치로 맞춘다. ktor-server-netty가 끌어오는 netty가 runtimeClasspath에 남는 유일한 CVE 대상이다. BOM으로 모든 netty 모듈을 한 버전으로 고정한다.
+    implementation(platform("io.netty:netty-bom:4.2.20.Final"))
+
     implementation("io.ktor:ktor-server-core:$ktorVersion")
     implementation("io.ktor:ktor-server-netty:$ktorVersion")
     implementation("io.ktor:ktor-server-content-negotiation:$ktorVersion")
@@ -70,4 +73,6 @@ tasks.test {
 dependencyCheck {
     failBuildOnCVSS = (findProperty("failBuildOnCVSS") as String?)?.toFloat() ?: 7f
     nvd.apiKey = System.getenv("NVD_API_KEY")?.takeIf { it.isNotBlank() }
+    // 배포 서버 jar(installDist)에 실제로 들어가는 runtimeClasspath만 검사한다. 컴파일러·스크립팅·swift-export 같은 빌드 전용 configuration이 끌어오는 kotlin-compiler-embeddable, kotlin-reflect 1.6.10, opentelemetry 1.41.0은 배포물에 없어 검사 대상이 아니다.
+    scanConfigurations = listOf("runtimeClasspath")
 }
