@@ -54,6 +54,30 @@ class PasswordResetTest : ApiTest() {
         }
 
     @Test
+    fun refreshIssuedRightAfterResetStillWorks() = app {
+        val client = client()
+        assertEquals(HttpStatusCode.OK, client.signup("fresh@example.com", "password123").status)
+        val token = client.requestReset("fresh@example.com")
+        assertEquals(HttpStatusCode.OK, client.confirmReset(token, "newpassword1").status)
+        // 재설정과 같은 초 안에 발급돼도 새 로그인은 살아 있어야 한다.
+        val auth = client.login("fresh@example.com", "newpassword1").body<AuthResponse>()
+        val refreshed = client.post("/auth/refresh") {
+            contentType(ContentType.Application.Json)
+            setBody(RefreshRequest(auth.refreshToken))
+        }
+        assertEquals(HttpStatusCode.OK, refreshed.status)
+    }
+
+    @Test
+    fun confirmIsRateLimitedPerIpBeforeHashing() = app {
+        val client = client()
+        repeat(10) { index ->
+            assertEquals(HttpStatusCode.Gone, client.confirmReset("bogus-$index", "newpassword1").status, "request $index")
+        }
+        assertEquals(HttpStatusCode.TooManyRequests, client.confirmReset("bogus-late", "newpassword1").status)
+    }
+
+    @Test
     fun resetReplacesPasswordAndOldPasswordStopsWorking() = app {
         val client = client()
         assertEquals(HttpStatusCode.OK, client.signup("reset@example.com", "password123").status)

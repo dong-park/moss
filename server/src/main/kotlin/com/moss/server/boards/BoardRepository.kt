@@ -18,6 +18,7 @@ import com.moss.server.QuotaExceededException
 import com.moss.server.Users
 import com.moss.server.dbQuery
 import com.moss.server.newId
+import com.moss.server.oauth.revokeUserGrantsInTx
 import org.jetbrains.exposed.sql.JoinType
 import org.jetbrains.exposed.sql.SortOrder
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
@@ -240,6 +241,7 @@ class BoardRepository(
             it[RefreshInvalidations.userId] = userId
             it[invalidBefore] = now
         }
+        revokeUserGrantsInTx(userId, now)
     }
 
     /** 비밀번호를 바꾼 시각 이전에 발급한 리프레시 토큰이면 갱신을 거부한다. */

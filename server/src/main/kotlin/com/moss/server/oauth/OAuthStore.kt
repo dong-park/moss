@@ -308,3 +308,18 @@ class OAuthStore(private val config: AppConfig) {
                 .joinToString("") { "%02x".format(it) }
     }
 }
+
+/**
+ * 비밀번호를 바꾸면 그 전에 받은 MCP 연결도 끝낸다. 재설정과 같은 트랜잭션 안에서 부른다.
+ * 아직 교환 안 한 인가 코드도 지운다. 지우지 않으면 재설정 뒤에 새 연결로 바뀔 수 있다.
+ */
+internal fun revokeUserGrantsInTx(userId: UUID, now: Long) {
+    OAuthCodes.deleteWhere { OAuthCodes.userId eq userId }
+    val grantIds = OAuthGrants.selectAll()
+        .where { (OAuthGrants.userId eq userId) and OAuthGrants.revokedAt.isNull() }
+        .map { it[OAuthGrants.id] }
+    grantIds.forEach { grantId ->
+        OAuthGrants.update({ OAuthGrants.id eq grantId }) { it[revokedAt] = now }
+        OAuthTokens.deleteWhere { OAuthTokens.grantId eq grantId }
+    }
+}

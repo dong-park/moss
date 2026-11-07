@@ -305,6 +305,36 @@ class OAuthFlowTest : ApiTest() {
     }
 
     @Test
+    fun passwordResetEndsMcpConnections() = oauthApp {
+        val client = plain()
+        client.signup()
+        val clientId = client.register()
+        val tokens = client.connect(clientId)
+        val access = tokens["access_token"]!!.jsonPrimitive.content
+        val refresh = tokens["refresh_token"]!!.jsonPrimitive.content
+
+        val previous = com.moss.server.boards.InviteTokens.next
+        com.moss.server.boards.InviteTokens.next = { "mcp-reset-token" }
+        try {
+            client.post("/auth/password/reset-request") {
+                contentType(ContentType.Application.Json)
+                setBody(PasswordResetRequestBody("moss@example.com"))
+            }
+        } finally {
+            com.moss.server.boards.InviteTokens.next = previous
+        }
+        val reset = client.post("/auth/password/reset") {
+            contentType(ContentType.Application.Json)
+            setBody(PasswordResetConfirmRequest("mcp-reset-token", "newpassword1"))
+        }
+        assertEquals(HttpStatusCode.OK, reset.status)
+
+        // 비밀번호를 바꾸기 전에 받은 MCP 갱신 토큰과 접근 토큰은 둘 다 끝난다.
+        assertEquals(HttpStatusCode.BadRequest, client.refresh(refresh, clientId).status)
+        assertEquals("false", client.introspect(access).obj()["active"]!!.jsonPrimitive.content)
+    }
+
+    @Test
     fun refreshFromAnotherClientEndsTheConnection() = oauthApp {
         val client = plain()
         client.signup()

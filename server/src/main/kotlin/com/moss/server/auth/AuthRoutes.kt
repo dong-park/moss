@@ -41,7 +41,7 @@ val EmailSignupRateLimit = RateLimitName("email-signup")
  */
 val EmailLoginIpRateLimit = RateLimitName("email-login-ip")
 
-/** 재설정 요청은 IP당 1시간 10회. 메일 열거와 bcrypt 비용 폭주를 같이 막는다. */
+/** 재설정 요청과 확인은 합쳐서 IP당 1시간 10회. 메일 열거와 bcrypt 비용 폭주를 같이 막는다. */
 val PasswordResetRateLimit = RateLimitName("password-reset")
 
 /** 재설정 토큰 유효 시간. */
@@ -106,7 +106,7 @@ fun Route.authRoutes(server: MossServer) {
         val jti = decoded.id ?: throw UnauthorizedException("토큰이 유효하지 않아요")
         val now = System.currentTimeMillis()
         server.repo.requireRefreshActive(jti, now)
-        server.repo.requireRefreshIssuedAfterReset(userId, decoded.issuedAt?.time ?: 0L)
+        server.repo.requireRefreshIssuedAfterReset(userId, server.tokens.issuedAtMillis(decoded))
         val user = server.repo.userById(userId) ?: throw UnauthorizedException("사용자를 찾을 수 없어요")
         call.respondAuth(server, user)
     }
@@ -172,14 +172,15 @@ fun Route.authRoutes(server: MossServer) {
             }
             call.respond(HttpStatusCode.OK)
         }
-    }
 
-    post("/auth/password/reset") {
-        val body = call.receive<PasswordResetConfirmRequest>()
-        if (body.token.isBlank()) throw GoneException("재설정 링크가 유효하지 않아요")
-        validatePassword(body.password)
-        server.repo.consumePasswordReset(body.token, PasswordHasher.hash(body.password), System.currentTimeMillis())
-        call.respond(HttpStatusCode.OK)
+        // 확인도 토큰을 보기 전에 bcrypt를 돌린다. 같은 IP 버킷에 묶어 비로그인 CPU 비용을 막는다.
+        post("/auth/password/reset") {
+            val body = call.receive<PasswordResetConfirmRequest>()
+            if (body.token.isBlank()) throw GoneException("재설정 링크가 유효하지 않아요")
+            validatePassword(body.password)
+            server.repo.consumePasswordReset(body.token, PasswordHasher.hash(body.password), System.currentTimeMillis())
+            call.respond(HttpStatusCode.OK)
+        }
     }
 }
 
