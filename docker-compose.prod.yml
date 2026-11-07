@@ -30,6 +30,10 @@ services:
       SYNC_INTERNAL_SECRET: ${SYNC_INTERNAL_SECRET:?SYNC_INTERNAL_SECRET is required}
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?PUBLIC_BASE_URL is required}
       MCP_RESOURCE_URL: ${MCP_RESOURCE_URL:-}
+      # 비우면 신규가입이 닫힌다. 웹 빌드 인자와 같은 값을 써야 동의 버전이 맞는다.
+      MOSS_TERMS_VERSION: ${MOSS_TERMS_VERSION:-}
+      # 빈 문자열은 설정 오류라 서버 기본값과 같은 1000을 넣는다.
+      MOSS_ACCOUNT_CAP: ${MOSS_ACCOUNT_CAP:-1000}
     ports:
       - "8080:8080"
     volumes:
@@ -37,6 +41,14 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    # web과 sync가 service_healthy로 기다린다. 없으면 두 서비스가 뜨지 않는다.
+    # Ktor는 Flyway 마이그레이션 뒤에 8080을 연다. 포트가 열리면 준비된 것이다.
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8080'"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 20s
 
   sync:
     build:
@@ -68,6 +80,7 @@ services:
         NEXT_PUBLIC_MOSS_API_URL: ${PUBLIC_BASE_URL:?PUBLIC_BASE_URL is required}
         NEXT_PUBLIC_MOSS_SYNC_URL: ${NEXT_PUBLIC_MOSS_SYNC_URL:?NEXT_PUBLIC_MOSS_SYNC_URL is required}
         NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+        NEXT_PUBLIC_MOSS_TERMS_VERSION: ${MOSS_TERMS_VERSION:-}
     ports:
       - "3001:3000"
     depends_on:

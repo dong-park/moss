@@ -14,12 +14,12 @@ docker compose -f "$compose" exec -T postgres \
   pg_dump -U "$user" -d "$db" --format=custom \
   > "$out/moss-$stamp.dump"
 
-docker run --rm \
-  -v moss_filedata:/data:ro \
-  -v "$out:/out" \
-  alpine:3.20 \
-  tar -C /data -czf "/out/files-$stamp.tar.gz" .
+# 볼륨 이름은 compose 프로젝트 이름에 따라 바뀐다. 그 볼륨을 붙인 server 컨테이너에서 바로 묶는다.
+docker compose -f "$compose" exec -T server \
+  tar -C /data/files -czf - . \
+  > "$out/files-$stamp.tar.gz"
 
 test -s "$out/moss-$stamp.dump"
+test -s "$out/files-$stamp.tar.gz"
 echo "$out/moss-$stamp.dump"
 echo "$out/files-$stamp.tar.gz"
