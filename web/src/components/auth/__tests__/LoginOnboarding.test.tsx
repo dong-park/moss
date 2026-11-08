@@ -497,6 +497,20 @@ describe("Google 칸 · 표준 버튼 흐름 (T-3)", () => {
     expect(host().hasAttribute("inert")).toBe(true);
   });
 
+  test("Google 버튼에 포커스가 있을 때 덮개가 씌워지면 포커스를 뺀다", async () => {
+    configureAuth({ api: fakeApi() });
+    mount();
+    await ready();
+    const host = screen.getByTestId("google-slot").firstElementChild as HTMLElement;
+    // 실제 GIS가 칸 안에 넣는 iframe 자리다.
+    const frame = document.createElement("iframe");
+    host.appendChild(frame);
+    frame.focus();
+    expect(document.activeElement).toBe(frame);
+    goOnline(false);
+    expect(document.activeElement).not.toBe(frame);
+  });
+
   test("오프라인에서 Google 요청이 실패하면 칸 문구는 오프라인 안내 하나다", async () => {
     let fail: (e: unknown) => void = () => {};
     const googleLogin = vi.fn(() => new Promise<AuthSession>((_res, rej) => (fail = rej)));

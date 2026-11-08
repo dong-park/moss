@@ -193,6 +193,14 @@ export function GoogleSlot({
     };
   }, [showHost, go]);
 
+  // inert는 이미 들어간 포커스를 빼지 않는다. 덮개가 씌워질 때 Google 버튼에 남은 포커스를 뺀다.
+  // 빼지 않으면 오프라인이나 요청 중에도 Enter가 Google 창을 연다.
+  useEffect(() => {
+    if (!covered) return;
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && hostRef.current?.contains(active)) active.blur();
+  }, [covered]);
+
   const retry = () => {
     if (locked || !online) return;
     setAttempt((n) => n + 1);
