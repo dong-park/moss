@@ -1,0 +1,17 @@
+{
+  "id": "T25",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": [],
+  "kind": "task",
+  "title": "메일 요청 중에는 Google 칸이 가려지고 온 토큰은 버린다",
+  "given": "Google 계정 선택 창을 열어 둔 채 메일로 로그인 요청을 보냈다. 메일 요청은 아직 안 끝났다",
+  "when": "열어 둔 창에서 Google 계정을 고른다",
+  "then": "Google 버튼 자리는 흐린 자리표시로 가려져 있다. 카드는 메일 로그인 결과만 보인다. 확인: 단위 테스트에서 메일 요청 중 가짜 콜백이 토큰을 줘도 Google 요청은 0번이다."
+}

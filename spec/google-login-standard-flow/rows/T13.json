@@ -1,0 +1,17 @@
+{
+  "id": "T13",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": [],
+  "kind": "task",
+  "title": "온라인인데 Google 스크립트를 못 받으면 다시 시도와 메일 길이 남는다",
+  "given": "온라인이다. 광고 차단이나 Google 쪽 문제로 Google 스크립트를 못 받는다",
+  "when": "로그인 카드를 연다",
+  "then": "Google 버튼 자리에 Google 로그인을 불러오지 못했어요 문구와 다시 시도 버튼이 보인다. 메일로 계속 링크는 그대로 보인다."
+}
