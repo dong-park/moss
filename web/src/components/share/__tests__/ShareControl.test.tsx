@@ -111,36 +111,18 @@ afterEach(() => {
 });
 
 describe("AC-4 · 공유 시작과 로그인", () => {
-  test("로그인 안 한 상태: 공유 아이콘 → Google 버튼 (2클릭)", async () => {
+  test("로그인 안 한 상태: 팝오버에 Google 버튼이 없고 공유 시작이 비활성이다", async () => {
     const shareApi = fakeShareApi();
     configureShare({ api: shareApi });
     configureAuth({ api: fakeAuthApi(), googleIdToken: vi.fn(async () => "id-token") });
     mount();
 
     await openPopover();
-    expect(screen.queryByRole("button", { name: "Google 계정으로 로그인" })).toBeTruthy();
+    expect(screen.queryAllByRole("button", { name: /Google/ })).toHaveLength(0);
+    const start = screen.getByRole("button", { name: "공유 시작" }) as HTMLButtonElement;
+    expect(start.disabled).toBe(true);
+    fireEvent.click(start);
     expect(shareApi.share).not.toHaveBeenCalled();
-  });
-
-  test("Google 클릭 뒤 이 보드만 올라가고 팝오버가 링크 복사·내 이름으로 바뀐다", async () => {
-    const shareApi = fakeShareApi();
-    const onStartShare = vi.fn();
-    configureShare({ api: shareApi });
-    configureAuth({ api: fakeAuthApi(), googleIdToken: vi.fn(async () => "id-token") });
-    mount({ onStartShare });
-
-    await openPopover();
-    fireEvent.click(screen.getByRole("button", { name: "Google 계정으로 로그인" }));
-
-    await waitFor(() => expect(shareApi.share).toHaveBeenCalledTimes(1));
-    expect(shareApi.share).toHaveBeenCalledWith("b1", "이번 주 기획", session.accessToken);
-    // 이 보드만 업로드 — 다른 보드 호출 없음.
-    expect(onStartShare).toHaveBeenCalledTimes(1);
-    expect(onStartShare).toHaveBeenCalledWith("b1");
-
-    expect(await screen.findByText("링크 복사")).toBeTruthy();
-    expect(screen.getByText("동환")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Google 계정으로 로그인" })).toBeNull();
   });
 
   test("이미 로그인돼 있으면 '공유 시작' 1클릭으로 끝난다", async () => {

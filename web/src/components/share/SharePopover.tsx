@@ -1,7 +1,6 @@
 "use client";
 
 import { useT } from "@/i18n/Provider";
-import { GoogleButton } from "@/components/auth/GoogleButton";
 import { MEMBER_LIMIT, type BoardMember, type MemberRole, type ShareStatus } from "@/state/share";
 import { MemberMenu } from "./MemberMenu";
 
@@ -19,7 +18,6 @@ export interface SharePopoverProps {
   busy: boolean;
   error: string | null;
   copied: boolean;
-  onGoogle: () => void;
   onStart: () => void;
   onCopy: () => void;
   onReissue: () => void;
@@ -38,7 +36,6 @@ export function SharePopover({
   busy,
   error,
   copied,
-  onGoogle,
   onStart,
   onCopy,
   onReissue,
@@ -107,18 +104,14 @@ export function SharePopover({
             {t("collab.share.title")}
           </h3>
           <p className="text-[12px] text-text-soft">{t("collab.share.sub")}</p>
-          {authenticated ? (
-            <button
-              type="button"
-              onClick={onStart}
-              disabled={busy}
-              className="mt-3.5 w-full cursor-pointer rounded-[10px] bg-[#1d1d1f] px-4 py-2.5 text-[13px] font-medium text-white disabled:opacity-60"
-            >
-              {t("collab.share.start")}
-            </button>
-          ) : (
-            <GoogleButton onClick={onGoogle} disabled={busy} />
-          )}
+          <button
+            type="button"
+            onClick={onStart}
+            disabled={busy || !authenticated}
+            className="mt-3.5 w-full cursor-pointer rounded-[10px] bg-[#1d1d1f] px-4 py-2.5 text-[13px] font-medium text-white disabled:cursor-default disabled:opacity-60"
+          >
+            {t("collab.share.start")}
+          </button>
         </>
       )}
 

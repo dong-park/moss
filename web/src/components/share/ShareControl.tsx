@@ -102,18 +102,6 @@ export function ShareControl({
     onStartShare?.(boardId);
   }, [boardId, boardName, onStartShare]);
 
-  const handleGoogle = useCallback(async () => {
-    // 클릭 즉시 busy — 동의 창을 기다리는 동안 두 번 눌러도 공유가 두 번 시작되지 않는다.
-    useShare.getState().setBoardBusy(boardId, true);
-    try {
-      await useAuth.getState().loginWithGoogle();
-    } catch {
-      useShare.getState().setBoardBusy(boardId, false);
-      return;
-    }
-    await beginShare();
-  }, [boardId, beginShare]);
-
   const handleCopy = useCallback(async () => {
     if (!invitePath) return;
     try {
@@ -175,7 +163,6 @@ export function ShareControl({
           busy={busy}
           error={error}
           copied={copied}
-          onGoogle={() => void handleGoogle()}
           onStart={() => void beginShare()}
           onCopy={() => void handleCopy()}
           onReissue={handleReissue}
