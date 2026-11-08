@@ -480,3 +480,242 @@ describe("Google 칸 · 표준 버튼 흐름 (T-3)", () => {
     expect(screen.getAllByText("연결되면 다시 시도해 주세요")).toHaveLength(1);
   });
 });
+
+const consentError = () => new AuthRequestError("약관에 동의해야 가입할 수 있어요", 400, "consent_required");
+
+/** 첫 요청은 consent_required로 거절하고 이어지는 요청은 `next`로 답하는 서버 가짜. */
+function signupApi(next: () => Promise<AuthSession>) {
+  const googleLogin = vi.fn().mockRejectedValueOnce(consentError()).mockImplementation(next);
+  return { googleLogin, api: fakeApi({ googleLogin }) };
+}
+
+/** 처음 쓰는 계정으로 가입 마무리 단계까지 간다. */
+async function reachFinish(): Promise<void> {
+  mount();
+  await ready();
+  google.press(TOKEN);
+  await screen.findByRole("button", { name: "동의하고 시작하기" });
+}
+
+describe("처음 온 계정의 가입 마무리 (T-4)", () => {
+  test("T4 · 고르면 메일 주소·약관 체크·동의 버튼·다른 계정으로가 보이고 메일 길은 숨는다", async () => {
+    configureAuth({ api: signupApi(async () => fresh).api });
+    await reachFinish();
+    expect(screen.getByText("new@x.com")).toBeTruthy();
+    expect(screen.getByRole("checkbox")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "다른 계정으로" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "메일로 계속" })).toBeNull();
+    expect(screen.queryByLabelText("메일")).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByTestId("google-slot")).toBeNull();
+  });
+
+  test("T5 · 동의하고 시작하기 1번으로 같은 토큰을 동의와 함께 다시 보내 가입이 끝난다", async () => {
+    const { googleLogin, api } = signupApi(async () => fresh);
+    configureAuth({ api });
+    await reachFinish();
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("button", { name: "동의하고 시작하기" }));
+
+    await waitFor(() => expect(useAuth.getState().status).toBe("authenticated"));
+    expect(googleLogin).toHaveBeenNthCalledWith(1, TOKEN);
+    expect(googleLogin).toHaveBeenNthCalledWith(2, TOKEN, "v1");
+    expect(googleLogin).toHaveBeenCalledTimes(2);
+    // Google 창은 처음 1번만 열렸다.
+    expect(google.initialize).toHaveBeenCalledTimes(1);
+    expect(google.renderButton).toHaveBeenCalledTimes(1);
+  });
+
+  test("T6 · 체크 없이 누르면 동의 안내만 뜨고 요청은 늘지 않는다", async () => {
+    const { googleLogin, api } = signupApi(async () => fresh);
+    configureAuth({ api });
+    await reachFinish();
+    fireEvent.click(screen.getByRole("button", { name: "동의하고 시작하기" }));
+    expect(screen.getByText("약관에 동의해야 가입할 수 있어요")).toBeTruthy();
+    expect(googleLogin).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "동의하고 시작하기" })).toBeTruthy();
+  });
+
+  test("T7 · 다른 계정으로를 누르면 처음 단계로 돌아가 다른 토큰으로 진행한다", async () => {
+    const { googleLogin, api } = signupApi(async () => fresh);
+    configureAuth({ api });
+    await reachFinish();
+    fireEvent.click(screen.getByRole("button", { name: "다른 계정으로" }));
+    expect(screen.getByTestId("google-slot")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "메일로 계속" })).toBeTruthy();
+    expect(screen.queryByTestId("google-slot-cover")).toBeNull();
+
+    await waitFor(() => expect(google.renderButton).toHaveBeenCalledTimes(2));
+    const other = fakeIdToken("old@x.com");
+    google.press(other);
+    await waitFor(() => expect(useAuth.getState().status).toBe("authenticated"));
+    expect(googleLogin).toHaveBeenNthCalledWith(2, other);
+  });
+
+  test("T8 · 웹 약관 버전이 비면 닫힘 문구 하나만 뜨고 요청은 1번에서 멈춘다", async () => {
+    vi.stubEnv("NEXT_PUBLIC_MOSS_TERMS_VERSION", "");
+    const { googleLogin, api } = signupApi(async () => fresh);
+    configureAuth({ api });
+    mount();
+    await ready();
+    google.press(TOKEN);
+    expect(await screen.findByText("지금은 새 계정을 받을 수 없어요")).toBeTruthy();
+    expect(screen.queryByText(/새로고침한 뒤/)).toBeNull();
+    expect(screen.queryByRole("checkbox")).toBeNull();
+    expect(screen.queryByRole("button", { name: "동의하고 시작하기" })).toBeNull();
+    expect(screen.getByRole("button", { name: "다른 계정으로" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "메일로 계속" })).toBeNull();
+    expect(googleLogin).toHaveBeenCalledTimes(1);
+  });
+
+  test("T8 · 서버가 가입 닫힘(503)을 줘도 같은 닫힘 화면이다", async () => {
+    const googleLogin = vi.fn().mockRejectedValue(new AuthRequestError("지금은 새 계정을 받을 수 없어요", 503, "signup_closed"));
+    configureAuth({ api: fakeApi({ googleLogin }) });
+    mount();
+    await ready();
+    google.press(TOKEN);
+    expect(await screen.findByText("지금은 새 계정을 받을 수 없어요")).toBeTruthy();
+    expect(googleLogin).toHaveBeenCalledTimes(1);
+  });
+
+  test("T9 · 동의했는데 버전이 다르면 약관 어긋남 문구 하나만 남고 자동 재요청은 없다", async () => {
+    const { googleLogin, api } = signupApi(async () => {
+      throw consentError();
+    });
+    configureAuth({ api });
+    await reachFinish();
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("button", { name: "동의하고 시작하기" }));
+
+    expect(await screen.findByText("약관이 바뀌었어요. 새로고침한 뒤 다시 시도해 주세요")).toBeTruthy();
+    expect(screen.queryByText("지금은 새 계정을 받을 수 없어요")).toBeNull();
+    expect(screen.queryByRole("button", { name: "동의하고 시작하기" })).toBeNull();
+    expect(screen.getByRole("button", { name: "다른 계정으로" })).toBeTruthy();
+    expect(googleLogin).toHaveBeenCalledTimes(2);
+  });
+
+  test("T10 · 가입 보내는 중 401이면 처음 단계로 돌아가 다시 고르게 한다", async () => {
+    const { api } = signupApi(async () => {
+      throw new AuthRequestError("구글 로그인을 확인할 수 없어요", 401, "unauthorized");
+    });
+    configureAuth({ api });
+    await reachFinish();
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("button", { name: "동의하고 시작하기" }));
+
+    expect(await screen.findByText("Google 확인 시간이 지났어요. 다시 골라 주세요")).toBeTruthy();
+    expect(screen.getByTestId("google-slot")).toBeTruthy();
+    expect(screen.queryByTestId("google-slot-cover")).toBeNull();
+    expect(screen.queryByRole("checkbox")).toBeNull();
+  });
+
+  test("T11 · 가입 보내는 중 15초 동안 답이 없으면 가입 마무리에 남고 Google 창 없이 다시 보낸다", async () => {
+    const hanging = hangingFetch();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: "consent_required", message: "약관에 동의해야 가입할 수 있어요" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockImplementation(hanging);
+    vi.stubGlobal("fetch", fetchMock);
+    await reachFinish();
+    fireEvent.click(screen.getByRole("checkbox"));
+    vi.useFakeTimers();
+
+    fireEvent.click(screen.getByRole("button", { name: "동의하고 시작하기" }));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_000);
+    });
+    expect(screen.getByText("잠시 뒤 다시 시도해 주세요")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "동의하고 시작하기" })).toBeTruthy();
+    expect(screen.getByText("new@x.com")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "동의하고 시작하기" }));
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    const bodies = fetchMock.mock.calls.slice(1).map((c) => JSON.parse((c[1] as RequestInit).body as string));
+    expect(bodies[0]).toEqual({ idToken: TOKEN, termsAccepted: true, termsVersion: "v1" });
+    expect(bodies[1]).toEqual(bodies[0]);
+    expect(google.renderButton).toHaveBeenCalledTimes(1);
+  });
+
+  test("T24 · 가입 마무리에서 오프라인이 되면 동의 버튼만 막히고 돌아오면 같은 토큰으로 1번 보낸다", async () => {
+    const { googleLogin, api } = signupApi(async () => fresh);
+    configureAuth({ api });
+    await reachFinish();
+    fireEvent.click(screen.getByRole("checkbox"));
+
+    goOnline(false);
+    const start = screen.getByRole("button", { name: "동의하고 시작하기" }) as HTMLButtonElement;
+    expect(start.disabled).toBe(true);
+    fireEvent.click(start);
+    expect(screen.getAllByText("연결되면 다시 시도해 주세요")).toHaveLength(1);
+    expect(screen.getByText("new@x.com")).toBeTruthy();
+    expect((screen.getByRole("checkbox") as HTMLInputElement).checked).toBe(true);
+    expect(googleLogin).toHaveBeenCalledTimes(1);
+
+    goOnline(true);
+    fireEvent.click(screen.getByRole("button", { name: "동의하고 시작하기" }));
+    await waitFor(() => expect(useAuth.getState().status).toBe("authenticated"));
+    expect(googleLogin).toHaveBeenNthCalledWith(2, TOKEN, "v1");
+    expect(google.renderButton).toHaveBeenCalledTimes(1);
+  });
+
+  test("T26 · 동의하고 시작하기를 두 번 눌러도 요청은 1번이고 다른 계정으로도 막힌다", async () => {
+    const { googleLogin, api } = signupApi(() => new Promise<AuthSession>(() => {}));
+    configureAuth({ api });
+    await reachFinish();
+    fireEvent.click(screen.getByRole("checkbox"));
+    const start = screen.getByRole("button", { name: "동의하고 시작하기" });
+    fireEvent.click(start);
+    fireEvent.click(start);
+
+    expect((start as HTMLButtonElement).disabled).toBe(true);
+    const other = screen.getByRole("button", { name: "다른 계정으로" }) as HTMLButtonElement;
+    expect(other.disabled).toBe(true);
+    fireEvent.click(other);
+    expect(screen.getByRole("checkbox")).toBeTruthy();
+    expect(googleLogin).toHaveBeenCalledTimes(2); // 확인 중 1번 + 가입 보내기 1번
+  });
+
+  describe("T23 나머지 세 길 · 오프라인에서 다른 계정으로를 누르면 칸이 가려진다", () => {
+    test("가입 마무리", async () => {
+      configureAuth({ api: signupApi(async () => fresh).api });
+      await reachFinish();
+      goOnline(false);
+      fireEvent.click(screen.getByRole("button", { name: "다른 계정으로" }));
+      expect(screen.getByTestId("google-slot-cover")).toBeTruthy();
+      expect(screen.getAllByText("연결되면 다시 시도해 주세요")).toHaveLength(1);
+    });
+
+    test("가입 닫힘", async () => {
+      vi.stubEnv("NEXT_PUBLIC_MOSS_TERMS_VERSION", "");
+      configureAuth({ api: signupApi(async () => fresh).api });
+      mount();
+      await ready();
+      google.press(TOKEN);
+      await screen.findByText("지금은 새 계정을 받을 수 없어요");
+      goOnline(false);
+      fireEvent.click(screen.getByRole("button", { name: "다른 계정으로" }));
+      expect(screen.getByTestId("google-slot-cover")).toBeTruthy();
+    });
+
+    test("약관 어긋남", async () => {
+      configureAuth({
+        api: signupApi(async () => {
+          throw consentError();
+        }).api,
+      });
+      await reachFinish();
+      fireEvent.click(screen.getByRole("checkbox"));
+      fireEvent.click(screen.getByRole("button", { name: "동의하고 시작하기" }));
+      await screen.findByText(/약관이 바뀌었어요/);
+      goOnline(false);
+      fireEvent.click(screen.getByRole("button", { name: "다른 계정으로" }));
+      expect(screen.getByTestId("google-slot-cover")).toBeTruthy();
+    });
+  });
+});

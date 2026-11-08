@@ -49,6 +49,14 @@ function initialState(): SlotState {
   };
 }
 
+function statusOf(phase: SlotPhase): GoogleSlotStatus {
+  return {
+    locked: phase.kind === "verifying" || phase.kind === "submitting",
+    hideMail:
+      phase.kind === "finish" || phase.kind === "submitting" || phase.kind === "closed" || phase.kind === "mismatch",
+  };
+}
+
 function isOnlineNow(): boolean {
   return typeof navigator === "undefined" || navigator.onLine !== false;
 }
@@ -73,23 +81,20 @@ export function GoogleSlot({
   // 토큰 콜백은 Google이 부르므로 최신 값을 ref로 읽는다.
   const phaseRef = useRef(phase);
   const coverRef = useRef({ offline: !online, mailBusy });
+  const statusRef = useRef(onStatus);
   const sendRef = useRef<(token: string, signup: boolean) => Promise<void>>(async () => {});
   const wasOffline = useRef(false);
 
   const go = useCallback((next: SlotPhase, nextNotice: string | null = null) => {
     phaseRef.current = next;
     setState({ phase: next, notice: nextNotice });
+    // 같은 이벤트 안에서 부모에 알려 메일 링크가 한 프레임도 어긋나 보이지 않게 한다.
+    statusRef.current(statusOf(next));
   }, []);
 
   const requestLocked = phase.kind === "verifying" || phase.kind === "submitting";
   const locked = requestLocked || mailBusy;
   const covered = !online || locked;
-  const hideMail =
-    phase.kind === "finish" || phase.kind === "submitting" || phase.kind === "closed" || phase.kind === "mismatch";
-
-  useEffect(() => {
-    onStatus({ locked: requestLocked, hideMail });
-  }, [requestLocked, hideMail, onStatus]);
 
   // 스크립트 받기 — 오프라인이면 미루고, 연결이 돌아오면 다시 받는다.
   useEffect(() => {
@@ -154,6 +159,7 @@ export function GoogleSlot({
     phaseRef.current = phase;
     coverRef.current = { offline: !online || !isOnlineNow(), mailBusy };
     sendRef.current = sendToServer;
+    statusRef.current = onStatus;
   });
 
   // 버튼 단계: Google 버튼을 칸에 그린다. 칸이 사라지면 떼고, 그 뒤 온 토큰은 버린다.
