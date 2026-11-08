@@ -1,0 +1,17 @@
+{
+  "id": "T18",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": [],
+  "kind": "task",
+  "title": "웹 클라이언트 ID가 없으면 Google 버튼 대신 문구를 보인다",
+  "given": "웹 빌드에 Google 클라이언트 ID가 비었다",
+  "when": "로그인 카드를 연다",
+  "then": "Google 버튼 자리에 Google 클라이언트 ID가 없어요 문구가 보인다. 메일로 계속 링크는 그대로 보인다. 확인: 단위 테스트에서 Google 스크립트가 붙지 않는다."
+}

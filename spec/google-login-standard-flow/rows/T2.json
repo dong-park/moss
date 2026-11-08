@@ -1,0 +1,17 @@
+{
+  "id": "T2",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": ["T1", "T3", "T4", "T12", "T13", "T14", "T18", "T19", "T20", "T21", "T22", "T23", "T25"],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": [],
+  "kind": "task",
+  "title": "Google 스크립트가 받은 설정이 표준 버튼 흐름이다",
+  "given": "가짜 window.google이 initialize, renderButton, prompt 호출과 인자를 기록한다",
+  "when": "온보딩 칸을 그렸다가 지우고, 다시 로그인 카드 칸을 그린다",
+  "then": "붙은 스크립트 주소는 gsi/client?hl=ko다. initialize는 칸을 다시 그려도 1번만 불리고 client_id, callback, ux_mode popup, auto_select false를 받는다. renderButton은 type standard, theme filled_black, size large, shape rectangular, text continue_with, locale ko를 받는다. width는 놓인 칸을 잰 값이라 온보딩 칸에서 300, 다시 로그인 카드에서 252다. prompt는 0번이고 화면 위쪽 상자는 0개다. 확인: googleIdentity.test.ts가 스크립트 주소와 가짜가 받은 인자를 단언하고, 고치기 전 코드에서 먼저 실패한다."
+}

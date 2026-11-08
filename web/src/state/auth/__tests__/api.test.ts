@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   ApiConfigError,
+  AuthRequestError,
   apiBaseUrl,
   InviteExpiredError,
   InviteFullError,
@@ -120,5 +121,64 @@ describe("auth/api", () => {
       status: 500,
       message: "",
     });
+  });
+
+  test("googleLogin은 fetch가 끝나지 않으면 15초에 timeout 오류로 끝난다", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(
+          (_url: string, init: RequestInit) =>
+            new Promise((_resolve, reject) => {
+              init.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+            }),
+        ),
+      );
+      const result = realAuthApi.googleLogin("tok").catch((e: unknown) => e);
+      await vi.advanceTimersByTimeAsync(14_999);
+      let settled = false;
+      void result.then(() => (settled = true));
+      await Promise.resolve();
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      const err = (await result) as AuthRequestError;
+      expect(err).toBeInstanceOf(AuthRequestError);
+      expect(err.code).toBe("timeout");
+      expect(err.status).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("googleLogin은 헤더 뒤 본문이 멈춰도 15초에 timeout 오류로 끝난다", async () => {
+    vi.useFakeTimers();
+    try {
+      // 본문 스트림이 abort를 무시하는 경우다. 성공 본문과 오류 본문 둘 다 마감이 끊어야 한다.
+      for (const status of [200, 500]) {
+        vi.stubGlobal(
+          "fetch",
+          vi.fn(async () => new Response(new ReadableStream({ start() {} }), { status })),
+        );
+        const result = realAuthApi.googleLogin("tok").catch((e: unknown) => e);
+        await vi.advanceTimersByTimeAsync(15_000);
+        const err = (await result) as AuthRequestError;
+        expect(err).toBeInstanceOf(AuthRequestError);
+        expect(err.code).toBe("timeout");
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("login·signup 호출의 fetch 옵션에는 signal이 없다", async () => {
+    const session = { accessToken: "a", refreshToken: "r", user: { id: "u1", name: "동환", avatar: null } };
+    const fetchMock = vi.fn(async () => jsonResponse(200, session));
+    vi.stubGlobal("fetch", fetchMock);
+    await realAuthApi.login("a@x.com", "secret123");
+    await realAuthApi.signup("a@x.com", "secret123", "동환", "v1");
+    for (const call of fetchMock.mock.calls) {
+      expect((call as unknown as [string, RequestInit])[1]).not.toHaveProperty("signal");
+    }
   });
 });

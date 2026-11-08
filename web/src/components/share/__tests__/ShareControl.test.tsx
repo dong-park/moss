@@ -111,42 +111,24 @@ afterEach(() => {
 });
 
 describe("AC-4 · 공유 시작과 로그인", () => {
-  test("로그인 안 한 상태: 공유 아이콘 → Google 버튼 (2클릭)", async () => {
+  test("로그인 안 한 상태: 팝오버에 Google 버튼이 없고 공유 시작이 비활성이다", async () => {
     const shareApi = fakeShareApi();
     configureShare({ api: shareApi });
-    configureAuth({ api: fakeAuthApi(), googleIdToken: vi.fn(async () => "id-token") });
+    configureAuth({ api: fakeAuthApi() });
     mount();
 
     await openPopover();
-    expect(screen.queryByRole("button", { name: "Google 계정으로 로그인" })).toBeTruthy();
+    expect(screen.queryAllByRole("button", { name: /Google/ })).toHaveLength(0);
+    const start = screen.getByRole("button", { name: "공유 시작" }) as HTMLButtonElement;
+    expect(start.disabled).toBe(true);
+    fireEvent.click(start);
     expect(shareApi.share).not.toHaveBeenCalled();
-  });
-
-  test("Google 클릭 뒤 이 보드만 올라가고 팝오버가 링크 복사·내 이름으로 바뀐다", async () => {
-    const shareApi = fakeShareApi();
-    const onStartShare = vi.fn();
-    configureShare({ api: shareApi });
-    configureAuth({ api: fakeAuthApi(), googleIdToken: vi.fn(async () => "id-token") });
-    mount({ onStartShare });
-
-    await openPopover();
-    fireEvent.click(screen.getByRole("button", { name: "Google 계정으로 로그인" }));
-
-    await waitFor(() => expect(shareApi.share).toHaveBeenCalledTimes(1));
-    expect(shareApi.share).toHaveBeenCalledWith("b1", "이번 주 기획", session.accessToken);
-    // 이 보드만 업로드 — 다른 보드 호출 없음.
-    expect(onStartShare).toHaveBeenCalledTimes(1);
-    expect(onStartShare).toHaveBeenCalledWith("b1");
-
-    expect(await screen.findByText("링크 복사")).toBeTruthy();
-    expect(screen.getByText("동환")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Google 계정으로 로그인" })).toBeNull();
   });
 
   test("이미 로그인돼 있으면 '공유 시작' 1클릭으로 끝난다", async () => {
     const shareApi = fakeShareApi();
     configureShare({ api: shareApi });
-    configureAuth({ api: fakeAuthApi(), googleIdToken: vi.fn(async () => "id-token") });
+    configureAuth({ api: fakeAuthApi() });
     await loginState();
     mount();
 
@@ -164,7 +146,7 @@ describe("AC-6 · 링크 재발급", () => {
       reissueInvite: vi.fn(async () => "tok-2"),
     });
     configureShare({ api: shareApi });
-    configureAuth({ api: fakeAuthApi(), googleIdToken: vi.fn(async () => "id-token") });
+    configureAuth({ api: fakeAuthApi() });
     await loginState();
     useShare.setState({
       byBoard: { b1: { status: "shared", inviteToken: "tok-1" } },
@@ -188,7 +170,7 @@ describe("AC-6 · 링크 재발급", () => {
     const editor: BoardMember = { id: "u2", name: "민지", avatar: null, role: "editor" };
     const shareApi = fakeShareApi();
     configureShare({ api: shareApi });
-    configureAuth({ api: fakeAuthApi(), googleIdToken: vi.fn(async () => "id-token") });
+    configureAuth({ api: fakeAuthApi() });
     await loginState();
     useShare.setState({
       byBoard: { b1: { status: "shared", inviteToken: "tok-1" } },
@@ -213,7 +195,7 @@ describe("AC-15 · 한도", () => {
       role: i === 0 ? "owner" : "editor",
     }));
     configureShare({ api: fakeShareApi() });
-    configureAuth({ api: fakeAuthApi(), googleIdToken: vi.fn(async () => "id-token") });
+    configureAuth({ api: fakeAuthApi() });
     await loginState();
     useShare.setState({
       byBoard: { b1: { status: "shared", inviteToken: "tok-1" } },
@@ -230,7 +212,7 @@ describe("n8a 리뷰 2 · 새로고침 복원 — 링크가 없으면 명시 버
   test("공유 상태인데 링크가 없으면 '링크 새로 만들기'를 누를 때만 재발급한다", async () => {
     const shareApi = fakeShareApi({ reissueInvite: vi.fn(async () => "tok-new") });
     configureShare({ api: shareApi });
-    configureAuth({ api: fakeAuthApi(), googleIdToken: vi.fn(async () => "id-token") });
+    configureAuth({ api: fakeAuthApi() });
     await loginState();
     // `/me/boards` 복원 직후 — shared인데 옛 토큰은 서버가 해시만 저장해 알 수 없다.
     useShare.setState({
@@ -249,7 +231,7 @@ describe("n8a 리뷰 2 · 새로고침 복원 — 링크가 없으면 명시 버
 
   test("편집자에게는 '링크 새로 만들기'가 없다 — 서버가 403으로 막는 동작이다", async () => {
     configureShare({ api: fakeShareApi() });
-    configureAuth({ api: fakeAuthApi(), googleIdToken: vi.fn(async () => "id-token") });
+    configureAuth({ api: fakeAuthApi() });
     await loginState();
     useShare.setState({
       byBoard: { b1: { status: "shared", inviteToken: null, role: "editor" } },
@@ -266,7 +248,7 @@ describe("n8a 리뷰 보안 P1 — 역할을 모르면 소유자 메뉴를 숨�
     const owner: BoardMember = { id: "u1", name: "동환", avatar: null, role: "owner" };
     const editor: BoardMember = { id: "u2", name: "민지", avatar: null, role: "editor" };
     configureShare({ api: fakeShareApi() });
-    configureAuth({ api: fakeAuthApi(), googleIdToken: vi.fn(async () => "id-token") });
+    configureAuth({ api: fakeAuthApi() });
     await loginState();
     useShare.setState({ byBoard: { b1: { status: "shared", inviteToken: "tok-1" } } });
     mount({ role: undefined, members: [owner, editor] });

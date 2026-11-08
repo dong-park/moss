@@ -10,6 +10,7 @@ import {
 import { deleteAuthDatabase, loadSession, saveSession } from "@/state/auth/tokenStore";
 import { InviteExpiredError, InviteFullError, type AuthApi } from "@/state/auth/api";
 import type { AuthSession, BoardSummary } from "@/state/auth/types";
+import { installFakeGoogle, resetFakeGoogle, type FakeGoogle } from "./fakeGoogle";
 
 const NOW = 1_700_000_000_000;
 
@@ -59,13 +60,17 @@ async function joinButton() {
   return screen.findByRole("button", { name: "참여하기" });
 }
 
+let google: FakeGoogle;
+
 beforeEach(async () => {
+  google = installFakeGoogle();
   await deleteAuthDatabase();
   resetAuthStore();
   configureAuth({ now: () => NOW });
 });
 
 afterEach(() => {
+  resetFakeGoogle();
   resetAuthStore();
   vi.unstubAllGlobals();
 });
@@ -73,7 +78,7 @@ afterEach(() => {
 describe("AC-5 · InviteRoute", () => {
   test("로그인 전이면 초대 맥락과 함께 로그인 온보딩을 먼저 보이고, 메일 로그인 뒤 참여하기로 돌아온다", async () => {
     const api = fakeApi();
-    configureAuth({ api, googleIdToken: vi.fn(async () => "id-token") });
+    configureAuth({ api,  });
     mount({ token: "tok", onJoined: vi.fn() });
 
     expect(await screen.findByText("이번 주 기획")).toBeTruthy();
@@ -89,21 +94,23 @@ describe("AC-5 · InviteRoute", () => {
 
   test("카드 이름은 미리보기 응답에서 온다 (쿼리 파라미터 없음)", async () => {
     const api = fakeApi();
-    configureAuth({ api, googleIdToken: vi.fn(async () => "id-token") });
+    configureAuth({ api,  });
     mount({ token: "tok", onJoined: vi.fn() });
     expect(await screen.findByText("동환님의 초대")).toBeTruthy();
     expect(screen.getByText("이번 주 기획")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Google 계정으로 로그인" })).toBeTruthy();
+    expect(screen.getByTestId("google-slot")).toBeTruthy();
     expect(api.previewInvite).toHaveBeenCalledWith("tok");
   });
 
   test("로그인만으로는 수락하지 않는다 — 참여하기 1탭이 동의 지점", async () => {
     const api = fakeApi();
-    configureAuth({ api, googleIdToken: vi.fn(async () => "id-token") });
+    configureAuth({ api,  });
     const onJoined = vi.fn();
     mount({ token: "tok", onJoined });
 
-    fireEvent.click(await screen.findByRole("button", { name: "Google 계정으로 로그인" }));
+    await screen.findByTestId("google-slot");
+    await waitFor(() => expect(google.renderButton).toHaveBeenCalled());
+    google.press("id-token");
     await waitFor(() => expect(api.googleLogin).toHaveBeenCalledWith("id-token"));
     expect(api.acceptInvite).not.toHaveBeenCalled();
 
@@ -115,9 +122,9 @@ describe("AC-5 · InviteRoute", () => {
 
   test("로그인 안 한 상태에서는 수락 네트워크를 부르지 않는다", async () => {
     const api = fakeApi();
-    configureAuth({ api, googleIdToken: vi.fn(async () => "id-token") });
+    configureAuth({ api,  });
     mount({ token: "tok", onJoined: vi.fn() });
-    await screen.findByRole("button", { name: "Google 계정으로 로그인" });
+    await screen.findByTestId("google-slot");
     expect(api.acceptInvite).not.toHaveBeenCalled();
     expect(api.googleLogin).not.toHaveBeenCalled();
   });
@@ -128,10 +135,10 @@ describe("AC-5 · InviteRoute", () => {
         throw new TypeError("Failed to fetch");
       }),
     });
-    configureAuth({ api, googleIdToken: vi.fn(async () => "id-token") });
+    configureAuth({ api,  });
     mount({ token: "tok", onJoined: vi.fn() });
 
-    expect(await screen.findByRole("button", { name: "Google 계정으로 로그인" })).toBeTruthy();
+    expect(await screen.findByTestId("google-slot")).toBeTruthy();
     expect(screen.getByText("공유 보드")).toBeTruthy();
   });
 
@@ -142,7 +149,7 @@ describe("AC-5 · InviteRoute", () => {
       .mockResolvedValueOnce(joinedBoard);
     await saveSession(session);
     useAuth.setState({ session, user: session.user, status: "authenticated", hydrated: true });
-    configureAuth({ api: fakeApi({ acceptInvite }), googleIdToken: vi.fn(async () => "id-token") });
+    configureAuth({ api: fakeApi({ acceptInvite }),  });
     const onJoined = vi.fn();
     mount({ token: "tok", onJoined });
 
@@ -153,7 +160,7 @@ describe("AC-5 · InviteRoute", () => {
 
   test("수락하면 수락한 보드의 /b/[boardId]로 replace한다 (AC-11)", async () => {
     const api = fakeApi();
-    configureAuth({ api, googleIdToken: vi.fn(async () => "id-token") });
+    configureAuth({ api,  });
     await saveSession(session);
     useAuth.setState({ session, user: session.user, status: "authenticated", hydrated: true });
     const replace = vi.fn();
@@ -168,10 +175,10 @@ describe("AC-5 · InviteRoute", () => {
   test("세션이 만료됐으면 참여하기 대신 재로그인 버튼을 보여준다", async () => {
     await saveSession(session);
     useAuth.setState({ session, user: session.user, status: "expired", hydrated: true });
-    configureAuth({ api: fakeApi(), googleIdToken: vi.fn(async () => "id-token") });
+    configureAuth({ api: fakeApi(),  });
     mount({ token: "tok", onJoined: vi.fn() });
 
-    expect(await screen.findByRole("button", { name: "Google 계정으로 로그인" })).toBeTruthy();
+    expect(await screen.findByTestId("google-slot")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "참여하기" })).toBeNull();
   });
 });
@@ -180,7 +187,7 @@ describe("AC-6 · 만료된 초대", () => {
   async function mountLoggedIn(api: AuthApi) {
     await saveSession(session);
     useAuth.setState({ session, user: session.user, status: "authenticated", hydrated: true });
-    configureAuth({ api, googleIdToken: vi.fn(async () => "id-token") });
+    configureAuth({ api,  });
     mount({ token: "expired", onJoined: vi.fn() });
   }
 
@@ -192,7 +199,7 @@ describe("AC-6 · 만료된 초대", () => {
     });
     await mountLoggedIn(api);
 
-    expect(screen.queryByRole("button", { name: "Google 계정으로 로그인" })).toBeNull();
+    expect(screen.queryByTestId("google-slot")).toBeNull();
     fireEvent.click(await joinButton());
     expect(await screen.findByText("만료된 초대예요")).toBeTruthy();
     expect(api.acceptInvite).toHaveBeenCalledTimes(1);
@@ -229,9 +236,9 @@ describe("AC-6 · 재발급된 옛 링크 (비로그인)", () => {
         throw new InviteExpiredError();
       }),
     });
-    configureAuth({ api, googleIdToken: vi.fn(async () => "id-token") });
+    configureAuth({ api,  });
     mount({ token: "old", onJoined: vi.fn() });
     await screen.findByText("만료된 초대예요");
-    expect(screen.queryByRole("button", { name: "Google 계정으로 로그인" })).toBeNull();
+    expect(screen.queryByTestId("google-slot")).toBeNull();
   });
 });
