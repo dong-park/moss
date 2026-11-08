@@ -5,8 +5,8 @@ import { AuthSessionOverlay } from "@/components/auth/SessionExpiredCard";
 import { configureAuth, resetAuthStore, useAuth } from "@/state/auth/store";
 import { deleteAuthDatabase, loadSession, saveSession } from "@/state/auth/tokenStore";
 import type { AuthApi } from "@/state/auth/api";
-import { GoogleUnavailableError } from "@/state/auth/googleIdentity";
 import type { AuthSession } from "@/state/auth/types";
+import { installFakeGoogle, resetFakeGoogle, stubClientWidth, type FakeGoogle } from "./fakeGoogle";
 
 const NOW = 1_700_000_000_000;
 
@@ -30,13 +30,17 @@ function mount() {
   );
 }
 
+let google: FakeGoogle;
+
 beforeEach(async () => {
+  google = installFakeGoogle();
   await deleteAuthDatabase();
   resetAuthStore();
   configureAuth({ now: () => NOW });
 });
 
 afterEach(() => {
+  resetFakeGoogle();
   resetAuthStore();
 });
 
@@ -45,7 +49,19 @@ describe("AC-12 · 리프레시 만료 로그인 카드", () => {
     useAuth.setState({ status: "expired", user: fresh.user });
     mount();
     expect(await screen.findByText("다시 로그인해 주세요")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Google 계정으로 로그인" })).toBeTruthy();
+    expect(screen.getByTestId("google-slot")).toBeTruthy();
+  });
+
+  test("T2 · 카드 칸의 잰 너비(252)를 Google 버튼에 넘긴다", async () => {
+    const restore = stubClientWidth(252);
+    try {
+      useAuth.setState({ status: "expired", user: fresh.user });
+      mount();
+      await waitFor(() => expect(google.renderButton).toHaveBeenCalledTimes(1));
+      expect(google.renderButton.mock.calls[0][1]).toMatchObject({ width: 252 });
+    } finally {
+      restore();
+    }
   });
 
   test("로그인하면 카드가 사라지고 로컬 사본은 유지된다", async () => {
@@ -60,12 +76,13 @@ describe("AC-12 · 리프레시 만료 로그인 카드", () => {
       previewInvite: vi.fn(),
       acceptInvite: vi.fn(),
     };
-    configureAuth({ api, googleIdToken: vi.fn(async () => "id-token") });
+    configureAuth({ api });
     await saveSession(fresh);
     useAuth.setState({ status: "expired", user: fresh.user, session: fresh });
 
     mount();
-    fireEvent.click(screen.getByRole("button", { name: "Google 계정으로 로그인" }));
+    await waitFor(() => expect(google.renderButton).toHaveBeenCalled());
+    google.press("id-token");
 
     await waitFor(() => expect(useAuth.getState().status).toBe("authenticated"));
     expect(screen.queryByText("다시 로그인해 주세요")).toBeNull();
@@ -84,16 +101,11 @@ describe("AC-12 · 리프레시 만료 로그인 카드", () => {
       previewInvite: vi.fn(),
       acceptInvite: vi.fn(),
     };
-    configureAuth({
-      api,
-      googleIdToken: vi.fn(async () => {
-        throw new GoogleUnavailableError("Google 클라이언트 ID가 없어요");
-      }),
-    });
+    configureAuth({ api });
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_CLIENT_ID", "");
     useAuth.setState({ status: "expired", user: fresh.user, session: fresh });
 
     mount();
-    fireEvent.click(screen.getByRole("button", { name: "Google 계정으로 로그인" }));
     expect(await screen.findByText("Google 클라이언트 ID가 없어요")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "메일로 계속" }));

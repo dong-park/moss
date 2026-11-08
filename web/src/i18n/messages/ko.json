@@ -558,8 +558,15 @@
   },
   "collab": {
     "auth": {
-      "google": "Google로 계속하기",
-      "googleAria": "Google 계정으로 로그인",
+      "googleNoClient": "Google 클라이언트 ID가 없어요",
+      "googleLoadFailed": "Google 로그인을 불러오지 못했어요",
+      "googleRetry": "다시 시도",
+      "googleFinishHint": "이 계정으로 가입해요",
+      "googleStart": "동의하고 시작하기",
+      "googleOtherAccount": "다른 계정으로",
+      "googleTokenExpired": "Google 확인 시간이 지났어요. 다시 골라 주세요",
+      "googleTermsChanged": "약관이 바뀌었어요. 새로고침한 뒤 다시 시도해 주세요",
+      "googleSignupClosed": "지금은 새 계정을 받을 수 없어요",
       "email": {
         "continue": "메일로 계속",
         "emailLabel": "메일",

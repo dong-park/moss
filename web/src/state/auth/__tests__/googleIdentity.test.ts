@@ -1,9 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
-  attachGoogleButton,
+  attachGoogleSignIn,
   GoogleClientIdMissingError,
   GoogleUnavailableError,
-  requestGoogleIdToken,
   resetGoogleIdentityCache,
 } from "../googleIdentity";
 
@@ -24,26 +23,13 @@ function addLoadedScript() {
   document.head.appendChild(script);
 }
 
-function fakeGoogle(prompt: (cb?: (n: unknown) => void) => void, credential?: string) {
-  (window as unknown as { google: unknown }).google = {
-    accounts: {
-      id: {
-        initialize: ({ callback }: { callback: (r: { credential?: string }) => void }) => {
-          if (credential) queueMicrotask(() => callback({ credential }));
-        },
-        prompt,
-        renderButton: () => {},
-      },
-    },
-  };
-}
-
 beforeEach(clearGis);
 afterEach(clearGis);
 
 describe("auth/googleIdentity", () => {
   test("스크립트 로드 실패 뒤 캐시가 남지 않아 다음 시도가 성공한다", async () => {
-    const failed = requestGoogleIdToken("client");
+    const el = document.createElement("div");
+    const failed = attachGoogleSignIn(el, { clientId: "client", width: 300, onToken: () => {} });
     const script = document.querySelector<HTMLScriptElement>(`script[src="${GIS_SRC}"]`);
     expect(script).not.toBeNull();
     script?.dispatchEvent(new Event("error"));
@@ -51,77 +37,12 @@ describe("auth/googleIdentity", () => {
 
     // 두 번째 시도는 실패 promise를 재사용하지 않고 새로 로드한다.
     addLoadedScript();
-    fakeGoogle(() => {}, "fresh-token");
-    await expect(requestGoogleIdToken("client")).resolves.toBe("fresh-token");
-  });
-
-  test("One Tap을 닫으면 reject하고 다음 시도가 버튼 상태로 돌아올 수 있다", async () => {
-    addLoadedScript();
-    fakeGoogle((notification) =>
-      notification?.({
-        isDismissedMoment: () => true,
-        isSkippedMoment: () => false,
-        isNotDisplayed: () => false,
-      }),
-    );
-    await expect(requestGoogleIdToken("client")).rejects.toBeInstanceOf(GoogleUnavailableError);
-  });
-
-  test("프롬프트가 응답하지 않으면 타임아웃으로 reject한다", async () => {
-    addLoadedScript();
-    fakeGoogle(() => {});
+    (window as unknown as { google: unknown }).google = {
+      accounts: { id: { initialize: () => {}, renderButton: () => {} } },
+    };
     await expect(
-      requestGoogleIdToken("client", { timeoutMs: 5 }),
-    ).rejects.toBeInstanceOf(GoogleUnavailableError);
-  });
-
-  test("credential이 오면 토큰으로 resolve한다", async () => {
-    addLoadedScript();
-    fakeGoogle(() => {}, "id-token");
-    await expect(requestGoogleIdToken("client")).resolves.toBe("id-token");
-  });
-
-  describe("Google 공식 버튼을 One Tap과 함께 띄운다", () => {
-    function fakeCooldown() {
-      let cb: ((r: { credential?: string }) => void) | undefined;
-      const rendered: HTMLElement[] = [];
-      (window as unknown as { google: unknown }).google = {
-        accounts: {
-          id: {
-            initialize: ({ callback }: { callback: typeof cb }) => (cb = callback),
-            prompt: (n?: (x: unknown) => void) =>
-              n?.({ isNotDisplayed: () => true, isSkippedMoment: () => false, isDismissedMoment: () => false }),
-            renderButton: (el: HTMLElement) => rendered.push(el),
-          },
-        },
-      };
-      return { press: (credential: string) => cb?.({ credential }), rendered };
-    }
-    const box = () => document.querySelector('[role="dialog"][aria-label="Google 로그인"]');
-
-    test("버튼으로 받은 토큰으로 resolve하고 버튼을 치운다", async () => {
-      addLoadedScript();
-      const g = fakeCooldown();
-      const token = requestGoogleIdToken("client");
-      await Promise.resolve();
-      await Promise.resolve();
-      expect(g.rendered).toHaveLength(1);
-      expect(box()).not.toBeNull();
-      g.press("button-token");
-      await expect(token).resolves.toBe("button-token");
-      expect(box()).toBeNull();
-    });
-
-    test("닫기를 누르면 취소로 reject하고 버튼을 치운다", async () => {
-      addLoadedScript();
-      fakeCooldown();
-      const token = requestGoogleIdToken("client");
-      await Promise.resolve();
-      await Promise.resolve();
-      box()?.querySelector("button")?.click();
-      await expect(token).rejects.toBeInstanceOf(GoogleUnavailableError);
-      expect(box()).toBeNull();
-    });
+      attachGoogleSignIn(el, { clientId: "client", width: 300, onToken: () => {} }),
+    ).resolves.toBeTypeOf("function");
   });
 });
 
@@ -152,9 +73,9 @@ describe("auth/googleIdentity · 표준 버튼 흐름", () => {
     const g = spyGoogle();
     const a = document.createElement("div");
     const b = document.createElement("div");
-    const detachA = await attachGoogleButton(a, { clientId: "cid", width: 300, onToken: () => {} });
+    const detachA = await attachGoogleSignIn(a, { clientId: "cid", width: 300, onToken: () => {} });
     detachA();
-    await attachGoogleButton(b, { clientId: "cid", width: 252, onToken: () => {} });
+    await attachGoogleSignIn(b, { clientId: "cid", width: 252, onToken: () => {} });
     expect(g.calls.initialize).toHaveLength(1);
     expect(g.calls.initialize[0]).toMatchObject({ client_id: "cid", ux_mode: "popup", auto_select: false });
   });
@@ -163,9 +84,9 @@ describe("auth/googleIdentity · 표준 버튼 흐름", () => {
     addLoadedScript();
     const g = spyGoogle();
     const el = document.createElement("div");
-    await attachGoogleButton(el, { clientId: "cid", width: 300, onToken: () => {} });
-    await attachGoogleButton(el, { clientId: "cid", width: 252, onToken: () => {} });
-    await attachGoogleButton(el, { clientId: "cid", width: 900, onToken: () => {} });
+    await attachGoogleSignIn(el, { clientId: "cid", width: 300, onToken: () => {} });
+    await attachGoogleSignIn(el, { clientId: "cid", width: 252, onToken: () => {} });
+    await attachGoogleSignIn(el, { clientId: "cid", width: 900, onToken: () => {} });
     const opts = g.calls.renderButton.map(([, o]) => o);
     expect(opts[0]).toEqual({
       type: "standard",
@@ -181,7 +102,7 @@ describe("auth/googleIdentity · 표준 버튼 흐름", () => {
   });
 
   test("붙은 스크립트 src에 hl=ko가 있다", async () => {
-    const pending = attachGoogleButton(document.createElement("div"), { clientId: "cid", width: 300, onToken: () => {} });
+    const pending = attachGoogleSignIn(document.createElement("div"), { clientId: "cid", width: 300, onToken: () => {} });
     const script = document.querySelector<HTMLScriptElement>("script[src*='accounts.google.com/gsi/client']");
     expect(script?.src).toContain("hl=ko");
     spyGoogle();
@@ -192,7 +113,7 @@ describe("auth/googleIdentity · 표준 버튼 흐름", () => {
   test("prompt를 부르지 않고 위쪽 상자도 만들지 않는다", async () => {
     addLoadedScript();
     const g = spyGoogle();
-    await attachGoogleButton(document.createElement("div"), { clientId: "cid", width: 300, onToken: () => {} });
+    await attachGoogleSignIn(document.createElement("div"), { clientId: "cid", width: 300, onToken: () => {} });
     expect(g.calls.prompt).toBe(0);
     expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(0);
   });
@@ -202,9 +123,9 @@ describe("auth/googleIdentity · 표준 버튼 흐름", () => {
     const g = spyGoogle();
     const first = vi.fn();
     const second = vi.fn();
-    const detach1 = await attachGoogleButton(document.createElement("div"), { clientId: "cid", width: 300, onToken: first });
+    const detach1 = await attachGoogleSignIn(document.createElement("div"), { clientId: "cid", width: 300, onToken: first });
     detach1();
-    await attachGoogleButton(document.createElement("div"), { clientId: "cid", width: 300, onToken: second });
+    await attachGoogleSignIn(document.createElement("div"), { clientId: "cid", width: 300, onToken: second });
     g.press("t1");
     expect(first).not.toHaveBeenCalled();
     expect(second).toHaveBeenCalledWith("t1");
@@ -212,7 +133,7 @@ describe("auth/googleIdentity · 표준 버튼 흐름", () => {
     detach1();
     g.press("t2");
     expect(second).toHaveBeenCalledTimes(2);
-    const detach2 = await attachGoogleButton(document.createElement("div"), { clientId: "cid", width: 300, onToken: second });
+    const detach2 = await attachGoogleSignIn(document.createElement("div"), { clientId: "cid", width: 300, onToken: second });
     detach2();
     g.press("t3");
     expect(second).toHaveBeenCalledTimes(2);
@@ -220,7 +141,7 @@ describe("auth/googleIdentity · 표준 버튼 흐름", () => {
 
   test("클라이언트 ID가 없으면 스크립트를 받지 않고 구분되는 오류로 끝난다", async () => {
     await expect(
-      attachGoogleButton(document.createElement("div"), { clientId: "", width: 300, onToken: () => {} }),
+      attachGoogleSignIn(document.createElement("div"), { clientId: "", width: 300, onToken: () => {} }),
     ).rejects.toBeInstanceOf(GoogleClientIdMissingError);
     expect(document.querySelector("script[src*='gsi/client']")).toBeNull();
   });

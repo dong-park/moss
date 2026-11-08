@@ -11,7 +11,6 @@ import { create } from "zustand";
 import { AuthRequestError, realAuthApi, type AuthApi } from "./api";
 import { loadSession, saveSession, clearSession } from "./tokenStore";
 import { isExpired } from "./jwt";
-import { requestGoogleIdToken } from "./googleIdentity";
 import type { AuthSession, AuthUser, BoardSummary, InvitePreview } from "./types";
 
 /** 만료 직전 선제 갱신 여유. */
@@ -19,13 +18,11 @@ const ACCESS_SKEW_MS = 30_000;
 
 export interface AuthDeps {
   api: AuthApi;
-  googleIdToken: () => Promise<string>;
   now: () => number;
 }
 
 const defaultDeps: AuthDeps = {
   api: realAuthApi,
-  googleIdToken: () => requestGoogleIdToken(),
   now: () => Date.now(),
 };
 
@@ -95,8 +92,8 @@ export interface AuthState {
 
   /** IndexedDB에서 세션을 복원한다. 최초 1회만 실제로 돈다. */
   hydrate(): Promise<void>;
-  /** 신규 Google 가입이면 동의한 약관 버전을 넘긴다. 기존 계정은 생략한다. */
-  loginWithGoogle(termsVersion?: string): Promise<AuthUser>;
+  /** Google이 콜백으로 준 ID 토큰으로 로그인한다. termsVersion은 신규 가입 동의일 때만 넘긴다. */
+  loginWithGoogle(idToken: string, termsVersion?: string): Promise<AuthUser>;
   signupWithEmail(email: string, password: string, name: string, termsVersion: string): Promise<AuthUser>;
   loginWithEmail(email: string, password: string): Promise<AuthUser>;
   /** 무인증 초대 미리보기 — 카드 이름을 서버가 알려준 값으로만 채운다. */
@@ -164,10 +161,9 @@ export const useAuth = create<AuthState>((set, get) => ({
     }
   },
 
-  loginWithGoogle: async (termsVersion) => {
+  loginWithGoogle: async (idToken, termsVersion) => {
     // 새 로그인이 진행 중 refresh보다 우선한다 — 옛 세션을 되살리지 않는다.
     invalidateRefresh();
-    const idToken = await deps.googleIdToken();
     const session = await (termsVersion ? deps.api.googleLogin(idToken, termsVersion) : deps.api.googleLogin(idToken));
     await persist(session);
     return session.user;

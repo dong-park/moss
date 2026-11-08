@@ -42,13 +42,11 @@ function fakeApi(overrides: Partial<AuthApi> = {}): AuthApi {
   };
 }
 
-const googleIdToken = vi.fn(async () => "google-id-token");
 
 beforeEach(async () => {
   await deleteAuthDatabase();
   resetAuthStore();
-  googleIdToken.mockClear();
-  configureAuth({ now: () => NOW, googleIdToken });
+  configureAuth({ now: () => NOW });
 });
 
 afterEach(() => {
@@ -131,9 +129,8 @@ describe("auth/store", () => {
   test("loginWithGoogle이 토큰을 저장하고 authenticated", async () => {
     const api = fakeApi();
     configureAuth({ api });
-    const user = await useAuth.getState().loginWithGoogle();
+    const user = await useAuth.getState().loginWithGoogle("google-id-token");
     expect(user.name).toBe("동환");
-    expect(googleIdToken).toHaveBeenCalledTimes(1);
     expect(api.googleLogin).toHaveBeenCalledWith("google-id-token");
     expect(useAuth.getState().status).toBe("authenticated");
     expect(await loadSession()).not.toBeNull();
@@ -142,7 +139,7 @@ describe("auth/store", () => {
   test("loginWithGoogle은 버전을 주면 동의 버전을 api에 넘긴다", async () => {
     const api = fakeApi();
     configureAuth({ api });
-    await useAuth.getState().loginWithGoogle("v1");
+    await useAuth.getState().loginWithGoogle("google-id-token", "v1");
     expect(api.googleLogin).toHaveBeenCalledWith("google-id-token", "v1");
   });
 

@@ -3,11 +3,12 @@
 import { useState } from "react";
 import { useT } from "@/i18n/Provider";
 import type { Translator } from "@/i18n";
-import { AuthRequestError, GoogleUnavailableError, useAuth } from "@/state/auth";
+import { AuthRequestError, useAuth } from "@/state/auth";
 import { termsVersion } from "@/state/auth/terms";
 import { useOnlineStatus } from "@/state/network";
 import { FloatingCards } from "./FloatingCards";
-import { GoogleButton } from "./GoogleButton";
+import { GoogleSlot, type GoogleSlotStatus } from "./GoogleSlot";
+import { TermsCheckbox } from "./TermsCheckbox";
 
 /**
  * 로그인 온보딩 — 로그인 전에는 워크스페이스 대신 이 화면만 보인다 (D5, AC-4).
@@ -102,26 +103,6 @@ export function LoginOnboarding({ context }: { context?: React.ReactNode } = {})
   );
 }
 
-/** 약관 링크와 동의 체크. 이메일 가입과 Google 신규가입이 같이 쓴다. */
-function TermsCheckbox({ accepted, onChange }: { accepted: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <label className="flex items-start gap-2 text-[11px] text-[#2c2e33]">
-      <input
-        type="checkbox"
-        checked={accepted}
-        onChange={(e) => onChange(e.target.checked)}
-        className="mt-0.5"
-      />
-      <span>
-        <a href="/legal/terms" target="_blank" rel="noreferrer" className="underline">이용약관</a>
-        {"과 "}
-        <a href="/legal/privacy" target="_blank" rel="noreferrer" className="underline">개인정보 처리방침</a>
-        에 동의합니다
-      </span>
-    </label>
-  );
-}
-
 /**
  * Google 버튼 + "메일로 계속" 폼. 온보딩과 세션 만료 카드가 같이 쓴다 —
  * 만료 카드에 Google만 있으면 메일 계정은 다시 들어올 길이 없다.
@@ -129,39 +110,19 @@ function TermsCheckbox({ accepted, onChange }: { accepted: boolean; onChange: (v
 export function LoginActions() {
   const t = useT();
   const online = useOnlineStatus();
-  const [busy, setBusy] = useState(false);
+  // 메일 요청 중. Google 요청과 같은 요청 잠금을 쓴다.
+  const [mailBusy, setMailBusy] = useState(false);
+  const [google, setGoogle] = useState<GoogleSlotStatus>({ locked: false, hideMail: false });
   const [mode, setMode] = useState<Mode>("closed");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [accepted, setAccepted] = useState(false);
-  const [googleConsent, setGoogleConsent] = useState(false);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
-  const [googleError, setGoogleError] = useState<string | null>(null);
 
-  const handleLogin = async () => {
-    setBusy(true);
-    setGoogleError(null);
-    try {
-      // 동의 체크가 켜져 있을 때만 버전을 보낸다. 기존 계정은 체크 없이도 그대로 로그인된다.
-      await useAuth.getState().loginWithGoogle(googleConsent && accepted ? termsVersion() : undefined);
-    } catch (err) {
-      // 실패를 삼키면 버튼이 아무 일도 안 하는 것처럼 보인다.
-      if (err instanceof AuthRequestError && err.code === "consent_required") {
-        // 신규 가입이다. 동의 체크를 보이고 사용자가 다시 누르게 한다.
-        setGoogleConsent(true);
-        setGoogleError(t("collab.auth.email.termsRequired"));
-      } else if (err instanceof AuthRequestError && err.status === 503) {
-        setGoogleError(err.message || t("collab.auth.email.failed"));
-      } else {
-        setGoogleError(
-          err instanceof GoogleUnavailableError ? err.message : t("collab.auth.email.failed"),
-        );
-      }
-      setBusy(false);
-    }
-  };
+  const locked = mailBusy || google.locked;
+  const disabled = locked || !online;
 
   const switchMode = (next: Mode) => {
     setMode(next);
@@ -171,7 +132,7 @@ export function LoginActions() {
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!online) return;
+    if (!online || locked) return;
     const found = validate(mode, email, password, name, t);
     setErrors(found);
     setFormError(null);
@@ -180,7 +141,7 @@ export function LoginActions() {
       setFormError(t("collab.auth.email.termsRequired"));
       return;
     }
-    setBusy(true);
+    setMailBusy(true);
     try {
       if (mode === "signup") {
         await useAuth.getState().signupWithEmail(email.trim(), password, name.trim(), termsVersion());
@@ -189,27 +150,16 @@ export function LoginActions() {
       }
     } catch (err) {
       setFormError(errorMessage(err, t));
-      setBusy(false);
+      setMailBusy(false);
     }
   };
 
-  const disabled = busy || !online;
 
   return (
     <>
-      <GoogleButton onClick={handleLogin} disabled={disabled} />
-      {googleConsent && (
-        <div className="mt-1.5 text-left">
-          <TermsCheckbox accepted={accepted} onChange={setAccepted} />
-        </div>
-      )}
-      {googleError && (
-        <p role="alert" className="mt-1.5 text-[11px] text-[#c0392b]">
-          {googleError}
-        </p>
-      )}
+      <GoogleSlot online={online} mailBusy={mailBusy} onStatus={setGoogle} />
 
-      {mode === "closed" ? (
+      {google.hideMail ? null : mode === "closed" ? (
         <button
           type="button"
           onClick={() => switchMode("login")}
