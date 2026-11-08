@@ -51,7 +51,7 @@ data class AppConfig(
         const val MIN_JWT_SECRET_BYTES = 32
         const val DEFAULT_ALLOWED_ORIGIN = "http://localhost:3000"
         const val DEFAULT_PUBLIC_BASE_URL = "http://localhost:8080"
-        const val DEFAULT_ACCOUNT_CAP: Long = 1000
+        const val DEFAULT_ACCOUNT_CAP: Long = 100
 
         /** D12: 20 MB per file. */
         const val DEFAULT_MAX_FILE_BYTES: Long = 20L * 1024 * 1024

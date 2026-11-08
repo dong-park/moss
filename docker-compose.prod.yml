@@ -34,8 +34,8 @@ services:
       MCP_RESOURCE_URL: ${MCP_RESOURCE_URL:-}
       # 비우면 신규가입이 닫힌다. 웹 빌드 인자와 같은 값을 써야 동의 버전이 맞는다.
       MOSS_TERMS_VERSION: ${MOSS_TERMS_VERSION:-}
-      # 빈 문자열은 설정 오류라 서버 기본값과 같은 1000을 넣는다.
-      MOSS_ACCOUNT_CAP: ${MOSS_ACCOUNT_CAP:-1000}
+      # 빈 문자열은 설정 오류라 서버 기본값과 같은 100을 넣는다.
+      MOSS_ACCOUNT_CAP: ${MOSS_ACCOUNT_CAP:-100}
       # 횟수 제한이 프록시가 붙인 X-Forwarded-For에서 클라이언트를 가른다. 앞의 프록시 수와 같아야 한다.
       TRUSTED_PROXY_HOPS: ${TRUSTED_PROXY_HOPS:-1}
     ports:
