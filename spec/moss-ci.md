@@ -2,7 +2,7 @@
 
 | 항목 | 값 |
 |---|---|
-| 상태 | 진행 |
+| 상태 | 끝남 |
 | 브랜치 | `feat/ci-checks` |
 | base | `main` `fc59d39` |
 
@@ -49,9 +49,9 @@ PR과 main 푸시마다 네 구성 요소의 검사를 돌린다. 하나라도 �
 | 2 web 5개 검사 | 통과 | `ci.yml` web-checks에 tsc·lint·test·check:i18n·build |
 | 3 sync·mcp·server | 통과 | `ci.yml`에 sync·mcp typecheck·test, server `./gradlew test --no-daemon` |
 | 4 로컬 lint 0 | 통과 | `bun run lint` 0 errors·3 warnings, tsc 0, vitest 1590 통과 |
-| 5 러너에서 4개 통과 | 대기: PR CI 실행 | |
-| 6 깬 검사가 빨갛게 됨 | 대기: PR에서 시험 | |
-| /review | 통과 | APPROVE. sonnet·GPT luna 모두 지적 0. Linux용 Postgres 바이너리가 `server/build.gradle.kts:57`과 `sync/bun.lock`에 있다 |
+| 5 러너에서 4개 통과 | 통과 | PR #23 `0469917`에서 web-checks 2분45초, server-checks 2분19초, sync-checks 17초, mcp-checks 13초 모두 pass |
+| 6 깬 검사가 빨갛게 됨 | 통과 | 첫 실행에서 mcp 테스트 1건이 실패했고 `mcp-checks`가 fail로 PR 체크를 빨갛게 만들었다. 일부러 깬 시험은 따로 하지 않았다 |
+| /review | 통과 | APPROVE. 1바퀴 sonnet·GPT luna 모두 지적 0. 고친 커밋 재검토 sonnet 지적 0. Linux용 Postgres 바이너리가 `server/build.gradle.kts:57`과 `sync/bun.lock`에 있다 |
 
 ## 증명 안 되는 전제
 
@@ -77,6 +77,7 @@ PR과 main 푸시마다 네 구성 요소의 검사를 돌린다. 하나라도 �
 - 확인됨: sync·server 테스트는 Docker 없이 임베디드 Postgres를 띄운다. 시크릿은 쓰지 않는다. web build는 env 없이 통과한다.
 - 확인됨: 기존 `audit.yml`은 `actions/checkout@v4`, `oven-sh/setup-bun@v2`, `actions/setup-java@v4`, `gradle/actions/setup-gradle@v4`를 쓴다. 같은 액션을 쓴다.
 - 워킹트리에 무관한 변경이 있다. `package.json`, `spec/service-launch-plan.md`, `web/AGENTS.md`, `zoomLod*`, `docs/*`, `spec/glass-wall/`, `spec/moss-deploy.md`다. 커밋하지 않는다. 자기 파일만 경로로 `git add`한다.
+- 추가된 수정: ubuntu 러너에서 `mcp/src/image.test.ts`의 preparePhoto 테스트가 macOS `sips`가 없어 실패했다. macOS 테스트는 `sips`가 있을 때만 돌리고, `sips`가 없을 때의 원본 전송 경로를 새 테스트로 지킨다. 커밋 `0469917`.
 - `actionlint`는 설치돼 있지 않다. YAML 파싱은 `bun -e`나 `node`로 한다.
 - 교훈 읽음: 0 · 키워드 github actions, workflow, gradle, vitest, CI
 - feature 단계 1 how — 함: 서브에이전트가 main에서 검사 11개를 실측했다
