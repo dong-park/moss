@@ -22,5 +22,13 @@ docker compose -f "$compose" exec -T server \
 
 test -s "$out/moss-$stamp.dump"
 test -s "$out/files-$stamp.tar.gz"
+
+# 처리방침에 적은 보관 기간이다. 새 백업이 성공한 뒤에만 오래된 백업을 지운다.
+keep="${BACKUP_KEEP_DAYS:-30}"
+case "$keep" in ''|*[!0-9]*|0) echo "BACKUP_KEEP_DAYS must be a positive integer, got '$keep'" >&2; exit 1 ;; esac
+# -mtime +N은 N일을 넘긴 파일이다. keep-1을 주면 keep일 이상 지난 파일이 지워진다.
+find "$out" -maxdepth 1 -type f \( -name 'moss-*.dump' -o -name 'files-*.tar.gz' \) \
+  -mtime +"$((keep - 1))" -print -delete
+
 echo "$out/moss-$stamp.dump"
 echo "$out/files-$stamp.tar.gz"

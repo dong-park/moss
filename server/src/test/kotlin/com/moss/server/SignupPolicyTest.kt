@@ -173,7 +173,7 @@ class SignupPolicyTest : ApiTest() {
 
     @Test
     fun accountCapConfigIsStrict() {
-        assertEquals(1000L, AppConfig.parseAccountCap(null))
+        assertEquals(100L, AppConfig.parseAccountCap(null))
         assertEquals(0L, AppConfig.parseAccountCap("0"))
         assertEquals(50L, AppConfig.parseAccountCap(" 50 "))
         for (bad in listOf("-1", "abc", "", "1.5")) assertFailsWith<IllegalArgumentException> { AppConfig.parseAccountCap(bad) }
