@@ -83,8 +83,11 @@ describe("resolveMediaInput", () => {
     await rm(bin);
   });
 });
+// preparePhoto는 macOS sips로 크기를 읽고 줄인다. CI(ubuntu)에는 sips가 없다.
+const HAS_SIPS = Bun.which("sips") !== null;
+
 describe("preparePhoto", () => {
-  test("큰 사진은 긴 변 maxSide로 줄이고 크기를 돌려준다", async () => {
+  test.skipIf(!HAS_SIPS)("큰 사진은 긴 변 maxSide로 줄이고 크기를 돌려준다", async () => {
     const big = "/tmp/moss-prep-test.png";
     const { execFileSync } = await import("node:child_process");
     await writeFile(big, Buffer.from(PNG_B64, "base64"));
@@ -96,5 +99,13 @@ describe("preparePhoto", () => {
     const same = await preparePhoto(big, 1600);
     expect([same.width, same.height, same.mimeType]).toEqual([200, 300, "image/png"]);
     await rm(big);
+  });
+
+  test.skipIf(HAS_SIPS)("sips가 없으면 원본을 그대로 보내고 크기는 0이다", async () => {
+    const p = "/tmp/moss-prep-nosips-test.png";
+    await writeFile(p, Buffer.from(PNG_B64, "base64"));
+    const r = await preparePhoto(p, 100);
+    expect([r.width, r.height, r.mimeType, r.dataBase64]).toEqual([0, 0, "image/png", PNG_B64]);
+    await rm(p);
   });
 });
