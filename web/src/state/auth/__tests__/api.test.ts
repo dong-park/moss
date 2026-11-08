@@ -151,6 +151,26 @@ describe("auth/api", () => {
     }
   });
 
+  test("googleLogin은 헤더 뒤 본문이 멈춰도 15초에 timeout 오류로 끝난다", async () => {
+    vi.useFakeTimers();
+    try {
+      // 본문 스트림이 abort를 무시하는 경우다. 성공 본문과 오류 본문 둘 다 마감이 끊어야 한다.
+      for (const status of [200, 500]) {
+        vi.stubGlobal(
+          "fetch",
+          vi.fn(async () => new Response(new ReadableStream({ start() {} }), { status })),
+        );
+        const result = realAuthApi.googleLogin("tok").catch((e: unknown) => e);
+        await vi.advanceTimersByTimeAsync(15_000);
+        const err = (await result) as AuthRequestError;
+        expect(err).toBeInstanceOf(AuthRequestError);
+        expect(err.code).toBe("timeout");
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test("login·signup 호출의 fetch 옵션에는 signal이 없다", async () => {
     const session = { accessToken: "a", refreshToken: "r", user: { id: "u1", name: "동환", avatar: null } };
     const fetchMock = vi.fn(async () => jsonResponse(200, session));

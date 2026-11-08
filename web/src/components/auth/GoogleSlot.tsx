@@ -214,7 +214,8 @@ export function GoogleSlot({
     void sendToServer(phase.token, true);
   };
 
-  const noticeEl = notice ? (
+  // 오프라인이면 Google 칸 문구는 카드의 오프라인 안내 하나다.
+  const noticeEl = notice && online ? (
     <p role="alert" className="mt-1.5 text-[11px] text-[#c0392b]">
       {notice}
     </p>
@@ -280,7 +281,17 @@ export function GoogleSlot({
   return (
     <div className="mt-4">
       <div data-testid="google-slot" className="relative">
-        {showHost ? <div ref={hostRef} className="flex min-h-[40px] justify-center" /> : <div className="min-h-[40px]" />}
+        {showHost ? (
+          // 덮개는 마우스만 막는다. inert가 Google iframe의 키보드 포커스까지 막는다.
+          <div
+            ref={hostRef}
+            inert={placeholder}
+            aria-hidden={placeholder || undefined}
+            className="flex min-h-[40px] justify-center"
+          />
+        ) : (
+          <div className="min-h-[40px]" />
+        )}
         {placeholder ? (
           <div
             data-testid="google-slot-cover"

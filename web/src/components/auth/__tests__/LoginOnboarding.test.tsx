@@ -479,6 +479,35 @@ describe("Google 칸 · 표준 버튼 흐름 (T-3)", () => {
     expect(screen.getByTestId("google-slot-cover")).toBeTruthy();
     expect(screen.getAllByText("연결되면 다시 시도해 주세요")).toHaveLength(1);
   });
+
+  test("덮개가 씌워지면 Google 버튼 칸이 inert라 키보드로도 닿지 않는다", async () => {
+    const login = vi.fn(() => new Promise<AuthSession>(() => {}));
+    configureAuth({ api: fakeApi({ login }) });
+    mount();
+    await ready();
+    const host = () => screen.getByTestId("google-slot").firstElementChild as HTMLElement;
+    expect(host().hasAttribute("inert")).toBe(false);
+    goOnline(false);
+    expect(host().hasAttribute("inert")).toBe(true);
+    goOnline(true);
+    expect(host().hasAttribute("inert")).toBe(false);
+    openMailLogin();
+    submitMail();
+    await waitFor(() => expect(login).toHaveBeenCalledTimes(1));
+    expect(host().hasAttribute("inert")).toBe(true);
+  });
+
+  test("오프라인에서 Google 요청이 실패하면 칸 문구는 오프라인 안내 하나다", async () => {
+    let fail: (e: unknown) => void = () => {};
+    const googleLogin = vi.fn(() => new Promise<AuthSession>((_res, rej) => (fail = rej)));
+    configureAuth({ api: fakeApi({ googleLogin }) });
+    mount();
+    await ready();
+    google.press(TOKEN);
+    goOnline(false);
+    await act(async () => fail(new TypeError("Failed to fetch")));
+    expect(screen.getAllByRole("alert").map((el) => el.textContent)).toEqual(["연결되면 다시 시도해 주세요"]);
+  });
 });
 
 const consentError = () => new AuthRequestError("약관에 동의해야 가입할 수 있어요", 400, "consent_required");

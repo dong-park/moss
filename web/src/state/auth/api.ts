@@ -106,31 +106,45 @@ async function postJson<T>(
   // 제한 시간은 선택이다. 주지 않으면 fetch 옵션에 signal 자체를 넣지 않는다.
   const controller = timeoutMs ? new AbortController() : null;
   let timedOut = false;
+  let expire: (() => void) | undefined;
+  const deadline = controller
+    ? new Promise<never>((_resolve, reject) => {
+        expire = () => reject(new AuthRequestError("", 0, REQUEST_TIMEOUT_CODE));
+      })
+    : null;
+  // 마감을 아무도 기다리지 않을 때 처리 안 된 거절로 남지 않게 한다.
+  deadline?.catch(() => {});
   const timer = controller
     ? setTimeout(() => {
         timedOut = true;
         controller.abort();
+        expire?.();
       }, timeoutMs)
     : undefined;
-  let res: Response;
+  // 제한은 본문을 다 읽을 때까지 건다. 헤더 뒤 본문이 멈춰도 abort와 마감이 본문 읽기를 끊는다.
+  function within<R>(work: Promise<R>): Promise<R> {
+    return deadline ? Promise.race([work, deadline]) : work;
+  }
   try {
-    res = await fetch(`${apiBaseUrl()}${path}`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body),
-      ...(controller ? { signal: controller.signal } : {}),
-    });
+    const res = await within(
+      fetch(`${apiBaseUrl()}${path}`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+        ...(controller ? { signal: controller.signal } : {}),
+      }),
+    );
+    if (!res.ok) {
+      const { code, message } = await within(readErrorBody(res));
+      throw new AuthRequestError(message ?? "", res.status, code);
+    }
+    return (await within(res.json())) as T;
   } catch (err) {
     if (timedOut) throw new AuthRequestError("", 0, REQUEST_TIMEOUT_CODE);
     throw err;
   } finally {
     if (timer) clearTimeout(timer);
   }
-  if (!res.ok) {
-    const { code, message } = await readErrorBody(res);
-    throw new AuthRequestError(message ?? "", res.status, code);
-  }
-  return (await res.json()) as T;
 }
 
 function mapInviteStatus(err: unknown): Error {
