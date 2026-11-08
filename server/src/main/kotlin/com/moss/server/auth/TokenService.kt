@@ -47,8 +47,10 @@ class TokenService(
         val builder = JWT.create()
             .withIssuer(ISSUER)
             .withSubject(userId.toString())
+            .withJWTId(UUID.randomUUID().toString())
             .withClaim(CLAIM_TYPE, type.claim)
             .withIssuedAt(Date.from(now))
+            .withClaim(CLAIM_ISSUED_AT_MS, now.toEpochMilli())
             .withExpiresAt(Date.from(now.plusSeconds(ttlSeconds(type))))
         extra.forEach { (k, v) -> builder.withClaim(k, v) }
         return builder.sign(algorithm)
@@ -87,5 +89,12 @@ class TokenService(
         const val ISSUER = "moss"
         const val CLAIM_TYPE = "typ"
         const val CLAIM_BOARD_ID = "boardId"
+
+        /** JWT iat는 초 단위다. 비밀번호 재설정 시각과 밀리초로 견주려고 따로 싣는다. */
+        const val CLAIM_ISSUED_AT_MS = "iat_ms"
     }
+
+    /** 발급 시각(밀리초). 밀리초 클레임이 없는 토큰은 초 단위 iat로 판단한다. */
+    fun issuedAtMillis(decoded: DecodedJWT): Long =
+        decoded.getClaim(CLAIM_ISSUED_AT_MS).asLong() ?: decoded.issuedAt?.time ?: 0L
 }

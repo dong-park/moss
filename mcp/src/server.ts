@@ -757,7 +757,7 @@ server.registerTool(
   async ({ id }) => viaBridge("connections.delete", { id }),
 );
 
-/* ── T6: AI 도구 (HTTP → 실행 중 moss dev 서버) ──────────────── */
+/* ── T6: AI 도구 (브리지 → moss 탭의 로그인 세션 → AI 라우트) ──────────────── */
 
 server.registerTool(
   "ai_embed",
@@ -765,7 +765,7 @@ server.registerTool(
     description: "텍스트 배치를 임베딩 벡터로 변환한다(POST /api/ai/embed). 1~50개.",
     inputSchema: { texts: z.array(z.string().min(1)).min(1).max(50).describe("임베딩할 텍스트들") },
   },
-  async ({ texts }) => attempt(() => aiEmbed(texts)),
+  async ({ texts }) => attempt(() => aiEmbed(texts, { bridge })),
 );
 
 server.registerTool(
@@ -777,7 +777,7 @@ server.registerTool(
       kind: z.enum(["flow", "cluster", "rhythm"]).describe("요약 종류"),
     },
   },
-  async ({ texts, kind }) => attempt(() => aiSummarize(texts, kind as SummarizeKind)),
+  async ({ texts, kind }) => attempt(() => aiSummarize(texts, kind as SummarizeKind, { bridge })),
 );
 
 server.registerTool(
@@ -789,7 +789,7 @@ server.registerTool(
       textB: z.string().min(1).max(4000).describe("두 번째 텍스트"),
     },
   },
-  async ({ textA, textB }) => attempt(() => aiConnectionLabel(textA, textB)),
+  async ({ textA, textB }) => attempt(() => aiConnectionLabel(textA, textB, { bridge })),
 );
 
 server.registerTool(

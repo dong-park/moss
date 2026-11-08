@@ -36,6 +36,10 @@ data class InviteResponse(val inviteToken: String)
 @Serializable
 data class UsageDto(val boards: Int, val maxBoards: Int, val fileBytes: Long, val maxFileBytes: Long)
 
+/** GET /me — 서명이 검증된 access 토큰의 사용자 id. 웹 AI 가드가 한도 키로 쓴다. */
+@Serializable
+data class MeDto(val userId: String)
+
 @Serializable
 data class BoardTokenResponse(val boardToken: String, val expiresInSeconds: Long)
 
@@ -46,16 +50,39 @@ data class HealthResponse(val status: String)
 data class ErrorResponse(val error: String, val message: String)
 
 @Serializable
-data class GoogleLoginRequest(val idToken: String)
+data class GoogleLoginRequest(
+    val idToken: String,
+    /** 신규가입일 때만 읽는다. 기존 계정 로그인에는 필요 없다. */
+    val termsAccepted: Boolean? = null,
+    val termsVersion: String? = null,
+)
 
 @Serializable
 data class RefreshRequest(val refreshToken: String)
 
+/** 로그아웃. 보낸 리프레시 토큰만 폐기한다. 다른 기기의 토큰은 그대로다. */
 @Serializable
-data class EmailSignupRequest(val email: String, val password: String, val name: String)
+data class LogoutRequest(val refreshToken: String)
+
+@Serializable
+data class EmailSignupRequest(
+    val email: String,
+    val password: String,
+    val name: String,
+    /** 명시적 동의. true가 아니면 가입을 거부한다. 동의 시각은 서버가 적는다. */
+    val termsAccepted: Boolean? = null,
+    val termsVersion: String? = null,
+)
 
 @Serializable
 data class EmailLoginRequest(val email: String, val password: String)
+
+/** 재설정 요청. 계정이 없어도 응답은 같다. 원문 토큰은 응답에 넣지 않는다. */
+@Serializable
+data class PasswordResetRequestBody(val email: String)
+
+@Serializable
+data class PasswordResetConfirmRequest(val token: String, val password: String)
 
 @Serializable
 data class ShareRequest(val name: String, val parentId: String? = null)

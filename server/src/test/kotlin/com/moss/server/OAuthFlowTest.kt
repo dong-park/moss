@@ -62,7 +62,7 @@ class OAuthFlowTest : ApiTest() {
     private suspend fun HttpClient.signup(email: String = "moss@example.com", password: String = "password123"): AuthResponse =
         post("/auth/signup") {
             contentType(ContentType.Application.Json)
-            setBody(EmailSignupRequest(email, password, "Moss"))
+            setBody(EmailSignupRequest(email, password, "Moss", true, TERMS_V))
         }.body()
 
     private suspend fun HttpClient.register(uris: String = "[\"$redirect\"]"): String {
@@ -302,6 +302,53 @@ class OAuthFlowTest : ApiTest() {
         assertEquals(HttpStatusCode.BadRequest, client.refresh(refresh1, clientId).status)
         assertEquals("false", client.introspect(access2).obj()["active"]!!.jsonPrimitive.content)
         assertEquals(HttpStatusCode.BadRequest, client.refresh(refresh2, clientId).status)
+    }
+
+    @Test
+    fun passwordResetEndsMcpConnections() = oauthApp {
+        val client = plain()
+        client.signup()
+        val clientId = client.register()
+        val tokens = client.connect(clientId)
+        val access = tokens["access_token"]!!.jsonPrimitive.content
+        val refresh = tokens["refresh_token"]!!.jsonPrimitive.content
+
+        client.resetPassword()
+
+        // 비밀번호를 바꾸기 전에 받은 MCP 갱신 토큰과 접근 토큰은 둘 다 끝난다.
+        assertEquals(HttpStatusCode.BadRequest, client.refresh(refresh, clientId).status)
+        assertEquals("false", client.introspect(access).obj()["active"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun codeUsedBeforeResetCannotOpenAConnectionAfterIt() = oauthApp {
+        val client = plain()
+        client.signup()
+        val clientId = client.register()
+        val code = client.decide(clientId).location().params().getValue("code")
+        // 토큰 교환이 코드를 쓴 직후, 연결을 만들기 직전에 재설정이 끝난 순서를 그대로 밟는다.
+        val store = com.moss.server.oauth.OAuthStore(cfg)
+        val rec = assertNotNull(store.consumeCode(code))
+        client.resetPassword()
+        assertNull(store.createGrant(rec))
+    }
+
+    private suspend fun HttpClient.resetPassword(email: String = "moss@example.com") {
+        val previous = com.moss.server.boards.InviteTokens.next
+        com.moss.server.boards.InviteTokens.next = { "mcp-reset-token" }
+        try {
+            post("/auth/password/reset-request") {
+                contentType(ContentType.Application.Json)
+                setBody(PasswordResetRequestBody(email))
+            }
+        } finally {
+            com.moss.server.boards.InviteTokens.next = previous
+        }
+        val reset = post("/auth/password/reset") {
+            contentType(ContentType.Application.Json)
+            setBody(PasswordResetConfirmRequest("mcp-reset-token", "newpassword1"))
+        }
+        assertEquals(HttpStatusCode.OK, reset.status)
     }
 
     @Test

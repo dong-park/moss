@@ -107,20 +107,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): SyncConfig {
  * node-postgres rejects the JDBC URL format Ktor uses, so strip the `jdbc:`
  * prefix. `DATABASE_USER`/`DATABASE_PASSWORD` override anything in the URL,
  * matching the Ktor service's env.
+ *
+ * They go into the URL, not into separate `user`/`password` options: node-postgres
+ * parses `connectionString` last and its empty user/password overwrite the options.
+ * Each value is percent-encoded so characters like `/ + # @ %` survive; pg decodes them.
  */
-export function toPgConnection(config: SyncConfig): {
-  connectionString: string;
-  user?: string;
-  password?: string;
-} {
-  const connectionString = config.databaseUrl.replace(/^jdbc:/, "");
-  return {
-    connectionString,
-    ...(config.databaseUser !== undefined && config.databaseUser !== ""
-      ? { user: config.databaseUser }
-      : {}),
-    ...(config.databasePassword !== undefined && config.databasePassword !== ""
-      ? { password: config.databasePassword }
-      : {}),
-  };
+export function toPgConnection(config: SyncConfig): { connectionString: string } {
+  const url = new URL(config.databaseUrl.replace(/^jdbc:/, ""));
+  if (config.databaseUser) url.username = encodeURIComponent(config.databaseUser);
+  if (config.databasePassword) url.password = encodeURIComponent(config.databasePassword);
+  return { connectionString: url.toString() };
 }

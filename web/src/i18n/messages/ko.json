@@ -568,6 +568,7 @@
         "loginButton": "로그인",
         "signupButton": "가입하기",
         "toSignup": "처음이에요? 가입하기",
+        "termsRequired": "약관에 동의해야 가입할 수 있어요",
         "toLogin": "이미 계정이 있어요",
         "invalidEmail": "메일 주소를 확인해 주세요",
         "passwordTooShort": "비밀번호는 8자 이상이에요",
@@ -579,7 +580,14 @@
         "loginFailed": "메일이나 비밀번호가 맞지 않아요",
         "rateLimited": "잠시 뒤 다시 시도해 주세요",
         "failed": "잠시 뒤 다시 시도해 주세요",
-        "offline": "연결되면 다시 시도해 주세요"
+        "offline": "연결되면 다시 시도해 주세요",
+        "forgot": "비밀번호를 잊었어요",
+        "resetSent": "계정이 있으면 재설정 안내를 보내요",
+        "resetTitle": "새 비밀번호",
+        "resetButton": "비밀번호 바꾸기",
+        "resetDone": "비밀번호를 바꿨어요. 새 비밀번호로 로그인해 주세요",
+        "resetInvalid": "재설정 링크가 유효하지 않아요",
+        "resetMissing": "재설정 링크가 없어요"
       },
       "invite": {
         "title": "보드에 초대받았어요",

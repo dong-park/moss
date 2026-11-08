@@ -1,6 +1,7 @@
 package com.moss.server.oauth
 
 import com.moss.server.AppConfig
+import com.moss.server.RefreshInvalidations
 import com.moss.server.Users
 import com.moss.server.dbQuery
 import com.moss.server.newId
@@ -75,6 +76,8 @@ data class CodeRecord(
     val redirectUri: String,
     val codeChallenge: String,
     val resource: String,
+    /** 코드 발급 시각(밀리초). 비밀번호 재설정 전에 받은 코드인지 가른다. */
+    val issuedAt: Long = 0L,
 )
 
 data class TokenPair(val accessToken: String, val refreshToken: String, val expiresInSeconds: Long)
@@ -159,12 +162,23 @@ class OAuthStore(private val config: AppConfig) {
         CodeRecord(
             row[OAuthCodes.userId], row[OAuthCodes.clientId], row[OAuthCodes.clientName],
             row[OAuthCodes.redirectUri], row[OAuthCodes.codeChallenge], row[OAuthCodes.resource],
+            issuedAt = row[OAuthCodes.expiresAt] - CODE_TTL_MILLIS,
         )
     }
 
     // ---- 연결과 토큰 ----
 
-    suspend fun createGrant(rec: CodeRecord): TokenPair = dbQuery {
+    /**
+     * 재설정 전에 받은 코드면 null. 코드를 쓴 뒤 연결을 만들기 전에 재설정이 끝날 수 있다.
+     * 사용자 행을 잠가 재설정 트랜잭션과 순서를 정한다. 재설정이 먼저면 여기서 막고,
+     * 이쪽이 먼저면 재설정이 이 연결까지 끊는다.
+     */
+    suspend fun createGrant(rec: CodeRecord): TokenPair? = dbQuery {
+        Users.selectAll().where { Users.id eq rec.userId }.forUpdate().singleOrNull()
+        val invalidBefore = RefreshInvalidations.selectAll()
+            .where { RefreshInvalidations.userId eq rec.userId }
+            .singleOrNull()?.get(RefreshInvalidations.invalidBefore)
+        if (invalidBefore != null && rec.issuedAt < invalidBefore) return@dbQuery null
         purgeExpired()
         val grantId = newId()
         OAuthGrants.insert {
@@ -306,5 +320,20 @@ class OAuthStore(private val config: AppConfig) {
         fun sha256(value: String): String =
             MessageDigest.getInstance("SHA-256").digest(value.toByteArray(Charsets.UTF_8))
                 .joinToString("") { "%02x".format(it) }
+    }
+}
+
+/**
+ * 비밀번호를 바꾸면 그 전에 받은 MCP 연결도 끝낸다. 재설정과 같은 트랜잭션 안에서 부른다.
+ * 아직 교환 안 한 인가 코드도 지운다. 지우지 않으면 재설정 뒤에 새 연결로 바뀔 수 있다.
+ */
+internal fun revokeUserGrantsInTx(userId: UUID, now: Long) {
+    OAuthCodes.deleteWhere { OAuthCodes.userId eq userId }
+    val grantIds = OAuthGrants.selectAll()
+        .where { (OAuthGrants.userId eq userId) and OAuthGrants.revokedAt.isNull() }
+        .map { it[OAuthGrants.id] }
+    grantIds.forEach { grantId ->
+        OAuthGrants.update({ OAuthGrants.id eq grantId }) { it[revokedAt] = now }
+        OAuthTokens.deleteWhere { OAuthTokens.grantId eq grantId }
     }
 }

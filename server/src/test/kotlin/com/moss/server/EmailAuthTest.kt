@@ -27,7 +27,7 @@ class EmailAuthTest : ApiTest() {
     private suspend fun HttpClient.signup(email: String, password: String, name: String): HttpResponse =
         post("/auth/signup") {
             contentType(ContentType.Application.Json)
-            setBody(EmailSignupRequest(email, password, name))
+            setBody(EmailSignupRequest(email, password, name, true, TERMS_V))
         }
 
     private suspend fun HttpClient.loginRequest(email: String, password: String): HttpResponse =
@@ -35,6 +35,15 @@ class EmailAuthTest : ApiTest() {
             contentType(ContentType.Application.Json)
             setBody(EmailLoginRequest(email, password))
         }
+
+    @Test
+    fun signupRejectsWhenTermsNotAccepted() = app {
+        val response = client().post("/auth/signup") {
+            contentType(ContentType.Application.Json)
+            setBody(EmailSignupRequest("new@example.com", "password123", "Moss"))
+        }
+        assertEquals(HttpStatusCode.BadRequest, response.status)
+    }
 
     @Test
     fun signupReturnsTokensThatWork() = app {
@@ -148,6 +157,22 @@ class EmailAuthTest : ApiTest() {
         assertEquals("잠시 뒤 다시 시도해 주세요", blocked.body<ErrorResponse>().message)
         // 맞는 비밀번호도 잠금이 풀릴 때까지 429다.
         assertEquals(HttpStatusCode.TooManyRequests, http.loginRequest("limit@example.com", "password123").status)
+    }
+
+    @Test
+    fun signupLimitIsPerClientBehindTrustedProxy() = io.ktor.server.testing.testApplication {
+        application { mossModule(config.copy(trustedProxyHops = 1), google, TestDb.dataSource) }
+        val http = client()
+        suspend fun signupFrom(ip: String, i: Int) = http.post("/auth/signup") {
+            contentType(ContentType.Application.Json)
+            // 프록시가 맨 오른쪽에 진짜 주소를 붙인다. 왼쪽은 클라이언트가 위조할 수 있다.
+            header("X-Forwarded-For", "forged-$i, $ip")
+            setBody(EmailSignupRequest("p$i@example.com", "password123", "P$i", true, TERMS_V))
+        }
+        repeat(20) { i -> assertEquals(HttpStatusCode.OK, signupFrom("203.0.113.7", i).status, "signup $i") }
+        assertEquals(HttpStatusCode.TooManyRequests, signupFrom("203.0.113.7", 20).status)
+        // 같은 프록시 뒤의 다른 사용자는 자기 버킷을 쓴다.
+        assertEquals(HttpStatusCode.OK, signupFrom("203.0.113.8", 21).status)
     }
 
     @Test

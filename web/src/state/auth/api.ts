@@ -53,10 +53,16 @@ export class InviteFullError extends Error {
 }
 
 export interface AuthApi {
-  googleLogin(idToken: string): Promise<AuthSession>;
-  signup(email: string, password: string, name: string): Promise<AuthSession>;
+  /** `termsVersion`은 신규가입 동의일 때만 보낸다. 기존 계정 로그인에는 필요 없다. */
+  googleLogin(idToken: string, termsVersion?: string): Promise<AuthSession>;
+  signup(email: string, password: string, name: string, termsVersion: string): Promise<AuthSession>;
   login(email: string, password: string): Promise<AuthSession>;
+  /** 계정이 없어도 성공한다. 원문 토큰은 응답에 없다. */
+  requestPasswordReset(email: string): Promise<void>;
+  confirmPasswordReset(token: string, password: string): Promise<void>;
   refresh(refreshToken: string): Promise<AuthSession>;
+  /** 서버가 이 리프레시 토큰만 폐기한다. 네트워크가 죽어도 호출자는 로컬 세션을 지운다. */
+  logout(refreshToken: string): Promise<void>;
   previewInvite(token: string): Promise<InvitePreview>;
   acceptInvite(token: string, accessToken: string): Promise<BoardSummary>;
 }
@@ -97,7 +103,8 @@ async function postJson<T>(
     body: JSON.stringify(body),
   });
   if (!res.ok) {
-    throw new AuthRequestError((await readErrorMessage(res)) ?? "", res.status);
+    const { code, message } = await readErrorBody(res);
+    throw new AuthRequestError(message ?? "", res.status, code);
   }
   return (await res.json()) as T;
 }
@@ -110,11 +117,48 @@ function mapInviteStatus(err: unknown): Error {
 }
 
 export const realAuthApi: AuthApi = {
-  googleLogin: (idToken) => postJson<AuthSession>("/auth/google", { idToken }),
-  signup: (email, password, name) =>
-    postJson<AuthSession>("/auth/signup", { email, password, name }),
+  googleLogin: (idToken, termsVersion) =>
+    postJson<AuthSession>(
+      "/auth/google",
+      termsVersion ? { idToken, termsAccepted: true, termsVersion } : { idToken },
+    ),
+  signup: (email, password, name, termsVersion) =>
+    postJson<AuthSession>("/auth/signup", { email, password, name, termsAccepted: true, termsVersion }),
   login: (email, password) => postJson<AuthSession>("/auth/login", { email, password }),
+  requestPasswordReset: async (email) => {
+    const res = await fetch(`${apiBaseUrl()}/auth/password/reset-request`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
+    if (!res.ok) {
+      const { code, message } = await readErrorBody(res);
+      throw new AuthRequestError(message ?? "", res.status, code);
+    }
+  },
+  confirmPasswordReset: async (token, password) => {
+    const res = await fetch(`${apiBaseUrl()}/auth/password/reset`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token, password }),
+    });
+    if (!res.ok) {
+      const { code, message } = await readErrorBody(res);
+      throw new AuthRequestError(message ?? "", res.status, code);
+    }
+  },
   refresh: (refreshToken) => postJson<AuthSession>("/auth/refresh", { refreshToken }),
+  logout: async (refreshToken) => {
+    const res = await fetch(`${apiBaseUrl()}/auth/logout`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshToken }),
+    });
+    if (!res.ok) {
+      const { code, message } = await readErrorBody(res);
+      throw new AuthRequestError(message ?? "", res.status, code);
+    }
+  },
   previewInvite: async (token) => {
     try {
       return await postJson<InvitePreview>("/invites/preview", { token });

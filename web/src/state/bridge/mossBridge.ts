@@ -36,6 +36,8 @@ import {
   writeNoteRecord,
 } from "@/state/ydoc";
 import { serializeBlock } from "@/state/blocks";
+import { aiAuthHeaders } from "@/state/ai/authHeaders";
+import { callAIConnectionLabel, callAISummarize } from "@/state/ai/client";
 import { normalizeTitle } from "@/state/memoTitle";
 import { isMemoColor } from "@/components/workspace/memoVariety";
 import { makeAttachmentFilename } from "@/state/db/opfs";
@@ -568,6 +570,38 @@ export async function dispatchOp(
         throw new Error(`/api/preview 실패 ${res.status}: ${detail}`);
       }
       return res.json();
+    }
+
+    /* ── AI: 이 탭의 로그인 세션으로 호출한다. 토큰은 탭 안에서만 쓰고 결과에 싣지 않는다 ── */
+    case "ai.embed": {
+      const texts = params.texts;
+      if (!Array.isArray(texts) || texts.length === 0 || !texts.every((t) => typeof t === "string" && t))
+        throw new Error("texts가 필요합니다");
+      // 라우트 문자열을 변수로 받는 fetcher 호출. embeddingQueue와 같은 단일 통로 규칙이다.
+      const fetcher: typeof fetch = (...a) => fetch(...a);
+      const res = await fetcher("/api/ai/embed", {
+        method: "POST",
+        headers: await aiAuthHeaders(),
+        body: JSON.stringify({ texts }),
+      });
+      if (!res.ok) throw new Error(`embed ${res.status}`);
+      return res.json();
+    }
+
+    case "ai.summarize": {
+      const texts = params.texts;
+      const kind = params.kind;
+      if (!Array.isArray(texts) || texts.length === 0 || !texts.every((t) => typeof t === "string" && t))
+        throw new Error("texts가 필요합니다");
+      if (kind !== "flow" && kind !== "cluster" && kind !== "rhythm")
+        throw new Error("kind는 flow|cluster|rhythm 이어야 합니다");
+      return callAISummarize(texts as string[], kind);
+    }
+
+    case "ai.connectionLabel": {
+      if (typeof params.textA !== "string" || typeof params.textB !== "string" || !params.textA || !params.textB)
+        throw new Error("textA와 textB가 필요합니다");
+      return callAIConnectionLabel(params.textA, params.textB);
     }
 
     /* ── boards: useWorkspace 액션 경유(보드 목록·UI 라이브 반영) ── */

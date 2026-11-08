@@ -19,7 +19,10 @@ function fakeApi(overrides: Partial<AuthApi> = {}): AuthApi {
     googleLogin: vi.fn(async () => fresh),
     signup: vi.fn(async () => fresh),
     login: vi.fn(async () => fresh),
+    requestPasswordReset: vi.fn(async () => {}),
+    confirmPasswordReset: vi.fn(async () => undefined),
     refresh: vi.fn(async () => fresh),
+    logout: vi.fn(async () => undefined),
     previewInvite: vi.fn(),
     acceptInvite: vi.fn(),
     ...overrides,
@@ -27,11 +30,13 @@ function fakeApi(overrides: Partial<AuthApi> = {}): AuthApi {
 }
 
 beforeEach(async () => {
+  vi.stubEnv("NEXT_PUBLIC_MOSS_TERMS_VERSION", "v1");
   await deleteAuthDatabase();
   resetAuthStore();
 });
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   resetAuthStore();
 });
 
@@ -150,10 +155,57 @@ describe("AC-1·2·6 · 메일 폼", () => {
     fireEvent.change(screen.getByLabelText("메일"), { target: { value: " A@x.com " } });
     fireEvent.change(screen.getByLabelText("비밀번호"), { target: { value: "secret123" } });
     fireEvent.change(screen.getByLabelText("이름"), { target: { value: " 동환 " } });
+    fireEvent.click(screen.getByRole("checkbox"));
     fireEvent.click(screen.getByRole("button", { name: "가입하기" }));
 
     await waitFor(() => expect(useAuth.getState().status).toBe("authenticated"));
-    expect(api.signup).toHaveBeenCalledWith("A@x.com", "secret123", "동환");
+    expect(api.signup).toHaveBeenCalledWith("A@x.com", "secret123", "동환", "v1");
+  });
+
+  test("동의 체크 없이 가입하면 api를 부르지 않고 거절 문구를 보여 준다", async () => {
+    const api = fakeApi();
+    configureAuth({ api, googleIdToken: vi.fn() });
+    mount();
+
+    fireEvent.click(screen.getByRole("button", { name: "메일로 계속" }));
+    fireEvent.click(screen.getByRole("button", { name: "처음이에요? 가입하기" }));
+    fireEvent.change(screen.getByLabelText("메일"), { target: { value: "a@x.com" } });
+    fireEvent.change(screen.getByLabelText("비밀번호"), { target: { value: "secret123" } });
+    fireEvent.change(screen.getByLabelText("이름"), { target: { value: "동환" } });
+    fireEvent.click(screen.getByRole("button", { name: "가입하기" }));
+
+    expect(await screen.findByText("약관에 동의해야 가입할 수 있어요")).toBeTruthy();
+    expect(api.signup).not.toHaveBeenCalled();
+    expect(screen.getByRole("link", { name: "이용약관" }).getAttribute("href")).toBe("/legal/terms");
+  });
+
+  test("신규 Google 가입은 동의 필요 오류 뒤 체크를 보이고 동의 후 같은 버전으로 다시 요청한다", async () => {
+    const googleLogin = vi
+      .fn()
+      .mockRejectedValueOnce(new AuthRequestError("약관에 동의해야 가입할 수 있어요", 400, "consent_required"))
+      .mockResolvedValueOnce(fresh);
+    const api = fakeApi({ googleLogin });
+    configureAuth({ api, googleIdToken: vi.fn(async () => "tok") });
+    mount();
+
+    expect(screen.queryByRole("checkbox")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Google/ }));
+    await waitFor(() => expect(screen.getByRole("checkbox")).toBeTruthy());
+    expect(googleLogin).toHaveBeenNthCalledWith(1, "tok");
+
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("button", { name: /Google/ }));
+    await waitFor(() => expect(useAuth.getState().status).toBe("authenticated"));
+    expect(googleLogin).toHaveBeenNthCalledWith(2, "tok", "v1");
+  });
+
+  test("가입이 닫혀 있으면(503) Google 가입도 서버 문구를 보여 준다", async () => {
+    const googleLogin = vi.fn().mockRejectedValue(new AuthRequestError("지금은 새 계정을 받을 수 없어요", 503, "signup_closed"));
+    configureAuth({ api: fakeApi({ googleLogin }), googleIdToken: vi.fn(async () => "tok") });
+    mount();
+
+    fireEvent.click(screen.getByRole("button", { name: /Google/ }));
+    expect(await screen.findByText("지금은 새 계정을 받을 수 없어요")).toBeTruthy();
   });
 
   test("AC-5 · 중복 가입이면 서버 문구를 보여준다", async () => {
@@ -170,6 +222,7 @@ describe("AC-1·2·6 · 메일 폼", () => {
     fireEvent.change(screen.getByLabelText("메일"), { target: { value: "a@x.com" } });
     fireEvent.change(screen.getByLabelText("비밀번호"), { target: { value: "secret123" } });
     fireEvent.change(screen.getByLabelText("이름"), { target: { value: "동환" } });
+    fireEvent.click(screen.getByRole("checkbox"));
     fireEvent.click(screen.getByRole("button", { name: "가입하기" }));
 
     expect(await screen.findByText("이미 가입된 메일이에요")).toBeTruthy();
@@ -227,9 +280,10 @@ describe("AC-1·2·6 · 메일 폼", () => {
     fireEvent.change(screen.getByLabelText("비밀번호"), { target: { value: "secret123" } });
     const emojiName = "😀".repeat(21);
     fireEvent.change(screen.getByLabelText("이름"), { target: { value: emojiName } });
+    fireEvent.click(screen.getByRole("checkbox"));
     fireEvent.click(screen.getByRole("button", { name: "가입하기" }));
 
-    await waitFor(() => expect(api.signup).toHaveBeenCalledWith("a@x.com", "secret123", emojiName));
+    await waitFor(() => expect(api.signup).toHaveBeenCalledWith("a@x.com", "secret123", emojiName, "v1"));
   });
 
   test("AC-6 · 메일 형식 오류는 앱 안내를 띄우고 api를 부르지 않는다", async () => {

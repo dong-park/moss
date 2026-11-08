@@ -6,6 +6,7 @@ import {
   _resetEmbeddingQueue,
 } from "./embeddingQueue";
 import { getDB } from "../db/schema";
+import { useAuth } from "@/state/auth/store";
 
 const successFetcher = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
   const body = JSON.parse((init?.body as string) ?? "{}") as { texts: string[] };
@@ -150,5 +151,161 @@ describe("embeddingQueue — 실패 시 토스트", () => {
     expect(onError).toHaveBeenCalledOnce();
     const cached = await getDB().embeddings.get("n1");
     expect(cached).toBeUndefined();
+  });
+});
+
+describe("embeddingQueue — 로그인 토큰", () => {
+  test("임베딩 요청이 갱신된 access 토큰을 보낸다", async () => {
+    const original = useAuth.getState().ensureSession;
+    useAuth.setState({ ensureSession: vi.fn(async () => ({ accessToken: "fresh-embed" }) as never) });
+    configureEmbeddingQueue({
+      getGlobalOptOut: () => false,
+      fetcher: successFetcher,
+      onError: () => undefined,
+    });
+    enqueueEmbed("tok", "token check", false);
+    await flushNow();
+    useAuth.setState({ ensureSession: original });
+    const init = successFetcher.mock.calls[0][1] as RequestInit;
+    expect((init.headers as Record<string, string>).Authorization).toBe("Bearer fresh-embed");
+  });
+});
+
+describe("embeddingQueue — 429 보존과 재시도", () => {
+  function limitedFetcher(okCalls: number) {
+    let n = 0;
+    return vi.fn(async (_u: RequestInfo | URL, init?: RequestInit) => {
+      n += 1;
+      if (n > okCalls) return new Response("{}", { status: 429 });
+      const body = JSON.parse((init?.body as string) ?? "{}") as { texts: string[] };
+      return new Response(
+        JSON.stringify({ vectors: body.texts.map(() => new Array(4).fill(0.1)), tokensUsed: 0, mocked: true }),
+        { status: 200 },
+      );
+    });
+  }
+  function setup(fetcher: typeof fetch) {
+    configureEmbeddingQueue({ getGlobalOptOut: () => false, fetcher, onError: () => undefined });
+  }
+
+  test("429를 받은 배치는 보존되고 61초 뒤 다음 호출에서 저장된다", async () => {
+    const fetcher = limitedFetcher(20);
+    setup(fetcher as unknown as typeof fetch);
+    for (let i = 0; i < 1001; i++) enqueueEmbed(`bulk-${i}`, `content-${i}`, false);
+    await flushNow();
+    expect(fetcher).toHaveBeenCalledTimes(21);
+    expect(await getDB().embeddings.get("bulk-1000")).toBeUndefined();
+    // 대기 중에는 같은 호출을 반복하지 않는다.
+    await flushNow();
+    expect(fetcher).toHaveBeenCalledTimes(21);
+
+    const realNow = Date.now;
+    Date.now = () => realNow() + 61_000;
+    try {
+      fetcher.mockImplementation(async (_u, init) => {
+        const body = JSON.parse((init?.body as string) ?? "{}") as { texts: string[] };
+        return new Response(JSON.stringify({ vectors: body.texts.map(() => [0.1]), tokensUsed: 0, mocked: true }), { status: 200 });
+      });
+      enqueueEmbed("next-cycle", "next content", false);
+      await flushNow();
+    } finally {
+      Date.now = realNow;
+    }
+    expect(await getDB().embeddings.get("bulk-1000")).toBeDefined();
+    expect(await getDB().embeddings.get("next-cycle")).toBeDefined();
+  });
+
+  test("보존된 옛 내용이 같은 메모의 새 내용을 덮지 않는다", async () => {
+    const fetcher = limitedFetcher(0);
+    setup(fetcher as unknown as typeof fetch);
+    enqueueEmbed("n", "old text", false);
+    await flushNow();
+    enqueueEmbed("n", "new text", false);
+    const realNow = Date.now;
+    Date.now = () => realNow() + 61_000;
+    const sent: string[] = [];
+    try {
+      fetcher.mockImplementation(async (_u, init) => {
+        const body = JSON.parse((init?.body as string) ?? "{}") as { texts: string[] };
+        sent.push(...body.texts);
+        return new Response(JSON.stringify({ vectors: body.texts.map(() => [0.1]), tokensUsed: 0, mocked: true }), { status: 200 });
+      });
+      await flushNow();
+    } finally {
+      Date.now = realNow;
+    }
+    expect(sent).toEqual(["new text"]);
+  });
+
+  test("계속 429면 재시도는 3번까지만 하고 포기한다", async () => {
+    const fetcher = limitedFetcher(0);
+    setup(fetcher as unknown as typeof fetch);
+    enqueueEmbed("n", "text", false);
+    await flushNow();
+    const realNow = Date.now;
+    let offset = 0;
+    Date.now = () => realNow() + offset;
+    try {
+      for (let i = 1; i <= 6; i++) {
+        offset = i * 61_000;
+        await flushNow();
+      }
+    } finally {
+      Date.now = realNow;
+    }
+    expect(fetcher).toHaveBeenCalledTimes(4);
+  });
+});
+
+describe("embeddingQueue — 보존된 메모와 개인정보", () => {
+  async function holdOne(fetcher: ReturnType<typeof vi.fn>) {
+    configureEmbeddingQueue({ getGlobalOptOut: () => false, fetcher: fetcher as unknown as typeof fetch, onError: () => undefined });
+    enqueueEmbed("n", "secret old", false);
+    await flushNow();
+  }
+  const rateLimited = () => vi.fn(async () => new Response("{}", { status: 429 }));
+  async function laterFlushSends(fetcher: ReturnType<typeof vi.fn>) {
+    const sent: string[] = [];
+    fetcher.mockImplementation(async (_u: unknown, init?: RequestInit) => {
+      const t = (JSON.parse((init?.body as string) ?? "{}") as { texts: string[] }).texts;
+      sent.push(...t);
+      return new Response(JSON.stringify({ vectors: t.map(() => [0.1]), tokensUsed: 0, mocked: true }), { status: 200 });
+    });
+    const realNow = Date.now;
+    Date.now = () => realNow() + 61_000;
+    try {
+      await flushNow();
+    } finally {
+      Date.now = realNow;
+    }
+    return sent;
+  }
+
+  test("같은 id를 aiOptOut으로 다시 enqueue하면 옛 내용은 보내지 않는다", async () => {
+    const f = rateLimited();
+    await holdOne(f);
+    enqueueEmbed("n", "secret new", true);
+    await flushNow();
+    const sent = await laterFlushSends(f);
+    expect(sent).toEqual([]);
+    expect(await getDB().embeddings.get("n")).toBeUndefined();
+  });
+
+  test("같은 id를 빈 내용으로 다시 enqueue하면 옛 내용은 보내지 않는다", async () => {
+    const f = rateLimited();
+    await holdOne(f);
+    enqueueEmbed("n", "   ", false);
+    await flushNow();
+    expect(await laterFlushSends(f)).toEqual([]);
+  });
+
+  test("전역 제외 상태의 flush가 보존된 메모를 취소해 해제 뒤에도 보내지 않는다", async () => {
+    const f = rateLimited();
+    await holdOne(f);
+    let globalOut = true;
+    configureEmbeddingQueue({ getGlobalOptOut: () => globalOut });
+    await flushNow();
+    globalOut = false;
+    expect(await laterFlushSends(f)).toEqual([]);
   });
 });

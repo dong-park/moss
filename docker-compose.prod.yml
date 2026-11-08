@@ -1,0 +1,105 @@
+# 운영 구성. 시크릿과 도메인은 운영자가 .env에 넣는다. Postgres 포트는 호스트에 열지 않는다.
+# 앱 포트는 기본으로 127.0.0.1에만 연다. 같은 호스트의 TLS 프록시가 받아 넘긴다고 본다.
+# 프록시 없이 직접 열려면 BIND_ADDR=0.0.0.0, TRUSTED_PROXY_HOPS=0으로 함께 바꾼다.
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:-moss}
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  server:
+    build:
+      context: ./server
+    environment:
+      PORT: "8080"
+      DATABASE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-moss}
+      DATABASE_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:?ALLOWED_ORIGINS is required}
+      FILES_DIR: /data/files
+      SYNC_INTERNAL_URL: http://sync:1235
+      SYNC_INTERNAL_SECRET: ${SYNC_INTERNAL_SECRET:?SYNC_INTERNAL_SECRET is required}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?PUBLIC_BASE_URL is required}
+      MCP_RESOURCE_URL: ${MCP_RESOURCE_URL:-}
+      # 비우면 신규가입이 닫힌다. 웹 빌드 인자와 같은 값을 써야 동의 버전이 맞는다.
+      MOSS_TERMS_VERSION: ${MOSS_TERMS_VERSION:-}
+      # 빈 문자열은 설정 오류라 서버 기본값과 같은 1000을 넣는다.
+      MOSS_ACCOUNT_CAP: ${MOSS_ACCOUNT_CAP:-1000}
+      # 횟수 제한이 프록시가 붙인 X-Forwarded-For에서 클라이언트를 가른다. 앞의 프록시 수와 같아야 한다.
+      TRUSTED_PROXY_HOPS: ${TRUSTED_PROXY_HOPS:-1}
+    ports:
+      - "${BIND_ADDR:-127.0.0.1}:8080:8080"
+    volumes:
+      - filedata:/data/files
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # web과 sync가 service_healthy로 기다린다. 없으면 두 서비스가 뜨지 않는다.
+    # Ktor는 Flyway 마이그레이션 뒤에 8080을 연다. 포트가 열리면 준비된 것이다.
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8080'"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 20s
+
+  sync:
+    build:
+      context: .
+      dockerfile: sync/Dockerfile
+    environment:
+      PORT: "1234"
+      INTERNAL_PORT: "1235"
+      SYNC_INTERNAL_HOST: "0.0.0.0"
+      SYNC_INTERNAL_SECRET: ${SYNC_INTERNAL_SECRET:?SYNC_INTERNAL_SECRET is required}
+      # 비밀번호를 URL에 넣으면 # / + 같은 글자에서 주소가 깨진다. 따로 넘긴다.
+      DATABASE_URL: postgres://postgres:5432/${POSTGRES_DB:-moss}
+      DATABASE_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      KTOR_INTERNAL_URL: http://server:8080
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?PUBLIC_BASE_URL is required}
+      MCP_RESOURCE_URL: ${MCP_RESOURCE_URL:-}
+    ports:
+      - "${BIND_ADDR:-127.0.0.1}:1234:1234"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      server:
+        condition: service_healthy
+
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+      args:
+        NEXT_PUBLIC_MOSS_API_URL: ${PUBLIC_BASE_URL:?PUBLIC_BASE_URL is required}
+        NEXT_PUBLIC_MOSS_SYNC_URL: ${NEXT_PUBLIC_MOSS_SYNC_URL:?NEXT_PUBLIC_MOSS_SYNC_URL is required}
+        NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+        NEXT_PUBLIC_MOSS_TERMS_VERSION: ${MOSS_TERMS_VERSION:-}
+    # AI 라우트는 요청 때 이 키를 읽는다. 비어 있으면 가짜 결과를 돌려준다.
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # AI 가드가 토큰을 확인할 서버 주소. 공개 주소는 컨테이너 밖을 가리킨다.
+      MOSS_INTERNAL_API_URL: http://server:8080
+    ports:
+      - "${BIND_ADDR:-127.0.0.1}:3001:3000"
+    depends_on:
+      server:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  filedata:
