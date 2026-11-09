@@ -44,6 +44,14 @@ describe("BubbleMenuHost", () => {
     expect(bubble()!.style.pointerEvents).toBe("auto");
   });
 
+  it("버블 배경은 정의된 색 토큰(bg-panel)이라 종이 위 글자가 비치지 않는다", () => {
+    render(<BubbleMenuHost />);
+    act(() => refreshBubble(area(0, 500), viewAt({ left: 40, top: 100, bottom: 116 })));
+    // bg-surface는 globals.css에 --color-surface가 없어 투명했다.
+    expect(bubble()!.className).toContain("bg-panel");
+    expect(bubble()!.className).not.toContain("bg-surface");
+  });
+
   it("선택 시작 위에 띄울 때는 위로 올리고, 시작이 위로 나가면 영역 안쪽 아래로 붙인다", () => {
     render(<BubbleMenuHost />);
     act(() => refreshBubble(area(0, 500), viewAt({ left: 40, top: 100, bottom: 116 })));
