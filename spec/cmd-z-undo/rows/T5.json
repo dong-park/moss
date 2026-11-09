@@ -3,12 +3,17 @@
   "kind": "task",
   "title": "캔버스에서 cmd+z는 드래그 이동을 되돌리고 cmd+shift+z는 다시 옮긴다",
   "given": "판 밖에 있던 메모 A를 끌어 판 F 안에 놓았다. 어느 입력칸에도 포커스가 없다",
-  "when": "cmd+z를 1번 누르고 이어서 cmd+shift+z를 1번 누른다. 같은 순서를 ctrl+z와 ctrl+shift+z로 한 번 더 한다",
-  "then": "cmd+z 1번에 A가 판 밖 원래 자리로 돌아가고 F에 속하지 않는다. cmd+shift+z 1번에 A가 다시 F 안에 있고 F에 속한다. ctrl 조합도 같은 결과다. 확인: vitest, storeOnYjs 패턴으로 readNote(A)의 x, y, frameId를 본다",
+  "when": "cmd+z를 1번 누르고 이어서 cmd+shift+z를 1번 누른다. 같은 순서를 ctrl+z와 ctrl+shift+z로 한 번 더 한다. 한글 입력기 상태를 흉내 내 e.key가 'ㅋ'이고 e.code가 'KeyZ'인 cmd+z와 cmd+shift+z로도 한 번 더 한다",
+  "then": "cmd+z 1번에 A가 판 밖 원래 자리로 돌아가고 F에 속하지 않는다. cmd+shift+z 1번에 A가 다시 F 안에 있고 F에 속한다. ctrl 조합과 한글 입력기 상태도 같은 결과다. 확인: vitest, storeOnYjs 패턴으로 readNote(A)의 x, y, frameId를 본다",
   "confidence": "high",
   "reversible": true,
   "status": "아직 안 함",
   "blocks": [],
-  "user": {"answer": "", "fix": ""},
-  "log": []
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": [
+    "2026-11-10 리뷰 1바퀴 전제 반영: e.code KeyZ 경우 추가"
+  ]
 }

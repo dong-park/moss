@@ -3,12 +3,17 @@
   "kind": "task",
   "title": "함 카드 삭제는 cmd+z 대상이 아니고 5초 토스트로만 되살린다",
   "given": "메모 X를 옮긴 뒤 함 카드 H를 지웠다. 5초 토스트가 떠 있다",
-  "when": "첫 경우는 cmd+z를 1번 누른다. 둘째 경우는 토스트의 되살리기를 누른 뒤 cmd+z를 1번 누른다",
-  "then": "첫 경우 H는 지워진 채이고 X가 옮기기 전 자리로 돌아간다. 둘째 경우 H는 보드에 남아 있고 X가 옮기기 전 자리로 돌아간다. 확인: vitest로 readNote(H)와 readNote(X)를 본다",
+  "when": "cmd+z를 1번 누른다",
+  "then": "H는 지워진 채이고 cmd+z로 되살아나지 않는다. X가 옮기기 전 자리로 돌아간다. 함 삭제는 기록 단계 수를 늘리지 않는다. 확인: vitest로 함 삭제 전후 undoStack 길이, readNote(H), readNote(X)를 본다. 토스트 되살리기가 문서에 안 쓰는 기존 버그는 비목표라 판정하지 않는다",
   "confidence": "high",
   "reversible": true,
   "status": "아직 안 함",
   "blocks": [],
-  "user": {"answer": "", "fix": ""},
-  "log": []
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": [
+    "2026-11-10 리뷰 1바퀴 F13 반영: 토스트 되살리기 경우를 빼고 함 삭제가 단계가 아님만 판정"
+  ]
 }
