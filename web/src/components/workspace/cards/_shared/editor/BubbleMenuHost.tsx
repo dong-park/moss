@@ -36,7 +36,8 @@ export function BubbleMenuHost() {
       data-bubble-toolbar
       aria-label="서식"
       className="fixed z-50 flex -translate-x-1/2 -translate-y-full items-center gap-0.5 rounded-md border border-border bg-surface px-1 py-0.5 shadow-lg"
-      style={{ left: state.left, top: state.top - 6 }}
+      // Radix 모달이 body에 건 pointer-events:none을 상속하면 클릭이 오버레이로 뚫려 창이 닫힌다.
+      style={{ left: state.left, top: state.top - 6, pointerEvents: "auto" }}
     >
       {bubbleMenuItems.map((item) => (
         <button

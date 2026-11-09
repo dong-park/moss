@@ -103,26 +103,60 @@ export function getBubbleState(): BubbleState {
 }
 export const getBubbleServerSnapshot = (): BubbleState => CLOSED;
 
+// bubbleSlot이 마지막으로 본 view. 스크롤로 좌표를 다시 계산할 때 쓴다.
+let lastView: EditorView | null = null;
+
+function openBubbleAt(v: EditorView): void {
+  const { from, to, empty } = v.state.selection;
+  if (empty || bubbleMenuItems.length === 0 || !v.editable) {
+    setBubble(CLOSED);
+    return;
+  }
+  const start = v.coordsAtPos(from);
+  const end = v.coordsAtPos(to);
+  setBubble({
+    open: true,
+    left: (start.left + end.left) / 2,
+    top: start.top,
+    view: v,
+  });
+}
+
+/** 스크롤 영역이 스크롤될 때 부른다. 현재 선택으로 좌표를 다시 계산해 버블이 글자를
+ * 따라가게 하고, 선택이 scrollEl의 보이는 세로 범위 밖이면 닫는다. 범위 안으로 돌아오면
+ * 다시 연다. 스크롤마다 닫지 않는다 — 버블 버튼이 낸 scrollIntoView에 닫히면 연속 서식이 끊긴다. */
+export function refreshBubble(
+  scrollEl: HTMLElement,
+  view: EditorView | null = lastView,
+): void {
+  if (!view) return;
+  const { from, to, empty } = view.state.selection;
+  if (empty || bubbleMenuItems.length === 0 || !view.editable) {
+    setBubble(CLOSED);
+    return;
+  }
+  const start = view.coordsAtPos(from);
+  const end = view.coordsAtPos(to);
+  const rect = scrollEl.getBoundingClientRect();
+  if (start.top < rect.top || end.bottom > rect.bottom) {
+    setBubble(CLOSED);
+    return;
+  }
+  openBubbleAt(view);
+}
+
 const bubbleSlot = $prose(
   () =>
     new Plugin({
       view: () => ({
         update: (v) => {
-          const { from, to, empty } = v.state.selection;
-          if (empty || bubbleMenuItems.length === 0 || !v.editable) {
-            setBubble(CLOSED);
-            return;
-          }
-          const start = v.coordsAtPos(from);
-          const end = v.coordsAtPos(to);
-          setBubble({
-            open: true,
-            left: (start.left + end.left) / 2,
-            top: start.top,
-            view: v,
-          });
+          lastView = v;
+          openBubbleAt(v);
         },
-        destroy: () => setBubble(CLOSED),
+        destroy: () => {
+          lastView = null;
+          setBubble(CLOSED);
+        },
       }),
     }),
 );

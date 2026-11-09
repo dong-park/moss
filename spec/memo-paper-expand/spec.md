@@ -119,7 +119,7 @@ MemoExpandDialog, ExpandedMarkdownEditor(마운트 변경과 onScroll), BubbleMe
 
 종이의 DOM 구조는 이렇게 정한다. Dialog.Content(role=dialog)가 곧 종이다. T2의 borderTopWidth, T7의 배경, T13의 padding은 모두 이 요소를 잰다. 펜·지우개·✕ 버튼 줄은 Content의 자식으로 두고 absolute로 종이 박스 밖 오른쪽 위에 놓는다. 그래서 Content에서 overflow-hidden을 뺀다. Content 밖 형제로 두면 Radix가 body에 건 pointer-events:none 때문에 눌리지 않는다. 본문 넘침은 안쪽 스크롤 영역이 맡는다.
 
-<!-- STEP:0:bubble-click-and-follow:pending -->
+<!-- STEP:0:bubble-click-and-follow:completed -->
 ### T-0: 버블이 펼친 창에서 눌리고 스크롤을 따라간다 (T1·T3·T9의 코드 부분)
 
 #### 읽을 파일
@@ -147,7 +147,7 @@ cd web && grep -n "export function refreshBubble" src/components/workspace/cards
 - 버블을 Dialog.Content 안으로 옮기지 마라. 이유: D9에서 B로 남긴 대안이고 fixed 좌표가 transform 조상 기준이 된다.
 - 스크롤마다 버블을 무조건 닫지 마라. 이유: 버블 버튼이 낸 scrollIntoView 스크롤에 닫혀 연속 서식이 끊긴다(T3).
 
-- summary:
+- summary: BubbleMenuHost에 pointer-events:auto, extensions.ts에 refreshBubble 추가, 단위 테스트 2파일 5건. 브라우저 T1·T3·T9는 prover 체크포인트 몫.
 <!-- /STEP -->
 
 <!-- STEP:1:paper-dialog:pending -->
