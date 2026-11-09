@@ -7,29 +7,39 @@ import { useT } from "@/i18n/Provider";
 import { useWorkspace } from "@/state/workspace";
 import { ExpandedMarkdownEditor } from "./_shared/MarkdownEditor";
 import { DrawingLayer, type DrawingTool } from "./_shared/DrawingLayer";
-import { BlockMenu } from "./_shared/editor/BlockMenu";
 import { MemoExpandTitleSlot } from "./_shared/MemoExpandTitleSlot"; // FEAT-memo-title
 import { PhotoLightbox } from "./photo/PhotoLightbox"; // FEAT-photo-card
+import { MEMO_PAPER } from "./text/Content";
+import { memoFace } from "./text/face";
+import { memoTint } from "../memoVariety";
 
 /* ─────────────────────────────────────────────────────────────
- * FEAT-memo-expand — 메모(text) 카드 펼치기 모달.
+ * FEAT-memo-expand — 메모(text) 카드 펼치기 창.
  *
- * 카드의 펼치기 버튼이 setExpandedCard(id)로 연다. 여기서는 expandedCardId를
- * 구독해 해당 카드를 크게(거의 전체 화면) 편집한다. 상단 서식 프리셋 툴바 +
- * Milkdown 본문(ExpandedMarkdownEditor). 편집은 setContent로 실시간 반영·영속.
+ * 카드의 펼치기 버튼이 setExpandedCard(id)로 연다. expandedCardId를 구독해 해당
+ * 카드를 편집한다. 창은 카드 색과 같은 종이 한 장이다 — 머리 막대와 상단 서식 툴바가
+ * 없고, 서식은 글자를 긁으면 뜨는 버블로만 바꾼다. 편집은 setContent로 실시간 반영·영속.
+ *
+ * 종이 구조 (spec/memo-paper-expand):
+ *  Dialog.Content가 곧 종이다 — 폭 min(792px,94vw) × 높이 min(792px,86vh), padding
+ *  12px 24px 40px, 모서리 6px. 배경은 창을 열 때 한 번 정한다: paper 앞면이면 카드
+ *  앞면과 같은 text.png + 같은 mask의 색조 층(multiply), 할 일·링크 앞면이면 흰 단색.
+ *  펜·지우개·✕ 버튼 줄은 Content의 자식으로 두고 종이 박스 밖 오른쪽 위에 얹는다
+ *  (Content 밖 형제면 Radix가 body에 건 pointer-events:none 때문에 눌리지 않는다).
+ *  본문 넘침은 안쪽 스크롤 영역(ExpandedMarkdownEditor)이 맡는다.
  *
  * 고정 폭 1:1 ("펼치면 항상 최대"):
- *  모달은 w-[90vw] max-w-3xl × h-[80vh]. 본문은 카드와 동일한 고정 폭 컬럼
- *  ([[MEMO_CONTENT_WIDTH]])으로 1:1 배치돼 줄바꿈이 카드와 같다. 카드는 작아서
- *  일부만 보이고(크롭), 모달은 전체를 다 보여준다. 자세한 건 ExpandedMarkdownEditor.
+ *  본문은 카드와 동일한 고정 폭 컬럼([[MEMO_CONTENT_WIDTH]])으로 1:1 배치돼 줄바꿈이
+ *  카드와 같다. 자세한 건 ExpandedMarkdownEditor.
  *
  * 펜 overlay:
  *  DrawingLayer를 본문 컬럼 안에 1:1로 얹는다 — 카드와 동일 좌표공간이라 카드에서
- *  그린 stroke가 같은 글자 위에 정렬된다. 헤더의 펜/지우개 토글로 그리기 모드
+ *  그린 stroke가 같은 글자 위에 정렬된다. 펜/지우개 토글로 그리기 모드
  *  (active)를 켜면 덧그리거나 지울 수 있고, 꺼두면 SVG가 pointer-events:none →
  *  클릭이 본문(텍스트 편집)으로 통과한다. 변경은 setOverlay로 영속된다.
  *
- * 닫기: Esc / 오버레이 클릭 / 완료 버튼 → setExpandedCard(null).
+ * 열림 모션은 globals.css의 전역 dialog-content 규칙(moss-scale-in)을 그대로 쓴다.
+ * 닫기: Esc / 오버레이 클릭 / ✕ → close() → setExpandedCard(null).
  * 마운트는 page.tsx 루트에서 1회 (전역 오버레이, BoardDeleteDialog와 동일 패턴).
  * ───────────────────────────────────────────────────────────── */
 export function MemoExpandDialog() {
@@ -53,8 +63,21 @@ export function MemoExpandDialog() {
   const [drawing, setDrawing] = useState(false);
   const [tool, setTool] = useState<DrawingTool>("pen");
 
-  // id는 있는데 카드가 사라진 경우(삭제 등) — store 정리가 처리하지만 방어적으로 닫힘.
+  // 종이 색은 창을 열 때 한 번 정해 고정한다 — 열린 동안 본문을 고쳐 앞면 판정이
+  // 바뀌어도 종이가 갑자기 다른 색이 되지 않게.
+  // id는 있는데 카드가 사라진 경우(삭제 등) — store 정리가 처리하지만 방어적으로 닫힘(open=false).
   const open = expandedCardId !== null && card !== null;
+  const [paper, setPaper] = useState<{ id: string; isPaper: boolean; tint: string } | null>(null);
+  if (open && card && paper?.id !== card.id) {
+    setPaper({
+      id: card.id,
+      isPaper: memoFace(card.content).t === "paper",
+      tint: memoTint(card.id, card.color),
+    });
+  } else if (!open && paper) {
+    setPaper(null);
+  }
+
   const close = () => {
     // FEAT-memo-title-front-edit AC-7: 창을 닫을 때 제목 앞뒤 공백을 확정한다.
     if (card) commitTitle(card.id);
@@ -82,54 +105,78 @@ export function MemoExpandDialog() {
       "flex h-7 items-center justify-center rounded px-2 text-xs transition-colors cursor-pointer",
       active
         ? "bg-active-bg text-active-fg"
-        : "text-text-soft hover:bg-panel hover:text-text",
+        : "bg-white/90 text-text-soft hover:bg-white hover:text-text",
     ].join(" ");
+
+  const isPaper = paper?.isPaper ?? true;
 
   return (
     <Dialog.Root open={open} onOpenChange={(o) => !o && close()}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-[var(--z-overlay)] bg-black/40" />
         <Dialog.Content
-          className="fixed left-1/2 top-1/2 z-[var(--z-modal)] flex h-[80vh] w-[90vw] max-w-3xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-lg border border-border bg-bg shadow-card-lift focus:outline-none"
+          className="fixed left-1/2 top-1/2 z-[var(--z-modal)] flex -translate-x-1/2 -translate-y-1/2 flex-col shadow-card-lift focus:outline-none"
+          style={{
+            width: "min(792px, 94vw)",
+            height: "min(792px, 86vh)",
+            padding: "12px 24px 40px",
+            borderRadius: 6,
+            background: isPaper ? MEMO_PAPER : "var(--color-card-base)",
+            isolation: "isolate",
+          }}
           aria-describedby={undefined}
         >
-          {/* 헤더의 BlockMenu와 본문 에디터가 같은 Milkdown 인스턴스를 공유해야
-           * 하므로(useInstance) Provider를 이 레벨에서 한 번만 제공한다. */}
-          <MilkdownProvider>
-            <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
-              <Dialog.Title className="text-sm font-semibold text-text">
-                {t("workspace.memoEditor.title")}
-              </Dialog.Title>
-              <div className="flex items-center gap-1">
-                <BlockMenu />
-                <span aria-hidden className="mx-1 h-4 w-px bg-border" />
-                <button
-                  type="button"
-                  aria-label={t("workspace.memoEditor.pen")}
-                  aria-pressed={drawing && tool === "pen"}
-                  className={toolBtn(drawing && tool === "pen")}
-                  onClick={() => selectTool("pen")}
-                >
-                  ✏️
-                </button>
-                <button
-                  type="button"
-                  aria-label={t("workspace.memoEditor.eraser")}
-                  aria-pressed={drawing && tool === "eraser"}
-                  className={toolBtn(drawing && tool === "eraser")}
-                  onClick={() => selectTool("eraser")}
-                >
-                  ⌫
-                </button>
-                <Dialog.Close
-                  className="ml-1 flex h-7 w-7 cursor-pointer items-center justify-center rounded text-text-soft transition-colors hover:bg-panel hover:text-text"
-                  aria-label={t("workspace.memoEditor.close")}
-                >
-                  ✕
-                </Dialog.Close>
-              </div>
-            </div>
+          {/* 보이는 제목은 없다(머리 막대 제거). 스크린리더용 이름만 둔다. */}
+          <Dialog.Title className="sr-only">
+            {card?.title?.trim() || t("workspace.memoEditor.fallbackTitle")}
+          </Dialog.Title>
+          {isPaper && (
+            <div
+              aria-hidden="true"
+              data-memo-tint
+              className="pointer-events-none absolute inset-0"
+              style={{
+                background: paper?.tint,
+                mixBlendMode: "multiply",
+                zIndex: -1,
+                borderRadius: 6,
+                WebkitMask: MEMO_PAPER,
+                mask: MEMO_PAPER,
+              }}
+            />
+          )}
+          {/* 펜·지우개·✕: 종이 박스 밖 오른쪽 위. Content의 자식이라 Radix의
+           * body pointer-events:none 영향을 받지 않고 눌린다. */}
+          <div className="absolute bottom-full right-0 mb-2 flex items-center gap-1">
+            <button
+              type="button"
+              aria-label={t("workspace.memoEditor.pen")}
+              aria-pressed={drawing && tool === "pen"}
+              className={toolBtn(drawing && tool === "pen")}
+              onClick={() => selectTool("pen")}
+            >
+              ✏️
+            </button>
+            <button
+              type="button"
+              aria-label={t("workspace.memoEditor.eraser")}
+              aria-pressed={drawing && tool === "eraser"}
+              className={toolBtn(drawing && tool === "eraser")}
+              onClick={() => selectTool("eraser")}
+            >
+              ⌫
+            </button>
+            <Dialog.Close
+              className="flex h-7 w-7 cursor-pointer items-center justify-center rounded bg-white/90 text-text-soft transition-colors hover:bg-white hover:text-text"
+              aria-label={t("workspace.memoEditor.close")}
+            >
+              ✕
+            </Dialog.Close>
+          </div>
 
+          {/* 제목 슬롯이 useInstance()로 본문 에디터와 같은 Milkdown 인스턴스를
+           * 잡아야 하므로 Provider를 이 레벨에서 한 번만 제공한다. */}
+          <MilkdownProvider>
             {card && (
               <ExpandedMarkdownEditor
                 key={card.id}

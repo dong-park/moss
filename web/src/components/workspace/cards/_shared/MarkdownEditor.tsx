@@ -34,9 +34,8 @@ import { nord } from "@milkdown/theme-nord";
 import { Milkdown, MilkdownProvider, useEditor } from "@milkdown/react";
 import { TextSelection } from "@milkdown/prose/state";
 
-import { MarkdownToolbar } from "./MarkdownToolbar";
 import { MEMO_CONTENT_WIDTH } from "./memoLayout";
-import { editorPlugins } from "./editor/extensions";
+import { editorPlugins, refreshBubble } from "./editor/extensions";
 import { markdownPlaceholder } from "./markdownPlaceholder";
 import { BubbleMenuHost } from "./editor/BubbleMenuHost";
 import { EditorRegion } from "./editor/EditorRegion";
@@ -164,14 +163,15 @@ export default function MarkdownEditor(props: MarkdownEditorProps) {
 
 /* ─────────────────────────────────────────────────────────────
  * FEAT-memo-expand — 펼치기 모달 전용 에디터.
- * 상단 서식 프리셋 툴바 + 항상 편집 가능한 Milkdown 본문.
- * 툴바와 에디터가 같은 MilkdownProvider 아래 있어야 같은 인스턴스를 공유한다.
+ * 항상 편집 가능한 Milkdown 본문. 상단 서식 툴바는 없다 — 글자를 긁으면 뜨는
+ * 버블(BubbleMenuHost)로만 서식을 바꾼다. 스크롤하면 refreshBubble이 버블을 글자에 맞춘다.
+ * 펜 슬롯 등이 같은 MilkdownProvider 아래 있어야 같은 인스턴스를 공유한다.
  *
  * 고정 폭 1:1 (펜 정렬): 본문을 카드와 동일한 고정 폭([[MEMO_CONTENT_WIDTH]]) 컬럼으로
  * 잡는다. 카드와 모달이 같은 폭·폰트(13px)·padding(6/9)으로 1:1 배치되므로 줄바꿈이
  * 동일하고, 컬럼 안에 얹은 펜 overlay가 같은 글자 위에 정렬된다. 카드는 작아서 일부만
  * 보이고(크롭), 모달은 전체를 다 보여준다("펼치면 항상 최대"). 모달이 컬럼보다 좁으면
- * 본문이 가로 스크롤된다. (과거 CSS scale + viewBox 방식은 reflow로 펜이 어긋나 제거.)
+ * 본문이 가로 스크롤된다. 스크롤 영역은 컬럼 720px + 스크롤바 여유 24px = 744px이다. (과거 CSS scale + viewBox 방식은 reflow로 펜이 어긋나 제거.)
  *
  * overlay: 펜 그리기 레이어. 고정 폭 컬럼(relative) 안에 있어 absolute inset-0이
  * 컬럼을 1:1로 덮는다 — 카드와 같은 좌표공간.
@@ -189,6 +189,7 @@ export function ExpandedMarkdownEditor({
   titleSlot?: ReactNode;
 }) {
   const isClient = useIsClient();
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   if (!isClient) {
     // SSR/jsdom 폴백 — 원문 마크다운만 표시(ProseMirror 미생성).
@@ -196,6 +197,7 @@ export function ExpandedMarkdownEditor({
       <div className="min-h-0 flex-1 overflow-auto">
         {titleSlot}
         <div
+          data-memo-body-column
           className="moss-md relative whitespace-pre-wrap text-[13px] leading-6 text-text"
           style={{ width: MEMO_CONTENT_WIDTH, padding: "6px 9px" }}
         >
@@ -206,15 +208,22 @@ export function ExpandedMarkdownEditor({
     );
   }
   // FEAT-sticky-redesign n4: MilkdownProvider는 호출자(MemoExpandDialog)가
-  // Dialog.Content 전체(헤더 블록메뉴 + 이 본문)를 감싸며 한 번만 제공한다 —
-  // 헤더의 BlockMenu가 useInstance()로 같은 에디터 인스턴스를 잡아야 하기 때문.
+  // Dialog.Content 전체(펜 슬롯 + 이 본문)를 감싸며 한 번만 제공한다 —
+  // 제목 슬롯이 useInstance()로 같은 에디터 인스턴스를 잡아야 하기 때문.
   return (
     <>
-      <MarkdownToolbar />
-      <div className="min-h-0 flex-1 overflow-auto">
+      <div
+        ref={scrollRef}
+        className="min-h-0 flex-1 overflow-auto"
+        style={{ maxWidth: MEMO_CONTENT_WIDTH + 24, padding: 0 }}
+        onScroll={() => {
+          if (scrollRef.current) refreshBubble(scrollRef.current);
+        }}
+      >
         {titleSlot}
         {/* 카드 컬럼과 동일: 고정 폭 + padding 6/9 + text-[13px]. 펜 정렬의 핵심. */}
         <div
+          data-memo-body-column
           className="moss-md relative text-[13px]"
           style={{ width: MEMO_CONTENT_WIDTH, padding: "6px 9px" }}
         >
