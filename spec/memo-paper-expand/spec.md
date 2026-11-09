@@ -107,6 +107,7 @@ MemoExpandDialog, ExpandedMarkdownEditor(마운트 변경과 onScroll), BubbleMe
 - 메인 확인(2026-11-10, runner용): 작업 디렉터리는 전용 워크트리 /Users/dongpark/worktree/moss-memo-paper-expand 다. 브랜치는 feat/memo-paper-expand, base는 main 07b7c62다. 원래 체크아웃 /Users/dongpark/moss는 다른 세션이 feat/cmd-z-undo로 쓰고 있어 건드리지 않는다. 워크트리의 web/node_modules는 bun install --frozen-lockfile로 깔았고 next는 16.4.5다. 포트 3000의 dev 서버는 원래 체크아웃 것이라 이 브랜치 코드가 아니다. 커밋은 이 일의 파일만 경로로 지정해 add한다. web/AGENTS.md의 next dev 블록 diff는 커밋하지 않는다.
 - 메인 확인: Canvas.virtualization.test.tsx는 2026-11-10 플랜 검토자가 단독 실행으로 통과를 봤다. 전체 스위트에서 실패하면 단독 재실행으로 플래키인지 가린다.
 - 결정 D1~D9는 추천 A로 진행 중이다. user 칸은 비어 있다. 사람이 보드에서 다른 답을 주면 그때 바꾼다.
+- 뒤집힌 가정 반영 완료(d050822): refreshBubble은 선택 시작 top이 scrollEl 세로 범위 안이면 연다. 끝 위치는 보지 않는다. refreshBubble.test.ts에 "끝이 아래로 넘쳐도 시작이 보이면 연다" 케이스를 더했다.
 
 ## 플랜 — STEP 3개, runner 하나가 순서대로 돈다
 
@@ -150,7 +151,7 @@ cd web && grep -n "export function refreshBubble" src/components/workspace/cards
 - summary: BubbleMenuHost에 pointer-events:auto, extensions.ts에 refreshBubble 추가, 단위 테스트 2파일 5건. 브라우저 T1·T3·T9는 prover 체크포인트 몫.
 <!-- /STEP -->
 
-<!-- STEP:1:paper-dialog:pending -->
+<!-- STEP:1:paper-dialog:completed -->
 ### T-1: 펼친 창을 커진 메모지로 바꾼다 (T2·T4·T5·T6·T7·T8·T10·T12·T13의 코드 부분)
 
 #### 읽을 파일
@@ -190,10 +191,10 @@ cd web && ! grep -n "border border-border\|max-w-3xl\|overflow-hidden" src/compo
 - BlockMenu.tsx·MarkdownToolbar.tsx 파일과 그 테스트를 지우지 마라. 이유: 롤백 지점이다.
 - PhotoLightbox 분기를 건드리지 마라. 이유: 비목표다.
 
-- summary:
+- summary: MemoExpandDialog를 종이로 바꿨다(b760f0e). 머리 막대·MarkdownToolbar·BlockMenu 마운트 제거, 종이 폭 min(792px,94vw)·높이 min(792px,86vh), 펜·지우개·✕는 Content 자식으로 종이 밖 오른쪽 위, paper/흰 단색 종이는 열 때 고정, ExpandedMarkdownEditor 스크롤 영역에 onScroll refreshBubble과 data-memo-body-column. 단위 AC 5개 통과.
 <!-- /STEP -->
 
-<!-- STEP:2:tests-and-gates:pending -->
+<!-- STEP:2:tests-and-gates:completed -->
 ### T-2: 테스트를 정리하고 CI 게이트를 통과시킨다 (T11, T2의 단위 부분)
 
 #### 읽을 파일
@@ -215,7 +216,7 @@ cd web && npx tsc --noEmit && bun run lint && bun run test && bun run check:i18n
 - 실패하는 기존 테스트를 skip하거나 지우지 마라. 이유: 회귀를 숨긴다. main에서도 실패하는 상존 실패만 리포트에 근거와 함께 적는다.
 - web/AGENTS.md의 next dev 블록 diff를 커밋하지 마라. 이유: 이 일과 무관하다.
 
-- summary:
+- summary: MemoExpand.test.tsx에 창 단위 7건 추가(6550f4f). CI 5명령 전부 종료 코드 0, 전체 스위트 189파일 1596통과 8skip, Canvas.virtualization 포함 실패 0. 오버레이 pointerdown도 jsdom에서 재현돼 T6 세 경로 모두 단위로 판정했다.
 <!-- /STEP -->
 
 ## 문서 리뷰
