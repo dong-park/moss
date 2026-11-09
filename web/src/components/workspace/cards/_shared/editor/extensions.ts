@@ -123,22 +123,21 @@ function openBubbleAt(v: EditorView): void {
 }
 
 /** 스크롤 영역이 스크롤될 때 부른다. 현재 선택으로 좌표를 다시 계산해 버블이 글자를
- * 따라가게 하고, 선택이 scrollEl의 보이는 세로 범위 밖이면 닫는다. 범위 안으로 돌아오면
- * 다시 연다. 스크롤마다 닫지 않는다 — 버블 버튼이 낸 scrollIntoView에 닫히면 연속 서식이 끊긴다. */
+ * 따라가게 하고, 선택 시작 줄이 scrollEl의 보이는 세로 범위 밖이면 닫는다. 범위 안으로
+ * 돌아오면 다시 연다. 버블은 선택 시작에 붙으므로 끝이 범위 밖이어도 시작이 보이면 연다. 스크롤마다 닫지 않는다 — 버블 버튼이 낸 scrollIntoView에 닫히면 연속 서식이 끊긴다. */
 export function refreshBubble(
   scrollEl: HTMLElement,
   view: EditorView | null = lastView,
 ): void {
   if (!view) return;
-  const { from, to, empty } = view.state.selection;
+  const { from, empty } = view.state.selection;
   if (empty || bubbleMenuItems.length === 0 || !view.editable) {
     setBubble(CLOSED);
     return;
   }
   const start = view.coordsAtPos(from);
-  const end = view.coordsAtPos(to);
   const rect = scrollEl.getBoundingClientRect();
-  if (start.top < rect.top || end.bottom > rect.bottom) {
+  if (start.top < rect.top || start.top > rect.bottom) {
     setBubble(CLOSED);
     return;
   }

@@ -42,6 +42,12 @@ describe("refreshBubble", () => {
     expect(getBubbleState().open).toBe(false);
   });
 
+  it("끝이 아래로 넘쳐도 시작이 보이면 연다", () => {
+    refreshBubble(scrollEl(0, 500), fakeView(false, { left: 40, top: 480, bottom: 600 }));
+    expect(getBubbleState().open).toBe(true);
+    expect(getBubbleState().top).toBe(480);
+  });
+
   it("범위 밖에서 닫힌 뒤 범위 안 좌표로 다시 부르면 다시 연다", () => {
     const v = fakeView(false, { left: 40, top: 100, bottom: 116 });
     refreshBubble(scrollEl(200, 500), v);
