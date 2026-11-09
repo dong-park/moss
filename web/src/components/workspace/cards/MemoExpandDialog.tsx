@@ -42,7 +42,14 @@ import { memoTint } from "../memoVariety";
  * 마운트는 page.tsx 루트에서 1회 (전역 오버레이, BoardDeleteDialog와 동일 패턴).
  * ───────────────────────────────────────────────────────────── */
 // 종이 높이. 86vh와 792px 상한에 더해 100vh−88px로 버튼 줄(28px + 간격) 자리를 남긴다.
-const PAPER_H = "min(792px, 86vh, calc(100vh - 88px))";
+export const PAPER_H = "min(792px, 86vh, calc(100vh - 88px))";
+
+/** 종이 padding. 말린 모서리는 text.png(paper 종이)에만 있어 paper만 아래를 종이 높이의
+ * 17%로 비운다(늘어난 text.png의 말린 부분은 높이의 약 11~16%). 흰 단색 종이는 40px다.
+ * jsdom은 중첩 min()이 든 calc를 버리므로 값은 이 함수로 테스트한다. */
+export function paperPadding(isPaper: boolean): string {
+  return isPaper ? `12px 24px calc(${PAPER_H} * 0.17)` : "12px 24px 40px";
+}
 
 export function MemoExpandDialog() {
   const t = useT();
@@ -121,8 +128,7 @@ export function MemoExpandDialog() {
           style={{
             width: "min(792px, 94vw)",
             height: PAPER_H,
-            // 말린 모서리는 text.png(paper)에만 있다. 흰 단색 종이는 아래 40px면 된다.
-            padding: isPaper ? `12px 24px calc(${PAPER_H} * 0.17)` : "12px 24px 40px",
+            padding: paperPadding(isPaper),
             borderRadius: 6,
             background: isPaper ? MEMO_PAPER : "var(--color-card-base)",
             isolation: "isolate",

@@ -4,7 +4,11 @@ import type { ReactNode } from "react";
 import { I18nProvider } from "@/i18n/Provider";
 import { useWorkspace, type Card } from "@/state/workspace";
 import { DraggableCard } from "@/components/workspace/DraggableCard";
-import { MemoExpandDialog } from "@/components/workspace/cards/MemoExpandDialog";
+import {
+  MemoExpandDialog,
+  PAPER_H,
+  paperPadding,
+} from "@/components/workspace/cards/MemoExpandDialog";
 
 /**
  * FEAT-memo-expand — 펼치기 버튼 + 모달 배선.
@@ -288,13 +292,19 @@ describe("memo-paper-expand · 종이 창", () => {
   it("T13: 말린 모서리가 있는 paper 종이만 아래 여백을 종이 높이의 17%로 둔다", () => {
     const first = openWindow();
     const paper = document.body.querySelector("[role=dialog]") as HTMLElement;
-    // jsdom은 중첩 min()이 든 calc를 읽지 못해 값을 비운다. 실제 값(792px 종이에서
-    // 134.64px)은 브라우저에서 잰다. 여기서는 흰 종이 값과 다르다는 것만 본다.
+    // jsdom은 중첩 min()이 든 calc를 읽지 못해 값을 비운다. 식은 paperPadding 테스트가
+    // 보고, 실제 값(792px 종이에서 134.64px)은 브라우저에서 잰다. 여기서는 흰 종이 값이
+    // 아니라는 것만 본다.
     expect(paper.style.padding).not.toBe("12px 24px 40px");
     first.unmount();
     openWindow({ content: "- [ ] 할 일" });
     const white = document.body.querySelector("[role=dialog]") as HTMLElement;
     expect(white.style.padding).toBe("12px 24px 40px");
+  });
+
+  it("T13: paperPadding은 paper 종이만 아래를 종이 높이의 17%로, 흰 종이는 40px로 둔다", () => {
+    expect(paperPadding(true)).toBe(`12px 24px calc(${PAPER_H} * 0.17)`);
+    expect(paperPadding(false)).toBe("12px 24px 40px");
   });
 
   it("T7: 열린 동안 content를 todo로 바꿔도 종이 판정은 그대로다", () => {
@@ -304,6 +314,9 @@ describe("memo-paper-expand · 종이 창", () => {
     });
     expect(useWorkspace.getState().cards[0].content).toBe("- [ ] 할 일");
     expect(document.body.querySelector("[data-memo-tint]")).toBeTruthy();
+    // 여백도 열 때 판정을 따른다 — 흰 종이 값으로 바뀌면 판정이 매번 다시 된 것이다.
+    const paper = document.body.querySelector("[role=dialog]") as HTMLElement;
+    expect(paper.style.padding).not.toBe("12px 24px 40px");
   });
 
   describe("T6 · 닫을 때 제목 공백을 확정한다", () => {
