@@ -111,7 +111,7 @@
 21. **편집기를 열자마자 누른 cmd+z가 본문을 비운다.** 처음 불러온 글이 편집기 기록에 들어가면 생긴다. 기준은 T3이다.
 22. **보드를 옮겨 갔다 오면 기록이 사라진다.** 사용자는 돌아온 보드에서 cmd+z가 안 먹는 것을 본다. 받아들인다. D6에서 보드 문서 수명을 바꾸지 않기로 했다. 열어 두는 공유 보드 연결이 늘지 않는다. 기준은 T22다.
 23. **함을 지운 직후 cmd+z를 누르면 그 전 동작이 되돌아간다.** 함은 지워진 채다. 받아들인다. 사용자가 함을 대상에서 빼기로 골랐고 5초 토스트가 남는다. 기준은 T19다.
-24. **저장이 0.5초 넘게 걸리면 휴지통 살리기가 cmd+z 2번이 된다.** 연결선 쓰기와 카드 쓰기 사이가 0.5초를 넘으면 두 단계로 갈린다. 받아들인다. 비동기 동작을 따로 묶는 규칙은 대부분의 경우 결과를 바꾸지 않아 뺐다.
+24. **연결선이 2개 이상인 메모를 살릴 때 Dexie 읽기가 0.5초를 넘으면 cmd+z 2번이 된다.** 지연은 대개 두 문서 쓰기 앞에 끼어 단계를 가르지 않는다. 단계가 갈리는 것은 연결선이 2개 이상이고, 둘째 연결선의 source 보드를 찾는 Dexie 읽기가 0.5초를 넘을 때뿐이다. 받아들인다. 비동기 동작을 따로 묶는 규칙은 대부분의 경우 결과를 바꾸지 않아 뺐다.
 
 ## 상태 모델 — 메모는 보드, 휴지통, 기록 보관 가운데 한 곳에만 있다
 
@@ -160,10 +160,12 @@
 
 **origin**
 
-- 기록하지 않는 origin을 하나 더 둔다. 이 origin을 쓰는 쓰기는 아홉 가지다. 자동 측정, 수정 시각만 바뀐 쓰기, 파일 매핑, 보드 사이 옮기기, 함 삭제, 불러오기 정리와 시드, 빈 채로 마친 글상자 지우기, MCP 브리지, 멤버십 동기화다.
-- MCP 브리지가 현재 보드를 고치는 길은 스토어 동작과 storage 쓰기 함수를 부른다. 그 함수들이 origin 옵션을 받아 Y.Doc 쓰기까지 끝까지 넘긴다. 연결선처럼 await 뒤에 쓰는 비동기 경로도 같다. 동기 구간으로 감싸면 await 뒤의 쓰기를 못 막는다.
-- 브리지가 빠뜨린 길이 없는지는 동작 테스트로 확인한다. 지금 보는 보드 P의 notes와 connections에 쓰는 브리지 명령마다, 선택 매개변수를 모두 채운 호출과 하나씩만 준 호출을 P에 실행한다. 명령이 낸 비동기 쓰기가 끝나기를 기다린 뒤 실행 전후 P의 undoStack 길이가 같으면 통과다.
-- 명령과 매개변수 조합을 모두 돌리면 경로를 몰라도 빠진 곳을 잡는다. 호출 목록을 grep으로 세는 방식은 바퀴마다 새 누락이 나와서 구현 참고로만 둔다.
+- 기록하지 않는 origin을 하나 더 둔다. 이 origin을 쓰는 쓰기는 열 가지다. 자동 측정, 수정 시각만 바뀐 쓰기, 파일 매핑, 보드 사이 옮기기, 함 삭제, 불러오기 정리와 시드, 빈 채로 마친 글상자 지우기, MCP 브리지, 멤버십 동기화, 다른 보드로 살리는 휴지통 살리기와 표 보기 살리기의 문서 쓰기다.
+- MCP 브리지가 현재 보드를 고치는 길은 스토어 동작과 storage 쓰기 함수를 부른다. 그 함수들이 origin 옵션을 받아 Y.Doc 쓰기까지 끝까지 넘긴다. 동기 구간으로 감싸면 await 뒤의 쓰기를 못 막는다.
+- await 뒤에 문서에 쓰는 알려진 길은 둘이다. 연결선 저장은 connectCards가 saveConnection을 부르고 여러 await 뒤 문서에 쓴다. 함 만들기 createSubcanvas는 void async 안에서 await 뒤 persistCard로 P에 쓴다. 두 길 모두 origin을 넘긴다.
+- 브리지가 빠뜨린 길이 없는지는 동작 테스트로 확인한다. T20 여섯째의 경우 표에 적은 호출을 지금 보는 보드 P에 하나씩 실행한다. 경우마다 P에 무엇이 있는지 정해 둔다.
+- 판정은 셋이다. 호출이 throw 없이 끝난다. P 문서가 바뀐다. P undoStack 길이가 그대로다. 문서를 안 바꾸는 호출은 표에서 뺀다. 브리지 origin 넘기기를 빼면 표의 한 줄 이상이 실패해야 시험이 유효하다.
+- 이 시험은 표에 적은 호출만 잡는다. 표에 없는 명령, 매개변수, 카드 종류의 길은 못 잡는다. 호출 목록을 grep으로 세는 방식은 바퀴마다 새 누락이 나와서 구현 참고로만 둔다.
 - 기록 안 하는 쓰기는 단계를 열지 않는다. origin이 기록 안 하는 쓰기면 동작 진입점이 stopCapturing을 부르지 않고 깊이 카운터도 올리지 않는다.
 - 기록 안 하는 동작은 안쪽에서 부르는 동작까지 같은 origin으로 돈다. 예를 들어 setFaceHeight가 안에서 부르는 resolveMembership도 기록 안 하는 origin으로 쓴다. 동기 경로는 origin 문맥으로 감싸고, await가 있는 비동기 경로는 origin을 인자로 넘긴다.
 - 원격 반영 관찰자는 이 origin도 로컬로 보고 건너뛴다.
@@ -183,8 +185,11 @@
 - 단계 열기는 기록하는 동작에서만 한다. 기록 안 하는 origin으로 들어온 동작은 stopCapturing을 부르지 않고 깊이 카운터도 올리지 않는다. 편집 중 브리지 쓰기가 내 편집 단계를 둘로 쪼개는 것을 막는다.
 - 편집, 펜 모드, 크기 조절, 드래그는 시작 때 captureTimeout을 무한으로 둔다. 끝에 500으로 돌리고 stopCapturing을 부른다. D2의 A다.
 - 휴지통 살리기처럼 await가 있는 동작도 따로 묶지 않는다. 기본 0.5초 묶음과 진입점의 stopCapturing만 쓴다. 살리기의 연결선 쓰기와 카드 쓰기 사이는 대개 수 ms라 한 단계가 된다. 그 사이에 다른 동작이 끼면 그 진입점의 stopCapturing이 단계를 가른다.
-- 저장이 0.5초 넘게 걸리면 휴지통 살리기가 2단계가 된다. 받아들인다. U1에서 메인이 정했다.
-- restoreNote가 되돌릴 보드는 살린 메모의 note.boardId다. 원래 보드가 있으면 그 보드이고, 원래 보드가 삭제돼 있으면 지금 보드다. note.boardId가 지금 보드가 아니면 그 살리기가 내는 문서 쓰기는 모두 기록 안 하는 origin으로 쓴다. 연결선이 지금 보드 문서에 쓰이는 경우도 같다. 그래서 지금 보드 기록에 단계가 안 생기고 cmd+z는 그 살리기를 되돌리지 않는다.
+- 휴지통 살리기가 2단계가 되는 경우는 하나다. 연결선이 2개 이상이고, 둘째 연결선의 source 보드를 찾는 Dexie 읽기가 0.5초를 넘을 때다. 받아들인다. U1에서 메인이 정했다.
+- restoreNote는 origin을 인자로 받아 연결선 쓰기까지 넘긴다. 연결선 쓰기는 restoreNote 안에서 나가므로, 돌려받은 값으로 나중에 판정하면 이미 늦다. origin은 호출자가 정한다.
+- 휴지통 살리기 restoreFromTrash는 지금 보드 id를 함께 넘긴다. restoreNote가 안에서 살릴 보드를 정한 뒤 비교한다. 살릴 보드가 지금 보드면 LOCAL_ORIGIN이고, 아니면 기록 안 하는 origin이다. 원래 보드가 있으면 그 보드에, 원래 보드가 삭제돼 있으면 지금 보드에 살린다.
+- 표 보기의 살리기는 늘 기록 안 하는 origin을 넘긴다. 표 보기는 캔버스 기록 밖이다.
+- 그래서 다른 보드로 살리는 살리기는 연결선이 지금 보드 문서에 쓰이더라도 지금 보드 기록에 단계를 만들지 않는다. cmd+z는 그 살리기를 되돌리지 않는다.
 - 0.5초 묶음은 한 동작의 늦은 쓰기를 같은 단계에 붙이는 데만 쓴다.
 - 기록은 보드마다 100단계까지다. 단계를 더한 뒤 넘치면 가장 오래된 단계를 버린다. D1의 A다.
 - 100단계 상한은 cmd+z 횟수만 묶는다. 기록이 쥔 지운 내용은 탭을 닫거나 새로고침할 때까지 메모리에 남는다. 10KB 본문을 300번 쓰면 메모리 문서가 3,001,748B이고, 다시 불러오면 10,062B다.
@@ -201,7 +206,7 @@
 - 연결선 휴지통 빼기는 보드 문서 connections로 판정한다. 되돌리기와 다시 실행 뒤, 그리고 관찰자가 원격 변경을 반영한 뒤, 보드 문서 connections에 있는 연결선은 trashConnections에서 빼고 미러 connections에 둔다. 문서에 없는 연결선은 trashConnections에 남긴다. 내 기기의 처리와 다른 기기의 관찰자가 같은 규칙을 쓴다.
 - 반대편이 휴지통인 연결선은 반대편을 지울 때 이미 문서에서 빠졌다. 그래서 되돌리기가 살리지 않고 이 규칙으로 휴지통에 남는다. 양 끝 카드를 보는 규칙은 카드를 다른 보드로 옮긴 뒤에 틀린다. 카드를 옮겨도 연결선은 문서에 남기 때문이다.
 - 사용자가 휴지통에서 살리는 기존 restoreNote는 미러로 양 끝을 보는 지금 방식을 그대로 둔다.
-- 휴지통 살리기는 되돌린 연결선을 이미 restoreNote 끝에서 보드 문서에도 쓴다. 새로 만들 일은 없다. 이 쓰기는 카드 쓰기와 기본 0.5초 묶음으로 한 단계가 된다. 살린 메모의 note.boardId가 지금 보드가 아니면 연결선 쓰기도 기록 안 하는 origin으로 쓴다. 연결선의 source 메모가 지금 보드에 있어 지금 보드 문서에 쓰여도 단계가 안 생긴다.
+- 휴지통 살리기는 되돌린 연결선을 이미 restoreNote 끝에서 보드 문서에도 쓴다. 새로 만들 일은 없다. 이 쓰기는 카드 쓰기와 기본 0.5초 묶음으로 한 단계가 된다. 연결선 쓰기의 origin은 restoreNote가 받은 origin이다. 살릴 보드가 지금 보드가 아니거나 표 보기에서 살리면 기록 안 하는 origin이라, 연결선의 source 메모가 지금 보드에 있어도 단계가 안 생긴다.
 - 생성 되돌리기는 미러 행만 지운다. 첨부 파일은 아래 파일 규칙을 따른다.
 - 파일 규칙은 하나다. 넷 가운데 하나라도 가리키는 파일은 지우지 않는다. 모든 보드의 미러 행, 지금 열린 보드 문서, 휴지통 행, 이 탭의 남은 기록 단계다.
 - 미러 행은 db.notes의 attachmentRef와 판 배경 ref다. 닫힌 보드 문서는 열지 않고 미러로 본다. 지금 열린 보드 문서는 직접 본다.
@@ -309,6 +314,8 @@ n1-verify ─┬─ n2-editor-history ─┐
 
 리뷰 폴더는 레포 밖, 이 세션 작업 폴더다: /private/tmp/claude-501/-Users-dongpark-moss/38916d25-fc9a-486f-8d3c-dcacfa292354/scratchpad/review/. 아래 수정 표와 재현 파일은 모두 이 폴더 안에 있다. 세션이 끝나면 사라질 수 있다.
 
+리뷰 7바퀴: 251ab88 기준 W1~W8을 반영했다. 수정 표는 리뷰 폴더의 spec-r7-fixes.md.
+
 리뷰 6바퀴: 91be20a 기준 U1~U8을 반영했다. 수정 표는 리뷰 폴더의 spec-r6-fixes.md.
 
 리뷰 5바퀴: 0c77a79 기준 O1~O8을 반영했다. 수정 표는 리뷰 폴더의 spec-r5-fixes.md.
@@ -334,7 +341,7 @@ n1-verify ─┬─ n2-editor-history ─┐
 
 | 결정 | 고른 답 | 이유 | 되돌리기 |
 |---|---|---|---|
-| 기록하지 않는 쓰기 | 아홉 갈래가 기록 안 하는 origin을 쓴다. 자동 측정 setFaceHeight·setTextMeasuredWidth, updatedAt만 바뀐 쓰기, files 맵 업로드 매핑, 보드 사이 옮기기, 함 삭제, 불러오기 정리와 시드, 빈 채로 마친 글상자 지우기, MCP 브리지, 멤버십 동기화. 이 쓰기는 단계를 열지 않는다. 원격 반영 관찰자도 이 origin을 건너뜀 | 아무 변화 없이 cmd+z가 먹히는 단계를 막는다 | 그 쓰기들을 transactLocal로 되돌리면 이전 동작 |
+| 기록하지 않는 쓰기 | 열 갈래가 기록 안 하는 origin을 쓴다. 자동 측정 setFaceHeight·setTextMeasuredWidth, updatedAt만 바뀐 쓰기, files 맵 업로드 매핑, 보드 사이 옮기기, 함 삭제, 불러오기 정리와 시드, 빈 채로 마친 글상자 지우기, MCP 브리지, 멤버십 동기화, 다른 보드로 살리는 휴지통 살리기와 표 보기 살리기의 문서 쓰기. 이 쓰기는 단계를 열지 않는다. 원격 반영 관찰자도 이 origin을 건너뜀 | 아무 변화 없이 cmd+z가 먹히는 단계를 막는다 | 그 쓰기들을 transactLocal로 되돌리면 이전 동작 |
 | 카드 삭제 때 연결선 | 닿은 연결선도 Y.Doc connections에서 지운다 | 삭제 되돌리기 때 연결선이 함께 돌아온다 | 문서 삭제 줄을 빼면 이전처럼 문서에 남는다 |
 | 단계 단위 | 기록하는 사용자 동작 하나가 1단계. 크기 조절은 손 뗄 때까지 1단계, 드래그는 commitMove와 resolveMembership을 합쳐 1단계 | 사용자가 한 동작으로 느끼는 단위다 | 묶음 시작·끝 호출을 빼면 0.5초 기본 묶음만 남는다 |
 | 펜 모드 | 나온 뒤 캔버스 1단계. 안의 cmd+z는 지금처럼 펜 스택. overlay가 Y.Doc에 쓰이는 시점은 미확인 | 펜 안의 획 단위 되돌리기를 그대로 둔다 | 펜 묶음 호출을 빼면 쓰기마다 단계 |
@@ -349,9 +356,9 @@ n1-verify ─┬─ n2-editor-history ─┐
 | F15 다른 탭의 휴지통 비우기 | 받아들인다. 탭 사이 쥔 파일 목록은 만들지 않는다. 되살린 카드는 그림 자리가 빈 채로 보인다 | 드물고 탭 사이 목록은 동기화 장치가 더 든다 | 쥔 파일 목록을 탭 사이 채널로 나눈다 |
 | H3 건너뛴 단계의 meta | 휴지통 동작을 적용하지 않는다. 그 단계가 쥔 파일은 놓아 파일 규칙 청소 대상이 된다 | 건너뛰었다는 것은 문서가 이미 다른 행위자의 값이라는 뜻이다. 휴지통도 관찰자 규칙이 맞춘다 | 건너뛴 단계의 휴지통 동작도 적용한다 |
 | O1 연결선 휴지통 빼기 판정 | 되돌리기·다시 실행 뒤와 관찰자의 원격 반영 뒤, 보드 문서 connections에 있는 연결선은 trashConnections에서 빼고 미러 connections에 둔다. 문서에 없는 것은 남긴다. 사용자의 휴지통 살리기는 미러 기준 그대로 | 반대편이 휴지통인 연결선은 반대편을 지울 때 이미 문서에서 빠져 되돌리기가 살리지 않는다. 그래서 K1의 "반대편이 휴지통이면 남긴다"를 저절로 지킨다. 카드를 다른 보드로 옮겨도 틀리지 않는다 | 양 끝 카드가 보드 문서에 있는지로 판정하는 M2 규칙으로 돌린다 |
-| O6 브리지 확인 방법 | P의 notes·connections에 쓰는 브리지 명령마다 매개변수를 모두 채운 호출과 하나씩 준 호출을 P에 실행하고, 비동기 쓰기가 끝난 뒤 전후 undoStack 길이가 같은지 보는 동작 테스트. grep 명령은 구현 참고로만 둔다 | grep 패턴은 바퀴마다 새 누락이 나왔다. 명령과 매개변수 조합을 모두 돌리면 경로를 몰라도 빠진 곳을 잡는다 | 두 grep 명령의 전수 목록을 다시 확인 기준으로 쓴다 |
-| U1 비동기 동작 단계 묶음 | 뺀다. 기본 0.5초 묶음과 진입점의 stopCapturing만 쓴다. 저장이 0.5초 넘게 걸리면 휴지통 살리기가 2단계가 되는 것을 받아들인다 | 다른 동작이 끼면 진입점 stopCapturing이 같은 결과를 내고, 차이는 0.5초 넘는 지연 때뿐이다 | 살리기처럼 await가 있는 동작을 promise가 끝날 때까지 묶고 finally에서 닫는 규칙을 다시 넣는다 |
-| U8 다른 보드로 가는 살리기 | 살린 메모의 note.boardId가 지금 보드가 아니면 그 살리기가 내는 문서 쓰기를 모두 기록 안 하는 origin으로 쓴다 | 연결선 source가 지금 보드에 있으면 restoreNote 끝의 연결선 쓰기가 지금 보드에 1단계를 만들고, cmd+z가 연결선만 지운다 | 그 쓰기를 LOCAL_ORIGIN으로 돌리면 지금 보드에 단계가 생긴다 |
+| O6 브리지 확인 방법 | T20 여섯째 경우 표의 호출을 P에 실행하고 세 칸을 본다: 호출 성공, P 문서가 바뀜, P undoStack 길이 그대로. origin 넘기기를 빼면 한 줄 이상 실패해야 한다. grep 명령은 구현 참고로만 둔다 | grep 패턴은 바퀴마다 새 누락이 나왔다. 동작 테스트는 표에 적은 호출의 결과를 직접 본다. 표에 없는 호출은 못 잡는다 | 두 grep 명령의 전수 목록을 다시 확인 기준으로 쓴다 |
+| U1 비동기 동작 단계 묶음 | 뺀다. 기본 0.5초 묶음과 진입점의 stopCapturing만 쓴다. 연결선 2개 이상인 메모를 살릴 때 둘째 연결선의 Dexie 읽기가 0.5초를 넘으면 2단계가 되는 것을 받아들인다 | 다른 동작이 끼면 진입점 stopCapturing이 같은 결과를 내고, 차이는 두 문서 쓰기 사이에 0.5초 넘는 지연이 낄 때뿐이다 | 살리기처럼 await가 있는 동작을 promise가 끝날 때까지 묶고 finally에서 닫는 규칙을 다시 넣는다 |
+| U8 다른 보드로 가는 살리기 | restoreNote가 origin을 인자로 받아 연결선 쓰기까지 넘긴다. restoreFromTrash는 지금 보드 id를 넘기고, restoreNote 안에서 살릴 보드가 지금 보드면 LOCAL_ORIGIN, 아니면 기록 안 하는 origin을 쓴다. 표 보기 살리기는 늘 기록 안 하는 origin. W2에서 방법을 고쳤다 | 연결선 source가 지금 보드에 있으면 restoreNote 끝의 연결선 쓰기가 지금 보드에 1단계를 만들고, cmd+z가 연결선만 지운다. 돌려받은 값으로 판정하면 연결선 쓰기가 이미 나간 뒤다 | 그 쓰기를 LOCAL_ORIGIN으로 돌리면 지금 보드에 단계가 생긴다 |
 
 **결정 행 결과 — 2026-11-10 메인이 닫음**
 
@@ -380,6 +387,8 @@ n1-verify ─┬─ n2-editor-history ─┐
 - "살리기의 연결선 쓰기를 묶지 않으면 cmd+z 1번에 다 안 돌아온다"를 고쳤다 — 기본 0.5초 묶음이 대개 이미 묶는다 (O3).
 - 비동기 동작 단계 묶음 규칙을 넣었다가 통째로 뺐다 — 진입점 stopCapturing과 결과가 거의 같았다 (M3·O2·O3에서 넣고 U1에서 뺌).
 - "원래 보드가 지금 보드가 아니면 단계를 안 만든다"를 "note.boardId가 지금 보드가 아니면 그 살리기의 문서 쓰기를 기록 안 하는 origin으로 쓴다"로 바꿨다 — 원래 보드가 삭제된 fallback과 지금 보드에 쓰이는 연결선을 놓쳤다 (U4·U8).
+- U8 판정을 "restoreNote가 돌려준 note.boardId"에서 "호출자가 넘긴 origin과 지금 보드 id로 restoreNote 안에서 비교"로 바꿨다 — 돌려받을 때는 연결선 쓰기가 이미 LOCAL_ORIGIN으로 나간 뒤였다 (W2).
+- 브리지 시험을 "명령마다 매개변수 조합, 길이만 비교"에서 "경우 표, 판정 세 칸"으로 바꿨다 — throw하거나 문서에 안 쓰는 호출도 길이만 보면 통과했다 (W1).
 
 **고칠 곳**
 
@@ -392,13 +401,16 @@ n1-verify ─┬─ n2-editor-history ─┐
 - 관찰자: workspace.ts reflect :1575-1620, 휴지통 넣기 :1594-1601, 예약 미러 쓰기 schedulePersist :1614-1617. 이 탭 되돌리기·다시 실행의 삭제 반영 때 cancelPersist, 원격 삭제 반영 때 flushCard 뒤 trashNote. reflectMeta :1624. reflectConnections :1666-1697, 양 끝 카드 검사 :1683-1688. 바인딩 :1622, :1638, :1698.
 - 문서 쓰기: persistCardDebounced :1435, initialNoteFromCard의 updatedAt :1477, withActiveDoc :1483, writeCardToDocHandle :1498-1529. 스냅샷 차이 :1515-1528, 스냅샷 모듈 web/src/state/ydoc/sharedSnapshot.ts. 쓰기 헬퍼는 web/src/state/ydoc/model.ts의 putNote :135, updateNoteFields :170, deleteNote :188, putConnection :206, deleteConnection :216. 모두 transactLocal이다.
 - 불러오기 정리와 시드: workspace.ts 첫 실행 시드 :2132, 빈 글상자 정리 hardDeleteNotes :2146, :2188. 빈 채로 마친 글상자 hardDeleteNote :3161, 호출 web/src/components/workspace/cards/textbox/Content.tsx:83.
-- 다른 행위자: web/src/state/bridge/mossBridge.ts의 writeNoteRecord·deleteNoteRecord 호출 :472 등, web/src/state/membership.ts:172 writeNoteRecord, :183 deleteNoteRecord. 이 헬퍼가 origin을 받게 한다. 브리지는 mossBridge.ts의 모든 ws.*와 storage 호출로 현재 보드를 고친다. 2026-11-10 기준 ws.* 호출은 30곳이다. 이 호출이 닿는 스토어 액션과 storage 쓰기 함수가 origin 옵션을 받아 Y.Doc 쓰기까지 넘긴다. 연결선은 connectCards에서 storage.saveConnection으로 가고, await 두 번 뒤 writeConnectionRecord로 쓴다 (storage.ts:661-675). 이 비동기 경로도 origin을 넘긴다. 브리지는 storage와 기록 헬퍼도 직접 부른다. 문서에 쓰는 것은 useStorage.getState().saveConnection :687, removeConnection :702, updateNoteTitle :443, storeAttachment :187 :202 :215 :493, writeNoteRecord·deleteNoteRecord·writeBoardRecord다. updateNoteTitle은 storage.ts:329-340에서 문서에 쓴다. removeConnection은 writeThrough로 활성 문서에 LOCAL_ORIGIN으로 쓴다.
-- 브리지가 부르는 호출 가운데 미러만 쓰는 것: storage.saveNote :398 :557 (storage.ts:309-318), storage.saveBoard :539 (storage.ts:526-531, db.boards.put만 한다).
-- 브리지 확인 기준은 grep 목록이 아니라 동작 테스트다. 대상은 P의 notes·connections에 쓰는 명령 8종이다: notes.create, notes.update, notes.delete, photos.create, frames.create, notes.createBoard, connections.create, connections.delete. notes.createBoard는 지금 보드에서 ws.createSubcanvas로 P에 함 카드를 쓴다 (mossBridge.ts:527-532). 빼는 명령: boards.create는 새 보드로 전환해 P 기록이 버려진다 (mossBridge.ts:616, workspace.ts:2270). boards.rename·boards.delete는 보드 단위라 기록 범위 밖이다. ai.connectionLabel은 fetch만 하고 문서에 안 쓴다 (:601-606). 명령마다 선택 매개변수를 모두 채운 호출과 하나씩만 준 호출을 실행한다. notes.update는 content, title, width·height, x·y, color를 각각 준다 (:373-376, :420-431, :497-500, :514-519, :679). 호출마다 명령 promise를 await하고 flushAll을 부르고 실제 시간 0.1초 이상 기다린 뒤 길이를 잰다. connectCards는 void storage.saveConnection 뒤 바로 반환하고 문서 쓰기는 await 세 번 뒤 나간다 (workspace.ts:3266, storage.ts:661-673).
+- 다른 행위자: web/src/state/bridge/mossBridge.ts의 writeNoteRecord·deleteNoteRecord 호출 :472 등, web/src/state/membership.ts:172 writeNoteRecord, :183 deleteNoteRecord. 이 헬퍼가 origin을 받게 한다. 브리지는 mossBridge.ts의 모든 ws.*와 storage 호출로 현재 보드를 고친다. 2026-11-10 기준 ws.* 호출은 30곳이다. 이 호출이 닿는 스토어 액션과 storage 쓰기 함수가 origin 옵션을 받아 Y.Doc 쓰기까지 넘긴다. 연결선은 connectCards에서 storage.saveConnection으로 가고, 여러 await 뒤 writeConnectionRecord로 쓴다 (storage.ts:661-675). 함 만들기 createSubcanvas는 void async 안에서 await 뒤 persistCard로 P에 쓴다 (workspace.ts:3766-3775). 두 비동기 경로 모두 origin을 넘긴다. 브리지는 storage와 기록 헬퍼도 직접 부른다. 문서에 쓰는 것은 useStorage.getState().saveConnection :687, removeConnection :702, updateNoteTitle :443, storeAttachment :187 :202 :215 :493, writeNoteRecord·deleteNoteRecord·writeBoardRecord다. updateNoteTitle은 storage.ts:329-340에서 문서에 쓴다. removeConnection은 writeThrough로 활성 문서에 LOCAL_ORIGIN으로 쓴다.
+- 브리지가 부르는 호출 가운데 미러만 쓰는 것: storage.saveNote :398 :440 :448 :557 (storage.ts:309-318), storage.saveBoard :539 (storage.ts:526-531, db.boards.put만 한다).
+- 브리지 확인 기준은 grep 목록이 아니라 T20 여섯째의 경우 표다. 표는 notes.create, notes.update, notes.delete, photos.create, frames.create, notes.createBoard, connections.create, connections.delete를 경우별로 나눈다. notes.createBoard는 지금 보드에서 ws.createSubcanvas로 P에 함 카드를 쓴다 (mossBridge.ts:527-532).
+- 경우를 나누는 근거: notes.update에는 color가 없고 color만 주면 throw한다 (mossBridge.ts:403-458, :415-417). x·y만 준 notes.update는 moveCard doc:false라 문서에 안 써서 표에서 뺀다 (workspace.ts:2642). connections.create는 카드가 어느 보드에 있는지로 길이 갈린다 (:670, :684-695). notes.delete는 카드 종류로 길이 갈리고 판은 deleteFrame으로 간다 (workspace.ts:2951-2975). 매개변수 근거 줄은 :373-376, :420-431, :497-500, :514-519, :679다.
+- 표에서 빼는 명령: boards.create는 새 보드로 전환해 P 기록이 버려진다 (mossBridge.ts:616, workspace.ts:2270). boards.rename·boards.delete는 보드 단위라 기록 범위 밖이다. ai.connectionLabel은 fetch만 하고 문서에 안 쓴다 (:601-606).
+- 호출마다 명령 promise를 await하고 flushAll을 부르고 실제 시간 0.1초 이상 기다린 뒤 판정한다. connectCards는 void storage.saveConnection 뒤 바로 반환하고 문서 쓰기는 여러 await 뒤 나간다 (workspace.ts:3266, storage.ts:661-673).
 - 브리지 구현 참고: 구현 참고용 grep은 `rg -n "\bws\.[A-Za-z]+\(" web/src/state/bridge/mossBridge.ts`와 `rg -n "storage\.[A-Za-z]+\(|useStorage\.getState\(\)\.[A-Za-z]+\(" web/src/state/bridge/mossBridge.ts`다. setFaceHeight는 안에서 resolveMembership을 부른다 (workspace.ts:3144-3147). 기록 안 하는 동작의 동기 경로는 origin 문맥으로 감싸 안쪽 호출도 같은 origin을 쓰게 한다. persistCardDebounced :1434-1444는 문서에 바로 쓰고 Dexie 미러만 늦춘다. ws.moveCard는 doc:false라 문서에 안 쓴다 (workspace.ts:2642).
 - 삭제: remove :3421-3473. 사실 파일의 removeNote는 실제 이름이 remove다. deleteNoteDoc :3462, trashNote :3471, 함 cascadeDeleteFunnels :3468. removeSelected :3475-3547, 판 먼저 :3493-3496, 문서 삭제 :3530-3534.
 - 판: setFrameBackground :2894-2927, 옛 파일 삭제 :2919. clearFrameBackground :2929-2949, :2948. deleteFrame :2951-2980, 파일 바로 삭제 :2966, 멤버 쓰기와 문서 삭제 :2969-2975는 바깥 transactLocal이 없다. 파일 삭제 함수 :320-332는 storage.purgeAttachments를 부른다. dropFrameBackgroundFileAfterSave :328-332는 flushCard 뒤에 지운다. 청소도 같은 식으로 예약 미러 쓰기를 먼저 내보낸다.
-- 휴지통: restoreFromTrash :3561-3585, 카드 덧붙이기 :3575-3576에 같은 id 검사를 넣는다. 문서 쓰기 :3578. web/src/state/storage.ts trashNotes :380은 미러에서 읽는다. 단계 meta의 메모와 연결선 내용으로 휴지통 행과 연결선 휴지통 행을 넣는 길을 따로 둔다. restoreNote :428, 연결선 휴지통 복귀 :458-473은 양 끝이 살아 있는 연결선만 되돌리고 나머지는 trashConnections에 남긴다. 여기서는 db.notes.bulkGet으로 미러를 본다. 이 사용자 살리기 규칙은 그대로 둔다. 되돌리기·다시 실행과 다른 기기 관찰자는 다른 규칙을 쓴다. 반영 뒤 보드 문서 connections에 있는 연결선만 trashConnections에서 빼고 미러 connections에 둔다. moveCardToBoard는 연결선을 안 건드려서 양 끝 카드 기준은 틀린다. 되돌린 연결선의 문서 쓰기는 이미 있다: storage.ts:477-478 restoreNote 끝의 writeConnectionRecord. 이 쓰기는 await 뒤 카드 putNoteDoc보다 먼저 나가는 별도 쓰기다. 따로 묶지 않고 기본 0.5초 묶음에 맡긴다 (U1). restoreNote는 휴지통에 없는 메모면 throw한다 (storage.ts:436). 원래 보드가 지금 보드가 아니면 restoreNote는 원래 보드로 되돌리고 카드 putNoteDoc도 안 한다 (workspace.ts:3575). 원래 보드가 삭제돼 있으면 지금 보드로 살린다 (storage.ts:438-444). 판정은 restoreNote가 정해 돌려주는 note.boardId로 한다. 연결선은 source 메모 보드 문서에 쓴다. source가 지금 보드면 writeThrough로 활성 문서에 LOCAL_ORIGIN으로 쓴다 (writeThrough.ts:94-117). restoreNote 안에서 되돌릴 보드를 정한 뒤 그 보드가 지금 보드가 아니면, 그 뒤 문서 쓰기를 모두 기록 안 하는 origin으로 쓴다 (U8). purgeTrash :482는 파일 규칙을 쓴다. storage.removeNote :336은 휴지통에 넣고 바로 비워 첨부를 지운다. 생성 되돌리기에 쓰지 않는다.
+- 휴지통: restoreFromTrash :3561-3585, 카드 덧붙이기 :3575-3576에 같은 id 검사를 넣는다. 문서 쓰기 :3578. web/src/state/storage.ts trashNotes :380은 미러에서 읽는다. 단계 meta의 메모와 연결선 내용으로 휴지통 행과 연결선 휴지통 행을 넣는 길을 따로 둔다. restoreNote :428, 연결선 휴지통 복귀 :458-473은 양 끝이 살아 있는 연결선만 되돌리고 나머지는 trashConnections에 남긴다. 여기서는 db.notes.bulkGet으로 미러를 본다. 이 사용자 살리기 규칙은 그대로 둔다. 되돌리기·다시 실행과 다른 기기 관찰자는 다른 규칙을 쓴다. 반영 뒤 보드 문서 connections에 있는 연결선만 trashConnections에서 빼고 미러 connections에 둔다. moveCardToBoard는 연결선을 안 건드려서 양 끝 카드 기준은 틀린다. 되돌린 연결선의 문서 쓰기는 이미 있다: storage.ts:477-478 restoreNote 끝의 writeConnectionRecord. 이 쓰기는 await 뒤 카드 putNoteDoc보다 먼저 나가는 별도 쓰기다. 따로 묶지 않고 기본 0.5초 묶음에 맡긴다 (U1). 2단계가 되는 것은 연결선이 2개 이상이고 둘째 연결선의 resolveSourceBoardId Dexie 읽기가 0.5초를 넘을 때뿐이다 (writeThrough.ts:94-108, 재현 리뷰 폴더의 spec-r7-a/repro/slow-before.mjs). restoreNote는 휴지통에 없는 메모면 throw한다 (storage.ts:436). restoreNote는 원래 보드로 되돌리고, 원래 보드가 삭제돼 있으면 fallback 보드로 살린다 (storage.ts:438-444). 카드 putNoteDoc은 restoreNote가 아니라 restoreFromTrash가 하고, 살린 보드가 지금 보드일 때만 한다 (workspace.ts:3573-3579). restoreNote는 지금 보드를 모른다. storage.ts에 currentBoardId·useWorkspace가 0건이다. 그래서 restoreNote가 origin 인자를 받아 writeConnectionRecord까지 넘긴다 (W2). restoreFromTrash :3570은 fallback으로 지금 보드를 넘기고, 지금 보드 id도 함께 넘긴다. restoreNote 안에서 살릴 보드가 지금 보드면 LOCAL_ORIGIN, 아니면 기록 안 하는 origin을 쓴다. 표 보기 호출 web/src/state/memoTable.ts:638은 fallback boardId가 null이고 늘 기록 안 하는 origin을 넘긴다. 연결선은 source 메모 보드 문서에 쓴다. source가 지금 보드면 writeThrough로 활성 문서에 쓴다 (writeThrough.ts:94-117). purgeTrash :482는 파일 규칙을 쓴다. storage.removeNote :336은 휴지통에 넣고 바로 비워 첨부를 지운다. 생성 되돌리기에 쓰지 않는다.
 - 문서 수명: web/src/state/ydoc/activeDoc.ts. INACTIVE_DOC_TTL_MS 2000 :30, getOrOpenBoardDoc :66, activateBoardDoc :95-111, 이전 보드 닫기 :109, closeBoardDocByKey :123-133, deleteBoardDoc :159, destroyBoardDocs :176. web/src/state/ydoc/doc.ts destroy :45-51. D6 B라서 이 수명은 바꾸지 않는다. 보드 전환 때 이전 보드 기록을 비우고, 파일 규칙으로 청소하고, UndoManager를 destroy한 뒤 문서가 닫힌다. UndoManager는 activateBoardDoc 성공과 불러오기 정리·시드 뒤에 새로 만든다.
 - 펜 스택: workspace.ts setPenMode :3327. penUndoStack·penRedoStack과 펜 모드 종료 때 비우기는 사실 파일 기준 :735-748, :3331-3334.
 - 함 토스트 되살리기가 문서에 안 쓰는 버그와 표 보기 휴지통 버그 web/src/state/memoTable.ts:598-624는 범위 밖이다.
@@ -423,4 +435,4 @@ n1-verify ─┬─ n2-editor-history ─┐
 
 ## 문서 리뷰
 
-스펙: 검토자 ① opus·xhigh→sonnet·xhigh ② opus·xhigh→sonnet·xhigh (계열 못 나눔: GPT 한도) · 1) P0 1·P1 14·P2 0  2) P0 0·P1 8·P2 6  3) P0 0·P1 5·P2 6  4) P0 0·P1 4·P2 2  5) P0 0·P1 3·P2 5  6) P0 0·P1 4·P2 4 · 버림 0
+스펙: 검토자 ① opus·xhigh→sonnet·xhigh ② opus·xhigh→sonnet·xhigh (계열 못 나눔: GPT 한도) · 1) P0 1·P1 14·P2 0  2) P0 0·P1 8·P2 6  3) P0 0·P1 5·P2 6  4) P0 0·P1 4·P2 2  5) P0 0·P1 3·P2 5  6) P0 0·P1 4·P2 4  7) P0 0·P1 3·P2 5 · 버림 0
