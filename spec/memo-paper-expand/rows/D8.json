@@ -1,0 +1,30 @@
+{
+  "id": "D8",
+  "kind": "decision",
+  "title": "종이 위 제목 줄을 둘지",
+  "given": "제목은 앞면에 가운데 크게 보이는 유일한 글자다. 창에서만 고친다",
+  "when": "제목 줄을 유지할지 정한다",
+  "then": "빼면 제목을 창에서 고칠 길이 없어진다",
+  "options": [
+    {
+      "key": "A",
+      "label": "종이 맨 위에 그대로 둔다 (MemoExpandTitleSlot, 30px)",
+      "why": "앞면 제목과 이어지고 Enter로 본문 맨 앞으로 간다"
+    },
+    {
+      "key": "B",
+      "label": "제목 줄을 없앤다",
+      "why": "더 깨끗하지만 제목 편집을 잃는다"
+    }
+  ],
+  "recommend": "A",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

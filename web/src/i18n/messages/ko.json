@@ -26,6 +26,7 @@
     },
     "memoEditor": {
       "title": "메모 편집",
+      "fallbackTitle": "메모",
       "close": "닫기",
       "expand": "펼쳐서 편집",
       "pen": "펜으로 그리기",

@@ -1,0 +1,17 @@
+{
+  "id": "T4",
+  "kind": "task",
+  "title": "펜 선이 저장된 좌표 그대로 같은 글자 위에 있다",
+  "given": "card.overlay에 선이 이미 저장된 메모가 있다. 카드 앞면에는 선이 없고 창만 선을 보인다",
+  "when": "새 빌드에서 그 메모를 연다. main 빌드 쪽 측정은 prove-baseline 기록(메모 c-mw9fn30s-1, delta 좌표 x 121.84 y 8.5 w 29.09 h 15.5, polyline 첫 점 (123.8,16.3) 끝 점 (148.9,16.3), 컬럼 offsetWidth 720)으로 끝났다. 새 빌드에서 펜으로 단어 하나 위에 선을 긋고 닫았다 다시 연다",
+  "then": "창 안 본문 컬럼([data-memo-body-column])의 offsetWidth가 720이고 getComputedStyle의 fontSize가 '13px', padding이 '6px 9px'이다. 제목 줄도 moss-md 클래스라 .moss-md로 고르지 않고 구현이 본문 컬럼 div에 붙인 data-memo-body-column으로 고른다. 모든 측정은 열림 애니메이션이 끝난 뒤(animationend 또는 연 지 300ms 뒤)에 한다. 열림 모션이 도는 경우 확대 시작 때 본문 컬럼의 getBoundingClientRect().width가 691.2px라 offsetWidth만 쓴다. 지금은 앱의 모든 모달 모션이 꺼져 있어(T8) 확대가 없다. D11로 켜지면 필요한 기준이다. 이 중 하나라도 다르면 실패다. 기존 선의 polyline과 해당 단어의 상대 위치(컬럼 좌상단 기준 좌표)가 main 빌드와 새 빌드에서 ±1px 안에서 같다. 새 선도 다시 연 뒤 같은 단어 위에 있다. DrawingLayer에 viewBox가 없다. 확인: 브라우저 콘솔에서 위 값 출력 + 두 빌드 비교. 기존 SC-1·SC-5는 에디터 stub 위에서 viewBox·polyline만 보므로 이 기준을 대신하지 못한다",
+  "confidence": "high",
+  "reversible": true,
+  "status": "끝남",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

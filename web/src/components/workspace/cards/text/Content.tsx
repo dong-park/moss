@@ -16,7 +16,7 @@ import { TodoFace } from "./TodoFace";
 import { LinkInputFace } from "./LinkInputFace";
 
 // 종이 사진. 색조 층 mask도 같은 파일이어야 종이 바깥 투명부에 색이 안 칠해진다.
-const MEMO_PAPER = 'url("/cards/v2/text.png") 0 0 / 100% 100% no-repeat';
+export const MEMO_PAPER = 'url("/cards/v2/text.png") 0 0 / 100% 100% no-repeat';
 
 /* ─────────────────────────────────────────────────────────────
  * 글(포스트잇) 카드 — Milkdown 인라인 에디터.

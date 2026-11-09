@@ -4,7 +4,11 @@ import type { ReactNode } from "react";
 import { I18nProvider } from "@/i18n/Provider";
 import { useWorkspace, type Card } from "@/state/workspace";
 import { DraggableCard } from "@/components/workspace/DraggableCard";
-import { MemoExpandDialog } from "@/components/workspace/cards/MemoExpandDialog";
+import {
+  MemoExpandDialog,
+  PAPER_H,
+  paperPadding,
+} from "@/components/workspace/cards/MemoExpandDialog";
 
 /**
  * FEAT-memo-expand — 펼치기 버튼 + 모달 배선.
@@ -248,5 +252,100 @@ describe("FEAT-memo-expand · 펜 overlay 1:1 좌표 (고정 폭 컬럼)", () =>
     useWorkspace.getState().setExpandedCard("c1");
     wrap(<MemoExpandDialog />);
     expect(allPolylines()).toHaveLength(1);
+  });
+});
+
+describe("memo-paper-expand · 종이 창", () => {
+  const openWindow = (over: Partial<Card> = {}) => {
+    seed([textCard(over)]);
+    useWorkspace.getState().setExpandedCard("c1");
+    return wrap(<MemoExpandDialog />);
+  };
+
+  it("T2: 머리 막대 글자와 블록 추가 입구가 창 안에 없다", () => {
+    openWindow();
+    expect(screen.queryAllByText(/메모 편집/)).toHaveLength(0);
+    expect(screen.queryAllByText(/블록 추가/)).toHaveLength(0);
+    expect(screen.queryAllByLabelText(/블록 추가/)).toHaveLength(0);
+  });
+
+  it("T2: 펜·지우개·닫기 버튼이 있고 누르면 동작한다", () => {
+    openWindow();
+    const pen = screen.getByLabelText("펜으로 그리기");
+    const eraser = screen.getByLabelText("지우개");
+    expect(screen.getByLabelText("닫기")).toBeTruthy();
+    fireEvent.click(pen);
+    expect(pen.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(eraser);
+    expect(pen.getAttribute("aria-pressed")).toBe("false");
+    expect(eraser.getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("T7: paper 메모는 색조 층이 있고 todo 메모는 없다", () => {
+    const first = openWindow();
+    expect(document.body.querySelector("[data-memo-tint]")).toBeTruthy();
+    first.unmount();
+    openWindow({ content: "- [ ] 할 일" });
+    expect(document.body.querySelector("[data-memo-tint]")).toBeNull();
+  });
+
+  it("T13: 말린 모서리가 있는 paper 종이만 아래 여백을 종이 높이의 17%로 둔다", () => {
+    const first = openWindow();
+    const paper = document.body.querySelector("[role=dialog]") as HTMLElement;
+    // jsdom은 중첩 min()이 든 calc를 읽지 못해 값을 비운다. 식은 paperPadding 테스트가
+    // 보고, 실제 값(792px 종이에서 134.64px)은 브라우저에서 잰다. 여기서는 흰 종이 값이
+    // 아니라는 것만 본다.
+    expect(paper.style.padding).not.toBe("12px 24px 40px");
+    first.unmount();
+    openWindow({ content: "- [ ] 할 일" });
+    const white = document.body.querySelector("[role=dialog]") as HTMLElement;
+    expect(white.style.padding).toBe("12px 24px 40px");
+  });
+
+  it("T13: paperPadding은 paper 종이만 아래를 종이 높이의 17%로, 흰 종이는 40px로 둔다", () => {
+    expect(paperPadding(true)).toBe(`12px 24px calc(${PAPER_H} * 0.17)`);
+    expect(paperPadding(false)).toBe("12px 24px 40px");
+  });
+
+  it("T7: 열린 동안 content를 todo로 바꿔도 종이 판정은 그대로다", () => {
+    openWindow({ content: "안녕" });
+    fireEvent.change(screen.getByTestId("expanded-editor"), {
+      target: { value: "- [ ] 할 일" },
+    });
+    expect(useWorkspace.getState().cards[0].content).toBe("- [ ] 할 일");
+    expect(document.body.querySelector("[data-memo-tint]")).toBeTruthy();
+    // 여백도 열 때 판정을 따른다 — 흰 종이 값으로 바뀌면 판정이 매번 다시 된 것이다.
+    const paper = document.body.querySelector("[role=dialog]") as HTMLElement;
+    expect(paper.style.padding).not.toBe("12px 24px 40px");
+  });
+
+  describe("T6 · 닫을 때 제목 공백을 확정한다", () => {
+    const expectClosedTrimmed = () => {
+      expect(useWorkspace.getState().expandedCardId).toBeNull();
+      expect(useWorkspace.getState().cards[0].title).toBe("제목");
+    };
+
+    it("✕를 누르면 닫히고 title이 '제목'이다", () => {
+      openWindow({ title: "  제목  " });
+      fireEvent.click(screen.getByLabelText("닫기"));
+      expectClosedTrimmed();
+    });
+
+    it("Esc로 닫아도 같다", () => {
+      openWindow({ title: "  제목  " });
+      fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+      expectClosedTrimmed();
+    });
+
+    it("종이 밖 오버레이를 눌러 닫아도 같다", async () => {
+      openWindow({ title: "  제목  " });
+      // Radix는 바깥 pointerdown 리스너를 setTimeout 0 뒤에 단다.
+      await new Promise((r) => setTimeout(r, 10));
+      const overlay = document.body.querySelector("div.inset-0[data-state=open]") as HTMLElement;
+      fireEvent.pointerDown(overlay);
+      fireEvent.pointerUp(overlay);
+      fireEvent.click(overlay);
+      expectClosedTrimmed();
+    });
   });
 });

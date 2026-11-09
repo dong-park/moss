@@ -73,11 +73,24 @@ export const bubbleMenuItems: BubbleMenuItem[] = [
 export type BubbleState = {
   open: boolean;
   left: number;
+  /** 버블은 늘 이 y 위에 뜬다(BubbleMenuHost가 -translate-y-full, top − 6). */
   top: number;
+  /** 버블 전체가 들어가야 할 가로 범위(스크롤 영역). 없으면 화면만 본다. */
+  minLeft: number;
+  maxLeft: number;
   view: EditorView | null;
 };
 
-const CLOSED: BubbleState = { open: false, left: 0, top: 0, view: null };
+const CLOSED: BubbleState = {
+  open: false,
+  left: 0,
+  top: 0,
+  minLeft: -Infinity,
+  maxLeft: Infinity,
+  view: null,
+};
+// 버블 높이(약 34px) + 간격 6px. 기준 y 위로 버블이 차지하는 높이다.
+const BUBBLE_ROOM = 40;
 let bubbleState: BubbleState = CLOSED;
 const bubbleSubs = new Set<() => void>();
 
@@ -86,6 +99,8 @@ function setBubble(next: BubbleState) {
     next.open === bubbleState.open &&
     next.left === bubbleState.left &&
     next.top === bubbleState.top &&
+    next.minLeft === bubbleState.minLeft &&
+    next.maxLeft === bubbleState.maxLeft &&
     next.view === bubbleState.view
   ) {
     return;
@@ -103,26 +118,87 @@ export function getBubbleState(): BubbleState {
 }
 export const getBubbleServerSnapshot = (): BubbleState => CLOSED;
 
+// bubbleSlot이 마지막으로 본 view. 스크롤로 좌표를 다시 계산할 때 쓴다.
+let lastView: EditorView | null = null;
+// 펼친 창의 스크롤 영역. 선택이 바뀔 때도 스크롤할 때도 이 영역의 보이는 범위로 버블을 놓는다.
+let bubbleScrollEl: HTMLElement | null = null;
+
+/** ExpandedMarkdownEditor가 스크롤 영역을 ref로 등록한다(떼어질 때 null). */
+export function setBubbleScrollEl(el: HTMLElement | null): void {
+  bubbleScrollEl = el;
+}
+
+/** 선택과 보이는 범위로 버블 상태를 정한다. 선택이 바뀔 때(plugin update)와 스크롤할 때
+ * (refreshBubble)가 같은 판정을 쓴다 — 같은 선택·같은 스크롤이면 경로와 상관없이 같은 결과.
+ * - 선택의 어느 부분도 안 보이면 닫는다. 세로는 위·아래로 통째로 나갔을 때, 가로는 한 줄
+ *   선택이 좌우로 통째로 나갔을 때다. 여러 줄 선택은 가운데 줄이 늘 컬럼 왼쪽부터 차므로
+ *   양 끝이 밖이어도 보인다 — 가로로는 닫지 않는다.
+ * - 버블은 늘 위에 뜨고, 제목 입력과 선택 아래 글자를 덮지 않는다. 덮인 자리를 누르면 클릭이
+ *   버블 버튼에 닿아 본문 서식이 바뀌기 때문이다(아래로 뒤집으면 2·3번째 줄의 끌어 늘리기와
+ *   Shift+클릭이, 제목 위로 띄우면 제목 클릭이 막혔다).
+ *   기준 y는 선택 중 보이는 부분의 맨 위(max(선택 시작, 스크롤 영역 위 끝))다. 시작이 위로
+ *   나가 있으면 스크롤 영역 위 끝이라, 버블 버튼이 낸 scrollIntoView로 시작이 밀려 올라가도
+ *   닫히지 않는다. 그 자리의 버블이 제목 입력에 걸리면 제목 위로 올린다. 그래서 종이 위 끝
+ *   근처에서는 버블이 종이 padding과 종이 밖 어두운 막 위에 걸칠 수 있다. 종이 높이 상한
+ *   (100vh − 88px)으로 종이 위가 44px 이상 비어 화면 밖으로는 나가지 않는다.
+ * - 가로 범위로 스크롤 영역 좌우를 넘긴다. BubbleMenuHost가 버블 폭을 재서 그 안(화면 좌우
+ *   8px 안)으로 당긴다.
+ * - 끝 좌표는 side −1로 읽는다. 줄 끝까지 고르면 끝이 줄바꿈 지점에 놓이는데, 기본 side로는
+ *   다음 줄 머리 좌표가 나와 한 줄 선택이 두 줄로 판정되고 가로 중심도 틀어진다. */
+function computeBubble(v: EditorView, scrollEl: HTMLElement | null): BubbleState {
+  const { from, to, empty } = v.state.selection;
+  if (empty || bubbleMenuItems.length === 0 || !v.editable) return CLOSED;
+  const start = v.coordsAtPos(from);
+  const end = v.coordsAtPos(to, -1);
+  const left = (start.left + end.left) / 2;
+  let top = start.top;
+  let minLeft = -Infinity;
+  let maxLeft = Infinity;
+  if (scrollEl) {
+    const r = scrollEl.getBoundingClientRect();
+    if (end.bottom < r.top || start.top > r.bottom) return CLOSED;
+    const oneLine = Math.abs(end.top - start.top) < 1;
+    if (oneLine && (Math.max(start.left, end.left) < r.left || Math.min(start.left, end.left) > r.right)) {
+      return CLOSED;
+    }
+    top = Math.max(start.top, r.top);
+    const title =
+      typeof scrollEl.querySelector === "function"
+        ? scrollEl.querySelector<HTMLElement>("[data-memo-title-input]")
+        : null;
+    if (title) {
+      const t = title.getBoundingClientRect();
+      // 제목이 보이고 버블([top − 40, top − 6])이 제목에 걸리면 보이는 제목 위로 올린다.
+      if (t.bottom > r.top && top - BUBBLE_ROOM < t.bottom) top = Math.max(t.top, r.top);
+    }
+    minLeft = r.left;
+    maxLeft = r.right;
+  }
+  return { open: true, left, top, minLeft, maxLeft, view: v };
+}
+
+/** 스크롤 영역이 스크롤될 때 부른다. 현재 선택으로 좌표를 다시 계산해 버블이 글자를
+ * 따라가게 한다. 판정은 computeBubble 하나다. 스크롤마다 닫지 않는다. */
+export function refreshBubble(
+  scrollEl: HTMLElement,
+  view: EditorView | null = lastView,
+): void {
+  if (!view) return;
+  setBubble(computeBubble(view, scrollEl));
+}
+
 const bubbleSlot = $prose(
   () =>
     new Plugin({
       view: () => ({
         update: (v) => {
-          const { from, to, empty } = v.state.selection;
-          if (empty || bubbleMenuItems.length === 0 || !v.editable) {
-            setBubble(CLOSED);
-            return;
-          }
-          const start = v.coordsAtPos(from);
-          const end = v.coordsAtPos(to);
-          setBubble({
-            open: true,
-            left: (start.left + end.left) / 2,
-            top: start.top,
-            view: v,
-          });
+          lastView = v;
+          setBubble(computeBubble(v, bubbleScrollEl));
         },
-        destroy: () => setBubble(CLOSED),
+        destroy: () => {
+          lastView = null;
+          setBubble(CLOSED);
+        },
       }),
     }),
 );
