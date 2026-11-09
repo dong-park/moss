@@ -3,8 +3,8 @@
   "kind": "task",
   "title": "자동 측정, 수정 시각만 바뀐 쓰기, 파일 매핑, 보드 이름, 보드 사이 옮기기, MCP 브리지, 멤버십 동기화는 기록에 안 들어간다",
   "given": "기록이 빈 보드 P를 지금 보고 있고 다른 보드 Q가 있다. 첫째 경우는 P에 판 F가 있고, F 바로 위에 판 밖 메모 X가 있다. 둘째 경우는 P가 시스템 보드다. 셋째 경우는 P에서 메모 Y를 편집 중이다. 다섯째 경우는 P에 연결선 하나가 있다. 가짜 타이머를 쓴다",
-  "when": "첫째, P에서 setFaceHeight 3번, setTextMeasuredWidth 3번, 바뀐 칸 없는 카드 쓰기 1번, files 맵 매핑 쓰기 1번, 보드 이름 바꾸기 1번, 카드 1개를 Q로 옮기기 1번을 한다. setFaceHeight 가운데 1번은 X를 길게 해 X의 중심이 F 안으로 들어가게 한다. 그 뒤 cmd+z를 1번 누른다. 둘째, MCP 브리지가 P에 메모 1개를 쓰고 1개를 지우고, 멤버십 동기화가 P에 메모 1개를 쓰고 1개를 지운 뒤 cmd+z를 1번 누른다. 셋째, Y 본문이 두 번 쓰이는 사이에 MCP 브리지가 P의 다른 메모 Z의 글을 고치고, 편집을 마친 뒤 cmd+z를 1번 누른다. 넷째, MCP 브리지가 P에 메모를 만들고, 글을 쓰고, 크기와 자리를 바꾸고, 다른 메모 하나를 지운 뒤 cmd+z를 1번 누른다. 다섯째, MCP 브리지가 P에 사진 카드와 판을 만들고, 두 메모를 연결선으로 잇고, 기존 연결선 하나를 지운다. 1초를 보낸 뒤 cmd+z를 1번 누른다. 여섯째, 브리지 쓰기 명령 12종 notes.create, notes.update, notes.delete, photos.create, frames.create, notes.createBoard, connections.create, connections.delete, ai.connectionLabel, boards.create, boards.rename, boards.delete를 P에서 하나씩 실행한다. boards.delete는 P가 아닌 보드를 지운다. 명령마다 실행 전후 P의 undoStack 길이를 잰다",
-  "then": "첫째, 둘째, 넷째, 다섯째는 P의 기록 단계 수가 0이고 cmd+z 뒤 화면에 바뀌는 것이 없다. 첫째에서 옮긴 카드는 Q에만 있고, X는 F에 속한 채로 남는다. 다섯째의 새 연결선은 await 뒤에 문서에 쓰여도 단계를 만들지 않는다. 브리지가 지운 연결선은 cmd+z로 되살아나지 않는다. 셋째는 기록 단계 수가 1이고 cmd+z 1번에 Y가 편집 전 글로 돌아간다. Z는 브리지가 고친 그대로다. 여섯째는 12종 모두 실행 전후 P의 undoStack 길이가 같다. 둘째와 셋째는 기록 안 하는 origin 고침을 빼면 실패하는지도 확인한다. 확인: vitest와 가짜 타이머로 undoStack 길이와 readNote를 본다. 여섯째는 명령 이름과 전후 길이를 표로 남긴다",
+  "when": "첫째, P에서 setFaceHeight 3번, setTextMeasuredWidth 3번, 바뀐 칸 없는 카드 쓰기 1번, files 맵 매핑 쓰기 1번, 보드 이름 바꾸기 1번, 카드 1개를 Q로 옮기기 1번을 한다. setFaceHeight 가운데 1번은 X를 길게 해 X의 중심이 F 안으로 들어가게 한다. 그 뒤 cmd+z를 1번 누른다. 둘째, MCP 브리지가 P에 메모 1개를 쓰고 1개를 지우고, 멤버십 동기화가 P에 메모 1개를 쓰고 1개를 지운 뒤 cmd+z를 1번 누른다. 셋째, Y 본문이 두 번 쓰이는 사이에 MCP 브리지가 P의 다른 메모 Z의 글을 고치고, 편집을 마친 뒤 cmd+z를 1번 누른다. 넷째, MCP 브리지가 P에 메모를 만들고, 글을 쓰고, 크기와 자리를 바꾸고, 다른 메모 하나를 지운 뒤 cmd+z를 1번 누른다. 다섯째, MCP 브리지가 P에 사진 카드와 판을 만들고, 두 메모를 연결선으로 잇고, 기존 연결선 하나를 지운다. 1초를 보낸 뒤 cmd+z를 1번 누른다. 여섯째, P의 notes와 connections에 쓰는 브리지 명령 8종 notes.create, notes.update, notes.delete, photos.create, frames.create, notes.createBoard, connections.create, connections.delete를 P에서 실행한다. 명령마다 선택 매개변수를 모두 채운 호출 한 번과, 매개변수를 하나씩만 준 호출들을 실행한다. notes.update는 content, title, width와 height, x와 y, color를 각각 준다. connections.create는 label이 있는 호출도 한다. 호출마다 명령의 promise를 기다리고 flushAll을 부르고 실제 시간 0.1초 이상 기다린 뒤 P의 undoStack 길이를 잰다. boards.create는 새 보드로 전환해 P 기록이 버려지고, boards.rename과 boards.delete는 기록 범위 밖이고, ai.connectionLabel은 문서에 쓰지 않아서 뺀다",
+  "then": "첫째, 둘째, 넷째, 다섯째는 P의 기록 단계 수가 0이고 cmd+z 뒤 화면에 바뀌는 것이 없다. 첫째에서 옮긴 카드는 Q에만 있고, X는 F에 속한 채로 남는다. 다섯째의 새 연결선은 await 뒤에 문서에 쓰여도 단계를 만들지 않는다. 브리지가 지운 연결선은 cmd+z로 되살아나지 않는다. 셋째는 기록 단계 수가 1이고 cmd+z 1번에 Y가 편집 전 글로 돌아간다. Z는 브리지가 고친 그대로다. 여섯째는 모든 호출에서 실행 전후 P의 undoStack 길이가 같다. 둘째와 셋째는 기록 안 하는 origin 고침을 빼면 실패하는지도 확인한다. 확인: vitest와 가짜 타이머로 undoStack 길이와 readNote를 본다. 여섯째는 실제 시간을 쓰고 명령, 매개변수, 전후 길이를 표로 남긴다",
   "confidence": "high",
   "reversible": true,
   "status": "아직 안 함",
@@ -18,6 +18,7 @@
     "2026-11-10 리뷰 2바퀴 G1 반영: 브리지의 현재 보드 분기와 늦은 쓰기 경우 추가",
     "2026-11-10 리뷰 3바퀴 J1·J2·J4·K6 반영: 늦은 쓰기 문장 삭제, 활성 보드로 못 박음, 사진·판·연결선, 편집 단계 안 쪼갬",
     "2026-11-10 리뷰 4바퀴 N1·R11 반영: 브리지 연결선 지우기, 자동 높이로 바뀐 소속",
-    "2026-11-10 리뷰 5바퀴 O6 반영: 브리지 명령 12종 동작 테스트"
+    "2026-11-10 리뷰 5바퀴 O6 반영: 브리지 명령 12종 동작 테스트",
+    "2026-11-10 리뷰 6바퀴 U2·U3·U7 반영: 비동기 쓰기 대기, 대상 명령 8종, 매개변수 조합"
   ]
 }
