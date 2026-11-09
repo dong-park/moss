@@ -22,10 +22,10 @@ spec.md 「상태 모델」의 합법 전이만 일어난다. 되돌리기·다�
 
 ## 작업
 
-1. undo.ts 단계 meta에 휴지통 동작(넣음, 뺌, 새로 만듦)과 그때의 메모 내용, 그 메모에 닿은 연결선 내용을 적는다. 되돌리기는 반대로, 다시 실행은 그대로 휴지통을 맞춘다. 휴지통 넣기는 미러 대신 meta 내용으로 휴지통 행과 연결선 휴지통 행(trashConnections)을 함께 만든다. 휴지통 빼기는 기존 restoreNote 규칙(storage.ts:458-472)을 따른다: 양 끝 카드가 모두 보드에 있는 연결선만 trashConnections에서 빼고, 반대편이 휴지통이면 남긴다.
+1. undo.ts 단계 meta에 휴지통 동작(넣음, 뺌, 새로 만듦)과 그때의 메모 내용, 그 메모에 닿은 연결선 내용을 적는다. 되돌리기는 반대로, 다시 실행은 그대로 휴지통을 맞춘다. 휴지통 넣기는 미러 대신 meta 내용으로 휴지통 행과 연결선 휴지통 행(trashConnections)을 함께 만든다. 휴지통 빼기는 기존 restoreNote 규칙(storage.ts:458-472)의 뜻을 따른다: 양 끝 카드가 모두 보드에 있는 연결선만 trashConnections에서 빼고, 반대편이 휴지통이면 남긴다. 단 "보드에 있다"는 Dexie 미러가 아니라 보드 문서(readNote)로 판정한다. 미러는 0.3초 늦어서, 한 단계로 함께 돌아온 A와 B가 서로를 못 본다. 사용자의 휴지통 살리기(restoreNote)는 그대로 둔다.
 2. 건너뛴 단계: n3이 만든 "빠진 단계 모두 넘기는 훅"으로 되돌리기와 다시 실행 둘 다에서 찾는다. 건너뛴 단계는 휴지통 동작을 적용하지 않는다. 그 단계가 쥔 파일은 놓는다. 파일 청소는 n6이 붙인다.
-3. workspace.ts 관찰자 reflect :1575-1620: 되돌리기·다시 실행에서는 휴지통을 만지지 않는다. 메모 삭제를 반영할 때 그 카드의 예약 미러 쓰기를 취소한다. 원격에서 다시 나타난 메모의 휴지통 행을 빼고, 연결선 휴지통 행은 작업 1의 같은 규칙으로 뺀다. 되돌린 뒤 reflectConnections :1666-1697을 다시 돌려, 양 끝 카드가 늦게 반영된 연결선도 그린다.
-4. restoreFromTrash :3561-3585: 같은 id 카드가 이미 있으면 덧붙이지 않는다. 휴지통 살리기가 connections로 되돌린 연결선은 보드 문서에도 쓴다. 작업 5로 카드 삭제가 연결선을 문서에서 지우므로, 살릴 때 다시 써야 새로고침 뒤에도 연결선이 남는다. T12 넷째 경우가 이 동작을 본다.
+3. workspace.ts 관찰자 reflect :1575-1620: 되돌리기·다시 실행에서는 휴지통을 만지지 않는다. 메모 삭제를 반영할 때 예약 미러 쓰기 처리는 둘로 나눈다. 이 탭의 되돌리기·다시 실행이 지운 메모는 예약 쓰기를 취소한다. 휴지통은 단계 meta가 맞춘다. 원격에서 지운 메모는 예약 쓰기를 먼저 내보내고(flushCard) 휴지통에 넣는다. 취소하면 0.3초 안에 쓴 글이 휴지통에 안 남는다(T21 넷째). 원격에서 다시 나타난 메모의 휴지통 행을 빼고, 연결선 휴지통 행은 작업 1의 같은 규칙으로 뺀다. 되돌린 뒤 reflectConnections :1666-1697을 다시 돌려, 양 끝 카드가 늦게 반영된 연결선도 그린다.
+4. restoreFromTrash :3561-3585: 같은 id 카드가 이미 있으면 덧붙이지 않는다. 휴지통 살리기가 되돌린 연결선을 보드 문서에 쓰는 일은 이미 있다(storage.ts:477-478 restoreNote 끝의 writeConnectionRecord). 남은 일은 묶기다: 이 쓰기는 await 뒤 카드 putNoteDoc과 따로 나가므로, n3의 비동기 동작 단계 API로 휴지통 살리기 전체를 promise가 풀릴 때까지 1단계로 묶는다. T12 넷째와 T15 셋째가 이 동작을 본다.
 5. remove·removeSelected: 닿은 연결선도 같은 트랜잭션으로 문서에서 지운다. 근거 줄은 n1 1번.
 6. 생성 되돌리기는 미러 행만 지운다. storage.removeNote :336은 쓰지 않는다. 휴지통에서 살린 메모를 되돌리면 휴지통으로 돌려보낸다. 닿은 연결선도 연결선 휴지통 행으로 돌려보낸다. 이 경우는 T15 첫째 경우와 같은 시나리오로 이 노드 테스트에 넣는다. T15 행 전체 판정은 n6이 한다.
 7. 되돌린 뒤 바뀐 카드의 문서 쓰기 기준값(sharedSnapshot)을 문서 값으로 맞춘다. updatedAt을 지금 시각으로 기록 안 하는 origin으로 쓴다. 근거 줄은 n1 4번.
@@ -33,7 +33,8 @@ spec.md 「상태 모델」의 합법 전이만 일어난다. 되돌리기·다�
 
 ## 완료 기준
 
-- [ ] T12, T13, T14, T21, T24, T25 then 칸의 「확인」과 T15 첫째 경우가 통과한다. 확인: `cd web && bunx vitest run src/state/__tests__/undo.trash.test.ts`
+- [ ] T12, T13, T14, T21, T24, T25 then 칸의 「확인」이 통과한다. 확인: `cd web && bunx vitest run src/state/__tests__/undo.trash.test.ts`
+- [ ] 같은 명령에서 T15 첫째와 셋째 경우가 통과한다. 첫째: 휴지통에서 살린 A를 되돌리면 A가 보드에 없고 휴지통에 A 행 1개. 셋째: 연결선으로 B와 이어진 C를 살린 뒤 되돌리면 C가 보드에 없고 휴지통에 C 행 1개와 연결선 휴지통 행 1개, B는 보드에 남는다. T15 둘째와 행 전체 판정은 n6이 한다
 - [ ] T24는 기준값 보정 줄을 빼면 실패한다. 구현 메모에 뺐을 때 실패 출력 한 줄을 남긴다
 - [ ] 기존 회귀: `cd web && bunx vitest run src/state/__tests__/trash.test.ts src/state/__tests__/connectors.test.ts src/state/__tests__/storeOnYjs.test.ts src/state/__tests__/undo.core.test.ts src/state/__tests__/undo.steps.test.ts src/state/__tests__/memoSearch.test.ts src/state/__tests__/memoTable.test.ts` 통과
 - [ ] `cd web && npx tsc --noEmit` 통과

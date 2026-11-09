@@ -23,8 +23,8 @@
 
 1. undo.ts 단계 meta에 그 단계가 되살릴 수 있는 사진 파일 ref를 적는다. 위 파일 규칙 넷을 검사하는 함수 하나를 둔다. 닫힌 보드 문서는 열지 않고 미러로 본다.
 2. workspace.ts deleteFrame :2951-2980, setFrameBackground :2894-2927, clearFrameBackground :2929-2949: 옛 파일을 바로 지우지 않는다. 멤버 쓰기와 문서 삭제를 한 트랜잭션으로 묶는다.
-3. 청소는 깊이 상한으로 빠짐, 다시 실행 버림, 건너뛴 단계, 보드를 떠날 때, 보드 삭제, 로그아웃에서 돈다. 보드를 떠날 때는 기록을 비운 뒤 청소하고 그다음 UndoManager를 destroy한다. 청소는 파일 규칙을 검사하기 전에 예약 미러 쓰기를 먼저 내보낸다(flushAll 또는 대상 카드 flushCard). 기존 dropFrameBackgroundFileAfterSave(workspace.ts:326-332)가 같은 이유로 flushCard를 쓴다. storage.ts purgeTrash :482도 파일 규칙을 쓴다.
-3a. T15: 휴지통에서 살린 메모를 되돌리면 휴지통으로 돌아간다(n5가 만듦). 그 뒤 휴지통을 비우고 다시 실행하면 메모와 사진이 돌아온다. 두 경우를 이 노드 테스트로 판정한다.
+3. 청소는 깊이 상한으로 빠짐, 다시 실행 버림, 건너뛴 단계, 보드를 떠날 때, 보드 삭제, 로그아웃에서 돈다. 보드를 떠날 때는 기록을 비운 뒤 청소하고 그다음 UndoManager를 destroy한다. 청소는 파일 규칙을 검사하기 전에 예약 미러 쓰기를 먼저 내보낸다(flushAll 또는 대상 카드 flushCard). 기존 dropFrameBackgroundFileAfterSave(workspace.ts:328-332)가 같은 이유로 flushCard를 쓴다. storage.ts purgeTrash :482도 파일 규칙을 쓴다.
+3a. T15 행 전체를 이 노드 테스트로 판정한다. 첫째·셋째는 n5가 만든 동작이다. 둘째는 휴지통에서 살린 사진 메모를 되돌린 뒤 휴지통을 비우고 다시 실행하면 메모와 사진이 돌아오는 경우다. 이 노드의 purgeTrash 파일 규칙이 있어야 통과한다.
 4. 함 카드 삭제가 단계가 아님을 확인한다. 함 삭제 직후 cmd+z는 그 전 동작을 되돌린다.
 5. 행마다 vitest. 새 파일 `web/src/state/__tests__/undo.files.test.ts`. 기존 frameBackground.test.ts 방식으로 파일 삭제 호출을 센다.
 6. 마지막에 web 검사 5개를 돌린다. 실패하면 이 브랜치가 만든 원인만 고친다. 플래키 테스트는 같은 명령으로 2번 더 돌려 결과를 구현 메모에 남긴다.
