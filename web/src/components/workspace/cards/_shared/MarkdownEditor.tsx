@@ -35,7 +35,7 @@ import { Milkdown, MilkdownProvider, useEditor } from "@milkdown/react";
 import { TextSelection } from "@milkdown/prose/state";
 
 import { MEMO_CONTENT_WIDTH } from "./memoLayout";
-import { editorPlugins, refreshBubble } from "./editor/extensions";
+import { editorPlugins, refreshBubble, setBubbleScrollEl } from "./editor/extensions";
 import { markdownPlaceholder } from "./markdownPlaceholder";
 import { BubbleMenuHost } from "./editor/BubbleMenuHost";
 import { EditorRegion } from "./editor/EditorRegion";
@@ -167,14 +167,14 @@ export default function MarkdownEditor(props: MarkdownEditorProps) {
  * 버블(BubbleMenuHost)로만 서식을 바꾼다. 스크롤하면 refreshBubble이 버블을 글자에 맞춘다.
  * 펜 슬롯 등이 같은 MilkdownProvider 아래 있어야 같은 인스턴스를 공유한다.
  *
- * 고정 폭 1:1 (펜 정렬): 본문을 카드와 동일한 고정 폭([[MEMO_CONTENT_WIDTH]]) 컬럼으로
- * 잡는다. 카드와 모달이 같은 폭·폰트(13px)·padding(6/9)으로 1:1 배치되므로 줄바꿈이
- * 동일하고, 컬럼 안에 얹은 펜 overlay가 같은 글자 위에 정렬된다. 카드는 작아서 일부만
- * 보이고(크롭), 모달은 전체를 다 보여준다("펼치면 항상 최대"). 모달이 컬럼보다 좁으면
- * 본문이 가로 스크롤된다. 스크롤 영역은 컬럼 720px + 스크롤바 여유 24px = 744px이다. (과거 CSS scale + viewBox 방식은 reflow로 펜이 어긋나 제거.)
+ * 고정 폭 (펜 좌표): 본문을 고정 폭([[MEMO_CONTENT_WIDTH]]) 컬럼, 13px, padding 6/9로
+ * 잡는다. 저장된 펜 선(card.overlay)이 이 컬럼 좌표라서, 폭·글꼴이 바뀌면 줄바꿈이 달라져
+ * 기존 선이 다른 글자 위로 간다. 카드 앞면은 제목만 보이고 본문·펜은 이 창에서만 보인다.
+ * 창이 컬럼보다 좁으면 본문이 가로 스크롤된다. 스크롤 영역은 컬럼 720px + 스크롤바 여유
+ * 24px = 744px이다. (과거 CSS scale + viewBox 방식은 reflow로 펜이 어긋나 제거.)
  *
  * overlay: 펜 그리기 레이어. 고정 폭 컬럼(relative) 안에 있어 absolute inset-0이
- * 컬럼을 1:1로 덮는다 — 카드와 같은 좌표공간.
+ * 컬럼을 1:1로 덮는다 — 저장된 선과 같은 좌표공간.
  * ───────────────────────────────────────────────────────────── */
 export function ExpandedMarkdownEditor({
   value,
@@ -190,6 +190,11 @@ export function ExpandedMarkdownEditor({
 }) {
   const isClient = useIsClient();
   const scrollRef = useRef<HTMLDivElement>(null);
+  // 버블이 선택이 바뀔 때도 이 스크롤 영역의 보이는 범위로 위치를 정하게 등록한다.
+  useEffect(() => {
+    setBubbleScrollEl(scrollRef.current);
+    return () => setBubbleScrollEl(null);
+  }, [isClient]);
 
   if (!isClient) {
     // SSR/jsdom 폴백 — 원문 마크다운만 표시(ProseMirror 미생성).
@@ -221,7 +226,7 @@ export function ExpandedMarkdownEditor({
         }}
       >
         {titleSlot}
-        {/* 카드 컬럼과 동일: 고정 폭 + padding 6/9 + text-[13px]. 펜 정렬의 핵심. */}
+        {/* 고정 폭 + padding 6/9 + text-[13px]. 저장된 펜 선 좌표가 여기에 걸려 있다. */}
         <div
           data-memo-body-column
           className="moss-md relative text-[13px]"

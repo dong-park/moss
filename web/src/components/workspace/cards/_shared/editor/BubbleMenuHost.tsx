@@ -11,7 +11,7 @@
  * 메모 기울기까지 붙으면 카드 overflow:hidden에 잘리기까지 한다.
  * ───────────────────────────────────────────────────────────── */
 
-import { useSyncExternalStore } from "react";
+import { useLayoutEffect, useRef, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import {
   bubbleMenuItems,
@@ -27,17 +27,32 @@ export function BubbleMenuHost() {
     getBubbleServerSnapshot,
   );
 
+  // 버블 폭을 재서 화면 좌우 8px 안으로 당긴다 — 좁은 화면에서 선택이 가장자리에 있어도
+  // B·I 같은 앞쪽 버튼이 화면 밖으로 나가지 않게. React가 left를 다시 쓸 때마다 다시 당긴다.
+  const ref = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const half = el.offsetWidth / 2;
+    const min = 8 + half;
+    const max = Math.max(min, window.innerWidth - 8 - half);
+    el.style.left = `${Math.min(Math.max(state.left, min), max)}px`;
+  });
+
   if (!state.open || !state.view || bubbleMenuItems.length === 0) return null;
   const view = state.view;
+  const below = state.placement === "below";
 
   return createPortal(
     <div
+      ref={ref}
       role="toolbar"
       data-bubble-toolbar
+      data-placement={state.placement}
       aria-label="서식"
-      className="fixed z-50 flex -translate-x-1/2 -translate-y-full items-center gap-0.5 rounded-md border border-border bg-surface px-1 py-0.5 shadow-lg"
+      className={`fixed z-50 flex -translate-x-1/2 ${below ? "" : "-translate-y-full"} items-center gap-0.5 rounded-md border border-border bg-surface px-1 py-0.5 shadow-lg`}
       // Radix 모달이 body에 건 pointer-events:none을 상속하면 클릭이 오버레이로 뚫려 창이 닫힌다.
-      style={{ left: state.left, top: state.top - 6, pointerEvents: "auto" }}
+      style={{ left: state.left, top: below ? state.top + 6 : state.top - 6, pointerEvents: "auto" }}
     >
       {bubbleMenuItems.map((item) => (
         <button

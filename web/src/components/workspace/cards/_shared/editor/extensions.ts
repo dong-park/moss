@@ -74,10 +74,13 @@ export type BubbleState = {
   open: boolean;
   left: number;
   top: number;
+  /** above: 선택 시작 줄 위에 띄운다. below: 선택 시작이 보이는 범위 위로 나가 있어
+   * 스크롤 영역 위 끝 안쪽(top 아래)에 붙인다 — 종이 밖이나 화면 밖에 뜨지 않게. */
+  placement: "above" | "below";
   view: EditorView | null;
 };
 
-const CLOSED: BubbleState = { open: false, left: 0, top: 0, view: null };
+const CLOSED: BubbleState = { open: false, left: 0, top: 0, placement: "above", view: null };
 let bubbleState: BubbleState = CLOSED;
 const bubbleSubs = new Set<() => void>();
 
@@ -86,6 +89,7 @@ function setBubble(next: BubbleState) {
     next.open === bubbleState.open &&
     next.left === bubbleState.left &&
     next.top === bubbleState.top &&
+    next.placement === bubbleState.placement &&
     next.view === bubbleState.view
   ) {
     return;
@@ -105,43 +109,51 @@ export const getBubbleServerSnapshot = (): BubbleState => CLOSED;
 
 // bubbleSlot이 마지막으로 본 view. 스크롤로 좌표를 다시 계산할 때 쓴다.
 let lastView: EditorView | null = null;
+// 펼친 창의 스크롤 영역. 선택이 바뀔 때도 스크롤할 때도 이 영역의 보이는 범위로 버블을 놓는다.
+let bubbleScrollEl: HTMLElement | null = null;
 
-function openBubbleAt(v: EditorView): void {
+/** ExpandedMarkdownEditor가 스크롤 영역을 ref로 등록한다(떼어질 때 null). */
+export function setBubbleScrollEl(el: HTMLElement | null): void {
+  bubbleScrollEl = el;
+}
+
+/** 선택과 보이는 범위로 버블 상태를 정한다. 선택이 바뀔 때(plugin update)와 스크롤할 때
+ * (refreshBubble)가 같은 판정을 쓴다 — 같은 선택·같은 스크롤이면 경로와 상관없이 같은 결과.
+ * - 선택이 통째로 보이는 범위 밖(위·아래·좌·우)이면 닫는다.
+ * - 시작이 위로 나가 있으면 보이는 부분의 맨 위, 스크롤 영역 안쪽에 붙인다(placement below).
+ *   버블 버튼이 낸 scrollIntoView로 시작이 밀려 올라가도 닫히지 않아 연속 서식이 이어진다.
+ * - 가로 위치는 스크롤 영역 안으로 당긴다. 화면 밖으로 나가는 것은 BubbleMenuHost가 막는다. */
+function computeBubble(v: EditorView, scrollEl: HTMLElement | null): BubbleState {
   const { from, to, empty } = v.state.selection;
-  if (empty || bubbleMenuItems.length === 0 || !v.editable) {
-    setBubble(CLOSED);
-    return;
-  }
+  if (empty || bubbleMenuItems.length === 0 || !v.editable) return CLOSED;
   const start = v.coordsAtPos(from);
   const end = v.coordsAtPos(to);
-  setBubble({
-    open: true,
-    left: (start.left + end.left) / 2,
-    top: start.top,
-    view: v,
-  });
+  let left = (start.left + end.left) / 2;
+  let top = start.top;
+  let placement: BubbleState["placement"] = "above";
+  if (scrollEl) {
+    const r = scrollEl.getBoundingClientRect();
+    if (end.bottom < r.top || start.top > r.bottom) return CLOSED;
+    if (Math.max(start.left, end.left) < r.left || Math.min(start.left, end.left) > r.right) {
+      return CLOSED;
+    }
+    if (start.top < r.top) {
+      top = r.top;
+      placement = "below";
+    }
+    left = Math.min(Math.max(left, r.left), r.right);
+  }
+  return { open: true, left, top, placement, view: v };
 }
 
 /** 스크롤 영역이 스크롤될 때 부른다. 현재 선택으로 좌표를 다시 계산해 버블이 글자를
- * 따라가게 하고, 선택 시작 줄이 scrollEl의 보이는 세로 범위 밖이면 닫는다. 범위 안으로
- * 돌아오면 다시 연다. 버블은 선택 시작에 붙으므로 끝이 범위 밖이어도 시작이 보이면 연다. 스크롤마다 닫지 않는다 — 버블 버튼이 낸 scrollIntoView에 닫히면 연속 서식이 끊긴다. */
+ * 따라가게 한다. 판정은 computeBubble 하나다. 스크롤마다 닫지 않는다. */
 export function refreshBubble(
   scrollEl: HTMLElement,
   view: EditorView | null = lastView,
 ): void {
   if (!view) return;
-  const { from, empty } = view.state.selection;
-  if (empty || bubbleMenuItems.length === 0 || !view.editable) {
-    setBubble(CLOSED);
-    return;
-  }
-  const start = view.coordsAtPos(from);
-  const rect = scrollEl.getBoundingClientRect();
-  if (start.top < rect.top || start.top > rect.bottom) {
-    setBubble(CLOSED);
-    return;
-  }
-  openBubbleAt(view);
+  setBubble(computeBubble(view, scrollEl));
 }
 
 const bubbleSlot = $prose(
@@ -150,7 +162,7 @@ const bubbleSlot = $prose(
       view: () => ({
         update: (v) => {
           lastView = v;
-          openBubbleAt(v);
+          setBubble(computeBubble(v, bubbleScrollEl));
         },
         destroy: () => {
           lastView = null;
