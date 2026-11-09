@@ -31,6 +31,7 @@
 
 ## 완료 기준
 
+- [ ] T15 넷째·다섯째는 준비에서 그 연결선을 V 문서에서 빼고 trashConnections에만 둔다(스펙 AA1). 넷째는 restoreNote 안의 지금 보드 비교를 빼면, 다섯째는 memoTable.ts:638 호출의 origin을 빼면 실패한다. 실패 출력 한 줄씩을 구현 메모에 남긴다
 - [ ] T15, T16, T17, T18, T19 then 칸의 「확인」이 통과한다. 확인: `cd web && bunx vitest run src/state/__tests__/undo.files.test.ts`
 - [ ] 기존 회귀: `cd web && bunx vitest run src/state/__tests__/frameBackground.test.ts src/state/__tests__/frames.test.ts src/state/__tests__/subcanvas.test.ts src/state/__tests__/trash.test.ts src/state/__tests__/undo.trash.test.ts` 통과
 - [ ] T26: `cd web && npx tsc --noEmit && bun run lint && bun run test && bun run check:i18n && bun run build` 통과
