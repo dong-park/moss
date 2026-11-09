@@ -19,6 +19,18 @@ function scrollEl(top: number, bottom: number, left = 0, right = 1000): HTMLElem
   } as unknown as HTMLElement;
 }
 
+// 제목 입력(data-memo-title-input)이 스크롤 영역 안 맨 위에 있는 펼친 창.
+function areaWithTitle(
+  area: { top: number; bottom: number },
+  title: { top: number; bottom: number },
+): HTMLElement {
+  const titleEl = { getBoundingClientRect: () => title };
+  return {
+    getBoundingClientRect: () => ({ ...area, left: 0, right: 1000 }),
+    querySelector: (sel: string) => (sel === "[data-memo-title-input]" ? titleEl : null),
+  } as unknown as HTMLElement;
+}
+
 const line = (top: number, left = 40): Coords => ({ left, top, bottom: top + 16 });
 
 describe("refreshBubble", () => {
@@ -30,7 +42,6 @@ describe("refreshBubble", () => {
     expect(s.open).toBe(true);
     expect(s.left).toBe(40);
     expect(s.top).toBe(100);
-    expect(s.placement).toBe("above");
   });
 
   it("선택이 통째로 위로 나가면 닫는다", () => {
@@ -54,22 +65,49 @@ describe("refreshBubble", () => {
     refreshBubble(scrollEl(0, 500), fakeView(false, line(480), line(900)));
     expect(getBubbleState().open).toBe(true);
     expect(getBubbleState().top).toBe(480);
-    expect(getBubbleState().placement).toBe("above");
   });
 
-  it("시작이 위로 나가고 끝이 보이면 스크롤 영역 위 끝 안쪽에 붙인다", () => {
+  it("시작이 위로 나가면 보이는 부분 맨 위(스크롤 영역 위 끝) 위에 띄운다", () => {
     // 스크롤한 채 전체 선택(Cmd+A)하거나, B가 낸 scrollIntoView로 시작이 밀려 올라간 경우.
+    // 아래로 뒤집지 않는다 — 뒤집으면 보이는 첫 줄들을 덮어 클릭을 가로챈다.
     refreshBubble(scrollEl(97, 837), fakeView(false, line(-400), line(300)));
     const s = getBubbleState();
     expect(s.open).toBe(true);
     expect(s.top).toBe(97);
-    expect(s.placement).toBe("below");
   });
 
   it("시작이 위로, 끝이 아래로 넘쳐 선택이 보이는 범위를 덮어도 연다", () => {
     refreshBubble(scrollEl(97, 837), fakeView(false, line(-400), line(2000)));
     expect(getBubbleState().open).toBe(true);
-    expect(getBubbleState().placement).toBe("below");
+    expect(getBubbleState().top).toBe(97);
+  });
+
+  it("위 끝 바로 아래 선택도 아래로 뒤집지 않고 시작 위에 띄운다", () => {
+    refreshBubble(scrollEl(97, 837), fakeView(false, line(99)));
+    expect(getBubbleState().open).toBe(true);
+    expect(getBubbleState().top).toBe(99);
+  });
+
+  it("메모 첫 줄을 고르면 버블이 제목 입력을 덮지 않게 제목 위로 올린다", () => {
+    // 스크롤 0: 제목 입력 97~127, 본문 첫 줄 133. 시작 위(93~127)에 띄우면 제목을 덮는다.
+    const area = areaWithTitle({ top: 97, bottom: 837 }, { top: 97, bottom: 127 });
+    refreshBubble(area, fakeView(false, line(133)));
+    expect(getBubbleState().top).toBe(97);
+    // 제목에서 충분히 떨어진 줄은 그대로 시작 위다.
+    refreshBubble(area, fakeView(false, line(300)));
+    expect(getBubbleState().top).toBe(300);
+  });
+
+  it("제목이 반쯤 스크롤돼 걸려 있으면 보이는 부분 위(스크롤 영역 위 끝)로 올린다", () => {
+    const area = areaWithTitle({ top: 97, bottom: 837 }, { top: 80, bottom: 110 });
+    refreshBubble(area, fakeView(false, line(115)));
+    expect(getBubbleState().top).toBe(97);
+  });
+
+  it("제목이 위로 다 나가 안 보이면 제목을 피하지 않는다", () => {
+    const area = areaWithTitle({ top: 97, bottom: 837 }, { top: 40, bottom: 70 });
+    refreshBubble(area, fakeView(false, line(120)));
+    expect(getBubbleState().top).toBe(120);
   });
 
   it("가로 스크롤로 선택이 통째로 왼쪽 밖이면 닫는다", () => {
@@ -89,29 +127,6 @@ describe("refreshBubble", () => {
   it("여러 줄 선택은 양 끝이 왼쪽 밖이어도 가운데 줄이 보이므로 닫지 않는다", () => {
     refreshBubble(scrollEl(0, 500, 42, 558), fakeView(false, line(100, -132), line(148, -82)));
     expect(getBubbleState().open).toBe(true);
-  });
-
-  it("시작이 위 끝 바로 아래라 위에 버블 자리가 없으면 첫 줄 바로 아래로 뒤집는다", () => {
-    refreshBubble(scrollEl(97, 837), fakeView(false, line(99)));
-    const s = getBubbleState();
-    expect(s.open).toBe(true);
-    expect(s.placement).toBe("below");
-    expect(s.top).toBe(115);
-  });
-
-  it("메모 첫 줄처럼 종이 안에 위쪽 자리가 있으면 뒤집지 않고 위에 띄운다", () => {
-    // 종이(dialog) 위 끝은 스크롤 영역 위 끝보다 12px 위(종이 padding)다.
-    const paperEl = { getBoundingClientRect: () => ({ top: 85 }) };
-    const area = {
-      getBoundingClientRect: () => ({ top: 97, bottom: 837, left: 0, right: 1000 }),
-      closest: () => paperEl,
-    } as unknown as HTMLElement;
-    refreshBubble(area, fakeView(false, line(133)));
-    expect(getBubbleState().placement).toBe("above");
-    expect(getBubbleState().top).toBe(133);
-    // 시작이 영역 위 끝 바로 아래(+2px)면 종이 안에도 자리가 없어 첫 줄 아래로 뒤집는다.
-    refreshBubble(area, fakeView(false, line(99)));
-    expect(getBubbleState().placement).toBe("below");
   });
 
   it("줄 끝까지 고른 한 줄 선택은 끝 좌표를 줄 끝(side -1)으로 읽어 한 줄로 판정한다", () => {

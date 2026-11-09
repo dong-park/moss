@@ -48,20 +48,18 @@ export function BubbleMenuHost() {
 
   if (!state.open || !state.view || bubbleMenuItems.length === 0) return null;
   const view = state.view;
-  const below = state.placement === "below";
 
   return createPortal(
     <div
       ref={ref}
       role="toolbar"
       data-bubble-toolbar
-      data-placement={state.placement}
       aria-label="서식"
       // 배경은 bg-panel(#fff). 예전 bg-surface는 정의된 색 토큰이 없어 투명했다 — 종이 위에서
-      // 아래 글자가 버튼 글자와 겹쳐 보였다.
-      className={`fixed z-50 flex -translate-x-1/2 ${below ? "" : "-translate-y-full"} items-center gap-0.5 rounded-md border border-border bg-panel px-1 py-0.5 shadow-lg`}
+      // 아래 글자가 버튼 글자와 겹쳐 보였다. 버블은 늘 기준 y(state.top) 위 6px에 뜬다.
+      className="fixed z-50 flex -translate-x-1/2 -translate-y-full items-center gap-0.5 rounded-md border border-border bg-panel px-1 py-0.5 shadow-lg"
       // Radix 모달이 body에 건 pointer-events:none을 상속하면 클릭이 오버레이로 뚫려 창이 닫힌다.
-      style={{ left: state.left, top: below ? state.top + 6 : state.top - 6, pointerEvents: "auto" }}
+      style={{ left: state.left, top: state.top - 6, pointerEvents: "auto" }}
     >
       {bubbleMenuItems.map((item) => (
         <button

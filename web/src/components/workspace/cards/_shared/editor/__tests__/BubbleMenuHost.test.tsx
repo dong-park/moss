@@ -52,10 +52,9 @@ describe("BubbleMenuHost", () => {
     expect(bubble()!.className).not.toContain("bg-surface");
   });
 
-  it("선택 시작 위에 띄울 때는 위로 올리고, 시작이 위로 나가면 영역 안쪽 아래로 붙인다", () => {
+  it("버블은 늘 기준 y 위 6px에 뜬다 — 시작이 위로 나가도 아래로 뒤집지 않는다", () => {
     render(<BubbleMenuHost />);
     act(() => refreshBubble(area(0, 500), viewAt({ left: 40, top: 100, bottom: 116 })));
-    expect(bubble()!.dataset.placement).toBe("above");
     expect(bubble()!.className).toContain("-translate-y-full");
     expect(bubble()!.style.top).toBe("94px");
 
@@ -65,9 +64,9 @@ describe("BubbleMenuHost", () => {
         viewAt({ left: 40, top: -400, bottom: -384 }, { left: 40, top: 300, bottom: 316 }),
       ),
     );
-    expect(bubble()!.dataset.placement).toBe("below");
-    expect(bubble()!.className).not.toContain("-translate-y-full");
-    expect(bubble()!.style.top).toBe("103px");
+    // 기준 y는 스크롤 영역 위 끝 97, 버블은 그 위 91에서 위로 올라간다.
+    expect(bubble()!.className).toContain("-translate-y-full");
+    expect(bubble()!.style.top).toBe("91px");
   });
 
   it("버블이 화면 왼쪽 밖으로 나가지 않게 left를 8px 안으로 당긴다", () => {
