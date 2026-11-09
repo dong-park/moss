@@ -21,8 +21,8 @@ function viewAt(start: Coords, end: Coords = start): EditorView {
   } as unknown as EditorView;
 }
 
-const area = (top: number, bottom: number) =>
-  ({ getBoundingClientRect: () => ({ top, bottom, left: -5000, right: 5000 }) }) as HTMLElement;
+const area = (top: number, bottom: number, left = -5000, right = 5000) =>
+  ({ getBoundingClientRect: () => ({ top, bottom, left, right }) }) as HTMLElement;
 
 const bubble = () => document.querySelector("[data-bubble-toolbar]") as HTMLElement | null;
 
@@ -66,5 +66,23 @@ describe("BubbleMenuHost", () => {
     render(<BubbleMenuHost />);
     act(() => refreshBubble(area(0, 500), viewAt({ left: -176, top: 100, bottom: 116 })));
     expect(bubble()!.style.left).toBe("8px");
+  });
+
+  it("줄 머리를 긁어도 버블 전체를 스크롤 영역 안으로 당긴다", () => {
+    // jsdom은 offsetWidth가 0이라 실제 버블 폭(약 290px)을 흉내 낸다.
+    const spy = vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(290);
+    try {
+      render(<BubbleMenuHost />);
+      act(() =>
+        refreshBubble(
+          area(0, 500, 42, 558),
+          viewAt({ left: 50, top: 100, bottom: 116 }, { left: 70, top: 100, bottom: 116 }),
+        ),
+      );
+      // 중심 60 → 영역 왼쪽 42 + 반폭 145 = 187.
+      expect(bubble()!.style.left).toBe("187px");
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

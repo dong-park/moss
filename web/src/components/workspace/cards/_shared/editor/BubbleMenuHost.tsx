@@ -27,15 +27,22 @@ export function BubbleMenuHost() {
     getBubbleServerSnapshot,
   );
 
-  // 버블 폭을 재서 화면 좌우 8px 안으로 당긴다 — 좁은 화면에서 선택이 가장자리에 있어도
-  // B·I 같은 앞쪽 버튼이 화면 밖으로 나가지 않게. React가 left를 다시 쓸 때마다 다시 당긴다.
+  // 버블 폭을 재서 스크롤 영역 좌우(state.minLeft~maxLeft)와 화면 좌우 8px 안으로 당긴다 —
+  // 줄 머리를 긁어도 버블이 종이 밖·화면 밖으로 나가지 않게. 범위가 버블보다 좁으면 화면만
+  // 지킨다. React가 left를 다시 쓸 때마다 다시 당긴다.
   const ref = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
     const half = el.offsetWidth / 2;
-    const min = 8 + half;
-    const max = Math.max(min, window.innerWidth - 8 - half);
+    const screenMin = 8 + half;
+    const screenMax = Math.max(screenMin, window.innerWidth - 8 - half);
+    let min = Math.max(screenMin, state.minLeft + half);
+    let max = Math.min(screenMax, state.maxLeft - half);
+    if (max < min) {
+      min = screenMin;
+      max = screenMax;
+    }
     el.style.left = `${Math.min(Math.max(state.left, min), max)}px`;
   });
 

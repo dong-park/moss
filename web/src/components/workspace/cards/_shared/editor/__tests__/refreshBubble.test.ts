@@ -77,10 +77,26 @@ describe("refreshBubble", () => {
     expect(getBubbleState().open).toBe(false);
   });
 
-  it("가로 위치는 스크롤 영역 안으로 당긴다", () => {
+  it("가로 범위로 스크롤 영역 좌우를 넘긴다(당기기는 BubbleMenuHost가 버블 폭으로 한다)", () => {
     refreshBubble(scrollEl(0, 500, 42, 558), fakeView(false, line(100, 20), line(100, 60)));
+    const s = getBubbleState();
+    expect(s.open).toBe(true);
+    expect(s.left).toBe(40);
+    expect(s.minLeft).toBe(42);
+    expect(s.maxLeft).toBe(558);
+  });
+
+  it("여러 줄 선택은 양 끝이 왼쪽 밖이어도 가운데 줄이 보이므로 닫지 않는다", () => {
+    refreshBubble(scrollEl(0, 500, 42, 558), fakeView(false, line(100, -132), line(148, -82)));
     expect(getBubbleState().open).toBe(true);
-    expect(getBubbleState().left).toBe(42);
+  });
+
+  it("시작이 위 끝 바로 아래라 위에 버블 자리가 없으면 첫 줄 바로 아래로 뒤집는다", () => {
+    refreshBubble(scrollEl(97, 837), fakeView(false, line(99)));
+    const s = getBubbleState();
+    expect(s.open).toBe(true);
+    expect(s.placement).toBe("below");
+    expect(s.top).toBe(115);
   });
 
   it("범위 밖에서 닫힌 뒤 범위 안 좌표로 다시 부르면 다시 연다", () => {
