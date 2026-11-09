@@ -7,7 +7,7 @@
   "then": "스크롤 영역의 scrollWidth가 clientWidth 이하이고 가로 스크롤 막대가 0개다. 본문 컬럼 폭은 720px 그대로다. 뷰포트 폭 835px 이하에서는 스크롤 영역이 737px 아래로 줄어 가로 스크롤이 생겨도 된다. 확인: 브라우저 콘솔에서 scrollWidth와 clientWidth 출력",
   "confidence": "mid",
   "reversible": true,
-  "status": "아직 안 함",
+  "status": "끝남",
   "blocks": [],
   "user": {
     "answer": "",

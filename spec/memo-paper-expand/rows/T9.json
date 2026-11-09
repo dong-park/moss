@@ -7,7 +7,7 @@
   "then": "B와 H1 중심의 elementFromPoint가 각각 그 버튼이다. 오버레이가 잡으면 실패다. 클릭 뒤 role=dialog가 1개이고 본문 마크다운에 서식이 반영된다. 버블 밖 어두운 곳을 누르면 창이 닫힌다. 확인: 브라우저 수동. 단위 테스트로는 판정하지 않는다",
   "confidence": "low",
   "reversible": true,
-  "status": "아직 안 함",
+  "status": "끝남",
   "blocks": [],
   "user": {
     "answer": "",

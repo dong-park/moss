@@ -7,7 +7,7 @@
   "then": "다섯 명령 모두 종료 코드 0이다. MemoExpand.test.tsx는 통과한다. 컴포넌트를 마운트만 떼고 파일은 남기면 두 테스트는 그대로 통과한다. 사진 카드 PhotoLightbox는 바뀌지 않는다. check:i18n은 안 쓰는 키(workspace.memoEditor.title 등)를 경고로만 보고 종료 코드 0이다(scripts/check-i18n.mjs 65~73행). 코드에서 t()로 쓰는 새 키가 ko.json에 없으면 실패하므로 새 키는 ko.json에 같이 넣는다. 확인: 명령 다섯 개의 종료 코드",
   "confidence": "high",
   "reversible": true,
-  "status": "아직 안 함",
+  "status": "끝남",
   "blocks": [],
   "user": {
     "answer": "",

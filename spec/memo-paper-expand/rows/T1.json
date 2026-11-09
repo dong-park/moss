@@ -7,7 +7,7 @@
   "then": "[data-bubble-toolbar]가 1개 보이고 창 위(z-order)에 그려진다. 버블 요소의 pointerEvents가 'auto'이고 B 버튼 중심의 elementFromPoint가 그 버튼이다. B를 누르면 본문에 ** 가 생기고 창은 열려 있다. 하나라도 어긋나면 D9의 추천 수정을 먼저 넣고 다시 확인한다. 확인: 브라우저 수동 + 결과 스크린샷",
   "confidence": "low",
   "reversible": true,
-  "status": "아직 안 함",
+  "status": "끝남",
   "blocks": [
     "T3",
     "T9"

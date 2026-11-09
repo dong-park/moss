@@ -7,7 +7,7 @@
   "then": "Esc는 창을 닫는다. 펜을 끄면 버블이 다시 뜬다. 펜이 켜진 동안 버블은 뜨지 않아도 된다. 확인: 브라우저 수동",
   "confidence": "mid",
   "reversible": true,
-  "status": "아직 안 함",
+  "status": "끝남",
   "blocks": [],
   "user": {
     "answer": "",
