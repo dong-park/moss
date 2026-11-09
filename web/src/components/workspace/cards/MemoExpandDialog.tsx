@@ -26,9 +26,12 @@ import { memoTint } from "../memoVariety";
  *  mask의 색조 층(multiply), 할 일·링크 앞면이면 흰 단색. 상자 그림자는 두지 않는다 —
  *  text.png의 투명 가장자리 밖으로 사각 틀이 비친다. paper 종이의 아래 padding은 종이
  *  높이의 17%로, 늘어난 text.png의 말린 모서리 위로 글자가 올라가지 않게 한다. 말린
- *  모서리가 없는 흰 종이는 아래 40px다. 높이 상한 100vh−88px는 종이 위 버튼 줄이 화면 안에 들게 한다.
- *  펜·지우개·✕ 버튼 줄은 Content의 자식으로 두고 종이 박스 밖 오른쪽 위에 얹는다
+ *  모서리가 없는 흰 종이는 아래 40px다. 높이 상한 100vh−88px는 종이 위·아래를 44px 이상
+ *  비운다 — 위는 서식 버블, 아래는 버튼 줄 자리다.
+ *  펜·지우개·✕ 버튼 줄은 Content의 자식으로 두고 종이 박스 밖 오른쪽 아래에 얹는다
  *  (Content 밖 형제면 Radix가 body에 건 pointer-events:none 때문에 눌리지 않는다).
+ *  위에 두면 종이 위 끝 근처 선택의 버블이 버튼을 덮어 펜 클릭이 서식 버튼에 닿았다.
+ *  버블은 늘 선택 위에만 떠서 종이 아래로는 내려가지 않는다.
  *  본문 넘침은 안쪽 스크롤 영역(ExpandedMarkdownEditor)이 맡는다.
  *
  * 펜 overlay:
@@ -41,7 +44,8 @@ import { memoTint } from "../memoVariety";
  * 닫기: Esc / 오버레이 클릭 / ✕ → close() → setExpandedCard(null).
  * 마운트는 page.tsx 루트에서 1회 (전역 오버레이, BoardDeleteDialog와 동일 패턴).
  * ───────────────────────────────────────────────────────────── */
-// 종이 높이. 86vh와 792px 상한에 더해 100vh−88px로 버튼 줄(28px + 간격) 자리를 남긴다.
+// 종이 높이. 86vh와 792px 상한에 더해 100vh−88px로 종이 위(버블)·아래(버튼 줄 28px + 간격)
+// 자리를 남긴다.
 export const PAPER_H = "min(792px, 86vh, calc(100vh - 88px))";
 
 /** 종이 padding. 말린 모서리는 text.png(paper 종이)에만 있어 paper만 아래를 종이 높이의
@@ -154,9 +158,12 @@ export function MemoExpandDialog() {
               }}
             />
           )}
-          {/* 펜·지우개·✕: 종이 박스 밖 오른쪽 위. Content의 자식이라 Radix의
-           * body pointer-events:none 영향을 받지 않고 눌린다. */}
-          <div className="absolute bottom-full right-0 mb-2 flex items-center gap-1">
+          {/* 펜·지우개·✕: 종이 박스 밖 오른쪽 아래(버블과 자리를 나눈다). Content의 자식이라
+           * Radix의 body pointer-events:none 영향을 받지 않고 눌린다. */}
+          <div
+            data-memo-paper-tools
+            className="absolute top-full right-0 mt-2 flex items-center gap-1"
+          >
             <button
               type="button"
               aria-label={t("workspace.memoEditor.pen")}
