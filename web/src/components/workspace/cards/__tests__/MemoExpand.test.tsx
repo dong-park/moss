@@ -285,6 +285,18 @@ describe("memo-paper-expand · 종이 창", () => {
     expect(document.body.querySelector("[data-memo-tint]")).toBeNull();
   });
 
+  it("T13: 말린 모서리가 있는 paper 종이만 아래 여백을 종이 높이의 17%로 둔다", () => {
+    const first = openWindow();
+    const paper = document.body.querySelector("[role=dialog]") as HTMLElement;
+    // jsdom은 중첩 min()이 든 calc를 읽지 못해 값을 비운다. 실제 값(792px 종이에서
+    // 134.64px)은 브라우저에서 잰다. 여기서는 흰 종이 값과 다르다는 것만 본다.
+    expect(paper.style.padding).not.toBe("12px 24px 40px");
+    first.unmount();
+    openWindow({ content: "- [ ] 할 일" });
+    const white = document.body.querySelector("[role=dialog]") as HTMLElement;
+    expect(white.style.padding).toBe("12px 24px 40px");
+  });
+
   it("T7: 열린 동안 content를 todo로 바꿔도 종이 판정은 그대로다", () => {
     openWindow({ content: "안녕" });
     fireEvent.change(screen.getByTestId("expanded-editor"), {

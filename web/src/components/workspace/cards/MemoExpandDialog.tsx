@@ -24,9 +24,9 @@ import { memoTint } from "../memoVariety";
  *  Dialog.Content가 곧 종이다 — 폭 min(792px,94vw) × 높이 PAPER_H, 모서리 6px.
  *  배경은 창을 열 때 한 번 정한다: paper 앞면이면 카드 앞면과 같은 text.png + 같은
  *  mask의 색조 층(multiply), 할 일·링크 앞면이면 흰 단색. 상자 그림자는 두지 않는다 —
- *  text.png의 투명 가장자리 밖으로 사각 틀이 비친다. 아래 padding은 종이 높이의 17%로,
- *  늘어난 text.png의 말린 모서리(글자 오른쪽 끝 열에서 높이의 약 15.5%) 위로 글자가
- *  올라가지 않게 한다. 높이 상한 100vh−88px는 종이 위 버튼 줄이 화면 안에 들게 한다.
+ *  text.png의 투명 가장자리 밖으로 사각 틀이 비친다. paper 종이의 아래 padding은 종이
+ *  높이의 17%로, 늘어난 text.png의 말린 모서리 위로 글자가 올라가지 않게 한다. 말린
+ *  모서리가 없는 흰 종이는 아래 40px다. 높이 상한 100vh−88px는 종이 위 버튼 줄이 화면 안에 들게 한다.
  *  펜·지우개·✕ 버튼 줄은 Content의 자식으로 두고 종이 박스 밖 오른쪽 위에 얹는다
  *  (Content 밖 형제면 Radix가 body에 건 pointer-events:none 때문에 눌리지 않는다).
  *  본문 넘침은 안쪽 스크롤 영역(ExpandedMarkdownEditor)이 맡는다.
@@ -121,7 +121,8 @@ export function MemoExpandDialog() {
           style={{
             width: "min(792px, 94vw)",
             height: PAPER_H,
-            padding: `12px 24px calc(${PAPER_H} * 0.17)`,
+            // 말린 모서리는 text.png(paper)에만 있다. 흰 단색 종이는 아래 40px면 된다.
+            padding: isPaper ? `12px 24px calc(${PAPER_H} * 0.17)` : "12px 24px 40px",
             borderRadius: 6,
             background: isPaper ? MEMO_PAPER : "var(--color-card-base)",
             isolation: "isolate",
