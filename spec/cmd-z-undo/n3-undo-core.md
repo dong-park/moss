@@ -32,7 +32,7 @@
 
 ## 완료 기준
 
-- [ ] 이 노드의 캔버스 시험도 spec.md 「준비 확인」 공통 규칙을 따른다. 준비 뒤 getter로 clear하고 0.6초 기다린 뒤 지금 보드와 undoStack 길이 0을 확인한다. T23은 빼다: 보드 열기 자체가 시험 동작이라 clear 없이 연 직후의 undoStack 길이를 잰다(스펙 AN3). 이 getter는 이 노드가 만든다
+- [ ] 이 노드의 캔버스 시험도 spec.md 「준비 확인」 공통 규칙을 따른다. 준비 뒤 getter로 clear하고 0.6초 기다린 뒤 지금 보드와 undoStack 길이 0을 확인한다. 행 given의 동작 가운데 then이 그 결과를 보는 동작은 준비가 아니다. 준비 확인 뒤에 스토어 액션으로 하고 기록한다. 예: T7·T11의 "X를 옮겼다". T23은 뺀다: 보드 열기 자체가 시험 동작이라 clear 없이 연 직후의 undoStack 길이를 잰다(스펙 :38의 T23 제외). 그 대신 T23의 열기 전후 단언을 지킨다: 둘째는 열기 직전에 빈 글상자가 미러와 문서에 있고, 연 뒤에 둘 다에서 사라졌다. 셋째는 시드 조건 넷으로 열고, 연 뒤에 시드 카드가 문서에 있다. 정리·시드 쓰기가 실제로 일어난 뒤에도 단계 0인지 보기 위해서다. 이 getter는 이 노드가 만든다
 - [ ] T5, T7, T11, T22, T23 then 칸의 「확인」이 통과한다. 확인: `cd web && bunx vitest run src/state/__tests__/undo.core.test.ts src/components/workspace/__tests__/undoKeys.test.ts`
 - [ ] 탭1 되돌리기가 탭2 문서에 반영되고, 그 뒤 탭1 쓰기도 탭2에 반영된다. 같은 명령의 테스트 이름으로 확인
 - [ ] 기존 회귀: `cd web && bunx vitest run src/state/__tests__/storeOnYjs.test.ts src/state/__tests__/penMode.test.ts src/state/__tests__/textTool.test.ts src/state/__tests__/n23-single-source.test.ts` 통과
