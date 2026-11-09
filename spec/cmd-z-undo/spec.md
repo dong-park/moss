@@ -168,8 +168,8 @@
 - MCP 브리지가 현재 보드를 고치는 길은 스토어 동작과 storage 쓰기 함수를 부른다. 그 함수들이 origin 옵션을 받아 Y.Doc 쓰기까지 끝까지 넘긴다. 동기 구간으로 감싸면 await 뒤의 쓰기를 못 막는다.
 - await 뒤에 문서에 쓰는 길이 있다. 알려진 길의 예를 아래에 적는다. 목록이 전부는 아니다. 연결선 저장은 connectCards가 saveConnection을 부르고 여러 await 뒤 문서에 쓴다. 연결선 지우기 removeConnection, 제목 쓰기 updateNoteTitle, 연결선 label 쓰기 setConnectionLabel도 await 뒤 문서에 쓴다. 함 만들기 createSubcanvas는 void async 안에서 await 뒤 persistCard로 P에 쓴다. 이런 길은 모두 origin을 인자로 넘긴다.
 - 브리지 쓰기가 기록에 안 들어가는지는 T20 여섯째 경우 표의 동작 테스트로 확인한다. 표에 적은 호출만 확인하고, 빠뜨린 길을 모두 찾아 주지는 않는다. 표의 호출을 지금 보는 보드 P에 하나씩 실행하고, 경우마다 P에 무엇이 있는지 정해 둔다.
-- 경우마다 P를 새로 준비한다. 준비한 카드와 연결선이 P 문서에 모두 보일 때까지 실제 시간으로 최대 2초 조건 대기한 뒤 undoManager.clear로 P 기록을 비우고 브리지를 부른다. 비우지 않으면 0.5초 안의 준비 쓰기와 브리지 쓰기가 한 단계로 합쳐진다.
-- 경우마다 명령 promise를 기다린 뒤, 그 경우에 기대한 P 문서 변화가 모두 보일 때까지 실제 시간으로 최대 2초 조건 대기하고, 그 뒤 0.1초 더 기다려 판정한다. 기대 변화는 행에 적힌 칸 전부다. 예: 6-11은 연결선과 label 둘 다다. 연결선 만들기, label 쓰기, 함 만들기는 void로 따로 돌아 promise가 없고 flushAll도 그 쓰기를 기다리지 않는다.
+- 경우마다 P를 새로 준비한다. 시험 준비 상태는 시험 코드가 직접 만든다. 스토어 상태는 useWorkspace.setState로, 문서는 model.ts 쓰기 헬퍼 putNote·putConnection·deleteConnection으로 쓰고, 미러 notes·connections와 trash, trashConnections 같은 Dexie 행은 db 테이블에 직접 쓰고 await한다. 준비에 스토어 액션과 브리지를 쓰지 않는다. 다 쓴 뒤 undoManager.clear로 P 기록을 비우고 브리지를 부른다. 비우지 않으면 0.5초 안의 준비 쓰기와 브리지 쓰기가 한 단계로 합쳐진다.
+- 경우마다 명령 promise를 기다린 뒤, 그 경우에 기대한 P 문서 변화가 모두 보일 때까지 실제 시간으로 최대 2초 조건 대기하고, 그 뒤 0.1초 더 기다려 판정한다. 2초 안에 조건이 서지 않으면 그 경우는 실패다. 기대 변화는 행에 적힌 칸 전부다. 예: 6-11은 연결선과 label 둘 다다. 연결선 만들기, label 쓰기, 함 만들기는 void로 따로 돌아 promise가 없고 flushAll도 그 쓰기를 기다리지 않는다.
 - 판정은 셋이다. 호출이 throw 없이 끝난다. P 문서가 바뀐다. P undoStack 길이가 그대로다. 문서를 안 바꾸는 호출은 표에서 뺀다. 브리지 origin 넘기기를 빼면 표의 한 줄 이상이 실패해야 시험이 유효하다.
 - 이 시험은 표에 적은 호출만 잡는다. 표에 없는 명령, 매개변수, 카드 종류의 길은 못 잡는다. 호출 목록을 grep으로 세는 방식은 바퀴마다 새 누락이 나와서 구현 참고로만 둔다.
 - 기록 안 하는 쓰기는 단계를 열지 않는다. origin이 기록 안 하는 쓰기면 동작 진입점이 stopCapturing을 부르지 않고 깊이 카운터도 올리지 않는다.
@@ -298,8 +298,8 @@ n1-verify ─┬─ n2-editor-history ─┐
 | T1 | n1 |
 | T2, T3 | n2 |
 | T5, T7, T11, T22, T23 | n3 |
-| T4, T6, T8, T9, T10, T20 | n4 |
-| T12, T13, T14, T21, T24, T25 | n5 |
+| T4, T6, T8, T9, T10, T20(6-5의 연결선 사라짐 칸은 n5) | n4 |
+| T12, T13, T14, T21, T24, T25, T20(6-5의 연결선 사라짐 칸) | n5 |
 | T15, T16, T17, T18, T19, T26 | n6 |
 
 ## 노드 인덱스
@@ -322,6 +322,8 @@ n1-verify ─┬─ n2-editor-history ─┐
 사실 근거: /private/tmp/claude-501/-Users-dongpark-moss/38916d25-fc9a-486f-8d3c-dcacfa292354/scratchpad/cmd-z-facts.md. 「조사 에이전트 보고」 절은 미확인이다. T1 전에는 근거로 쓰지 않는다.
 
 리뷰 폴더는 레포 밖, 이 세션 작업 폴더다: /private/tmp/claude-501/-Users-dongpark-moss/38916d25-fc9a-486f-8d3c-dcacfa292354/scratchpad/review/. 아래 수정 표와 재현 파일은 모두 이 폴더 안에 있다. 세션이 끝나면 사라질 수 있다.
+
+리뷰 16바퀴: 8efdcb9 기준 AJ1~AJ3을 반영했다. AJ3에 해당하는 중첩 트랜잭션 변조 문장은 스펙 본문에 없어 플랜만 고친다. 수정 표는 리뷰 폴더의 spec-r16-fixes.md.
 
 리뷰 15바퀴: 905aa7f 기준 AI1·AI2를 반영했다. 수정 표는 리뷰 폴더의 spec-r15-fixes.md.
 
@@ -381,7 +383,7 @@ n1-verify ─┬─ n2-editor-history ─┐
 | F15 다른 탭의 휴지통 비우기 | 받아들인다. 탭 사이 쥔 파일 목록은 만들지 않는다. 되살린 카드는 그림 자리가 빈 채로 보인다 | 드물고 탭 사이 목록은 동기화 장치가 더 든다 | 쥔 파일 목록을 탭 사이 채널로 나눈다 |
 | H3 건너뛴 단계의 meta | 휴지통 동작을 적용하지 않는다. 그 단계가 쥔 파일은 놓아 파일 규칙 청소 대상이 된다 | 건너뛰었다는 것은 문서가 이미 다른 행위자의 값이라는 뜻이다. 휴지통도 관찰자 규칙이 맞춘다 | 건너뛴 단계의 휴지통 동작도 적용한다 |
 | O1 연결선 휴지통 빼기 판정 | 되돌리기·다시 실행 뒤와 관찰자의 원격 반영 뒤, 보드 문서 connections에 있는 연결선은 trashConnections에서 빼고 미러 connections에 둔다. 문서에 없는 것은 남긴다. 사용자의 휴지통 살리기는 미러 기준 그대로 | 같은 보드 문서의 연결선이면, 반대편이 휴지통인 연결선은 반대편을 지울 때 이미 문서에서 빠져 되돌리기가 살리지 않는다. 이 전제는 캔버스의 remove나 removeSelected로 지운 경우에만 맞는다. 휴지통에 넣는 다른 경로와 다른 보드 문서가 소유한 연결선은 문서에 남기는 기존 동작이다. 그래서 K1의 "반대편이 휴지통이면 남긴다"를 저절로 지킨다. 카드를 다른 보드로 옮겨도 틀리지 않는다 | 양 끝 카드가 보드 문서에 있는지로 판정하는 M2 규칙으로 돌린다 |
-| O6 브리지 확인 방법 | T20 여섯째 경우 표의 호출을 P에 실행하고 세 칸을 본다: 호출 성공, P 문서가 바뀜, P undoStack 길이 그대로. 경우마다 P를 새로 준비한다. 준비한 카드와 연결선이 P 문서에 모두 보일 때까지 실제 시간으로 최대 2초 조건 대기한 뒤 undoManager.clear로 P 기록을 비우고 브리지를 부른다. 명령 promise를 기다린 뒤 그 경우에 기대한 P 문서 변화가 모두 보일 때까지 실제 시간으로 최대 2초 조건 대기하고, 0.1초 더 기다려 판정한다. origin 넘기기를 빼면 한 줄 이상 실패해야 한다. grep 명령은 구현 참고로만 둔다 | grep 패턴은 바퀴마다 새 누락이 나왔다. 동작 테스트는 표에 적은 호출의 결과를 직접 본다. 표에 없는 호출은 못 잡는다 | 두 grep 명령의 전수 목록을 다시 확인 기준으로 쓴다 |
+| O6 브리지 확인 방법 | T20 여섯째 경우 표의 호출을 P에 실행하고 세 칸을 본다: 호출 성공, P 문서가 바뀜, P undoStack 길이 그대로. 경우마다 P를 새로 준비한다. 시험 준비 상태는 시험 코드가 직접 만든다. 스토어 상태는 useWorkspace.setState로, 문서는 model.ts 쓰기 헬퍼 putNote·putConnection·deleteConnection으로 쓰고, 미러 notes·connections와 trash, trashConnections 같은 Dexie 행은 db 테이블에 직접 쓰고 await한다. 준비에 스토어 액션과 브리지를 쓰지 않는다. 다 쓴 뒤 undoManager.clear로 P 기록을 비우고 브리지를 부른다. 명령 promise를 기다린 뒤 그 경우에 기대한 P 문서 변화가 모두 보일 때까지 실제 시간으로 최대 2초 조건 대기하고, 0.1초 더 기다려 판정한다. 2초 안에 조건이 서지 않으면 그 경우는 실패다. origin 넘기기를 빼면 한 줄 이상 실패해야 한다. grep 명령은 구현 참고로만 둔다 | grep 패턴은 바퀴마다 새 누락이 나왔다. 동작 테스트는 표에 적은 호출의 결과를 직접 본다. 표에 없는 호출은 못 잡는다 | 두 grep 명령의 전수 목록을 다시 확인 기준으로 쓴다 |
 | U1 비동기 동작 단계 묶음 | 뺀다. 기본 0.5초 묶음과 진입점의 stopCapturing만 쓴다. 휴지통 살리기에서 기록하는 origin으로 notes·connections를 바꾼 V 쓰기 가운데 연달은 둘 사이에 흐른 시간이 0.5초 이상이면 2단계가 되는 것을 받아들인다 | 다른 동작이 끼면 진입점 stopCapturing이 같은 결과를 내고, 차이는 연달은 두 기록하는 쓰기 사이에 흐른 시간이 0.5초 이상일 때뿐이다 | 살리기처럼 await가 있는 동작을 promise가 끝날 때까지 묶고 finally에서 닫는 규칙을 다시 넣는다 |
 | U8 다른 보드로 가는 살리기 | restoreNote가 쓰는 origin이 연결선 쓰기까지 이어진다. restoreFromTrash는 지금 보드 id를 넘기고, restoreNote가 살릴 보드와 비교해 같으면 LOCAL_ORIGIN, 다르면 기록 안 하는 origin을 고른다. 표 보기 호출은 기록 안 하는 origin을 직접 넘긴다. W2에서 방법을 고쳤고 AC1에서 문장을 통일했다 | 연결선 source가 지금 보드에 있으면 restoreNote 끝의 연결선 쓰기가 지금 보드에 1단계를 만들고, cmd+z가 연결선만 지운다. 돌려받은 값으로 판정하면 연결선 쓰기가 이미 나간 뒤다 | 그 쓰기를 LOCAL_ORIGIN으로 돌리면 지금 보드에 단계가 생긴다 |
 | AC6 연결선을 문서에 남기는 삭제 경로 | 카드를 휴지통에 넣을 때 닿은 연결선을 문서에서 지우는 경로는 캔버스의 remove와 removeSelected뿐이다. 이 둘도 지운 카드의 보드 문서에 있는 연결선만 지운다. 휴지통에 넣는 다른 경로와 다른 보드 문서가 소유한 연결선은 문서에 남기는 기존 동작이고 받아들인다. 다른 경로의 예: 표 보기 휴지통 보내기, 브리지가 다른 보드 카드를 지우는 notes.delete. 이렇게 문서에 남은 연결선은 반대편이 휴지통인 채 미러에 올라갈 수 있으나 한 끝이 그 보드에 없으면 그려지지 않는다. 휴지통을 거치지 않는 두 경로는 따로다. 영구 삭제 hardDeleteNotes와 연결선 자체 삭제 removeConnection은 원래 문서에서 지운다. 상태 모델 불가능 조합과 O1 전제는 remove와 removeSelected에만 맞는다. AF5에서 예외 나열을 규칙으로 뒤집었고 AG1에서 휴지통에 넣는 경로로 좁혔다 | 예외를 나열하면 바퀴마다 새 경로가 나왔다 | 모든 삭제 경로가 닿은 연결선을 소유 문서에서 지우게 고친다 |
@@ -435,7 +437,7 @@ n1-verify ─┬─ n2-editor-history ─┐
 - 브리지 확인 기준은 grep 목록이 아니라 T20 여섯째의 경우 표다. 표는 notes.create, notes.update, notes.delete, photos.create, frames.create, notes.createBoard, connections.create, connections.delete를 경우별로 나눈다. notes.createBoard는 지금 보드에서 ws.createSubcanvas로 P에 함 카드를 쓴다 (mossBridge.ts:527-532).
 - 경우를 나누는 근거: notes.update에는 color가 없고 color만 주면 throw한다 (mossBridge.ts:403-458, :415-417). x·y만 준 notes.update는 moveCard doc:false라 문서에 안 써서 표에서 뺀다 (workspace.ts:2642). connections.create는 카드가 어느 보드에 있는지로 길이 갈린다 (:670, :684-695). notes.delete는 카드 종류로 길이 갈리고 판은 deleteFrame으로 간다 (workspace.ts:2951-2975). 매개변수 근거 줄은 :373-376, :420-431, :497-500, :514-519, :679다.
 - 표에서 빼는 명령: boards.create는 새 보드로 전환해 P 기록이 버려진다 (mossBridge.ts:616, workspace.ts:2270). boards.rename·boards.delete는 보드 단위라 기록 범위 밖이다. ai.connectionLabel은 fetch만 하고 문서에 안 쓴다 (:601-606).
-- 경우마다 P를 새로 준비한다. 준비한 카드와 연결선이 P 문서에 모두 보일 때까지 실제 시간으로 최대 2초 조건 대기한 뒤 undoManager.clear로 P 기록을 비우고 브리지를 부른다. 경우마다 명령 promise를 await한 뒤, 그 경우에 기대한 P 문서 변화가 모두 보일 때까지 실제 시간으로 최대 2초 조건 대기하고, 그 뒤 0.1초 더 기다려 판정한다. 기대 변화는 행에 적힌 칸 전부다. 예: 6-11은 연결선과 label 둘 다다. connectCards (workspace.ts:3266)와 setConnectionLabel (:3315)은 각각 void saveConnection으로 따로 쓰고, 문서 쓰기는 여러 await 뒤 나간다 (storage.ts:661-672). createSubcanvas도 void async라 promise가 없다 (workspace.ts:3735 이하). flushAll은 이 쓰기들을 기다리지 않아서 고정 0.1초 대기로는 거짓 통과한다.
+- 경우마다 P를 새로 준비한다. 시험 준비 상태는 시험 코드가 직접 만든다. 스토어 상태는 useWorkspace.setState로, 문서는 model.ts 쓰기 헬퍼 putNote·putConnection·deleteConnection으로 쓰고, 미러 notes·connections와 trash, trashConnections 같은 Dexie 행은 db 테이블에 직접 쓰고 await한다. 준비에 스토어 액션과 브리지를 쓰지 않는다. 다 쓴 뒤 undoManager.clear로 P 기록을 비우고 브리지를 부른다. 기존 시험이 같은 방식이다 (web/src/state/__tests__/connectors.test.ts:73, :211-224). 관찰자는 LOCAL_ORIGIN 쓰기를 스토어에 반영하지 않으므로 스토어 상태도 직접 넣는다 (origin.ts:23-25, workspace.ts:1575). 스토어 액션이나 브리지로 준비하면 void saveConnection 같은 늦은 준비 쓰기가 clear 뒤에 들어와 판정을 깬다 (재현 리뷰 폴더의 spec-r16-a/absent.test.ts, spec-r16-b/neg-wait.mjs, spec-r16-b/t20-fifth.mjs). 6-12의 다른 보드 target 메모는 그 보드 문서에 헬퍼로 직접 쓴다. 경우마다 명령 promise를 await한 뒤, 그 경우에 기대한 P 문서 변화가 모두 보일 때까지 실제 시간으로 최대 2초 조건 대기하고, 그 뒤 0.1초 더 기다려 판정한다. 2초 안에 조건이 서지 않으면 그 경우는 실패다. 기대 변화는 행에 적힌 칸 전부다. 예: 6-11은 연결선과 label 둘 다다. connectCards (workspace.ts:3266)와 setConnectionLabel (:3315)은 각각 void saveConnection으로 따로 쓰고, 문서 쓰기는 여러 await 뒤 나간다 (storage.ts:661-672). createSubcanvas도 void async라 promise가 없다 (workspace.ts:3735 이하). flushAll은 이 쓰기들을 기다리지 않아서 고정 0.1초 대기로는 거짓 통과한다.
 - 브리지 구현 참고: 구현 참고용 grep은 `rg -n "\bws\.[A-Za-z]+\(" web/src/state/bridge/mossBridge.ts`와 `rg -n "storage\.[A-Za-z]+\(|useStorage\.getState\(\)\.[A-Za-z]+\(" web/src/state/bridge/mossBridge.ts`다. setFaceHeight는 안에서 resolveMembership을 부른다 (workspace.ts:3144-3147). 기록 안 하는 동작의 동기 경로는 origin 문맥으로 감싸 안쪽 호출도 같은 origin을 쓰게 한다. persistCardDebounced :1434-1444는 문서에 바로 쓰고 Dexie 미러만 늦춘다. ws.moveCard는 doc:false라 문서에 안 쓴다 (workspace.ts:2642).
 - 카드를 휴지통에 넣을 때 닿은 연결선을 문서에서 지우는 경로는 remove와 removeSelected뿐이다 (AF5, AG1). 브리지 notes.delete가 지금 보드 카드를 지우면 ws.remove로 간다 (mossBridge.ts:463-465). 다른 보드 카드를 지우면 mossBridge.ts:470-472와 model.ts deleteNote가 notes 칸만 지워 연결선이 문서에 남는다 (재현 리뷰 폴더의 spec-r12-b/f3.test.ts). 받아들인다. 휴지통을 거치지 않는 영구 삭제 hardDeleteNotes (storage.ts:353-357, 호출 workspace.ts:2146, :2188, :3179)와 연결선 자체 삭제 removeConnection (storage.ts:674, 문서 삭제는 writeThrough.ts:122-132의 deleteConnectionRecord)은 원래 문서에서 지운다.
 - 삭제: remove :3421-3473. 사실 파일의 removeNote는 실제 이름이 remove다. deleteNoteDoc :3462, trashNote :3471, 함 cascadeDeleteFunnels :3468. removeSelected :3475-3547, 판 먼저 :3493-3496, 문서 삭제 :3530-3534.
@@ -466,4 +468,4 @@ n1-verify ─┬─ n2-editor-history ─┐
 
 ## 문서 리뷰
 
-스펙: 검토자 ① opus·xhigh→sonnet·xhigh ② opus·xhigh→sonnet·xhigh (계열 못 나눔: GPT 한도) · 1) P0 1·P1 14·P2 0  2) P0 0·P1 8·P2 6  3) P0 0·P1 5·P2 6  4) P0 0·P1 4·P2 2  5) P0 0·P1 3·P2 5  6) P0 0·P1 4·P2 4  7) P0 0·P1 3·P2 5  8) P0 0·P1 2·P2 3  9) P0 0·P1 2·P2 4  10) P0 0·P1 4·P2 4  11) P0 0·P1 2·P2 7  12) P0 0·P1 1·P2 5  13) P0 0·P1 0·P2 5  14) P0 0·P1 1·P2 7  15) P0 0·P1 1·P2 1 · 버림 0
+스펙: 검토자 ① opus·xhigh→sonnet·xhigh ② opus·xhigh→sonnet·xhigh (계열 못 나눔: GPT 한도) · 1) P0 1·P1 14·P2 0  2) P0 0·P1 8·P2 6  3) P0 0·P1 5·P2 6  4) P0 0·P1 4·P2 2  5) P0 0·P1 3·P2 5  6) P0 0·P1 4·P2 4  7) P0 0·P1 3·P2 5  8) P0 0·P1 2·P2 3  9) P0 0·P1 2·P2 4  10) P0 0·P1 4·P2 4  11) P0 0·P1 2·P2 7  12) P0 0·P1 1·P2 5  13) P0 0·P1 0·P2 5  14) P0 0·P1 1·P2 7  15) P0 0·P1 1·P2 1  16) P0 0 · P1 2 · P2 1 — AJ1~AJ3 반영 · 버림 0

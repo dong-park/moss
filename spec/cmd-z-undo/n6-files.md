@@ -31,7 +31,8 @@
 
 ## 완료 기준
 
-- [ ] T15 넷째·다섯째는 준비에서 그 연결선을 V 문서에서 빼고 trashConnections에만 둔다(스펙 T15 given). 넷째는 restoreNote 안의 보드 비교가 늘 LOCAL_ORIGIN을 고르게 바꾸면, 다섯째는 memoTable.ts:638 호출이 넘기는 기록 안 하는 origin을 LOCAL_ORIGIN으로 바꾸면 실패한다. 실패 출력 한 줄씩을 구현 메모에 남긴다
+- [ ] 시험 준비 규칙(스펙 리뷰 16바퀴 AJ1): 준비 상태는 시험 코드가 직접 만든다. 스토어 상태는 useWorkspace.setState로, 문서는 model.ts 헬퍼(putNote·putConnection·deleteConnection)로, Dexie 행(미러 notes·connections, trash, trashConnections)은 db 테이블에 직접 쓰고 await한다. 준비에 스토어 액션과 브리지를 쓰지 않는다. 관찰자는 LOCAL_ORIGIN 쓰기를 스토어에 반영하지 않으므로(origin.ts:23-25) 스토어 상태도 직접 넣는다. 다 쓴 뒤 undoManager.clear로 기록을 비우고 시험 동작을 시작한다. 본보기: web/src/state/__tests__/connectors.test.ts:73·:211-224. 동작 뒤 조건 대기가 2초 안에 서지 않으면 그 경우는 실패다
+- [ ] T15 넷째·다섯째는 준비에서 그 연결선을 V 문서에서 빼고 trashConnections에만 둔다(스펙 T15 given). 준비는 시험 준비 규칙대로 deleteConnection 헬퍼와 db.trashConnections 직접 쓰기로 한다. 넷째는 restoreNote 안의 보드 비교가 늘 LOCAL_ORIGIN을 고르게 바꾸면, 다섯째는 memoTable.ts:638 호출이 넘기는 기록 안 하는 origin을 LOCAL_ORIGIN으로 바꾸면 실패한다. 실패 출력 한 줄씩을 구현 메모에 남긴다
 - [ ] T19 둘째(함 만들기)의 "LOCAL_ORIGIN으로 바꾸면 실패" 출력 한 줄이 구현 메모에 있다
 - [ ] T15, T16, T17, T18, T19 then 칸의 「확인」이 통과한다. 확인: `cd web && bunx vitest run src/state/__tests__/undo.files.test.ts`
 - [ ] 기존 회귀: `cd web && bunx vitest run src/state/__tests__/frameBackground.test.ts src/state/__tests__/frames.test.ts src/state/__tests__/subcanvas.test.ts src/state/__tests__/trash.test.ts src/state/__tests__/undo.trash.test.ts` 통과
