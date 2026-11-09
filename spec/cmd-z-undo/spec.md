@@ -23,7 +23,7 @@
 - 함 카드 만들기도 cmd+z 대상이 아니다. 되돌리면 함 카드만 문서에서 사라지고 안쪽 보드가 고아로 남는다.
 - 함 토스트 되살리기가 보드 문서에 아무것도 안 쓰는 기존 버그는 고치지 않는다. 함 삭제 쪽 일이다.
 - 다른 보드에서 지운 메모를 지금 보드에서 살리면 그 보드 문서에 안 쓰는 기존 버그는 고치지 않는다. 휴지통 살리기 쪽 일이다.
-- 카드를 휴지통에 넣을 때 닿은 연결선을 문서에서 지우는 경로는 캔버스의 remove와 removeSelected뿐이다. 이 둘도 지운 카드의 보드 문서에 있는 연결선만 지운다. 휴지통에 넣는 다른 경로와 다른 보드 문서가 소유한 연결선이 연결선을 문서에 남기는 기존 동작은 고치지 않는다. 다른 경로는 표 보기 휴지통 보내기와, 브리지가 다른 보드 카드를 지우는 notes.delete다.
+- 카드를 휴지통에 넣을 때 닿은 연결선을 문서에서 지우는 경로는 캔버스의 remove와 removeSelected뿐이다. 이 둘도 지운 카드의 보드 문서에 있는 연결선만 지운다. 휴지통에 넣는 다른 경로는 연결선을 문서에 남긴다. 다른 보드 문서가 소유한 연결선도 문서에 남는다. 이 기존 동작은 고치지 않는다. 다른 경로의 예: 표 보기 휴지통 보내기, 브리지가 다른 보드 카드를 지우는 notes.delete, 원격 반영 관찰자.
 - 새로고침 뒤에도 기록을 남기는 일은 하지 않는다.
 - 보드를 떠났다 돌아온 뒤 기록을 남기는 일은 하지 않는다. 보드 문서 수명은 그대로 둔다. 기준은 D6이다.
 - 새로고침으로 기록이 사라질 때 남는 옛 배경 사진 파일은 청소하지 않는다. 후속 일이다.
@@ -147,7 +147,7 @@
 - 같은 id 카드가 한 보드에 둘 있다.
 - 기록 보관이나 비운 뒤 기록 보관 메모가 검색에 나온다.
 - 판이 휴지통에 있다. 판은 휴지통에 가지 않는다.
-- 캔버스의 remove나 removeSelected로 지운 카드의 연결선이 보드 문서 connections와 연결선 휴지통에 함께 있다. 카드를 휴지통에 넣을 때 닿은 연결선을 문서에서 지우는 경로는 이 둘뿐이다. 휴지통에 넣는 다른 경로와 다른 보드 문서가 소유한 연결선은 연결선을 문서에 남기고 연결선 휴지통에도 넣는 기존 동작이라, 이 조합이 생겨도 받아들인다. 다른 경로는 표 보기 휴지통 보내기와, 브리지가 다른 보드 카드를 지우는 notes.delete다.
+- 캔버스의 remove나 removeSelected로 지운 카드의 연결선이 보드 문서 connections와 연결선 휴지통에 함께 있다. 카드를 휴지통에 넣을 때 닿은 연결선을 문서에서 지우는 경로는 이 둘뿐이다. 휴지통에 넣는 다른 경로는 연결선을 문서에 남기고 연결선 휴지통에도 넣는다. 다른 보드 문서가 소유한 연결선도 문서에 남는다. 둘 다 기존 동작이라 이 조합이 생겨도 받아들인다. 다른 경로의 예: 표 보기 휴지통 보내기, 브리지가 다른 보드 카드를 지우는 notes.delete, 원격 반영 관찰자.
 - 모든 보드의 미러 행, 지금 열린 보드 문서, 휴지통 행, 이 탭의 기록 단계 가운데 하나라도 가리키는 사진 파일이 지워져 있다. 다른 탭에서 휴지통을 비운 경우만 예외로 받아들인다.
 
 함 카드는 이 모델 밖이다. 기존 5초 토스트 규칙을 따른다.
@@ -211,9 +211,9 @@
 - 넣음과 뺌에는 그때의 메모 내용과 그 메모에 닿은 연결선 내용을 함께 적는다. 되돌리기와 다시 실행의 휴지통 넣기는 미러 대신 이 내용으로 휴지통 행과 연결선 휴지통 행을 만든다.
 - 연결선 휴지통 빼기는 보드 문서 connections로 판정한다. 되돌리기와 다시 실행 뒤, 그리고 관찰자가 원격 변경을 반영한 뒤, 보드 문서 connections에 있는 연결선은 trashConnections에서 빼고 미러 connections에 둔다. 문서에 없는 연결선은 trashConnections에 남긴다. 내 기기의 처리와 다른 기기의 관찰자가 같은 규칙을 쓴다.
 - 같은 보드 문서의 연결선이고 반대편을 캔버스의 remove나 removeSelected로 지웠으면, 반대편이 휴지통인 연결선은 그때 이미 문서에서 빠졌다. 그래서 되돌리기가 살리지 않고 이 규칙으로 휴지통에 남는다.
-- 카드를 휴지통에 넣을 때 닿은 연결선을 문서에서 지우는 경로는 캔버스의 remove와 removeSelected뿐이고, 이 둘도 지운 카드의 보드 문서에 있는 연결선만 지운다. 휴지통에 넣는 다른 경로와 다른 보드 문서가 소유한 연결선은 문서에 남기는 기존 동작이고 받아들인다. 다른 경로는 표 보기 휴지통 보내기와, 브리지가 다른 보드 카드를 지우는 notes.delete다.
-- 휴지통을 거치지 않는 영구 삭제 hardDeleteNotes와 연결선 자체 삭제 removeConnection은 원래 문서에서 지운다.
-- 그런 연결선은 문서에 남은 채 연결선 휴지통에도 들어간다. 그래서 반대편이 휴지통인 채 미러 connections에 올라갈 수 있다. 한 끝이 그 보드에 없으면 그려지지는 않는다. 양 끝 카드를 보는 규칙은 카드를 다른 보드로 옮긴 뒤에 틀린다. 카드를 옮겨도 연결선은 문서에 남기 때문이다.
+- 카드를 휴지통에 넣을 때 닿은 연결선을 문서에서 지우는 경로는 캔버스의 remove와 removeSelected뿐이고, 이 둘도 지운 카드의 보드 문서에 있는 연결선만 지운다. 휴지통에 넣는 다른 경로와 다른 보드 문서가 소유한 연결선은 문서에 남기는 기존 동작이고 받아들인다. 다른 경로의 예: 표 보기 휴지통 보내기, 브리지가 다른 보드 카드를 지우는 notes.delete, 원격 반영 관찰자.
+- 이렇게 문서에 남은 연결선은 연결선 휴지통에도 들어간다. 그래서 반대편이 휴지통인 채 미러 connections에 올라갈 수 있다. 한 끝이 그 보드에 없으면 그려지지는 않는다. 양 끝 카드를 보는 규칙은 카드를 다른 보드로 옮긴 뒤에 틀린다. 카드를 옮겨도 연결선은 문서에 남기 때문이다.
+- 휴지통을 거치지 않는 두 경로는 따로다. 영구 삭제 hardDeleteNotes와 연결선 자체 삭제 removeConnection은 원래 문서에서 지운다.
 - 사용자가 휴지통에서 살리는 기존 restoreNote는 미러로 양 끝을 보는 지금 방식을 그대로 둔다.
 - 휴지통 살리기는 되돌린 연결선을 이미 restoreNote 끝에서 보드 문서에도 쓴다. 새로 만들 일은 없다. 이 쓰기는 카드 쓰기와 기본 0.5초 묶음으로 한 단계가 된다. 연결선 쓰기의 origin은 「단계」의 규칙대로 정해진다. restoreFromTrash는 지금 보드 id를 넘기고, restoreNote가 살릴 보드와 비교해 같으면 LOCAL_ORIGIN, 다르면 기록 안 하는 origin을 고른다. 표 보기 호출은 기록 안 하는 origin을 직접 넘긴다. 살릴 보드가 지금 보드가 아니거나 표 보기에서 살리면 기록 안 하는 origin이라, 연결선의 source 메모가 지금 보드에 있어도 단계가 안 생긴다.
 - 생성 되돌리기는 미러 행만 지운다. 첨부 파일은 아래 파일 규칙을 따른다.
@@ -226,7 +226,7 @@
 
 **그 밖**
 
-- 카드를 지울 때 닿은 연결선 가운데 지운 카드의 보드 문서에 있는 연결선만 같은 트랜잭션으로 지운다. 삭제 되돌리기가 그 연결선을 함께 살린다. 카드를 휴지통에 넣을 때 닿은 연결선을 문서에서 지우는 경로는 이 둘뿐이고, 휴지통에 넣는 다른 경로와 다른 보드 문서가 소유한 연결선은 문서에 남기는 기존 동작으로 받아들인다.
+- 카드를 지울 때 닿은 연결선 가운데 지운 카드의 보드 문서에 있는 연결선만 같은 트랜잭션으로 지운다. 삭제 되돌리기가 그 연결선을 함께 살린다. 카드를 휴지통에 넣을 때 닿은 연결선을 문서에서 지우는 경로는 캔버스 remove와 removeSelected 둘뿐이고, 휴지통에 넣는 다른 경로와 다른 보드 문서가 소유한 연결선은 문서에 남기는 기존 동작으로 받아들인다.
 - 되돌린 뒤 바뀐 카드의 문서 쓰기 기준값을 문서 값으로 맞춘다.
 - 되돌리기와 다시 실행 뒤 바뀐 카드의 updatedAt을 지금 시각으로 쓴다. 이 쓰기는 기록하지 않는 origin이다. D3의 A다.
 - 편집기 기록이 바닥나도 cmd+z를 캔버스로 넘기지 않는다. D5의 A다.
@@ -323,6 +323,8 @@ n1-verify ─┬─ n2-editor-history ─┐
 
 리뷰 폴더는 레포 밖, 이 세션 작업 폴더다: /private/tmp/claude-501/-Users-dongpark-moss/38916d25-fc9a-486f-8d3c-dcacfa292354/scratchpad/review/. 아래 수정 표와 재현 파일은 모두 이 폴더 안에 있다. 세션이 끝나면 사라질 수 있다.
 
+리뷰 14바퀴: 0625ec8 기준 AH1~AH8을 반영했다. 수정 표는 리뷰 폴더의 spec-r14-fixes.md.
+
 리뷰 13바퀴: a835c7f 기준 AG1~AG5를 반영했다. 수정 표는 리뷰 폴더의 spec-r13-fixes.md.
 
 리뷰 12바퀴: bae79a8 기준 AF1~AF6을 반영했다. 수정 표는 리뷰 폴더의 spec-r12-fixes.md.
@@ -380,7 +382,7 @@ n1-verify ─┬─ n2-editor-history ─┐
 | O6 브리지 확인 방법 | T20 여섯째 경우 표의 호출을 P에 실행하고 세 칸을 본다: 호출 성공, P 문서가 바뀜, P undoStack 길이 그대로. 경우마다 P를 준비한 뒤 undoManager.clear로 P 기록을 비우고 브리지를 부른다. 명령 promise를 기다린 뒤 그 경우에 기대한 P 문서 변화가 모두 보일 때까지 실제 시간으로 최대 2초 조건 대기하고, 0.1초 더 기다려 판정한다. origin 넘기기를 빼면 한 줄 이상 실패해야 한다. grep 명령은 구현 참고로만 둔다 | grep 패턴은 바퀴마다 새 누락이 나왔다. 동작 테스트는 표에 적은 호출의 결과를 직접 본다. 표에 없는 호출은 못 잡는다 | 두 grep 명령의 전수 목록을 다시 확인 기준으로 쓴다 |
 | U1 비동기 동작 단계 묶음 | 뺀다. 기본 0.5초 묶음과 진입점의 stopCapturing만 쓴다. 휴지통 살리기에서 기록하는 origin으로 notes·connections를 바꾼 V 쓰기 가운데 연달은 둘 사이에 흐른 시간이 0.5초 이상이면 2단계가 되는 것을 받아들인다 | 다른 동작이 끼면 진입점 stopCapturing이 같은 결과를 내고, 차이는 연달은 두 기록하는 쓰기 사이에 흐른 시간이 0.5초 이상일 때뿐이다 | 살리기처럼 await가 있는 동작을 promise가 끝날 때까지 묶고 finally에서 닫는 규칙을 다시 넣는다 |
 | U8 다른 보드로 가는 살리기 | restoreNote가 쓰는 origin이 연결선 쓰기까지 이어진다. restoreFromTrash는 지금 보드 id를 넘기고, restoreNote가 살릴 보드와 비교해 같으면 LOCAL_ORIGIN, 다르면 기록 안 하는 origin을 고른다. 표 보기 호출은 기록 안 하는 origin을 직접 넘긴다. W2에서 방법을 고쳤고 AC1에서 문장을 통일했다 | 연결선 source가 지금 보드에 있으면 restoreNote 끝의 연결선 쓰기가 지금 보드에 1단계를 만들고, cmd+z가 연결선만 지운다. 돌려받은 값으로 판정하면 연결선 쓰기가 이미 나간 뒤다 | 그 쓰기를 LOCAL_ORIGIN으로 돌리면 지금 보드에 단계가 생긴다 |
-| AC6 연결선을 문서에 남기는 삭제 경로 | 카드를 휴지통에 넣을 때 닿은 연결선을 문서에서 지우는 경로는 캔버스의 remove와 removeSelected뿐이다. 이 둘도 지운 카드의 보드 문서에 있는 연결선만 지운다. 휴지통에 넣는 다른 경로와 다른 보드 문서가 소유한 연결선은 문서에 남기는 기존 동작이고 받아들인다. 다른 경로는 표 보기 휴지통 보내기와, 브리지가 다른 보드 카드를 지우는 notes.delete다. 휴지통을 거치지 않는 영구 삭제 hardDeleteNotes와 연결선 자체 삭제 removeConnection은 원래 문서에서 지운다. 상태 모델 불가능 조합과 O1 전제는 remove와 removeSelected에만 맞는다. AF5에서 예외 나열을 규칙으로 뒤집었고 AG1에서 휴지통에 넣는 경로로 좁혔다 | 예외를 나열하면 바퀴마다 새 경로가 나왔다. 그런 연결선은 반대편이 휴지통인 채 미러에 올라갈 수 있으나 한 끝이 그 보드에 없으면 그려지지 않는다 | 모든 삭제 경로가 닿은 연결선을 소유 문서에서 지우게 고친다 |
+| AC6 연결선을 문서에 남기는 삭제 경로 | 카드를 휴지통에 넣을 때 닿은 연결선을 문서에서 지우는 경로는 캔버스의 remove와 removeSelected뿐이다. 이 둘도 지운 카드의 보드 문서에 있는 연결선만 지운다. 휴지통에 넣는 다른 경로와 다른 보드 문서가 소유한 연결선은 문서에 남기는 기존 동작이고 받아들인다. 다른 경로의 예: 표 보기 휴지통 보내기, 브리지가 다른 보드 카드를 지우는 notes.delete, 원격 반영 관찰자. 이렇게 문서에 남은 연결선은 반대편이 휴지통인 채 미러에 올라갈 수 있으나 한 끝이 그 보드에 없으면 그려지지 않는다. 휴지통을 거치지 않는 두 경로는 따로다. 영구 삭제 hardDeleteNotes와 연결선 자체 삭제 removeConnection은 원래 문서에서 지운다. 상태 모델 불가능 조합과 O1 전제는 remove와 removeSelected에만 맞는다. AF5에서 예외 나열을 규칙으로 뒤집었고 AG1에서 휴지통에 넣는 경로로 좁혔다 | 예외를 나열하면 바퀴마다 새 경로가 나왔다 | 모든 삭제 경로가 닿은 연결선을 소유 문서에서 지우게 고친다 |
 | AE10 함 만들기 | 기록하지 않는다. createSubcanvas의 문서 쓰기는 기록 안 하는 origin. 함을 만든 직후 cmd+z는 그 전 동작을 되돌린다 | 기록하면 cmd+z가 함 카드만 문서에서 지우고 안쪽 보드가 고아로 남는다. 함 삭제를 대상에서 뺀 사용자 결정 5와 같은 방향이다 | 함 만들기를 기록하고, 되돌릴 때 안쪽 보드를 함께 지우는 처리를 더한다 |
 
 **결정 행 결과 — 2026-11-10 메인이 닫음**
@@ -388,7 +390,7 @@ n1-verify ─┬─ n2-editor-history ─┐
 - D1 A 100단계 · D2 A 시작·끝 묶음 · D3 A updatedAt 지금 시각 · D5 A 넘기지 않음. 추천대로.
 - D4 A: 깊이 상한, 다시 실행 버림, 보드 문서 닫기, 보드 삭제, 로그아웃에서 청소. D6이 B라서 보드 문서 닫기에 보드를 떠날 때가 들어간다.
 - D6: 추천 A → 메인이 B로 정함 | A는 activeDoc 문서 수명을 바꾸고 공유 보드 연결을 5개까지 열어 둔다. activeDoc 수명은 바꾸지 않는다 | 되돌리기: A로 바꾸고 T22 다시 연다
-- 정정: D1 근거 "1MB 안쪽"은 틀렸다. 실제는 F8 줄. D2 when의 화살표 언급은 틀렸다. 화살표 이동 기능은 없다. 결정 행 JSON 문구는 그대로 둔다.
+- 정정: D1 근거 "1MB 안쪽"은 틀렸다. 실제는 F8 줄. D2 when의 화살표 언급은 틀렸다. 화살표 이동 기능은 없다. D2의 "0.5초 안"과 "0.5초 넘게"는 정확히는 0.5초 미만과 0.5초 이상이다. UndoManager.js:239가 `<`로 비교해서 정확히 500ms는 새 단계다. 결정 행 JSON 문구는 그대로 둔다.
 
 **뒤집힌 결정**
 
@@ -433,10 +435,10 @@ n1-verify ─┬─ n2-editor-history ─┐
 - 표에서 빼는 명령: boards.create는 새 보드로 전환해 P 기록이 버려진다 (mossBridge.ts:616, workspace.ts:2270). boards.rename·boards.delete는 보드 단위라 기록 범위 밖이다. ai.connectionLabel은 fetch만 하고 문서에 안 쓴다 (:601-606).
 - 경우마다 P를 준비한 뒤 undoManager.clear로 P 기록을 비우고 브리지를 부른다. 경우마다 명령 promise를 await한 뒤, 그 경우에 기대한 P 문서 변화가 모두 보일 때까지 실제 시간으로 최대 2초 조건 대기하고, 그 뒤 0.1초 더 기다려 판정한다. 기대 변화는 행에 적힌 칸 전부다. 예: 6-11은 연결선과 label 둘 다다. connectCards (workspace.ts:3266)와 setConnectionLabel (:3315)은 각각 void saveConnection으로 따로 쓰고, 문서 쓰기는 여러 await 뒤 나간다 (storage.ts:661-672). createSubcanvas도 void async라 promise가 없다 (workspace.ts:3735 이하). flushAll은 이 쓰기들을 기다리지 않아서 고정 0.1초 대기로는 거짓 통과한다.
 - 브리지 구현 참고: 구현 참고용 grep은 `rg -n "\bws\.[A-Za-z]+\(" web/src/state/bridge/mossBridge.ts`와 `rg -n "storage\.[A-Za-z]+\(|useStorage\.getState\(\)\.[A-Za-z]+\(" web/src/state/bridge/mossBridge.ts`다. setFaceHeight는 안에서 resolveMembership을 부른다 (workspace.ts:3144-3147). 기록 안 하는 동작의 동기 경로는 origin 문맥으로 감싸 안쪽 호출도 같은 origin을 쓰게 한다. persistCardDebounced :1434-1444는 문서에 바로 쓰고 Dexie 미러만 늦춘다. ws.moveCard는 doc:false라 문서에 안 쓴다 (workspace.ts:2642).
-- 카드를 휴지통에 넣을 때 닿은 연결선을 문서에서 지우는 경로는 remove와 removeSelected뿐이다 (AF5, AG1). 브리지 notes.delete가 지금 보드 카드를 지우면 ws.remove로 간다 (mossBridge.ts:463-465). 다른 보드 카드를 지우면 mossBridge.ts:470-472와 model.ts deleteNote가 notes 칸만 지워 연결선이 문서에 남는다 (재현 리뷰 폴더의 spec-r12-b/f3.test.ts). 받아들인다. 휴지통을 거치지 않는 영구 삭제 hardDeleteNotes (storage.ts:353-357, 호출 workspace.ts:2146, :2188, :3179)와 연결선 자체 삭제 removeConnection (writeThrough.ts:132)은 원래 문서에서 지운다.
+- 카드를 휴지통에 넣을 때 닿은 연결선을 문서에서 지우는 경로는 remove와 removeSelected뿐이다 (AF5, AG1). 브리지 notes.delete가 지금 보드 카드를 지우면 ws.remove로 간다 (mossBridge.ts:463-465). 다른 보드 카드를 지우면 mossBridge.ts:470-472와 model.ts deleteNote가 notes 칸만 지워 연결선이 문서에 남는다 (재현 리뷰 폴더의 spec-r12-b/f3.test.ts). 받아들인다. 휴지통을 거치지 않는 영구 삭제 hardDeleteNotes (storage.ts:353-357, 호출 workspace.ts:2146, :2188, :3179)와 연결선 자체 삭제 removeConnection (storage.ts:674, 문서 삭제는 writeThrough.ts:122-132의 deleteConnectionRecord)은 원래 문서에서 지운다.
 - 삭제: remove :3421-3473. 사실 파일의 removeNote는 실제 이름이 remove다. deleteNoteDoc :3462, trashNote :3471, 함 cascadeDeleteFunnels :3468. removeSelected :3475-3547, 판 먼저 :3493-3496, 문서 삭제 :3530-3534.
 - 판: setFrameBackground :2894-2927, 옛 파일 삭제 :2919. clearFrameBackground :2929-2949, :2948. deleteFrame :2951-2980, 파일 바로 삭제 :2966, 멤버 쓰기와 문서 삭제 :2969-2975는 바깥 transactLocal이 없다. 파일 삭제 함수 :320-332는 storage.purgeAttachments를 부른다. dropFrameBackgroundFileAfterSave :328-332는 flushCard 뒤에 지운다. 청소도 같은 식으로 예약 미러 쓰기를 먼저 내보낸다.
-- 휴지통: restoreFromTrash :3561-3585, 카드 덧붙이기 :3575-3576에 같은 id 검사를 넣는다. 문서 쓰기 :3578. web/src/state/storage.ts trashNotes :380은 미러에서 읽는다. 단계 meta의 메모와 연결선 내용으로 휴지통 행과 연결선 휴지통 행을 넣는 길을 따로 둔다. restoreNote :428, 연결선 휴지통 복귀 :458-473은 양 끝이 살아 있는 연결선만 되돌리고 나머지는 trashConnections에 남긴다. 여기서는 db.notes.bulkGet으로 미러를 본다. 이 사용자 살리기 규칙은 그대로 둔다. 되돌리기·다시 실행과 다른 기기 관찰자는 다른 규칙을 쓴다. 반영 뒤 보드 문서 connections에 있는 연결선만 trashConnections에서 빼고 미러 connections에 둔다. moveCardToBoard는 연결선을 안 건드려서 양 끝 카드 기준은 틀린다. 되돌린 연결선의 문서 쓰기는 이미 있다: storage.ts:477-478 restoreNote 끝의 writeConnectionRecord. 이 쓰기는 await 뒤 카드 putNoteDoc보다 먼저 나가는 별도 쓰기다. 따로 묶지 않고 기본 0.5초 묶음에 맡긴다 (U1). 기록하는 origin으로 notes·connections를 바꾼 지금 보드 V 쓰기 가운데 연달은 둘 사이에 흐른 시간이 0.5초 이상이면 2단계가 된다. 사이에 await가 여럿이면 그 합이다. 기록 안 하는 쓰기나 meta 쓰기가 사이에 끼어도 간격은 이어진다. 사이에 기록하는 V 쓰기가 끼어 각 간격이 0.5초 미만이면 1단계다. yjs는 기록하는 origin이고 notes·connections를 바꾼 트랜잭션만 lastChange를 갱신하고, 그 사이 시간만 본다 (UndoManager.js:217-221, :239, :250). 정확히 500ms도 2단계다. 기록 안 하는 쓰기가 사이에 끼어도 2단계인 재현은 리뷰 폴더의 spec-r13-a/gap.mjs다. 둘째 이후 연결선의 resolveSourceBoardId Dexie 읽기와 닫힌 다른 보드의 y-indexeddb 로드가 그 사이에 낄 수 있다 (writeThrough.ts:94-108, :101, :50). 연결선이 1개 이하면 그 사이 await가 없다. 재현은 둘이다: 리뷰 폴더의 spec-r12-b/sum.test.ts의 둘째 테스트는 300ms await 두 번으로 2단계다. 이 파일의 다른 두 테스트는 1단계를 낸다. spec-r9-a/repro/y3-first-write.ts는 느린 await가 V 첫 쓰기 앞에 있어 1단계. restoreNote는 휴지통에 없는 메모면 throw한다 (storage.ts:436). restoreNote는 원래 보드로 되돌리고, 원래 보드가 삭제돼 있으면 fallback 보드로 살린다 (storage.ts:438-444). 카드 putNoteDoc은 restoreNote가 아니라 restoreFromTrash가 하고, 살린 보드가 지금 보드일 때만 한다 (workspace.ts:3573-3579). restoreNote는 지금 보드를 모른다. storage.ts에 currentBoardId·useWorkspace가 0건이다. 그래서 restoreNote가 origin 인자를 받아 writeConnectionRecord까지 넘긴다 (W2). restoreFromTrash :3570은 fallback으로 지금 보드를 넘기고 지금 보드 id도 넘긴다. restoreNote가 살릴 보드와 비교해 같으면 LOCAL_ORIGIN, 다르면 기록 안 하는 origin을 고른다. 표 보기 호출 web/src/state/memoTable.ts:638은 fallback boardId로 null을 넘기고, null은 시스템 보드로 정규화된다 (boardIds.ts:25-27). 기록 안 하는 origin을 직접 넘긴다. 원래 보드가 db.boards에 없으면 restoreNote가 fallback 보드로 살린다 (storage.ts:442-446). 연결선은 source 메모 보드 문서에 쓴다. source가 지금 보드면 writeThrough로 활성 문서에 쓴다 (writeThrough.ts:94-117). purgeTrash :482는 파일 규칙을 쓴다. storage.removeNote :336은 휴지통에 넣고 바로 비워 첨부를 지운다. 생성 되돌리기에 쓰지 않는다.
+- 휴지통: restoreFromTrash :3561-3585, 카드 덧붙이기 :3575-3576에 같은 id 검사를 넣는다. 문서 쓰기 :3578. web/src/state/storage.ts trashNotes :380은 미러에서 읽는다. 단계 meta의 메모와 연결선 내용으로 휴지통 행과 연결선 휴지통 행을 넣는 길을 따로 둔다. restoreNote :428, 연결선 휴지통 복귀 :458-473은 양 끝이 살아 있는 연결선만 되돌리고 나머지는 trashConnections에 남긴다. 여기서는 db.notes.bulkGet으로 미러를 본다. 이 사용자 살리기 규칙은 그대로 둔다. 되돌리기·다시 실행과 다른 기기 관찰자는 다른 규칙을 쓴다. 반영 뒤 보드 문서 connections에 있는 연결선만 trashConnections에서 빼고 미러 connections에 둔다. moveCardToBoard는 연결선을 안 건드려서 양 끝 카드 기준은 틀린다. 되돌린 연결선의 문서 쓰기는 이미 있다: storage.ts:477-478 restoreNote 끝의 writeConnectionRecord. 이 쓰기는 await 뒤 카드 putNoteDoc보다 먼저 나가는 별도 쓰기다. 따로 묶지 않고 기본 0.5초 묶음에 맡긴다 (U1). 기록하는 origin으로 notes·connections를 바꾼 지금 보드 V 쓰기 가운데 연달은 둘 사이에 흐른 시간이 0.5초 이상이면 2단계가 된다. 사이에 await가 여럿이면 그 합이다. 기록 안 하는 쓰기나 meta 쓰기가 사이에 끼어도 간격은 이어진다. 사이에 기록하는 V 쓰기가 끼어 각 간격이 0.5초 미만이면 1단계다. yjs는 기록하는 origin이고 notes·connections를 바꾼 트랜잭션만 lastChange를 갱신하고, 그 사이 시간만 본다 (UndoManager.js:213-219, 그 안 scope :215와 origin :216, :239, :250). 정확히 500ms도 2단계다. 기록 안 하는 쓰기가 사이에 끼어도 2단계인 재현은 리뷰 폴더의 spec-r13-a/gap.mjs다. 둘째 이후 연결선의 resolveSourceBoardId Dexie 읽기와 닫힌 다른 보드의 y-indexeddb 로드가 그 사이에 낄 수 있다 (writeThrough.ts:94-108, :101, :50). 연결선이 1개 이하면 그 사이 await가 없다. 재현은 둘이다: 리뷰 폴더의 spec-r12-b/sum.test.ts의 둘째 테스트는 300ms await 두 번으로 2단계다. 이 파일의 다른 두 테스트는 1단계를 낸다. spec-r9-a/repro/y3-first-write.ts는 느린 await가 V 첫 쓰기 앞에 있어 1단계. restoreNote는 휴지통에 없는 메모면 throw한다 (storage.ts:436). restoreNote는 원래 보드로 되돌리고, 원래 보드가 삭제돼 있으면 fallback 보드로 살린다 (storage.ts:438-444). 카드 putNoteDoc은 restoreNote가 아니라 restoreFromTrash가 하고, 살린 보드가 지금 보드일 때만 한다 (workspace.ts:3573-3579). restoreNote는 지금 보드를 모른다. storage.ts에 currentBoardId·useWorkspace가 0건이다. 그래서 restoreNote가 origin 인자를 받아 writeConnectionRecord까지 넘긴다 (W2). restoreFromTrash :3570은 fallback으로 지금 보드를 넘기고 지금 보드 id도 넘긴다. restoreNote가 살릴 보드와 비교해 같으면 LOCAL_ORIGIN, 다르면 기록 안 하는 origin을 고른다. 표 보기 호출 web/src/state/memoTable.ts:638은 fallback boardId로 null을 넘기고, null은 시스템 보드로 정규화된다 (boardIds.ts:25-27). 기록 안 하는 origin을 직접 넘긴다. 원래 보드가 db.boards에 없으면 restoreNote가 fallback 보드로 살린다 (storage.ts:442-446). 연결선은 source 메모 보드 문서에 쓴다. source가 지금 보드면 writeThrough로 활성 문서에 쓴다 (writeThrough.ts:94-117). purgeTrash :482는 파일 규칙을 쓴다. storage.removeNote :336은 휴지통에 넣고 바로 비워 첨부를 지운다. 생성 되돌리기에 쓰지 않는다.
 - 문서 수명: web/src/state/ydoc/activeDoc.ts. INACTIVE_DOC_TTL_MS 2000 :30, getOrOpenBoardDoc :66, activateBoardDoc :95-111, 이전 보드 닫기 :109, closeBoardDocByKey :123-133, deleteBoardDoc :159, destroyBoardDocs :176. web/src/state/ydoc/doc.ts destroy :45-51. D6 B라서 이 수명은 바꾸지 않는다. 보드 전환 때 이전 보드 기록을 비우고, 파일 규칙으로 청소하고, UndoManager를 destroy한 뒤 문서가 닫힌다. UndoManager는 activateBoardDoc 성공과 불러오기 정리·시드 뒤에 새로 만든다.
 - 펜 스택: workspace.ts setPenMode :3327. penUndoStack·penRedoStack과 펜 모드 종료 때 비우기는 사실 파일 기준 :735-748, :3331-3334.
 - 함 토스트 되살리기가 문서에 안 쓰는 버그와 표 보기 휴지통 버그 web/src/state/memoTable.ts:598-624는 범위 밖이다.
@@ -462,4 +464,4 @@ n1-verify ─┬─ n2-editor-history ─┐
 
 ## 문서 리뷰
 
-스펙: 검토자 ① opus·xhigh→sonnet·xhigh ② opus·xhigh→sonnet·xhigh (계열 못 나눔: GPT 한도) · 1) P0 1·P1 14·P2 0  2) P0 0·P1 8·P2 6  3) P0 0·P1 5·P2 6  4) P0 0·P1 4·P2 2  5) P0 0·P1 3·P2 5  6) P0 0·P1 4·P2 4  7) P0 0·P1 3·P2 5  8) P0 0·P1 2·P2 3  9) P0 0·P1 2·P2 4  10) P0 0·P1 4·P2 4  11) P0 0·P1 2·P2 7  12) P0 0·P1 1·P2 5  13) P0 0·P1 0·P2 5 · 버림 0
+스펙: 검토자 ① opus·xhigh→sonnet·xhigh ② opus·xhigh→sonnet·xhigh (계열 못 나눔: GPT 한도) · 1) P0 1·P1 14·P2 0  2) P0 0·P1 8·P2 6  3) P0 0·P1 5·P2 6  4) P0 0·P1 4·P2 2  5) P0 0·P1 3·P2 5  6) P0 0·P1 4·P2 4  7) P0 0·P1 3·P2 5  8) P0 0·P1 2·P2 3  9) P0 0·P1 2·P2 4  10) P0 0·P1 4·P2 4  11) P0 0·P1 2·P2 7  12) P0 0·P1 1·P2 5  13) P0 0·P1 0·P2 5  14) P0 0·P1 1·P2 7 · 버림 0
