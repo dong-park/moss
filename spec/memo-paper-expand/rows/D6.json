@@ -1,0 +1,35 @@
+{
+  "id": "D6",
+  "kind": "decision",
+  "title": "열림 모션: 기존 전역 moss-scale-in을 쓸지",
+  "given": "지금도 모달에는 전역 규칙 [data-state=open][data-radix-dialog-content]가 moss-scale-in(--duration-slow 200ms, 0.96→1)을 건다(globals.css 241~243행, 84행). 이 규칙은 @layer 밖이라 Tailwind 유틸리티보다 이긴다. 종이에서 덮으려면 !important나 선택자 경쟁이 필요하다. prefers-reduced-motion 규칙은 globals.css에 0건이다",
+  "when": "펼침 모션을 정한다",
+  "then": "새 모션 코드를 넣을지, 기존 규칙을 그대로 둘지를 가른다. 카드 위치에서 커지는 모션은 카드 좌표·팬·줌·기울기를 읽어야 해 크다",
+  "options": [
+    {
+      "key": "A",
+      "label": "기존 전역 moss-scale-in(200ms, 0.96→1)을 다른 모달과 같이 그대로 쓴다. 새 모션 코드를 넣지 않는다",
+      "why": "변경이 0줄이고 다른 모달과 일관된다. 움직임 줄이기 처리는 모든 모달에 없는 기존 상태다"
+    },
+    {
+      "key": "B",
+      "label": "카드 위치에서 종이 위치로 이동하며 커진다",
+      "why": "가장 '펴진' 느낌이지만 줌·기울기·가림 처리까지 필요하다"
+    },
+    {
+      "key": "C",
+      "label": "이 창만 모션 없음",
+      "why": "전역 규칙을 덮어야 해서 !important가 필요하고 다른 모달과 달라진다"
+    }
+  ],
+  "recommend": "A",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

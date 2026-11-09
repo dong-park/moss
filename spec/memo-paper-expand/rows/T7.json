@@ -1,0 +1,17 @@
+{
+  "id": "T7",
+  "kind": "task",
+  "title": "종이 층이 앞면과 같고 편집 중에 바뀌지 않는다",
+  "given": "본문이 빈 노랑 메모, 본문이 있는 파랑 메모, 할 일 앞면 메모, 링크 앞면 메모, linkEmpty 메모가 있다. 마지막 셋은 더블클릭이 아니라 메모 표의 열기(openMemo)로 연다",
+  "when": "각 메모를 연다. 본문이 빈 노랑 메모에서는 '- [ ] 할 일'을 쳐 본다. 닫고 메모 표의 열기(openMemo)로 다시 연다",
+  "then": "노랑·파랑 메모는 창의 [data-memo-tint] 층의 background 문자열이 같은 카드 앞면의 [data-memo-tint]와 같고 mix-blend-mode가 multiply이며 종이 배경이 text.png다. 할 일·링크·linkEmpty 메모는 종이 배경색이 rgb(253, 252, 250)이다. 노랑 메모에 '- [ ] '를 쳐도 열려 있는 동안 종이는 노랑 그대로다. 닫았다 openMemo로 다시 열면 흰 종이다. 기본 본문 글자 --color-text #2c2e33과 종이 색의 대비가 6개 노랑 색조·4개 선택 색·card-base 모두 4.5:1 이상이다(multiply 뒤 합성색 기준으로 가장 진한 노랑 #ffcf6e 종이에서 평균 픽셀 약 8.4:1, 가장 어두운 픽셀 약 5.4:1). 체크한 할 일 글자 --color-text-muted와 링크 글자는 기존 토큰 문제라 이 기준에 넣지 않는다. 확인: 브라우저에서 getComputedStyle 출력 + 대비 계산",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

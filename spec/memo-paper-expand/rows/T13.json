@@ -1,0 +1,17 @@
+{
+  "id": "T13",
+  "kind": "task",
+  "title": "종이 안쪽 여백이 말린 모서리와 투명 가장자리를 비운다",
+  "given": "paper 앞면 메모를 열었다. 본문은 종이 아래까지 닿을 만큼 길다",
+  "when": "맨 끝까지 스크롤한다",
+  "then": "종이의 getComputedStyle padding이 '12px 24px 40px'과 같다. 스크롤 영역 padding은 0이다. 본문 컬럼([data-memo-body-column])의 아래 끝이 종이 아래 끝에서 40px 이상 위에 있다(종이 rect.bottom − 컬럼 rect.bottom ≥ 39.5, 소수 픽셀 허용). 열림 애니메이션이 끝난 뒤(animationend 또는 연 지 300ms 뒤)에 잰다. 전역 규칙 moss-scale-in이 도는 확대 중이면 38.4px라 실패한다. 마지막 줄이 말린 모서리 위에 겹치지 않는다. 확인: 브라우저에서 getComputedStyle과 getBoundingClientRect를 재고 스크린샷으로 모서리를 본다",
+  "confidence": "mid",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

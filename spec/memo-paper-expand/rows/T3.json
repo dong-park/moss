@@ -1,0 +1,17 @@
+{
+  "id": "T3",
+  "kind": "task",
+  "title": "글자를 긁으면 버블로 서식이 바뀌고 스크롤하면 버블이 글자를 따라간다",
+  "given": "펼친 창 제목 줄 30px + 본문이 종이 높이 − 52px보다 길고 T1이 통과했다",
+  "when": "글자 일부를 긁는다. 버블의 B를 누른다. 그 뒤 H1, ☑ 도 하나씩 누른다. 다음으로 다시 긁은 뒤 종이를 스크롤한다",
+  "then": "[data-bubble-toolbar]가 1개 뜬다. B를 누르면 본문 마크다운에 ** 가 생긴다. 서식을 누른 뒤에도 선택이 남고 창은 열려 있다. B를 누른 뒤 H1을 이어 누를 수 있다. 버블 클릭이 낸 scrollIntoView 스크롤에도 버블이 닫히지 않는다. 선택을 풀면 버블이 사라진다. 긁은 뒤 종이를 스크롤하면 버블이 선택 위를 따라간다. 선택 rect.top − 버블 rect.bottom이 0 이상 16 이하다. 버블은 -translate-y-full에 top이 선택 top − 6px이라 버블 rect.top은 선택 top보다 약 40px 위이므로 rect.top끼리 비교하지 않는다. 선택이 스크롤 영역의 보이는 범위 밖으로 나가면 [data-bubble-toolbar]가 0개이고, 범위 안으로 다시 스크롤하면 닫혔던 뒤에도 [data-bubble-toolbar]가 1개다. 따라가기는 스크롤 영역의 onScroll이 extensions.ts의 refreshBubble을 불러 현재 선택으로 좌표를 다시 계산하는 것이다. 다시 열 뷰는 extensions.ts 모듈 변수 lastView에서 얻는다(CLOSED는 view가 null이라 bubbleState.view로는 못 얻는다). 확인: 브라우저 수동 + 본문 마크다운 확인",
+  "confidence": "mid",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

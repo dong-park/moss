@@ -1,0 +1,30 @@
+{
+  "id": "D5",
+  "kind": "decision",
+  "title": "닫는 방법",
+  "given": "머리 막대의 ✕가 사라진다. Radix가 Esc와 바깥 클릭을 기본으로 준다. 버블 클릭은 React 트리 기준으로 Radix가 안쪽으로 본다. 다만 버블 pointer-events가 none이면 클릭이 오버레이로 뚫려 닫히므로 D9 수정이 먼저다",
+  "when": "닫기 방법을 정한다",
+  "then": "D9 수정 뒤에는 바깥 클릭을 켜 둬도 버블 클릭으로 닫히지 않는다. 따로 가드를 넣을 필요가 없다",
+  "options": [
+    {
+      "key": "A",
+      "label": "Esc + 종이 밖 클릭 + 종이 밖 오른쪽 위 ✕",
+      "why": "발견하기 쉽다. D9 수정 뒤 버블 클릭은 안쪽으로 본다"
+    },
+    {
+      "key": "B",
+      "label": "Esc + ✕만. 바깥 클릭은 무시",
+      "why": "더블클릭으로 연 창을 밖 클릭으로 못 닫아 답답하다"
+    }
+  ],
+  "recommend": "A",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

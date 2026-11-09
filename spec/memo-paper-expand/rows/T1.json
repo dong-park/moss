@@ -1,0 +1,20 @@
+{
+  "id": "T1",
+  "kind": "task",
+  "title": "버블 툴바가 펼친 창 안에서 보이고 눌린다 (먼저 확인)",
+  "given": "dev 서버가 떠 있고 메모 카드를 더블클릭해 펼친 창을 연 상태다. 이 확인은 상단 툴바를 떼기 전에 한다. 상단 툴바도 role=toolbar 이름 '서식'이라 버블과 구별하려고 [data-bubble-toolbar]로만 센다. 지금 코드의 실측(뷰포트 1710×961): 긁으면 [data-bubble-toolbar] 1개가 보이지만 그 요소와 body의 pointerEvents가 'none'이고, B 버튼 중심의 elementFromPoint는 Dialog.Overlay다. 실제 포인터로 누르면 role=dialog가 1개에서 0개로 닫히고 strong은 0개다. 증거: scratchpad/prove-baseline/04-selected-AS-IS.png, 05-after-bold-press.png",
+  "when": "본문 글자 한 단어를 마우스로 긁어 선택하고 버블의 B를 누른다",
+  "then": "[data-bubble-toolbar]가 1개 보이고 창 위(z-order)에 그려진다. 버블 요소의 pointerEvents가 'auto'이고 B 버튼 중심의 elementFromPoint가 그 버튼이다. B를 누르면 본문에 ** 가 생기고 창은 열려 있다. 하나라도 어긋나면 D9의 추천 수정을 먼저 넣고 다시 확인한다. 확인: 브라우저 수동 + 결과 스크린샷",
+  "confidence": "low",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [
+    "T3",
+    "T9"
+  ],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

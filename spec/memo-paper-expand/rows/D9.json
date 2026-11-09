@@ -1,0 +1,35 @@
+{
+  "id": "D9",
+  "kind": "decision",
+  "title": "버블 버튼이 모달 안에서 안 눌릴 때의 수정 방식",
+  "given": "버블은 body 직속 portal이다. 모달이 열리면 Radix가 body에 pointer-events:none을 건다(react-dismissable-layer 1.2.1 dist/index.mjs 113행). 버블이 이를 상속한다. 지금 코드를 실측하니(뷰포트 1710×961) 버블과 body의 pointerEvents가 'none'이고 B 버튼 중심의 elementFromPoint가 Dialog.Overlay다. 실제로 누르면 클릭이 버블을 뚫고 오버레이에 닿아 role=dialog가 1개에서 0개로 닫히고 서식은 안 생긴다. Radix가 버블을 바깥으로 판정해서가 아니다. 닫힘 판정(314행 onPointerDownCapture)은 React 트리 기준이라 버블이 클릭을 받기만 하면 안쪽으로 본다",
+  "when": "T1에서 버블이 보이는지, 눌리는지, 서식이 바뀌는지 본다",
+  "then": "수정 방식을 가른다. Content가 transform으로 가운데에 놓이면 안쪽 fixed 좌표가 Content 기준이 되어 버블 위치가 어긋난다",
+  "options": [
+    {
+      "key": "A",
+      "label": "BubbleMenuHost 버블 루트에 pointer-events:auto만 준다. portal은 body 그대로. onInteractOutside 가드는 넣지 않는다",
+      "why": "원인이 상속 하나라 변경이 한 줄이다. 좌표가 뷰포트 기준으로 유지된다"
+    },
+    {
+      "key": "B",
+      "label": "portal 대상을 Dialog.Content 안으로 옮기고 Content의 transform 중앙 정렬을 inset·margin auto로 바꾼다",
+      "why": "Radix 규칙 안에 들어오지만 좌표 기준을 다시 맞춰야 한다"
+    },
+    {
+      "key": "C",
+      "label": "Dialog modal={false}로 바꾸고 Esc·바깥 클릭을 직접 처리한다",
+      "why": "Radix 처리를 거의 다 직접 짜야 한다"
+    }
+  ],
+  "recommend": "A",
+  "confidence": "low",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

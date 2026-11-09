@@ -1,0 +1,17 @@
+{
+  "id": "T8",
+  "kind": "task",
+  "title": "펼침 모션은 기존 moss-scale-in을 그대로 쓴다",
+  "given": "D6 추천대로 기존 전역 moss-scale-in(200ms, 0.96→1)을 다른 모달과 같이 쓴다",
+  "when": "메모를 펼친다. 같은 보드에서 다른 모달도 하나 연다",
+  "then": "종이를 열 때 getComputedStyle(dialog).animationName이 'moss-scale-in'이고 animationDuration이 '0.2s'이다. 다른 모달과 같은 값이다. 이 변경에 새 animation·@keyframes 규칙은 0건이다. 움직임 줄이기 처리는 모든 모달에 없는 기존 상태라 이 행의 기준이 아니다. 확인: 브라우저 콘솔 출력 + diff에서 animation 추가 0건. 확대 시작 때 본문 컬럼([data-memo-body-column])의 getBoundingClientRect().width는 691.2px이므로 T4는 애니메이션 뒤에 잰다",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}
