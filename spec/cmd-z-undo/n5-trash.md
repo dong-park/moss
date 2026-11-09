@@ -33,7 +33,7 @@ spec.md 「상태 모델」의 합법 전이만 일어난다. 되돌리기·다�
 
 ## 완료 기준
 
-- [ ] 시험 준비 규칙(스펙 리뷰 16바퀴 AJ1): 준비 상태는 시험 코드가 직접 만든다. 스토어 상태는 useWorkspace.setState로, 문서는 model.ts 헬퍼(putNote·putConnection·deleteConnection)로, Dexie 행(미러 notes·connections, trash, trashConnections)은 db 테이블에 직접 쓰고 await한다. 준비에 스토어 액션과 브리지를 쓰지 않는다. 관찰자는 LOCAL_ORIGIN 쓰기를 스토어에 반영하지 않으므로(origin.ts:23-25) 스토어 상태도 직접 넣는다. 다 쓴 뒤 undoManager.clear로 기록을 비우고 시험 동작을 시작한다. 본보기: web/src/state/__tests__/connectors.test.ts:73·:211-224. 동작 뒤 조건 대기가 2초 안에 서지 않으면 그 경우는 실패다
+- [ ] 시험 준비 규칙(스펙 리뷰 16·17바퀴): 이 규칙은 행이 "시험 코드가 직접 만든다"고 적은 준비에만 쓴다. T20 다섯째·여섯째, T15 넷째·다섯째가 그렇다. 다른 행의 given 동작(만들었다·지웠다·고쳤다·살렸다)은 cmd+z가 되돌릴 동작이므로 스토어 액션으로 실제로 하고 기록한다. 순서: 먼저 보드를 연다(loadFromStorage나 activateBoard). UndoManager가 여기서 생기고, 보드 열기는 아래 금지에 들지 않는다. 그다음 스토어 상태는 useWorkspace.setState로, 문서는 model.ts 헬퍼(putNote·putConnection·deleteConnection)로, Dexie 행(미러 notes·connections, boards, trash, trashConnections)은 db 테이블에 직접 쓰고 await한다. 준비에 그 밖의 스토어 액션과 브리지를 쓰지 않는다. 예외는 T15 다섯째의 trashSelected 하나다. 문서에 쓰지 않으므로 늦은 기록 쓰기가 없다(memoTable.ts:598-625). 관찰자는 LOCAL_ORIGIN 쓰기를 스토어에 반영하지 않으므로(origin.ts:23-25) 스토어 상태도 직접 넣는다. 다 쓴 뒤 n3가 내보내는 지금 보드 UndoManager getter로 clear하고 시험 동작을 시작한다. 본보기: web/src/state/__tests__/connectors.test.ts:73·:211-224. 동작 뒤 조건 대기가 2초 안에 서지 않으면 그 경우는 실패다
 - [ ] T12, T13, T14, T21, T24, T25 then 칸의 「확인」이 통과한다. 확인: `cd web && bunx vitest run src/state/__tests__/undo.trash.test.ts`
 - [ ] 같은 명령에서 T15 첫째와 셋째 경우가 통과한다. 첫째: 휴지통에서 살린 A를 되돌리면 A가 보드에 없고 휴지통에 A 행 1개. 셋째: 연결선으로 B와 이어진 C를 살린 뒤 되돌리면 C가 보드에 없고 휴지통에 C 행 1개와 연결선 휴지통 행 1개, B는 보드에 남는다. T15 둘째와 행 전체 판정은 n6이 한다
 - [ ] T24는 기준값 보정 줄을 빼면 실패한다. 구현 메모에 뺐을 때 실패 출력 한 줄을 남긴다
