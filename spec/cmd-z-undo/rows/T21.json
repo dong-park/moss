@@ -1,0 +1,14 @@
+{
+  "id": "T21",
+  "kind": "task",
+  "title": "공유 보드에서 cmd+z는 내 변경만 되돌리고 남의 변경은 남긴다",
+  "given": "같은 보드를 다른 탭이 함께 연다. 내가 메모 A를 옮겼고, 그 뒤 다른 탭이 메모 B의 색을 바꿨다",
+  "when": "내 탭에서 cmd+z를 2번 누른다",
+  "then": "A는 옮기기 전 자리로 돌아간다. B의 색은 다른 탭이 바꾼 색 그대로다. 두 번째 cmd+z는 아무것도 바꾸지 않는다. 확인: vitest로 두 Y.Doc을 update로 이어 붙여 본다",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {"answer": "", "fix": ""},
+  "log": []
+}

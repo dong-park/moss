@@ -1,0 +1,14 @@
+{
+  "id": "T13",
+  "kind": "task",
+  "title": "새로 만든 메모를 되돌리면 메모가 사라지고 휴지통과 검색에도 없다",
+  "given": "보드에 메모 '새 메모'를 하나 만들었다",
+  "when": "cmd+z를 1번 누르고 이어서 cmd+shift+z를 1번 누른다",
+  "then": "cmd+z 1번에 메모가 보드에서 사라진다. 휴지통 개수는 0이고 검색에서 '새 메모'가 나오지 않는다. cmd+shift+z 1번에 메모가 같은 자리에 다시 보인다. 확인: vitest로 휴지통 표 0행과 미러 notes 표 0행을 본다",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {"answer": "", "fix": ""},
+  "log": []
+}

@@ -1,0 +1,14 @@
+{
+  "id": "T25",
+  "kind": "task",
+  "title": "되돌린 메모의 수정 시각은 되돌린 시각이다",
+  "given": "메모 A를 고쳤다. 가짜 시계를 쓴다",
+  "when": "시각 t1에 cmd+z로 그 고침을 되돌리고, 시각 t2에 cmd+shift+z로 다시 실행한다",
+  "then": "되돌린 뒤 A의 updatedAt은 t1 이상이다. 다시 실행한 뒤 t2 이상이다. 이 쓰기는 기록 단계 수를 늘리지 않는다. 확인: vitest. 판정은 D3 추천 기준이다",
+  "confidence": "low",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {"answer": "", "fix": ""},
+  "log": []
+}

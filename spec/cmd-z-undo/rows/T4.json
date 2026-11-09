@@ -1,0 +1,14 @@
+{
+  "id": "T4",
+  "kind": "task",
+  "title": "편집기 기록이 바닥나도 cmd+z는 캔버스 기록으로 넘어가지 않는다",
+  "given": "카드 X를 옮긴 뒤 메모 Y의 편집기를 열어 ' 끝'을 쳤다",
+  "when": "편집 중에 cmd+z를 3번 누른다",
+  "then": "' 끝'이 사라지고 본문은 편집 전 글이다. 카드 X는 옮긴 자리에 그대로 있다. 확인: vitest로 키 처리기에 편집 중 상태를 주고 X의 좌표를 본다. 판정은 D5 추천 기준이다",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {"answer": "", "fix": ""},
+  "log": []
+}

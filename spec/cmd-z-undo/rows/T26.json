@@ -1,0 +1,14 @@
+{
+  "id": "T26",
+  "kind": "task",
+  "title": "web 검사 5개가 모두 통과한다",
+  "given": "구현을 마쳤다. 의존성을 더한 뒤 web에서 bun install을 다시 했다",
+  "when": "web에서 CI와 같은 검사 5개를 돌린다",
+  "then": "npx tsc --noEmit, bun run lint, bun run test, bun run check:i18n, bun run build가 모두 종료 코드 0이다. 확인: 각 명령의 종료 코드. 플래키 테스트가 실패하면 그 테스트만 다시 돌려 기록한다",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {"answer": "", "fix": ""},
+  "log": []
+}

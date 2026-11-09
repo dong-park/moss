@@ -1,0 +1,14 @@
+{
+  "id": "T24",
+  "kind": "task",
+  "title": "되돌린 뒤 카드를 원래 값으로 다시 바꿔도 저장된다",
+  "given": "메모 A를 x 100에서 x 200으로 옮긴 뒤 cmd+z로 x 100에 돌려놓았다",
+  "when": "A를 다시 끌어 x 200에 놓고 새로고침한다",
+  "then": "새로고침 뒤 A는 x 200에 있다. 확인: vitest로 flushAll 뒤 readNote(A).x가 200인지 본다",
+  "confidence": "mid",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {"answer": "", "fix": ""},
+  "log": []
+}

@@ -1,0 +1,14 @@
+{
+  "id": "T11",
+  "kind": "task",
+  "title": "펜 모드 안의 cmd+z는 지금처럼 마지막 획 하나만 지운다",
+  "given": "카드 X를 옮긴 뒤 펜 모드로 획 2개를 그었다. 아직 펜 모드다",
+  "when": "cmd+z를 1번 누른다",
+  "then": "마지막 획 1개만 사라지고 첫 획은 남는다. 카드 X는 옮긴 자리에 그대로 있다. 확인: 기존 펜 테스트와 키 처리기 vitest",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {"answer": "", "fix": ""},
+  "log": []
+}

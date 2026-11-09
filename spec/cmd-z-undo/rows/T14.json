@@ -1,0 +1,14 @@
+{
+  "id": "T14",
+  "kind": "task",
+  "title": "다시 실행으로 다시 지운 메모는 휴지통에 들어가고 판은 들어가지 않는다",
+  "given": "메모 A를 지우고 판 F를 지운 뒤 cmd+z를 2번 눌렀다. A와 F가 보드에 있고 휴지통은 0개다",
+  "when": "cmd+shift+z를 2번 누른다",
+  "then": "A와 F가 보드에서 사라진다. 휴지통에는 A 1개만 있다. 확인: vitest로 휴지통 표의 행 id를 본다",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {"answer": "", "fix": ""},
+  "log": []
+}

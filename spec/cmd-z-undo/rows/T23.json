@@ -1,0 +1,14 @@
+{
+  "id": "T23",
+  "kind": "task",
+  "title": "새로고침하면 기록이 사라져 cmd+z가 아무것도 바꾸지 않는다",
+  "given": "메모 A를 옮긴 뒤 새로고침했다",
+  "when": "cmd+z를 1번 누른다",
+  "then": "A는 옮긴 자리에 그대로 있다. 오류 문구도 뜨지 않는다. 확인: vitest로 문서와 기록을 새로 연 뒤 키 처리기를 부르고 readNote(A)를 본다",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {"answer": "", "fix": ""},
+  "log": []
+}

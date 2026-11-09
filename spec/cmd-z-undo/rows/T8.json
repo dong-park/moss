@@ -1,0 +1,14 @@
+{
+  "id": "T8",
+  "kind": "task",
+  "title": "메모 편집을 마치면 그 편집 전체가 캔버스 기록 1단계가 된다",
+  "given": "메모 Y 본문이 '할 일'이다. 편집기를 열어 1초씩 쉬어 가며 ' 하나'와 ' 둘'을 치고 편집을 마쳤다. 펼친 메모 창으로 같은 편집을 하고 창을 닫은 경우도 따로 본다",
+  "when": "캔버스에서 cmd+z를 1번 누르고 이어서 cmd+shift+z를 1번 누른다",
+  "then": "두 경우 모두 cmd+z 1번에 본문이 '할 일'로 돌아간다. cmd+shift+z 1번에 '할 일 하나 둘'이 된다. 확인: vitest로 본문 쓰기 여러 번 뒤 readNote(Y).content와 undoStack 길이 1을 본다. 묶는 방법은 D2 추천 기준이다",
+  "confidence": "mid",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {"answer": "", "fix": ""},
+  "log": []
+}

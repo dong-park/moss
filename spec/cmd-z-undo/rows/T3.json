@@ -1,0 +1,14 @@
+{
+  "id": "T3",
+  "kind": "task",
+  "title": "편집기를 열자마자 cmd+z를 눌러도 본문은 그대로다",
+  "given": "본문이 '회의록 초안'인 메모가 있다. 편집기를 막 열었고 아무것도 치지 않았다",
+  "when": "cmd+z를 3번 누른다",
+  "then": "본문은 '회의록 초안' 그대로다. 캔버스의 다른 카드도 그대로다. 확인: T2와 같은 방법",
+  "confidence": "mid",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {"answer": "", "fix": ""},
+  "log": []
+}
