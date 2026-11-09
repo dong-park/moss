@@ -21,27 +21,29 @@ import { memoTint } from "../memoVariety";
  * 없고, 서식은 글자를 긁으면 뜨는 버블로만 바꾼다. 편집은 setContent로 실시간 반영·영속.
  *
  * 종이 구조 (spec/memo-paper-expand):
- *  Dialog.Content가 곧 종이다 — 폭 min(792px,94vw) × 높이 min(792px,86vh), padding
- *  12px 24px 40px, 모서리 6px. 배경은 창을 열 때 한 번 정한다: paper 앞면이면 카드
- *  앞면과 같은 text.png + 같은 mask의 색조 층(multiply), 할 일·링크 앞면이면 흰 단색.
+ *  Dialog.Content가 곧 종이다 — 폭 min(792px,94vw) × 높이 PAPER_H, 모서리 6px.
+ *  배경은 창을 열 때 한 번 정한다: paper 앞면이면 카드 앞면과 같은 text.png + 같은
+ *  mask의 색조 층(multiply), 할 일·링크 앞면이면 흰 단색. 상자 그림자는 두지 않는다 —
+ *  text.png의 투명 가장자리 밖으로 사각 틀이 비친다. 아래 padding은 종이 높이의 17%로,
+ *  늘어난 text.png의 말린 모서리(글자 오른쪽 끝 열에서 높이의 약 15.5%) 위로 글자가
+ *  올라가지 않게 한다. 높이 상한 100vh−88px는 종이 위 버튼 줄이 화면 안에 들게 한다.
  *  펜·지우개·✕ 버튼 줄은 Content의 자식으로 두고 종이 박스 밖 오른쪽 위에 얹는다
  *  (Content 밖 형제면 Radix가 body에 건 pointer-events:none 때문에 눌리지 않는다).
  *  본문 넘침은 안쪽 스크롤 영역(ExpandedMarkdownEditor)이 맡는다.
  *
- * 고정 폭 1:1 ("펼치면 항상 최대"):
- *  본문은 카드와 동일한 고정 폭 컬럼([[MEMO_CONTENT_WIDTH]])으로 1:1 배치돼 줄바꿈이
- *  카드와 같다. 자세한 건 ExpandedMarkdownEditor.
- *
  * 펜 overlay:
- *  DrawingLayer를 본문 컬럼 안에 1:1로 얹는다 — 카드와 동일 좌표공간이라 카드에서
- *  그린 stroke가 같은 글자 위에 정렬된다. 펜/지우개 토글로 그리기 모드
- *  (active)를 켜면 덧그리거나 지울 수 있고, 꺼두면 SVG가 pointer-events:none →
- *  클릭이 본문(텍스트 편집)으로 통과한다. 변경은 setOverlay로 영속된다.
+ *  DrawingLayer를 본문 고정 폭 컬럼([[MEMO_CONTENT_WIDTH]]) 안에 1:1로 얹는다 — 저장된
+ *  선(card.overlay)이 이 컬럼 좌표다. 카드 앞면은 제목만 보여 펜 선은 이 창에서만 보인다.
+ *  펜/지우개 토글로 그리기 모드(active)를 켜면 덧그리거나 지울 수 있고, 꺼두면 SVG가
+ *  pointer-events:none → 클릭이 본문(텍스트 편집)으로 통과한다. 변경은 setOverlay로 영속된다.
  *
- * 열림 모션은 globals.css의 전역 dialog-content 규칙(moss-scale-in)을 그대로 쓴다.
+ * 열림 모션은 다른 모달과 같다. 새 animation 규칙을 넣지 않는다.
  * 닫기: Esc / 오버레이 클릭 / ✕ → close() → setExpandedCard(null).
  * 마운트는 page.tsx 루트에서 1회 (전역 오버레이, BoardDeleteDialog와 동일 패턴).
  * ───────────────────────────────────────────────────────────── */
+// 종이 높이. 86vh와 792px 상한에 더해 100vh−88px로 버튼 줄(28px + 간격) 자리를 남긴다.
+const PAPER_H = "min(792px, 86vh, calc(100vh - 88px))";
+
 export function MemoExpandDialog() {
   const t = useT();
   const expandedCardId = useWorkspace((s) => s.expandedCardId);
@@ -115,11 +117,11 @@ export function MemoExpandDialog() {
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-[var(--z-overlay)] bg-black/40" />
         <Dialog.Content
-          className="fixed left-1/2 top-1/2 z-[var(--z-modal)] flex -translate-x-1/2 -translate-y-1/2 flex-col shadow-card-lift focus:outline-none"
+          className="fixed left-1/2 top-1/2 z-[var(--z-modal)] flex -translate-x-1/2 -translate-y-1/2 flex-col focus:outline-none"
           style={{
             width: "min(792px, 94vw)",
-            height: "min(792px, 86vh)",
-            padding: "12px 24px 40px",
+            height: PAPER_H,
+            padding: `12px 24px calc(${PAPER_H} * 0.17)`,
             borderRadius: 6,
             background: isPaper ? MEMO_PAPER : "var(--color-card-base)",
             isolation: "isolate",
@@ -184,7 +186,7 @@ export function MemoExpandDialog() {
                 onChange={(md) => setContent(card.id, md)}
                 // FEAT-memo-title: 본문 위 제목 줄 — 스크롤 영역 안, 창에서만 편집(D1).
                 // Enter는 본문 맨 앞으로 포커스를 넘긴다(AC-7). 펜 overlay는 본문 컬럼
-                // (고정 폭) 안에 1:1로 얹힌다 — 카드와 동일 좌표공간. drawing=false면
+                // (고정 폭) 안에 1:1로 얹힌다 — 저장된 선과 같은 좌표공간. drawing=false면
                 // pointer-events:none → 클릭이 편집으로 통과.
                 titleSlot={
                   <MemoExpandTitleSlot
