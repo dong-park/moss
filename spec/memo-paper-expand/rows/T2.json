@@ -1,10 +1,10 @@
 {
   "id": "T2",
   "kind": "task",
-  "title": "머리 막대·상단 서식 툴바·모달 테두리가 없다",
+  "title": "머리 막대·상단 서식 툴바·모달 테두리·상자 그림자가 없다",
   "given": "메모 카드를 더블클릭해 펼친 창이 열렸고 글자는 선택하지 않았다",
   "when": "창 DOM을 본다",
-  "then": "dialog = document.querySelector('[role=dialog]')일 때 dialog.querySelectorAll('[role=toolbar],[data-toolbar-btn]').length가 0이다. dialog 안 텍스트에 '메모 편집'·'블록 추가'가 0개다. getComputedStyle(dialog).borderTopWidth가 '0px'이다. 문서 전체의 role=toolbar는 보드 독(Dock.tsx 472행)이 있어 0이 아니므로 세지 않는다. 확인: 브라우저 콘솔에서 위 식 출력. 단위 테스트로 하려면 MemoExpand.test.tsx 16행의 MarkdownEditor 전체 mock을 쓰지 않고 실제 ExpandedMarkdownEditor를 렌더해야 한다. mock 아래 DOM 단언은 툴바가 남아도 통과해 판정이 안 된다",
+  "then": "dialog = document.querySelector('[role=dialog]')일 때 dialog.querySelectorAll('[role=toolbar],[data-toolbar-btn]').length가 0이다. dialog 안 텍스트에 '메모 편집'·'블록 추가'가 0개다. getComputedStyle(dialog).borderTopWidth가 '0px'이고 getComputedStyle(dialog).boxShadow가 'none'이다. text.png 투명 가장자리(792px 기준 오른쪽·아래 약 22px) 밖으로 Content의 shadow-card-lift가 비쳐 종이 둘레에 사각 틀이 보였기 때문이다(검토자와 prover가 둘 다 확인). 문서 전체의 role=toolbar는 보드 독(Dock.tsx 472행)이 있어 0이 아니므로 세지 않는다. 확인: 브라우저 콘솔에서 위 식 출력. 단위 테스트로 하려면 MemoExpand.test.tsx 16행의 MarkdownEditor 전체 mock을 쓰지 않고 실제 ExpandedMarkdownEditor를 렌더해야 한다. mock 아래 DOM 단언은 툴바가 남아도 통과해 판정이 안 된다",
   "confidence": "high",
   "reversible": true,
   "status": "아직 안 함",
