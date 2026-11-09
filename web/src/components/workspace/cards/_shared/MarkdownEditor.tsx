@@ -191,9 +191,17 @@ export function ExpandedMarkdownEditor({
   const isClient = useIsClient();
   const scrollRef = useRef<HTMLDivElement>(null);
   // 버블이 선택이 바뀔 때도 이 스크롤 영역의 보이는 범위로 위치를 정하게 등록한다.
+  // 창 크기가 바뀌면 글자 좌표가 달라지므로 버블 위치도 다시 계산한다.
   useEffect(() => {
     setBubbleScrollEl(scrollRef.current);
-    return () => setBubbleScrollEl(null);
+    const onResize = () => {
+      if (scrollRef.current) refreshBubble(scrollRef.current);
+    };
+    window.addEventListener("resize", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      setBubbleScrollEl(null);
+    };
   }, [isClient]);
 
   if (!isClient) {

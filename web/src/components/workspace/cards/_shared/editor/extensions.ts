@@ -137,16 +137,20 @@ export function setBubbleScrollEl(el: HTMLElement | null): void {
  * - 선택의 어느 부분도 안 보이면 닫는다. 세로는 위·아래로 통째로 나갔을 때, 가로는 한 줄
  *   선택이 좌우로 통째로 나갔을 때다. 여러 줄 선택은 가운데 줄이 늘 컬럼 왼쪽부터 차므로
  *   양 끝이 밖이어도 보인다 — 가로로는 닫지 않는다.
- * - 선택 시작 위로 버블 자리(BUBBLE_ROOM)가 없으면 아래로 뒤집는다(placement below).
- *   시작 줄이 보이면 그 줄 바로 아래, 시작이 위로 나갔으면 스크롤 영역 위 끝 안쪽이다.
- *   버블 버튼이 낸 scrollIntoView로 시작이 밀려 올라가도 닫히지 않아 연속 서식이 이어진다.
+ * - 선택 시작 위로 버블 자리(BUBBLE_ROOM)가 종이 안에 없으면 아래로 뒤집는다(placement
+ *   below). 자리는 종이([role=dialog]) 위 끝까지 본다 — 메모 첫 줄 위의 제목 줄·종이 padding
+ *   에도 버블이 들어가 첫 줄을 긁어도 위에 뜬다(아래로 뒤집으면 2·3번째 줄을 덮어 끌어 늘리기와
+ *   Shift+클릭을 막는다). 시작 줄이 보이면 그 줄 바로 아래, 시작이 위로 나갔으면 스크롤 영역
+ *   위 끝 안쪽이다. 버블 버튼이 낸 scrollIntoView로 시작이 밀려 올라가도 닫히지 않는다.
  * - 가로 범위로 스크롤 영역 좌우를 넘긴다. BubbleMenuHost가 버블 폭을 재서 그 안(화면 좌우
- *   8px 안)으로 당긴다. */
+ *   8px 안)으로 당긴다.
+ * - 끝 좌표는 side −1로 읽는다. 줄 끝까지 고르면 끝이 줄바꿈 지점에 놓이는데, 기본 side로는
+ *   다음 줄 머리 좌표가 나와 한 줄 선택이 두 줄로 판정되고 가로 중심도 틀어진다. */
 function computeBubble(v: EditorView, scrollEl: HTMLElement | null): BubbleState {
   const { from, to, empty } = v.state.selection;
   if (empty || bubbleMenuItems.length === 0 || !v.editable) return CLOSED;
   const start = v.coordsAtPos(from);
-  const end = v.coordsAtPos(to);
+  const end = v.coordsAtPos(to, -1);
   const left = (start.left + end.left) / 2;
   let top = start.top;
   let placement: BubbleState["placement"] = "above";
@@ -159,7 +163,10 @@ function computeBubble(v: EditorView, scrollEl: HTMLElement | null): BubbleState
     if (oneLine && (Math.max(start.left, end.left) < r.left || Math.min(start.left, end.left) > r.right)) {
       return CLOSED;
     }
-    if (start.top - BUBBLE_ROOM < r.top) {
+    const paper =
+      typeof scrollEl.closest === "function" ? scrollEl.closest<HTMLElement>("[role=dialog]") : null;
+    const roomTop = paper ? paper.getBoundingClientRect().top : r.top;
+    if (start.top < r.top || start.top - BUBBLE_ROOM < roomTop) {
       top = Math.max(start.bottom, r.top);
       placement = "below";
     }

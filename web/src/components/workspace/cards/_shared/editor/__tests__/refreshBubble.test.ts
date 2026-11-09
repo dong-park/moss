@@ -99,6 +99,42 @@ describe("refreshBubble", () => {
     expect(s.top).toBe(115);
   });
 
+  it("메모 첫 줄처럼 종이 안에 위쪽 자리가 있으면 뒤집지 않고 위에 띄운다", () => {
+    // 종이(dialog) 위 끝은 스크롤 영역 위 끝보다 12px 위(종이 padding)다.
+    const paperEl = { getBoundingClientRect: () => ({ top: 85 }) };
+    const area = {
+      getBoundingClientRect: () => ({ top: 97, bottom: 837, left: 0, right: 1000 }),
+      closest: () => paperEl,
+    } as unknown as HTMLElement;
+    refreshBubble(area, fakeView(false, line(133)));
+    expect(getBubbleState().placement).toBe("above");
+    expect(getBubbleState().top).toBe(133);
+    // 시작이 영역 위 끝 바로 아래(+2px)면 종이 안에도 자리가 없어 첫 줄 아래로 뒤집는다.
+    refreshBubble(area, fakeView(false, line(99)));
+    expect(getBubbleState().placement).toBe("below");
+  });
+
+  it("줄 끝까지 고른 한 줄 선택은 끝 좌표를 줄 끝(side -1)으로 읽어 한 줄로 판정한다", () => {
+    // 끝(pos 5)이 줄바꿈 지점: 기본 side는 다음 줄 머리, side -1은 이 줄 끝.
+    const v = {
+      editable: true,
+      state: { selection: { from: 1, to: 5, empty: false } },
+      coordsAtPos: (pos: number, side?: number) =>
+        pos === 1
+          ? line(100, 690)
+          : side === -1
+            ? line(100, 736)
+            : line(121, 9),
+    } as unknown as EditorView;
+    // 선택(690~736)이 스크롤 영역(42~558) 오른쪽 밖이면 한 줄 선택이라 닫는다.
+    refreshBubble(scrollEl(0, 500, 42, 558), v);
+    expect(getBubbleState().open).toBe(false);
+    // 보이면 가로 중심이 선택 위(713)다. 다음 줄 머리 쪽으로 끌리지 않는다.
+    refreshBubble(scrollEl(0, 500, 0, 1000), v);
+    expect(getBubbleState().open).toBe(true);
+    expect(getBubbleState().left).toBe(713);
+  });
+
   it("범위 밖에서 닫힌 뒤 범위 안 좌표로 다시 부르면 다시 연다", () => {
     const v = fakeView(false, line(100));
     refreshBubble(scrollEl(200, 500), v);
