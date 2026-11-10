@@ -6,7 +6,7 @@
 **id**: CZ-3
 **상위**: spec/cmd-z-undo/spec.md
 **deps**: n1
-**상태**: 아직 안 함
+**상태**: 끝남
 **담당 행**: T5, T7, T11, T22, T23
 **사람 확인**: 불필요
 
@@ -32,13 +32,13 @@
 
 ## 완료 기준
 
-- [ ] 이 노드의 캔버스 시험도 spec.md 「준비 확인」 공통 규칙을 따른다. 준비 뒤 getter로 clear하고 0.6초 기다린 뒤 지금 보드와 undoStack 길이 0을 확인한다. 행 given의 동작 가운데 then이 그 결과를 보는 동작은 준비가 아니다. 준비 확인 뒤에 스토어 액션으로 하고 기록한다. 예: T7·T11의 "X를 옮겼다". 이 정의는 내 탭의 동작에만 쓴다. 다른 탭·다른 기기의 동작은 그쪽 Y.Doc에서 하고 update로 이어 붙인다. 내 기록에 들어가지 않는다. 부정형 판정 앞의 긍정 단언은 spec.md 「준비 확인」 공통 규칙의 닫힌 목록에 있는 판정에만 둔다. 목록 밖의 "없음·그대로·0" 판정에는 두지 않는다. 행이 따로 둔 단언은 이 목록과 별개로 지킨다. T5 드롭 직후 frameId, T20 첫째 칸 바뀜, T23 둘째 연 뒤 사라짐, T23 셋째 연 뒤 시드 카드가 그렇다. 화면 컴포넌트가 여러 호출을 한 단계로 묶는 동작은 드래그(DraggableCard)와 크기 조절(ResizeHandles)이다. 스토어 수준 시험은 드래그 시작부터 끝까지의 호출을 n3의 묶음 시작·끝 API로 감싼다. 드래그는 이동 호출(moveCard 또는 여러 장이면 moveSelectedBy) 여러 번, commitMove, resolveMembership을 조건 없이 이 순서로, 크기 조절은 resizeCard 여러 번이다. 여러 장 드래그는 이동 중에도 문서에 쓴다(workspace.ts:2672). 감싸지 않으면 n4 뒤에는 진입점마다 단계가 끊긴다. 그와 별도로 n4가 화면 수준 시험을 하나씩 둔다(spec.md 「준비 확인」 공통 규칙). moveCard만으로는 문서에 쓰지 않는다(workspace.ts:2633-2643). T23은 뺀다: 보드 열기 자체가 시험 동작이라 clear 없이 연 직후의 undoStack 길이를 잰다(스펙 :38의 T23 제외). 그 대신 T23의 열기 전후 단언을 지킨다: 둘째는 열기 직전에 빈 글상자가 미러와 문서에 있고, 연 뒤에 둘 다에서 사라졌다. 셋째는 loadFromStorage로 연다. 시스템 보드 시드는 이 길에서만 깔린다(workspace.ts:2133). 시드 조건 넷이 참이어야 하고, 연 뒤에 시드 카드가 문서에 있다. 정리·시드 쓰기가 실제로 일어난 뒤에도 단계 0인지 보기 위해서다. 이 getter는 이 노드가 만든다
-- [ ] T5, T7, T11, T22, T23 then 칸의 「확인」이 통과한다. T5의 화면 수준 칸 전부(여러 장 드래그, 여러 장 휴지통 드롭, 놓기 길)는 n4가 판정한다. 확인: `cd web && bunx vitest run src/state/__tests__/undo.core.test.ts src/components/workspace/__tests__/undoKeys.test.ts`
-- [ ] 탭1 되돌리기가 탭2 문서에 반영되고, 그 뒤 탭1 쓰기도 탭2에 반영된다. 같은 명령의 테스트 이름으로 확인
-- [ ] 기존 회귀: `cd web && bunx vitest run src/state/__tests__/storeOnYjs.test.ts src/state/__tests__/penMode.test.ts src/state/__tests__/textTool.test.ts src/state/__tests__/n23-single-source.test.ts` 통과
-- [ ] 이 노드가 고친 파일에 타입 오류가 없다. 웨이브 2는 n2와 같은 작업 트리를 쓰므로 n2 파일의 오류는 세지 않는다. 확인: `cd web && npx tsc --noEmit 2>&1 | rg -v "cards/_shared/editor/" | rg "error TS"` 출력 없음. n2 파일(web/package.json, web/bun.lock, cards/_shared/editor/)은 add하지 않는다
-- [ ] 실경로: 테스트가 실제 workspace 스토어 액션과 activateBoard 경로를 탄다. 우회했으면 구현 메모에 갭을 적는다
-- [ ] 묶음 시험: 묶음 안에서 이 노드의 단계 열기 API를 부르는 진입점 흉내 함수를 두 번 부르고 쓰면 undoStack이 1이다. 편집 묶음 안에서 드래그 묶음을 열고 닫아도 1이다. 같은 토큰을 두 번 끝내도, 보드를 바꾼 뒤 옛 토큰으로 끝내도 깊이가 0 밑으로 내려가지 않는다. 새 보드에서 묶음을 연 채(깊이 1) 옛 보드 토큰으로 끝내도 깊이 1이다. 바닥 0만 둔 구현은 이 경우 깊이 0이 되어 실패한다. 묶음을 열고 끝내지 않은 채 보드를 떠났다가 돌아오면 깊이 0, captureTimeout 500이다. 확인: `cd web && bunx vitest run src/state/__tests__/undo.core.test.ts`
+- [x] 이 노드의 캔버스 시험도 spec.md 「준비 확인」 공통 규칙을 따른다. 준비 뒤 getter로 clear하고 0.6초 기다린 뒤 지금 보드와 undoStack 길이 0을 확인한다. 행 given의 동작 가운데 then이 그 결과를 보는 동작은 준비가 아니다. 준비 확인 뒤에 스토어 액션으로 하고 기록한다. 예: T7·T11의 "X를 옮겼다". 이 정의는 내 탭의 동작에만 쓴다. 다른 탭·다른 기기의 동작은 그쪽 Y.Doc에서 하고 update로 이어 붙인다. 내 기록에 들어가지 않는다. 부정형 판정 앞의 긍정 단언은 spec.md 「준비 확인」 공통 규칙의 닫힌 목록에 있는 판정에만 둔다. 목록 밖의 "없음·그대로·0" 판정에는 두지 않는다. 행이 따로 둔 단언은 이 목록과 별개로 지킨다. T5 드롭 직후 frameId, T20 첫째 칸 바뀜, T23 둘째 연 뒤 사라짐, T23 셋째 연 뒤 시드 카드가 그렇다. 화면 컴포넌트가 여러 호출을 한 단계로 묶는 동작은 드래그(DraggableCard)와 크기 조절(ResizeHandles)이다. 스토어 수준 시험은 드래그 시작부터 끝까지의 호출을 n3의 묶음 시작·끝 API로 감싼다. 드래그는 이동 호출(moveCard 또는 여러 장이면 moveSelectedBy) 여러 번, commitMove, resolveMembership을 조건 없이 이 순서로, 크기 조절은 resizeCard 여러 번이다. 여러 장 드래그는 이동 중에도 문서에 쓴다(workspace.ts:2672). 감싸지 않으면 n4 뒤에는 진입점마다 단계가 끊긴다. 그와 별도로 n4가 화면 수준 시험을 하나씩 둔다(spec.md 「준비 확인」 공통 규칙). moveCard만으로는 문서에 쓰지 않는다(workspace.ts:2633-2643). T23은 뺀다: 보드 열기 자체가 시험 동작이라 clear 없이 연 직후의 undoStack 길이를 잰다(스펙 :38의 T23 제외). 그 대신 T23의 열기 전후 단언을 지킨다: 둘째는 열기 직전에 빈 글상자가 미러와 문서에 있고, 연 뒤에 둘 다에서 사라졌다. 셋째는 loadFromStorage로 연다. 시스템 보드 시드는 이 길에서만 깔린다(workspace.ts:2133). 시드 조건 넷이 참이어야 하고, 연 뒤에 시드 카드가 문서에 있다. 정리·시드 쓰기가 실제로 일어난 뒤에도 단계 0인지 보기 위해서다. 이 getter는 이 노드가 만든다
+- [x] T5, T7, T11, T22, T23 then 칸의 「확인」이 통과한다. T5의 화면 수준 칸 전부(여러 장 드래그, 여러 장 휴지통 드롭, 놓기 길)는 n4가 판정한다. 확인: `cd web && bunx vitest run src/state/__tests__/undo.core.test.ts src/components/workspace/__tests__/undoKeys.test.ts`
+- [x] 탭1 되돌리기가 탭2 문서에 반영되고, 그 뒤 탭1 쓰기도 탭2에 반영된다. 같은 명령의 테스트 이름으로 확인
+- [x] 기존 회귀: `cd web && bunx vitest run src/state/__tests__/storeOnYjs.test.ts src/state/__tests__/penMode.test.ts src/state/__tests__/textTool.test.ts src/state/__tests__/n23-single-source.test.ts` 통과
+- [x] 이 노드가 고친 파일에 타입 오류가 없다. 웨이브 2는 n2와 같은 작업 트리를 쓰므로 n2 파일의 오류는 세지 않는다. 확인: `cd web && npx tsc --noEmit 2>&1 | rg -v "cards/_shared/editor/" | rg "error TS"` 출력 없음. n2 파일(web/package.json, web/bun.lock, cards/_shared/editor/)은 add하지 않는다
+- [x] 실경로: 테스트가 실제 workspace 스토어 액션과 activateBoard 경로를 탄다. 우회했으면 구현 메모에 갭을 적는다
+- [x] 묶음 시험: 묶음 안에서 이 노드의 단계 열기 API를 부르는 진입점 흉내 함수를 두 번 부르고 쓰면 undoStack이 1이다. 편집 묶음 안에서 드래그 묶음을 열고 닫아도 1이다. 같은 토큰을 두 번 끝내도, 보드를 바꾼 뒤 옛 토큰으로 끝내도 깊이가 0 밑으로 내려가지 않는다. 새 보드에서 묶음을 연 채(깊이 1) 옛 보드 토큰으로 끝내도 깊이 1이다. 바닥 0만 둔 구현은 이 경우 깊이 0이 되어 실패한다. 묶음을 열고 끝내지 않은 채 보드를 떠났다가 돌아오면 깊이 0, captureTimeout 500이다. 확인: `cd web && bunx vitest run src/state/__tests__/undo.core.test.ts`
 
 ## 파일 포인터
 
@@ -56,3 +56,12 @@
 | `web/node_modules/yjs/src/utils/UndoManager.js` | 동작 근거 |
 
 ## 구현 메모
+
+- 결과: 새 시험 31개 통과(undo.core 23, undoKeys 8). 기존 회귀 4파일 70개 통과. tsc 오류 0, eslint 0.
+- API(`web/src/state/ydoc/undo.ts`): createBoardUndo, disposeBoardUndo, disposeActiveBoardUndo, getBoardUndoManager, getBoardUndoGroupState, openUndoStep(origin), closeUndoStep(origin), beginUndoGroup, endUndoGroup(token), undoBoard, redoBoard, registerUndoStepHooks({onSkipped, onApplied, onDropped}), isBoardUndoManager.
+- origin(`origin.ts`): UNTRACKED_ORIGIN, WriteOrigin, transactUntracked, isLocalOrigin. transactLocal과 model.ts 헬퍼 9곳은 마지막 인자로 origin을 받는다. 주지 않으면 LOCAL_ORIGIN이다.
+- persistCard·writeCardToDoc·writeCardToDocHandle도 origin을 받는다. 시드가 이 길로 UNTRACKED_ORIGIN을 넘긴다. storage.hardDeleteNotes는 세 번째 인자 opts.origin을 받는다.
+- 기록 수명: activateBoard가 맨 앞에서 지금 기록을 버린다. 새 기록은 openBoardHistory가 정리·시드와 스토어 교체 뒤 만든다. 같은 보드를 loadFromStorage로 다시 열어도 새 기록이다.
+- 펜 묶음은 이 노드가 만들었다. T22 펜 모드 칸에 필요해서다. penMode 스토어 구독으로 열고 닫고, 보드를 열 때 penMode가 켜져 있으면 다시 연다. n4 작업 4는 다시 만들지 않는다.
+- 실경로 갭: 키는 Canvas가 부르는 handleUndoKeyDown을 직접 부른다. Canvas 렌더는 안 탄다. 드래그는 스토어 수준 묶음 흉내다. DraggableCard 화면 칸은 n4다.
+- 빼면 실패 확인: liveSync에서 UndoManager origin 방송을 빼면 「탭1 되돌리기가 탭2 문서에 반영되고…」가 실패했다.
