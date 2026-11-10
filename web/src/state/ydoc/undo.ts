@@ -25,6 +25,8 @@ export const UNDO_CAPTURE_TIMEOUT_MS = 500;
 export const UNDO_MAX_STEPS = 100;
 
 type StackItem = Y.UndoManager["undoStack"][number];
+/** 기록 단계 하나(yjs StackItem). n6: 단계 meta에 휴지통 동작과 쥔 사진 파일을 싣는다. */
+export type UndoStackItem = StackItem;
 
 /** 묶음 소유자 토큰. 묶음 끝에 그대로 넘긴다. */
 export type UndoGroupToken = {
@@ -67,7 +69,10 @@ export type UndoStepHooks = {
   onSkipped?: (items: StackItem[], direction: UndoDirection) => void;
   /** 되돌리기·다시 실행이 단계 하나를 적용했을 때. */
   onApplied?: (item: StackItem, direction: UndoDirection) => void;
-  /** 100단계 상한으로 가장 오래된 단계를 버렸을 때. */
+  /**
+   * 단계가 기록에서 빠졌을 때 — 100단계 상한, 새 동작이 버린 다시 실행 기록, clear(보드를
+   * 떠날 때·로그아웃 포함). 부를 때 그 단계들은 이미 두 스택에 없다.
+   */
   onDropped?: (items: StackItem[]) => void;
 };
 
@@ -104,6 +109,18 @@ export function createBoardUndo(key: string, doc: Y.Doc): Y.UndoManager {
     trackedOrigins: new Set<unknown>([LOCAL_ORIGIN]),
   });
   managers.add(um);
+  // n6: clear로 빠진 단계도 알린다. yjs는 새 동작이 오면 다시 실행 기록을 clear(false, true)로
+  // 버리고(UndoManager.js:227), 보드를 떠날 때도 clear 뒤 destroy한다. 빠진 단계가 쥔 파일은
+  // hook이 파일 규칙으로 청소한다.
+  const rawClear = um.clear.bind(um);
+  um.clear = (clearUndoStack = true, clearRedoStack = true) => {
+    const dropped = [
+      ...(clearUndoStack ? um.undoStack : []),
+      ...(clearRedoStack ? um.redoStack : []),
+    ];
+    rawClear(clearUndoStack, clearRedoStack);
+    if (dropped.length > 0 && !quietClear) callHooks((h) => h.onDropped?.(dropped));
+  };
   const entry: BoardUndo = { key, um, gen: ++genSeq, depth: 0, openTokens: new Set() };
   um.on("stack-item-added", (event) => {
     // n5: 되돌리기·다시 실행이 반대편 기록에 새로 쌓는 단계는 빈 meta로 만들어진다.
@@ -127,11 +144,16 @@ export function createBoardUndo(key: string, doc: Y.Doc): Y.UndoManager {
   return um;
 }
 
+/** 참이면 clear가 빠진 단계를 알리지 않는다 — 새로고침과 같은 재개 경계(청소 안 함, 스펙 비목표). */
+let quietClear = false;
+
 /**
  * 보드 기록을 버린다. 묶음 깊이와 captureTimeout을 처음 값으로 되돌리고 destroy한다.
  * 세대가 사라지므로 이 기록에서 받은 토큰은 이후 모두 무시된다.
+ * n6: 순서는 하나다 — 기록을 비우고(onDropped가 비운 단계의 파일 청소를 건다), 그 뒤 destroy.
+ * quiet면 청소를 걸지 않는다.
  */
-export function disposeBoardUndo(key: string): void {
+export function disposeBoardUndo(key: string, opts?: { quiet?: boolean }): void {
   const entry = boards.get(key);
   if (!entry) return;
   boards.delete(key);
@@ -139,22 +161,26 @@ export function disposeBoardUndo(key: string): void {
   entry.depth = 0;
   entry.openTokens.clear();
   entry.um.captureTimeout = UNDO_CAPTURE_TIMEOUT_MS;
+  const prevQuiet = quietClear;
+  quietClear = !!opts?.quiet;
   try {
     entry.um.clear();
     entry.um.destroy();
   } catch {
     /* 문서가 먼저 닫혔으면 UndoManager도 이미 destroy됐다 */
+  } finally {
+    quietClear = prevQuiet;
   }
 }
 
-/** 지금 활성 보드의 기록을 버린다(보드를 떠날 때). */
+/** 지금 활성 보드의 기록을 버린다(보드를 떠날 때·로그아웃). */
 export function disposeActiveBoardUndo(): void {
   if (activeKey !== null) disposeBoardUndo(activeKey);
 }
 
-/** 테스트·재개 경계용 — 모든 기록을 버린다. */
+/** 테스트·재개 경계용 — 모든 기록을 버린다. 새로고침과 같아 파일 청소는 걸지 않는다. */
 export function disposeAllBoardUndo(): void {
-  for (const key of [...boards.keys()]) disposeBoardUndo(key);
+  for (const key of [...boards.keys()]) disposeBoardUndo(key, { quiet: true });
   activeKey = null;
 }
 
@@ -298,6 +324,40 @@ export function dropTrashStep(items: StackItem[]): void {
 export function trashActionFor(entry: TrashStepEntry, direction: UndoDirection): "put" | "take" {
   if (direction === "redo") return entry.action;
   return entry.action === "put" ? "take" : "put";
+}
+
+/* ── 단계 meta: 쥔 사진 파일 (n6) ────────────────────────────── */
+
+const FILES_META = "moss-files";
+
+/**
+ * 단계에 그 단계가 되살릴 수 있는 사진 파일 ref를 더한다. 판 배경 교체는 옛 ref와 새 ref,
+ * 배경 지우기와 판 삭제는 옛 ref, 사진 카드 만들기는 그 ref다. 휴지통 단계는 meta의 메모
+ * 내용이 ref를 갖고 있어 따로 적지 않는다(readFileStep이 함께 본다).
+ */
+export function addFileStep(item: StackItem, refs: readonly (string | undefined)[]): void {
+  const add = refs.filter((r): r is string => !!r);
+  if (add.length === 0) return;
+  const prev = (item.meta.get(FILES_META) as string[] | undefined) ?? [];
+  item.meta.set(FILES_META, [...new Set([...prev, ...add])]);
+}
+
+/** 단계가 쥔 사진 파일 ref — 적어 둔 ref와 휴지통 동작의 메모 첨부. */
+export function readFileStep(item: StackItem): string[] {
+  const refs = new Set((item.meta.get(FILES_META) as string[] | undefined) ?? []);
+  for (const e of readTrashStep(item)) if (e.note.attachmentRef) refs.add(e.note.attachmentRef);
+  return [...refs];
+}
+
+/** 이 탭의 남은 기록 단계(되돌리기와 다시 실행 둘 다)가 쥔 사진 파일 ref. 파일 규칙 넷째. */
+export function heldFileRefs(): Set<string> {
+  const out = new Set<string>();
+  for (const entry of boards.values()) {
+    for (const item of [...entry.um.undoStack, ...entry.um.redoStack]) {
+      for (const ref of readFileStep(item)) out.add(ref);
+    }
+  }
+  return out;
 }
 
 /* ── 되돌리기·다시 실행 ───────────────────────────────────────── */

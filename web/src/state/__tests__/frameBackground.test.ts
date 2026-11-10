@@ -1,9 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useWorkspace, SYSTEM_BOARD_ID, type Card } from "@/state/workspace";
+import {
+  useWorkspace,
+  SYSTEM_BOARD_ID,
+  __resetBoardDocsForTest,
+  __trashIdleForTest,
+  type Card,
+} from "@/state/workspace";
 import { useStorage } from "@/state/storage";
 import { getDB, resetDB } from "@/state/db/schema";
 import { flushAll } from "@/state/cardPersist";
 import { readFrameContent } from "@/state/frameContent";
+import { getBoardUndoManager } from "@/state/ydoc/undo";
 
 // FEAT-frame-image-template n2: 판 배경 이미지 저장·정리·비율 맞춤.
 
@@ -27,6 +34,9 @@ afterEach(async () => {
   vi.restoreAllMocks();
   await new Promise((r) => setTimeout(r, 20));
   await flushAll();
+  await __trashIdleForTest();
+  // cmd-z-undo n6: 앞 시험의 기록이 다음 시험 보드 열기에서 청소되지 않게 새로고침처럼 닫는다.
+  await __resetBoardDocsForTest();
   await resetDB();
   useStorage.setState({ initialized: false, settings: null, quota: null });
   useWorkspace.setState({
@@ -184,24 +194,32 @@ describe("setFrameBackground — 올리기", () => {
   });
 });
 
+// cmd-z-undo n6: 옛 파일은 바로 지우지 않는다. 그 단계가 기록에 있는 동안 쥐고, 기록에서 빠지면
+// (여기서는 clear) 파일 규칙으로 청소한다 — 아무도 안 가리키는 파일만 지운다.
+const dropHistory = async () => {
+  getBoardUndoManager()!.clear();
+  await __trashIdleForTest();
+};
+
 describe("옛 파일 정리", () => {
-  it("배경을 바꾸면 옛 ref를 지우고, 같은 ref면 지우지 않는다", async () => {
+  it("배경을 바꾸면 옛 ref는 기록에서 빠질 때 지우고, 같은 ref면 지우지 않는다", async () => {
     await init();
     const purged = spyPurge();
     const id = useWorkspace.getState().addFrameAt(0, 0);
     useWorkspace.getState().setFrameBackground(id, photo("opfs:one.png"));
     expect(purged).toEqual([]);
     useWorkspace.getState().setFrameBackground(id, photo("opfs:two.png"));
-    expect(purged).toEqual([]); // 새 ref 저장 전에는 옛 파일을 지우지 않는다
     await new Promise((r) => setTimeout(r, 30));
+    expect(purged).toEqual([]); // 되돌리면 다시 보여야 하므로 기록이 쥔다
+    await dropHistory();
     expect(purged).toEqual(["opfs:one.png"]);
     useWorkspace.getState().setFrameBackground(id, photo("opfs:two.png"));
-    await new Promise((r) => setTimeout(r, 30));
+    await dropHistory();
     expect(purged).toEqual(["opfs:one.png"]);
     expect(frameOf(id).attachmentRef).toBe("opfs:two.png");
   });
 
-  it("지우면 ref·mediaType·bg가 비고 파일을 지운다. 판 크기와 멤버는 그대로다", async () => {
+  it("지우면 ref·mediaType·bg가 비고 파일은 기록에서 빠질 때 지운다. 판 크기와 멤버는 그대로다", async () => {
     await init();
     const purged = spyPurge();
     const id = useWorkspace.getState().addFrameAt(0, 0);
@@ -217,6 +235,8 @@ describe("옛 파일 정리", () => {
     expect(readFrameContent(f.content).bg).toBeUndefined();
     expect({ w: f.width, h: f.height }).toEqual(sized);
     await new Promise((r) => setTimeout(r, 30));
+    expect(purged).toEqual([]);
+    await dropHistory();
     expect(purged).toEqual(["opfs:x.png"]);
     expect(cardOf("mm").frameId).toBe(id);
 
@@ -235,7 +255,7 @@ describe("옛 파일 정리", () => {
     expect(purged).toEqual([]);
   });
 
-  it("판을 지우면 배경 파일도 지우고 멤버 메모는 제자리에 남는다", async () => {
+  it("판을 지우면 배경 파일은 기록에서 빠질 때 지우고 멤버 메모는 제자리에 남는다", async () => {
     await init();
     const purged = spyPurge();
     const id = useWorkspace.getState().addFrameAt(0, 0);
@@ -243,8 +263,11 @@ describe("옛 파일 정리", () => {
     useWorkspace.getState().resolveMembership([memo.id]);
     useWorkspace.getState().setFrameBackground(id, photo("opfs:bye.png"));
     useWorkspace.getState().deleteFrame(id);
-    expect(purged).toEqual(["opfs:bye.png"]);
+    await new Promise((r) => setTimeout(r, 30));
+    expect(purged).toEqual([]);
     expect(cardOf("stay")).toMatchObject({ x: 10, y: 10, frameId: undefined });
+    await dropHistory();
+    expect(purged).toEqual(["opfs:bye.png"]);
   });
 
   it("파일 삭제가 실패해도 조용히 넘어간다", async () => {

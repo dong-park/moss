@@ -32,6 +32,8 @@ import {
   updateNoteField,
 } from "@/state/ydoc/model";
 import { LOCAL_ORIGIN, UNTRACKED_ORIGIN, type WriteOrigin } from "@/state/ydoc/origin";
+import { flushAll } from "@/state/cardPersist";
+import { liveFileRefs } from "@/state/undoFiles";
 import {
   SYSTEM_BOARD_ID,
   isSystemBoardNote,
@@ -534,17 +536,18 @@ export const useStorage = create<StorageState>((set, get) => ({
         return found;
       },
     );
-    await Promise.all(
-      entries.map(async (entry) => {
-        const ref = entry.note.attachmentRef;
-        if (!ref) return;
-        try {
-          await deleteBlob(ref);
-        } catch {
-          /* ponytail: OPFS 삭제 실패는 무시 — blob은 고아로 남고 자동 재시도는 없다. */
-        }
-      }),
-    );
+    // cmd-z-undo n6: 파일 규칙 — 미러 행·열린 보드 문서·남은 휴지통 행·이 탭의 남은 기록 단계
+    // 가운데 하나라도 가리키는 사진 파일은 지우지 않는다. 비운 메모를 되돌릴 단계가 남아 있으면
+    // 그 단계가 쥔다(비운 뒤 기록 보관). 미러는 예약 쓰기를 먼저 내보낸 뒤 본다.
+    const refs = [
+      ...new Set(entries.map((e) => e.note.attachmentRef).filter((r): r is string => !!r)),
+    ];
+    if (refs.length === 0) return;
+    await flushAll();
+    const live = await liveFileRefs(refs);
+    const dead = refs.filter((r) => !live.has(r));
+    if (dead.length === 0) return;
+    await get().purgeAttachments(dead.map((ref) => ({ attachmentRef: ref }) as Note));
   },
 
   loadBoards: async () => {

@@ -63,6 +63,7 @@ import {
 } from "./ydoc/origin";
 import { runEditFlush } from "./editFlush";
 import {
+  addFileStep,
   addTrashStep,
   beginUndoGroup,
   captureUndoStep,
@@ -71,15 +72,19 @@ import {
   disposeAllBoardUndo,
   dropTrashStep,
   endUndoGroup,
+  getBoardUndoKey,
   isBoardUndoManager,
   openUndoStep,
+  readFileStep,
   readTrashStep,
   registerUndoStepHooks,
   trashActionFor,
   type TrashStepEntry,
   type UndoDirection,
   type UndoGroupToken,
+  type UndoStackItem,
 } from "./ydoc/undo";
+import { liveFileRefs } from "./undoFiles";
 import {
   archiveMirror,
   enqueueTrashJob,
@@ -354,19 +359,39 @@ function fitFrameHeight(width: number, bg: { w: number; h: number }): number {
   return clamp(Math.round((width * bg.h) / bg.w), FRAME_MIN_HEIGHT, CARD_MAX_HEIGHT);
 }
 
-/** 판 배경 파일 삭제. 실패는 무시하고 고아로 둔다. */
-function dropFrameBackgroundFile(ref: string | undefined): void {
-  if (!ref) return;
-  void useStorage
-    .getState()
-    .purgeAttachments([{ attachmentRef: ref } as Note])
-    .catch(() => undefined);
+/**
+ * cmd-z-undo n6: 사진 파일 청소 — 파일 규칙(undoFiles.liveFileRefs) 넷 가운데 아무도 안 가리키는
+ * 파일만 지운다. 규칙을 보기 전에 예약 미러 쓰기를 먼저 내보낸다 — 안 내보내면 낡은 미러가 옛
+ * ref를 0.3초 더 가리켜 옛 파일을 못 지운다. 휴지통 쓰기 차례에 넣어 앞서 건 휴지통 쓰기가 끝난
+ * 뒤 본다. 실패는 무시하고 고아로 둔다.
+ */
+function sweepFiles(refs: readonly (string | undefined)[]): void {
+  const list = [...new Set(refs.filter((r): r is string => !!r))];
+  if (list.length === 0) return;
+  if (!useStorage.getState().initialized) return;
+  void enqueueTrashJob(async () => {
+    const storage = useStorage.getState();
+    if (!storage.initialized) return;
+    await flushAll();
+    const live = await liveFileRefs(list);
+    const dead = list.filter((r) => !live.has(r));
+    if (dead.length === 0) return;
+    await storage.purgeAttachments(dead.map((ref) => ({ attachmentRef: ref }) as Note));
+  });
 }
-/** 새 ref 저장(디바운스)이 끝난 뒤 옛 파일을 지운다 — 저장 전에 닫혀도 행이 지워진 파일을 가리키지 않게. */
-function dropFrameBackgroundFileAfterSave(id: string, ref: string | undefined): void {
-  void flushCard(id)
-    .catch(() => undefined)
-    .then(() => dropFrameBackgroundFile(ref));
+
+/**
+ * cmd-z-undo n6: 동작이 놓은 사진 파일. 기록 단계에 들었으면 그 단계가 쥐고(되살릴 ref까지),
+ * 단계가 기록에서 빠질 때 청소한다. 기록에 안 들었으면(기록 안 하는 동작, 기록 없음) 놓은
+ * 파일을 바로 청소한다.
+ */
+function holdOrSweepFiles(
+  item: UndoStackItem | null,
+  held: readonly (string | undefined)[],
+  released: readonly (string | undefined)[],
+): void {
+  if (item) addFileStep(item, held);
+  else sweepFiles(released);
 }
 export const FRAME_DEFAULT_WIDTH = 320;
 export const FRAME_DEFAULT_HEIGHT = 220;
@@ -1900,9 +1925,29 @@ function applyUndoStep(item: Parameters<typeof readTrashStep>[0], direction: Und
 
 registerUndoStepHooks({
   onApplied: applyUndoStep,
-  // 건너뛴 단계는 휴지통 동작을 적용하지 않는다. 쥔 파일 청소는 n6이 붙인다.
-  onSkipped: (items) => dropTrashStep(items),
+  // 건너뛴 단계는 휴지통 동작을 적용하지 않는다. n6: 그 단계가 쥔 파일은 놓아 파일 규칙으로 청소한다.
+  onSkipped: (items) => {
+    const refs = items.flatMap(readFileStep);
+    dropTrashStep(items);
+    sweepFiles(refs);
+  },
+  // n6: 깊이 상한, 다시 실행 버림, 보드를 떠날 때(clear 뒤 destroy)·로그아웃의 clear. 빠진 단계가
+  // 쥔 파일을 파일 규칙으로 청소한다. 부를 때 그 단계들은 이미 기록에 없다.
+  onDropped: (items) => sweepFiles(items.flatMap(readFileStep)),
 });
+
+/**
+ * cmd-z-undo n6: 로그아웃하면 지금 보드 기록이 통째로 사라진다(D4 A). 보드를 떠날 때와 같은
+ * 순서로 비우고 청소한 뒤 destroy하고, 보드에 남은 사용자를 위해 빈 기록을 새로 만든다.
+ */
+function resetBoardHistory(): void {
+  if (getBoardUndoKey() === null) return;
+  closeEditGroup();
+  endUndoGroup(penGroupToken);
+  penGroupToken = null;
+  disposeActiveBoardUndo();
+  openBoardHistory(useWorkspace.getState().currentBoardId);
+}
 
 /** 테스트용 — 되돌리기·원격 반영이 넣은 휴지통 쓰기가 모두 끝나면 풀린다. */
 export function __trashIdleForTest(): Promise<void> {
@@ -3011,7 +3056,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       // 사진은 인라인 편집에 들어가지 않는다 — 캡션은 우클릭으로 연다.
       editingId: null,
     }));
-    void persistCard(card, get().currentBoardId);
+    const { result: saved, item } = captureUndoStep(() => persistCard(card, get().currentBoardId));
+    void saved;
+    // cmd-z-undo n6: 생성 단계가 사진 ref를 쥔다 — 되돌려 기록 보관된 사진을 다시 실행이 되살린다.
+    if (item) addFileStep(item, [card.attachmentRef]);
     return id;
   },
 
@@ -3312,8 +3360,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       }),
     }));
     if (!updated) return;
-    persistCardDebounced(updated, get().currentBoardId);
-    if (oldRef && oldRef !== photo.ref) dropFrameBackgroundFileAfterSave(id, oldRef);
+    const next = updated;
+    const { item } = captureUndoStep(() => persistCardDebounced(next, get().currentBoardId));
+    // cmd-z-undo n6: 옛 파일을 바로 지우지 않는다. 단계가 옛 ref와 새 ref를 쥐고(되돌리기는 옛
+    // 사진을, 다시 실행은 새 사진을 되살린다), 단계가 기록에서 빠질 때 파일 규칙으로 청소한다.
+    if (oldRef !== photo.ref) holdOrSweepFiles(item, [oldRef, photo.ref], [oldRef]);
     if (resized) {
       get().resolveMembership(
         get()
@@ -3341,8 +3392,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       }),
     }));
     if (!updated) return;
-    persistCardDebounced(updated, get().currentBoardId);
-    dropFrameBackgroundFileAfterSave(id, oldRef);
+    const next = updated;
+    const { item } = captureUndoStep(() => persistCardDebounced(next, get().currentBoardId));
+    // cmd-z-undo n6: 옛 파일은 단계가 쥔다 — 되돌리면 옛 사진이 다시 보인다.
+    holdOrSweepFiles(item, [oldRef], [oldRef]);
   },
 
   deleteFrame: (id) => {
@@ -3360,16 +3413,26 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       expandedCardId: s.expandedCardId === id ? null : s.expandedCardId,
     }));
     cancelPersist(id);
-    dropFrameBackgroundFile(card.attachmentRef);
     const boardId = get().currentBoardId;
     const afterDelete = new Map(get().cards.map((c) => [c.id, c]));
+    let item: UndoStackItem | null = null;
     withActiveDoc(boardId, (doc) => {
-      for (const mid of memberIds) {
-        const member = afterDelete.get(mid);
-        if (member) writeCardToDocHandle(doc, member, boardId);
-      }
-      deleteNoteDoc(doc, id);
+      // cmd-z-undo n6: 멤버 frameId 해제와 판 삭제를 한 트랜잭션으로 — 1단계이고 cmd+z 1번에
+      // 판과 멤버 소속이 함께 돌아온다. origin은 바깥 동작을 따른다.
+      item = captureUndoStep(() =>
+        transactLocal(doc, () => {
+          for (const mid of memberIds) {
+            const member = afterDelete.get(mid);
+            if (member) writeCardToDocHandle(doc, member, boardId);
+          }
+          deleteNoteDoc(doc, id);
+        }),
+      ).item;
     });
+    // cmd-z-undo n6: 배경 파일을 바로 지우지 않는다. 판 삭제 단계가 쥐고, 단계가 기록에서 빠질 때
+    // 파일 규칙으로 청소한다. 기록에 안 들었으면 미러 행을 지운 뒤 청소한다(아래).
+    const held = item as UndoStackItem | null;
+    if (held) addFileStep(held, [card.attachmentRef]);
     // n23 재심사 2R-2: 삭제한 판의 스냅샷을 버린다(누수 방지).
     forgetSharedSnapshot(id);
     const storage = useStorage.getState();
@@ -3378,12 +3441,21 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     // deleteFrame과 멤버 frameId 해제를 한 트랜잭션으로 — setFrameMembership이 여는
     // "rw" db.notes 트랜잭션은 이미 진행 중인 이 트랜잭션(같은 테이블 부분집합)을
     // Dexie가 재사용해 그대로 원자적이다.
-    void db.transaction("rw", db.notes, async () => {
+    const mirrored = db.transaction("rw", db.notes, async () => {
       await setFrameMembership(
         memberIds.map((mid) => ({ id: mid, frameId: undefined })),
       );
       await db.notes.delete(id);
     });
+    if (!held && card.attachmentRef) {
+      const ref = card.attachmentRef;
+      void mirrored.then(
+        () => sweepFiles([ref]),
+        () => undefined,
+      );
+    } else {
+      void mirrored;
+    }
   },
 
   setContent: (id, content) => {
@@ -3580,9 +3652,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   setAttachment: (id, ref, meta) => {
     let updated: Card | undefined;
+    let oldRef: string | undefined;
     set((s) => ({
       cards: s.cards.map((c) => {
         if (c.id !== id) return c;
+        oldRef = c.attachmentRef;
         updated = {
           ...c,
           attachmentRef: ref,
@@ -3593,7 +3667,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       }),
     }));
     if (updated) {
-      void persistCard(updated, get().currentBoardId);
+      const next = updated;
+      const { result: saved, item } = captureUndoStep(() => persistCard(next, get().currentBoardId));
+      void saved;
+      // cmd-z-undo n6: 단계가 옛 ref와 새 ref를 쥔다. 기록에 안 들면 예전처럼 아무것도 안 지운다.
+      if (item && oldRef !== ref) addFileStep(item, [oldRef, ref]);
     }
   },
 
@@ -4630,6 +4708,11 @@ useWorkspace.subscribe((s, prev) => {
     return;
   }
   syncEditGroup();
+});
+
+/* cmd-z-undo n6: 로그아웃(세션이 있다가 사라짐)이면 지금 보드 기록을 비우고 쥔 파일을 청소한다. */
+useAuth.subscribe((s, prev) => {
+  if (prev.session && !s.session) resetBoardHistory();
 });
 
 /* 테스트·디버깅용 export — 프로덕션 코드는 직접 호출 금지. */
