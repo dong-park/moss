@@ -400,4 +400,42 @@ describe("편집 모드가 없는 카드에 이어 친 제목", () => {
     expect(note(p)?.title).toBe("a");
     expect(note(r)?.content).toBe("끼어든 글");
   });
+
+  // 코드 리뷰 웨이브 3 r4: 선택만 바꿔도 기록 단계는 안 생긴다 — 다른 카드에 갔다 오면 새 단계다.
+  it("Tab으로 갔다 Shift+Tab으로 돌아와 친 글자는 새 단계다", async () => {
+    const P = await bootBoard();
+    const p = photo();
+    addMemo(600, 100);
+    useWorkspace.setState({ selectedIds: [p], editingId: null });
+    await readyCheck(P);
+    renderHook(() => useCardFlowShortcuts());
+    fireEvent.keyDown(window, { key: "a" });
+    await sleep(120);
+    fireEvent.keyDown(window, { key: "Tab" });
+    await sleep(120);
+    fireEvent.keyDown(window, { key: "Tab", shiftKey: true });
+    expect(ws().selectedIds).toEqual([p]);
+    fireEvent.keyDown(window, { key: "b" });
+    await sleep(600);
+    pressUndo();
+    expect(note(p)?.title).toBe("a");
+  });
+
+  it("다른 카드를 눌렀다 사진을 다시 눌러 친 글자는 새 단계다", async () => {
+    const P = await bootBoard();
+    const p = photo();
+    const q = addMemo(600, 100);
+    useWorkspace.setState({ selectedIds: [p], editingId: null });
+    await readyCheck(P);
+    renderHook(() => useCardFlowShortcuts());
+    fireEvent.keyDown(window, { key: "a" });
+    await sleep(120);
+    ws().selectOne(q);
+    await sleep(120);
+    ws().selectOne(p);
+    fireEvent.keyDown(window, { key: "b" });
+    await sleep(600);
+    pressUndo();
+    expect(note(p)?.title).toBe("a");
+  });
 });
