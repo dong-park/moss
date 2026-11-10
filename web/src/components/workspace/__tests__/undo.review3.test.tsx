@@ -20,6 +20,7 @@ import { MemoExpandDialog } from "@/components/workspace/cards/MemoExpandDialog"
 import { Dock } from "@/components/workspace/Dock";
 import { DraggableCard } from "@/components/workspace/DraggableCard";
 import { useCardFlowShortcuts } from "@/components/workspace/useCardFlowShortcuts";
+import { ShortcutsBinder } from "@/components/workspace/ShortcutsBinder";
 import {
   addMemo,
   bootBoard,
@@ -336,5 +337,67 @@ describe("편집 모드가 없는 카드에 이어 친 제목", () => {
     expect(um().undoStack.length).toBe(1);
     pressUndo();
     expect(note(id)?.title ?? "").toBe(before ?? "");
+  });
+
+  // 코드 리뷰 웨이브 3 r3: 이어 치기는 열어 둔 묶음이 아니다 — 다른 동작이 그 단계에 섞이지 않는다.
+  const photo = () =>
+    ws().addPhotoAt(100, 100, { ref: "opfs:x.png", mediaType: "image/png", naturalW: 10, naturalH: 10 });
+
+  it("Tab 길: 사진 제목 치기와 다음 메모 제목 편집은 2단계다", async () => {
+    const P = await bootBoard();
+    const p = photo();
+    const q = addMemo(600, 100);
+    useWorkspace.setState({ selectedIds: [p], editingId: null });
+    await readyCheck(P);
+    renderHook(() => useCardFlowShortcuts());
+    fireEvent.keyDown(window, { key: "a" });
+    fireEvent.keyDown(window, { key: "b" });
+    fireEvent.keyDown(window, { key: "Tab" });
+    expect(ws().selectedIds).toEqual([q]);
+    fireEvent.keyDown(window, { key: "c" });
+    expect(ws().editingId).toBe(q);
+    ws().setTitle(q, "cd");
+    ws().commitTitle(q);
+    ws().setEditing(null);
+    await sleep(600);
+    pressUndo();
+    expect(note(p)?.title).toBe("ab");
+    expect(note(q)?.title).toBeUndefined();
+  });
+
+  it("Cmd+1 길: 사진 제목 치기 뒤 새 메모 만들기는 따로 1단계다", async () => {
+    const P = await bootBoard();
+    const p = photo();
+    useWorkspace.setState({ selectedIds: [p], editingId: null });
+    await readyCheck(P);
+    render(<ShortcutsBinder />);
+    fireEvent.keyDown(window, { key: "a" });
+    fireEvent.keyDown(window, { key: "b" });
+    const before = ws().cards.length;
+    fireEvent.keyDown(window, { key: "1", metaKey: true });
+    expect(ws().cards.length).toBe(before + 1);
+    const n = ws().cards.at(-1)!.id;
+    ws().setEditing(null);
+    await sleep(600);
+    pressUndo();
+    expect(note(n)).toBeUndefined();
+    expect(note(p)?.title).toBe("ab");
+  });
+
+  it("두 글자 사이에 다른 카드 쓰기가 끼면 뒷글자는 새 단계다", async () => {
+    const P = await bootBoard();
+    const p = photo();
+    const r = addMemo(600, 100);
+    useWorkspace.setState({ selectedIds: [p], editingId: null });
+    await readyCheck(P);
+    renderHook(() => useCardFlowShortcuts());
+    fireEvent.keyDown(window, { key: "a" });
+    ws().setContent(r, "끼어든 글");
+    fireEvent.keyDown(window, { key: "b" });
+    await sleep(600);
+    expect(um().undoStack.length).toBe(3);
+    pressUndo();
+    expect(note(p)?.title).toBe("a");
+    expect(note(r)?.content).toBe("끼어든 글");
   });
 });

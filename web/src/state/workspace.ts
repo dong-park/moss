@@ -1696,6 +1696,21 @@ export function runAsUserAction<R>(fn: () => R, opts?: { creates?: boolean }): R
   return recorded(fn, opts)();
 }
 
+/**
+ * 앞 동작에 이어 쓴다 — 안쪽 액션이 새 단계를 열지 않는다. 쓰기는 yjs가 맨 위 단계에 합친다
+ * (captureTimeout 안일 때). 부르는 쪽은 맨 위 단계가 자기 앞 쓰기 그대로인지(undoTopMarker)
+ * 먼저 확인한다. 열어 두는 묶음이 없어서 다른 동작은 늘 스스로 단계를 연다.
+ */
+export function continueUserAction<R>(fn: () => R): R {
+  actionDepth += 1;
+  try {
+    return fn();
+  } finally {
+    actionDepth -= 1;
+    if (actionDepth === 0) syncEditGroup();
+  }
+}
+
 /** 기록 안 하는 동작의 자기 칸. 그 문맥에서 문서 쓰기(diff 갈래)는 이 칸만 쓴다. null이면 제한 없음. */
 let untrackedOwnFields: readonly string[] | null = null;
 

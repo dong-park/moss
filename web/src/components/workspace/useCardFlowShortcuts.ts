@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect } from "react";
-import { useWorkspace } from "@/state/workspace";
-import { beginUndoGroup, endUndoGroup, type UndoGroupToken } from "@/state/ydoc/undo";
+import { continueUserAction, useWorkspace } from "@/state/workspace";
+import { undoTopMarker } from "@/state/ydoc/undo";
 import { isExpandable } from "./cards/_shared/expandable";
 
 /**
@@ -65,49 +65,29 @@ export function useCardFlowShortcuts(): void {
         e.preventDefault();
         // cmd-z-undo 웨이브 3: 편집에 먼저 들어가 첫 글자를 편집 묶음 안에서 쓴다 — 편집 전체가 1단계.
         store.enterEditOnSelected();
-        if (useWorkspace.getState().editingId !== id) {
-          // 사진처럼 편집 모드가 없는 카드는 글자마다 setTitle이 단계를 연다.
-          // 이어 치는 동안은 제목 치기 묶음 하나로 감싼다(코드 리뷰 웨이브 3 r2).
-          keepTitleTyping(id);
+        const title = (card.title ?? "") + e.key;
+        if (useWorkspace.getState().editingId === id) {
+          lastTitleKey = null;
+          store.setTitle(id, title);
+          return;
         }
-        store.setTitle(id, (card.title ?? "") + e.key);
-        return;
+        // 사진처럼 편집 모드가 없는 카드: 같은 카드에 이어 친 글자는 앞 글자 단계에 붙인다.
+        // 맨 위 단계가 앞 글자 그대로일 때만 — 그사이 다른 동작이 단계를 열었으면 새 단계다.
+        // 0.5초를 쉬면 yjs가 스스로 단계를 끊는다(코드 리뷰 웨이브 3 r3).
+        const cont = lastTitleKey?.id === id && lastTitleKey.top !== null && undoTopMarker() === lastTitleKey.top;
+        if (cont) continueUserAction(() => store.setTitle(id, title));
+        else store.setTitle(id, title);
+        lastTitleKey = { id, top: undoTopMarker() };
       }
-      endTitleTyping();
     };
 
-    const onPointerDown = () => endTitleTyping();
     window.addEventListener("keydown", onDown);
-    window.addEventListener("pointerdown", onPointerDown, true);
     return () => {
       window.removeEventListener("keydown", onDown);
-      window.removeEventListener("pointerdown", onPointerDown, true);
-      endTitleTyping();
+      lastTitleKey = null;
     };
   }, []);
 }
 
-/**
- * 제목 치기 묶음 — 편집 모드가 없는 카드에 글자를 이어 칠 때 1단계로 묶는다.
- * 0.5초 쉬거나, 다른 카드에 치거나, 글자 아닌 키나 포인터를 누르면 닫는다.
- */
-const TITLE_TYPING_IDLE_MS = 500;
-let titleTyping: { cardId: string; token: UndoGroupToken; timer: ReturnType<typeof setTimeout> } | null = null;
-
-function keepTitleTyping(cardId: string): void {
-  if (titleTyping && titleTyping.cardId !== cardId) endTitleTyping();
-  if (!titleTyping) {
-    titleTyping = { cardId, token: beginUndoGroup(), timer: setTimeout(endTitleTyping, TITLE_TYPING_IDLE_MS) };
-    return;
-  }
-  clearTimeout(titleTyping.timer);
-  titleTyping.timer = setTimeout(endTitleTyping, TITLE_TYPING_IDLE_MS);
-}
-
-function endTitleTyping(): void {
-  const t = titleTyping;
-  if (!t) return;
-  titleTyping = null;
-  clearTimeout(t.timer);
-  endUndoGroup(t.token);
-}
+/** 편집 모드가 없는 카드에 마지막으로 친 글자 — 그 카드와 그 직후 기록 맨 위 단계. */
+let lastTitleKey: { id: string; top: object | null } | null = null;

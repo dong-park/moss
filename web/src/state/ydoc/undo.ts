@@ -152,6 +152,14 @@ export function getBoardUndoManager(): Y.UndoManager | null {
   return active()?.um ?? null;
 }
 
+/**
+ * 지금 보드 기록의 맨 위 단계 표지. 같은 값이면 그사이 새 단계가 쌓이거나 되돌려지지 않았다.
+ * yjs는 이어 붙는 쓰기를 맨 위 단계 객체에 합치므로 표지가 그대로다. 기록이 없으면 null.
+ */
+export function undoTopMarker(): object | null {
+  return active()?.um.undoStack.at(-1) ?? null;
+}
+
 /** 지금 보드 기록의 보드 키. */
 export function getBoardUndoKey(): string | null {
   return active()?.key ?? null;
