@@ -438,4 +438,25 @@ describe("편집 모드가 없는 카드에 이어 친 제목", () => {
     pressUndo();
     expect(note(p)?.title).toBe("a");
   });
+
+  // 코드 리뷰 웨이브 3 r5: 선택 내용이 그대로면 새 배열이 와도 이어 친다.
+  it("이어 치는 사이 브리지가 다른 카드를 지워도 'abc'는 1단계다", async () => {
+    const P = await bootBoard();
+    const p = photo();
+    const r = addMemo(600, 100);
+    useWorkspace.setState({ selectedIds: [p], editingId: null });
+    await readyCheck(P);
+    renderHook(() => useCardFlowShortcuts());
+    fireEvent.keyDown(window, { key: "a" });
+    fireEvent.keyDown(window, { key: "b" });
+    const top = um().undoStack.at(-1);
+    await dispatchOp("notes.delete", { id: r });
+    expect(um().undoStack.at(-1)).toBe(top);
+    expect(ws().selectedIds).toEqual([p]);
+    fireEvent.keyDown(window, { key: "c" });
+    expect(note(p)?.title).toBe("abc");
+    await sleep(600);
+    pressUndo();
+    expect(note(p)?.title).toBeUndefined();
+  });
 });

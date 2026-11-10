@@ -72,25 +72,33 @@ export function useCardFlowShortcuts(): void {
           return;
         }
         // 사진처럼 편집 모드가 없는 카드: 같은 카드에 이어 친 글자는 앞 글자 단계에 붙인다.
-        // 맨 위 단계와 선택이 앞 글자 그대로일 때만 — 그사이 다른 동작이 단계를 열었거나
-        // 다른 카드를 골랐다 돌아왔으면 새 단계다. 0.5초를 쉬면 yjs가 스스로 단계를 끊는다
-        // (코드 리뷰 웨이브 3 r3·r4).
+        // 맨 위 단계가 앞 글자 그대로이고 그사이 선택 내용이 안 바뀌었을 때만 — 다른 동작이
+        // 단계를 열었거나 다른 카드를 골랐다 돌아왔으면 새 단계다(선택 구독이 표를 지운다).
+        // 0.5초를 쉬면 yjs가 스스로 단계를 끊는다(코드 리뷰 웨이브 3 r3·r4·r5).
         const last = lastTitleKey;
-        const cont =
-          last?.id === id && last.top !== null && last.sel === store.selectedIds && undoTopMarker() === last.top;
+        const cont = last?.id === id && last.top !== null && undoTopMarker() === last.top;
         if (cont) continueUserAction(() => store.setTitle(id, title));
         else store.setTitle(id, title);
-        lastTitleKey = { id, top: undoTopMarker(), sel: useWorkspace.getState().selectedIds };
+        lastTitleKey = { id, top: undoTopMarker() };
       }
     };
 
+    // 선택 내용이 바뀌면 이어 치기를 끊는다. 같은 내용의 새 배열(remove의 filter 등)은 무시한다.
+    const offSelection = useWorkspace.subscribe((s, prev) => {
+      if (lastTitleKey && !sameIds(s.selectedIds, prev.selectedIds)) lastTitleKey = null;
+    });
     window.addEventListener("keydown", onDown);
     return () => {
       window.removeEventListener("keydown", onDown);
+      offSelection();
       lastTitleKey = null;
     };
   }, []);
 }
 
-/** 편집 모드가 없는 카드에 마지막으로 친 글자 — 그 카드, 그 직후 기록 맨 위 단계와 선택 목록. */
-let lastTitleKey: { id: string; top: object | null; sel: readonly string[] } | null = null;
+/** 편집 모드가 없는 카드에 마지막으로 친 글자 — 그 카드와 그 직후 기록 맨 위 단계. */
+let lastTitleKey: { id: string; top: object | null } | null = null;
+
+function sameIds(a: readonly string[], b: readonly string[]): boolean {
+  return a === b || (a.length === b.length && a.every((x, i) => x === b[i]));
+}
