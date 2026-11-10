@@ -22,6 +22,7 @@ import {
   cancelPersist,
   flushCard,
   flushAll,
+  isPersistInFlight,
   persistSettled,
   trackConnectionMirrorWrite,
   trackPersist,
@@ -2095,15 +2096,20 @@ function bindActiveDocReflection(doc: Y.Doc, storageBoardId: string | null): voi
             cancelPersist(id);
             undoTouchedFor(doc, transaction).vanished.set(id, lastVisitedAt);
           } else if (otherTab) {
-            // 웨이브 4 리뷰(W4-4): 같은 기기 다른 탭의 삭제. 휴지통과 기록 보관은 그 탭이 지우기
-            // 직전 문서 값으로 맞춘다 — 이 탭의 0.3초 안 글도 문서에 있어 그 행에 남는다.
-            // 이 탭은 예약 미러 쓰기를 버린다. 2바퀴(W4-7): 이 탭의 쓰기가 그 탭의 휴지통 넣기·기록
-            // 보관 뒤에 이미 끝났을 수 있다 — 진행 중 쓰기가 끝난 뒤 미러 행을 늘 치운다. 문서에 없는
-            // 메모는 휴지통이든 기록 보관이든 미러 행이 없다(스펙 「상태 모델」). 휴지통은 안 만진다.
+            // 웨이브 4 리뷰(W4-4): 같은 기기 다른 탭의 삭제. 휴지통·기록 보관·보드 이전의 미러는
+            // 그 탭이 맞춘다 — 이 탭의 0.3초 안 글도 문서에 있어 그 탭이 쓰는 행에 남는다.
+            // 이 탭은 예약 미러 쓰기만 버린다. 이 탭의 쓰기가 이미 돌고 있었으면 끝난 뒤 그 미러 행을
+            // 치운다 — 늦은 put이 생성을 되돌린 메모의 미러 행을 되살리지 않게(1바퀴 W4-4, A2).
+            // 돌고 있던 쓰기가 없으면 미러 행은 안 만진다. 3바퀴(R3-1): 이 보드 문서에서 사라진 메모가
+            // 다른 보드로 옮겼거나 바로 살린 메모일 수 있다 — 지우면 살아 있는 메모가 검색·표 보기·
+            // 파일 규칙에서 빠진다. 늦은 쓰기가 휴지통 넣기 뒤에 끝나는 경우는 saveNote의 "휴지통이
+            // 이긴다"가 막는다(2바퀴 W4-7). 예약 쓰기가 기록 보관 뒤·삭제 방송 앞에 끝나는 경우는
+            // 알려진 위험이다(2바퀴 R2-3).
             // 휴지통 배지는 그 탭의 휴지통 쓰기 뒤를 노려 다시 읽는다(탭 사이 휴지통 알림은 없다).
+            const writing = isPersistInFlight(id);
             cancelPersist(id);
             void enqueueTrashJob(async () => {
-              await archiveMirror(doc, id);
+              if (writing) await archiveMirror(doc, id);
               notifyNoteChanges();
               void useWorkspace.getState().refreshTrashCount();
             });
