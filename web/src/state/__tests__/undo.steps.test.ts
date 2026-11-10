@@ -681,6 +681,13 @@ describe("진입점 — 정상 입력 한 번에 undoStack이 정확히 1 는다
     await waitFor(() => !!note(h1) && !!note(h2), "함 카드");
     expect(um().undoStack.length).toBe(0);
     await flushAll();
+    // n6 T26: 함 삭제의 cascade(void async)가 시험 뒤까지 남아 DB가 닫힌 뒤 거부되면 처리 안 된
+    // 거부가 스위트를 빨갛게 만든다. 두 cascade가 5초 되살리기 기록을 세울 때까지 기다린다.
+    const cascaded = new Set<string>();
+    const off = useWorkspace.subscribe((s, prev) => {
+      const p = s.pendingSubcanvasUndo;
+      if (p && p !== prev.pendingSubcanvasUndo) for (const c of p.funnelCards) cascaded.add(c.id);
+    });
     ws().remove(h1, { deleteConfirmed: true });
     expect(note(h1)).toBeUndefined();
     expect(um().undoStack.length).toBe(0);
@@ -692,6 +699,8 @@ describe("진입점 — 정상 입력 한 번에 undoStack이 정확히 1 는다
     press();
     expect(note(m)).toBeDefined();
     expect(note(h2)).toBeUndefined();
+    await waitFor(() => cascaded.has(h1) && cascaded.has(h2), "함 cascade 끝");
+    off();
   });
 });
 

@@ -585,7 +585,10 @@ describe("T18 사진 파일은 기록에서 빠지고 어디에서도 안 쓸 �
     expect(um().undoStack.length).toBe(1);
     const other = peer();
     // 다른 탭도 같은 칸(attachmentRef와 수정 시각)을 나중에 바꾼다. 크기·형식이 같아 다른 칸은 그대로다.
-    updateNoteFields(other, f, { attachmentRef: C, updatedAt: Date.now() + 1000 }, "other-tab");
+    other.transact(
+      () => updateNoteFields(other, f, { attachmentRef: C, updatedAt: Date.now() + 1000 }),
+      "other-tab",
+    );
     pushFrom(other);
     expect(note(f)?.attachmentRef).toBe(C);
 
