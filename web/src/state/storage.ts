@@ -32,7 +32,7 @@ import {
   updateNoteField,
 } from "@/state/ydoc/model";
 import { LOCAL_ORIGIN, UNTRACKED_ORIGIN, type WriteOrigin } from "@/state/ydoc/origin";
-import { flushAll } from "@/state/cardPersist";
+import { connectionMirrorSettled, flushAll, persistSettled } from "@/state/cardPersist";
 import { liveFileRefs } from "@/state/undoFiles";
 import {
   SYSTEM_BOARD_ID,
@@ -364,6 +364,9 @@ export const useStorage = create<StorageState>((set, get) => ({
     const origin = opts?.origin;
     if (ids.length === 0) return;
     const db = getDB();
+    // cmd-z-undo 웨이브 4 리뷰(W4-5): 이미 시작된 미러 쓰기가 끝난 뒤 지운다 — 늦은 put이 행을 되살린다.
+    await persistSettled(ids);
+    await connectionMirrorSettled();
     // 원본 문서에서 먼저 지운다. 보드를 모르면 미러 행의 boardId로 찾는다.
     const byBoard = new Map<string | null, string[]>();
     for (const id of ids) {
@@ -403,6 +406,10 @@ export const useStorage = create<StorageState>((set, get) => ({
 
   trashNotes: async (ids) => {
     if (ids.length === 0) return;
+    // cmd-z-undo 웨이브 4 리뷰(W4-5): 이미 시작된 미러 쓰기가 끝난 뒤 옮긴다. cancelPersist는
+    // 타이머만 지워서, 늦은 put이 휴지통에 넣은 메모·연결선의 미러 행을 되살린다.
+    await persistSettled(ids);
+    await connectionMirrorSettled();
     const db = getDB();
     // 읽기까지 한 트랜잭션 안에서 — 연달아 지운 두 메모가 같은 연결선을 서로 놓치지 않게.
     await db.transaction(

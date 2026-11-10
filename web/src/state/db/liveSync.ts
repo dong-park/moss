@@ -29,6 +29,14 @@ export const MAX_UPDATE_BYTES = 10 * 1024 * 1024;
 /** 채널로 적용한 업데이트의 origin — 로컬이 아님을 표시(재방송·반영 구분). */
 const CHANNEL_ORIGIN: unique symbol = Symbol("moss-channel-origin");
 
+/**
+ * 같은 기기 다른 탭에서 온 변경인가. 탭끼리는 Dexie를 함께 쓴다 — 휴지통과 기록 보관은
+ * 변경을 만든 탭이 맞추고, 받는 탭은 휴지통을 만지지 않는다(cmd-z-undo 웨이브 4 리뷰 W4-4).
+ */
+export function isChannelOrigin(origin: unknown): boolean {
+  return origin === CHANNEL_ORIGIN;
+}
+
 export type YDocSyncMsg = {
   type: "ydoc-update";
   /** 보드 문서 키(`moss-board-<key>`의 key). */

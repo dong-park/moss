@@ -16,13 +16,32 @@ const timers = new Map<
   { handle: ReturnType<typeof setTimeout>; run: PersistRun }
 >();
 
+/*
+ * cmd-z-undo 웨이브 4 리뷰(W4-5): 이미 시작된 미러 쓰기. cancelPersist는 타이머만 지운다 —
+ * 돌고 있는 쓰기(saveNote의 get 뒤 put)는 못 멈춘다. 미러 행을 지우는 쪽(휴지통·기록 보관·
+ * 영구 삭제)은 persistSettled로 그 쓰기가 끝난 뒤 지운다. 안 그러면 늦은 put이 행을 되살린다.
+ */
+const inflight = new Map<string, Promise<void>>();
+const noop = () => undefined;
+
+function track(id: string, p: Promise<void>): Promise<void> {
+  const quiet = p.then(noop, noop);
+  const prev = inflight.get(id);
+  const settled = prev ? Promise.all([prev, quiet]).then(noop) : quiet;
+  inflight.set(id, settled);
+  void settled.then(() => {
+    if (inflight.get(id) === settled) inflight.delete(id);
+  });
+  return p;
+}
+
 /** id별 영속을 300ms 디바운스로 예약. 같은 id 재예약 시 직전 것을 대체(최신 우선). */
 export function schedulePersist(id: string, run: PersistRun): void {
   const existing = timers.get(id);
   if (existing) clearTimeout(existing.handle);
   const handle = setTimeout(() => {
     timers.delete(id);
-    void run();
+    void track(id, run());
   }, DEBOUNCE_MS);
   timers.set(id, { handle, run });
 }
@@ -33,10 +52,46 @@ export function flushCard(id: string): Promise<void> {
   if (!entry) return Promise.resolve();
   clearTimeout(entry.handle);
   timers.delete(id);
-  return entry.run();
+  return track(id, entry.run());
 }
 
-/** 대기 중인 영속을 실행하지 않고 취소(카드 삭제 시 — 지운 카드를 다시 쓰지 않게). */
+/** 이미 시작된 id의 미러 쓰기가 있는가. 예약만 된 쓰기는 세지 않는다. */
+export function isPersistInFlight(id: string): boolean {
+  return inflight.has(id);
+}
+
+/** ids의 이미 시작된 미러 쓰기가 모두 끝나면 풀린다(성공·실패 무관). 예약만 된 쓰기는 기다리지 않는다. */
+export function persistSettled(ids: Iterable<string>): Promise<void> {
+  const waits: Promise<void>[] = [];
+  for (const id of ids) {
+    const p = inflight.get(id);
+    if (p) waits.push(p);
+  }
+  return waits.length === 0 ? Promise.resolve() : Promise.all(waits).then(noop);
+}
+
+/*
+ * 연결선 미러 쓰기(원격 반영의 0.3초 디바운스 flushConnections)도 같다. 문서를 읽은 뒤 put이
+ * 늦게 닿으면 휴지통으로 옮긴 연결선의 미러 행이 되살아난다. 연결선을 휴지통으로 옮기는
+ * 쪽은 connectionMirrorSettled로 앞선 쓰기가 끝난 뒤 옮긴다.
+ */
+let connectionWrites: Promise<void> = Promise.resolve();
+
+/** 시작한 연결선 미러 쓰기를 등록한다. */
+export function trackConnectionMirrorWrite(p: Promise<void>): Promise<void> {
+  connectionWrites = Promise.all([connectionWrites, p.then(noop, noop)]).then(noop);
+  return p;
+}
+
+/** 지금까지 시작한 연결선 미러 쓰기가 모두 끝나면 풀린다. */
+export function connectionMirrorSettled(): Promise<void> {
+  return connectionWrites;
+}
+
+/**
+ * 대기 중인 영속을 실행하지 않고 취소(카드 삭제 시 — 지운 카드를 다시 쓰지 않게).
+ * 이미 시작된 쓰기는 못 멈춘다 — 미러 행을 지우는 쪽이 persistSettled를 기다린다.
+ */
 export function cancelPersist(id: string): void {
   const entry = timers.get(id);
   if (!entry) return;
