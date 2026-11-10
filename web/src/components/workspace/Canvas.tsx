@@ -30,6 +30,7 @@ import { ConnectorLayer } from "./connectors/ConnectorLayer";
 import { ConnectionHandlesLayer } from "./connectors/ConnectionHandles";
 import { isUrlOnly } from "@/state/cardContent";
 import { createLinkMemo } from "./linkMemo";
+import { handleUndoKeyDown, isUndoZKey } from "./undoKeys";
 import { serializeBlock } from "@/state/blocks";
 import {
   DROP_STACK_OFFSET_PX,
@@ -371,17 +372,22 @@ export function Canvas() {
         setSpaceDown(true);
         return;
       }
+      // cmd-z-undo n3: cmd+z·cmd+shift+z 경로 판정은 undoKeys 한 곳에서 한다 —
+      // 펜 모드면 펜 획 기록(FEAT-pen-drawing-engine D3), 편집·펼친 창·입력칸이면
+      // 그쪽 기본 동작, 그 밖에는 보드 기록. e.code KeyZ도 받는다(한글 입력기).
+      if (handleUndoKeyDown(e)) {
+        e.preventDefault();
+        return;
+      }
       // FEAT-markdown-memo-pen: 펜 모드 키 — 다른 캔버스 키보다 우선.
       if (penMode) {
         const mod = e.metaKey || e.ctrlKey;
         if (e.key === "Escape") {
           e.preventDefault();
           setPenMode(false);
-        } else if (mod && (e.key === "z" || e.key === "Z")) {
-          // FEAT-pen-drawing-engine D3: 펜 그리기 undo/redo (스펙 AC-7).
+        } else if (mod && isUndoZKey(e)) {
+          // 펜 모드의 cmd+z는 위 handleUndoKeyDown이 처리했다. 다른 키로 새지 않게 막는다.
           e.preventDefault();
-          if (e.shiftKey) useWorkspace.getState().penRedo();
-          else useWorkspace.getState().penUndo();
         } else if (mod && e.key === "Backspace") {
           e.preventDefault();
           useWorkspace.getState().penClear();

@@ -12,16 +12,40 @@ import * as Y from "yjs";
 export const LOCAL_ORIGIN: unique symbol = Symbol("moss-local-origin");
 
 /**
- * 로컬 쓰기를 LOCAL_ORIGIN 트랜잭션으로 감싼다. n1의 모든 쓰기 헬퍼가
- * 내부에서 이 함수를 쓴다.
+ * cmd-z-undo n3 — 기록하지 않는 로컬 origin.
+ *
+ * 보드 UndoManager의 trackedOrigins는 LOCAL_ORIGIN뿐이라 이 origin의 쓰기는
+ * 캔버스 기록에 들어가지 않는다. 그래도 로컬 쓰기다 — 스토어 반영 observer는
+ * 건너뛰고(스토어가 이미 안다), 탭 사이 방송은 보낸다.
+ * 쓰는 곳: 불러오기 정리·시드, 빈 채로 마친 글상자 지우기, 자동 측정, 브리지 등.
  */
-export function transactLocal<T>(doc: Y.Doc, fn: () => T): T {
-  return doc.transact(fn, LOCAL_ORIGIN);
+export const UNTRACKED_ORIGIN: unique symbol = Symbol("moss-untracked-origin");
+
+/** 로컬 쓰기 origin — 기록하는 LOCAL_ORIGIN 또는 기록 안 하는 UNTRACKED_ORIGIN. */
+export type WriteOrigin = typeof LOCAL_ORIGIN | typeof UNTRACKED_ORIGIN;
+
+/**
+ * 로컬 쓰기를 트랜잭션으로 감싼다. n1의 모든 쓰기 헬퍼가 내부에서 이 함수를 쓴다.
+ * origin을 주지 않으면 LOCAL_ORIGIN(기록하는 쓰기)이다. 바깥에 이미 열린
+ * 트랜잭션이 있으면 yjs가 바깥 origin을 쓴다.
+ */
+export function transactLocal<T>(doc: Y.Doc, fn: () => T, origin: WriteOrigin = LOCAL_ORIGIN): T {
+  return doc.transact(fn, origin);
 }
 
-/** observer 반영 대상인가 — 로컬 origin이 아닌 변경만 통과한다. */
+/** 기록하지 않는 로컬 쓰기 트랜잭션. */
+export function transactUntracked<T>(doc: Y.Doc, fn: () => T): T {
+  return doc.transact(fn, UNTRACKED_ORIGIN);
+}
+
+/** 이 탭의 로컬 쓰기 origin인가 — 기록 여부와 무관하다. */
+export function isLocalOrigin(origin: unknown): origin is WriteOrigin {
+  return origin === LOCAL_ORIGIN || origin === UNTRACKED_ORIGIN;
+}
+
+/** observer 반영 대상인가 — 로컬 origin(기록하는 것·안 하는 것 모두)이 아닌 변경만 통과한다. */
 export function isRemoteTransaction(transaction: Y.Transaction): boolean {
-  return transaction.origin !== LOCAL_ORIGIN;
+  return !isLocalOrigin(transaction.origin);
 }
 
 /**

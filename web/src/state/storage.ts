@@ -31,6 +31,7 @@ import {
   readConnections as readConnectionsDoc,
   updateNoteField,
 } from "@/state/ydoc/model";
+import type { WriteOrigin } from "@/state/ydoc/origin";
 import {
   SYSTEM_BOARD_ID,
   isSystemBoardNote,
@@ -79,7 +80,12 @@ interface StorageState {
    * FEAT-text-tool: 휴지통을 거치지 않고 즉시 영구 삭제한다(연결선·임베딩 포함,
    * 한 트랜잭션). "빈 텍스트 자동 소멸"처럼 되돌리기 대상이 아닌 행 전용.
    */
-  hardDeleteNotes: (ids: string[], boardId?: string | null) => Promise<void>;
+  /** opts.origin은 문서 쓰기 origin이다. 불러오기 정리·빈 글상자 지우기는 기록 안 하는 origin을 넘긴다. */
+  hardDeleteNotes: (
+    ids: string[],
+    boardId?: string | null,
+    opts?: { origin?: WriteOrigin },
+  ) => Promise<void>;
 
   /**
    * FEAT-trash: 메모를 영구 삭제 대신 휴지통으로 보낸다. 한 트랜잭션에서 연결선·보드
@@ -339,7 +345,8 @@ export const useStorage = create<StorageState>((set, get) => ({
     await get().purgeTrash([id]);
   },
 
-  hardDeleteNotes: async (ids, boardId) => {
+  hardDeleteNotes: async (ids, boardId, opts) => {
+    const origin = opts?.origin;
     if (ids.length === 0) return;
     const db = getDB();
     // 원본 문서에서 먼저 지운다. 보드를 모르면 미러 행의 boardId로 찾는다.
@@ -353,9 +360,11 @@ export const useStorage = create<StorageState>((set, get) => ({
       const gone = new Set(noteIds);
       await writeToBoardDoc(bid, (doc) => {
         for (const c of readConnectionsDoc(doc)) {
-          if (gone.has(c.sourceNoteId) || gone.has(c.targetNoteId)) deleteConnectionDoc(doc, c.id);
+          if (gone.has(c.sourceNoteId) || gone.has(c.targetNoteId)) {
+            deleteConnectionDoc(doc, c.id, origin);
+          }
         }
-        for (const id of noteIds) deleteNoteDoc(doc, id);
+        for (const id of noteIds) deleteNoteDoc(doc, id, origin);
       });
     }
     await db.transaction(

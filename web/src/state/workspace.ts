@@ -51,7 +51,15 @@ import {
   toSharedNote,
   type SharedNote,
 } from "./ydoc/model";
-import { isRemoteTransaction, transactLocal } from "./ydoc/origin";
+import { isRemoteTransaction, transactLocal, UNTRACKED_ORIGIN, type WriteOrigin } from "./ydoc/origin";
+import {
+  beginUndoGroup,
+  createBoardUndo,
+  disposeActiveBoardUndo,
+  disposeAllBoardUndo,
+  endUndoGroup,
+  type UndoGroupToken,
+} from "./ydoc/undo";
 import type { MemoColor } from "@/components/workspace/memoVariety";
 import {
   clearSharedSnapshots,
@@ -1413,16 +1421,16 @@ function persistCardDexie(card: Card, boardId: string | null): Promise<Note> {
 
 /** 카드의 공유 필드를 활성 문서에 반영한다(없으면 생성). 문서에 안 실리는 기기 로컬
  * 필드(lastVisitedAt)는 쓰지 않는다. 생성 시각은 불변이라 기존 메모에는 갱신하지 않는다. */
-function writeCardToDoc(card: Card, boardId: string | null): void {
-  withActiveDoc(boardId, (doc) => writeCardToDocHandle(doc, card, boardId));
+function writeCardToDoc(card: Card, boardId: string | null, origin?: WriteOrigin): void {
+  withActiveDoc(boardId, (doc) => writeCardToDocHandle(doc, card, boardId, origin));
 }
 
 function persistCard(
   card: Card,
   boardId: string | null,
-  opts?: { doc?: boolean },
+  opts?: { doc?: boolean; origin?: WriteOrigin },
 ): Promise<Note> {
-  if (opts?.doc !== false) writeCardToDoc(card, boardId);
+  if (opts?.doc !== false) writeCardToDoc(card, boardId, opts?.origin);
   return persistCardDexie(card, boardId);
 }
 
@@ -1495,11 +1503,16 @@ function withActiveDoc(
  * n23 재심사 2R-2: 문서 쓰기 단일 출구가 갱신하고 삭제 경로가 버린다. */
 
 /** 문서 하나에 카드 공유 필드를 쓴다(없으면 생성). 활성/비활성 보드 공통 경로. */
-function writeCardToDocHandle(doc: Y.Doc, card: Card, boardId: string | null): void {
+function writeCardToDocHandle(
+  doc: Y.Doc,
+  card: Card,
+  boardId: string | null,
+  origin?: WriteOrigin,
+): void {
   const full = initialNoteFromCard(card, boardId);
   const shared = toSharedNote(full);
   if (notesMap(doc).get(card.id) === undefined) {
-    putNoteDoc(doc, full);
+    putNoteDoc(doc, full, origin);
     setSharedSnapshot(card.id, shared);
     return;
   }
@@ -1508,7 +1521,7 @@ function writeCardToDocHandle(doc: Y.Doc, card: Card, boardId: string | null): v
     // 스냅샷이 없으면(재로드 뒤 첫 갱신) 전체를 갱신한다 — 생성 시각은 보존.
     const fields: Partial<SharedNote> = { ...shared };
     delete fields.createdAt;
-    updateNoteFields(doc, card.id, fields);
+    updateNoteFields(doc, card.id, fields, origin);
     setSharedSnapshot(card.id, shared);
     return;
   }
@@ -1525,7 +1538,7 @@ function writeCardToDocHandle(doc: Y.Doc, card: Card, boardId: string | null): v
       (diff as Record<string, unknown>)[field] = undefined;
     }
   }
-  if (Object.keys(diff).length > 0) updateNoteFields(doc, card.id, diff);
+  if (Object.keys(diff).length > 0) updateNoteFields(doc, card.id, diff, origin);
   setSharedSnapshot(card.id, shared);
 }
 
@@ -1561,10 +1574,29 @@ async function loadBoardCards(storageBid: string | null): Promise<Card[]> {
  * observer·liveSync attach 세 배선을 함께 소유한다 — 보드 전환 지점은 이 함수만 부른다.
  */
 async function activateBoard(storageBid: string | null) {
+  // cmd-z-undo n3: 보드를 떠나면(같은 보드 재로드도) 그 보드 기록을 버린다(D6 B).
+  // 새 기록은 불러오기·정리·시드가 끝난 뒤 openBoardHistory가 만든다.
+  disposeActiveBoardUndo();
   const handle = await activateBoardDoc(storageBid);
   bindActiveDocReflection(handle.doc, storageBid);
   attachLiveDoc(handle.doc, docKeyForBoard(storageBid));
   return handle;
+}
+
+/** cmd-z-undo n3: 펜 모드 묶음 토큰. 묶음은 스토어가 소유하고 penMode 상태를 따른다. */
+let penGroupToken: UndoGroupToken | null = null;
+
+/**
+ * cmd-z-undo n3: 활성 보드의 캔버스 기록을 만든다. 불러오기·정리·시드가 끝난 뒤에만 부른다.
+ * 펜 모드가 켜진 채 보드를 바꿨으면 새 기록에서 펜 묶음을 다시 연다. 옛 보드 토큰은
+ * 세대가 달라 늦게 끝나도 무시된다.
+ */
+function openBoardHistory(storageBid: string | null): void {
+  if (!isActiveBoard(storageBid)) return;
+  const handle = getActiveBoardDoc();
+  if (!handle) return;
+  createBoardUndo(docKeyForBoard(storageBid), handle.doc);
+  penGroupToken = useWorkspace.getState().penMode ? beginUndoGroup() : null;
 }
 
 function bindActiveDocReflection(doc: Y.Doc, storageBoardId: string | null): void {
@@ -2134,20 +2166,25 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         ...c,
         height: memoHeight(c.kind, c.width, c.height),
       }));
-      await Promise.all(seeds.map((card) => persistCard(card, SYSTEM_BOARD_ID)));
+      // cmd-z-undo n3: 시드는 기록 안 하는 origin — 열자마자 cmd+z가 시드를 지우지 않게.
+      await Promise.all(
+        seeds.map((card) => persistCard(card, SYSTEM_BOARD_ID, { origin: UNTRACKED_ORIGIN })),
+      );
       await storage.updateSettings({ installPromptShown: true });
       set({ cards: seeds, boards, connections: [] });
+      openBoardHistory(storageBid);
       return;
     }
 
     // FEAT-text-tool: 빈 textbox는 불러올 때 지운다. 원본 문서와 미러 모두에서.
     const pruned = pruneEmptyTextboxes(await loadBoardCards(storageBid));
     if (pruned.removedIds.length > 0) {
-      await storage.hardDeleteNotes(pruned.removedIds, storageBid);
+      await storage.hardDeleteNotes(pruned.removedIds, storageBid, { origin: UNTRACKED_ORIGIN });
     }
     const cards = pruned.cards;
     const connections = await loadBoardConnections(cards.map((c) => c.id));
     set({ cards, boards, connections, selectedConnectionId: null });
+    openBoardHistory(storageBid);
     void get().refreshSubcanvasCounts();
     void get().refreshTrashCount();
   },
@@ -2185,7 +2222,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     // FEAT-text-tool: 빈 textbox는 불러올 때 지운다. 원본 문서와 미러 모두에서.
     const pruned = pruneEmptyTextboxes(await loadBoardCards(storageBid));
     if (pruned.removedIds.length > 0) {
-      await storage.hardDeleteNotes(pruned.removedIds, storageBid);
+      await storage.hardDeleteNotes(pruned.removedIds, storageBid, { origin: UNTRACKED_ORIGIN });
     }
     const cards = pruned.cards;
     const connections = await loadBoardConnections(cards.map((c) => c.id));
@@ -2222,6 +2259,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       lastNonSystemBoardId: lastNonSystem,
       viewport: restored,
     });
+    // cmd-z-undo n3: 새 보드 기록은 불러오기·정리가 끝나고 스토어를 바꾼 뒤 만든다.
+    openBoardHistory(storageBid);
     // 표 행 열기·표 복귀처럼 URL을 거치지 않은 전환도 주소를 따라오게 한다.
     // URL에서 온 전환이면 경로가 이미 같아 navigator가 아무것도 안 한다.
     boardNavigator?.(id);
@@ -3176,7 +3215,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     // 원본 문서와 미러에서 연결선·임베딩까지 정리한다. 막 만든 상자는 미러에 없을
     // 수 있어 보드를 넘긴다.
     void storage
-      .hardDeleteNotes([id], get().currentBoardId)
+      // cmd-z-undo n3: 빈 채로 마친 글상자 지우기는 기록 안 하는 origin.
+      .hardDeleteNotes([id], get().currentBoardId, { origin: UNTRACKED_ORIGIN })
       .catch(() => undefined);
   },
 
@@ -4073,6 +4113,19 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 }));
 
+/* cmd-z-undo n3: 펜 묶음은 penMode 상태를 따른다. setPenMode만이 아니라
+ * armTextPlacement처럼 penMode를 바로 끄는 길도 덮으려고 액션이 아니라 구독으로 건다. */
+useWorkspace.subscribe((s, prev) => {
+  if (s.penMode === prev.penMode) return;
+  if (s.penMode) {
+    endUndoGroup(penGroupToken);
+    penGroupToken = beginUndoGroup();
+  } else {
+    endUndoGroup(penGroupToken);
+    penGroupToken = null;
+  }
+});
+
 /* 테스트·디버깅용 export — 프로덕션 코드는 직접 호출 금지. */
 export const __internal = {
   decodeNoteToCard,
@@ -4090,5 +4143,7 @@ export async function __resetBoardDocsForTest(): Promise<void> {
   unbindDocReflection?.();
   unbindDocReflection = null;
   clearSharedSnapshots();
+  disposeAllBoardUndo();
+  penGroupToken = null;
   await destroyBoardDocs();
 }
