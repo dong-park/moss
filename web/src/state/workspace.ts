@@ -54,6 +54,7 @@ import {
 import {
   currentWriteOrigin,
   isRemoteTransaction,
+  LOCAL_ORIGIN,
   transactLocal,
   UNTRACKED_ORIGIN,
   withWriteOrigin,
@@ -1741,7 +1742,9 @@ function closeEditGroup(): void {
   const wasSyncing = syncingEdit;
   syncingEdit = true;
   try {
-    runEditFlush();
+    // flush가 내보내는 글은 언제나 사용자가 친 글이다. 브리지처럼 기록 안 하는 문맥이
+    // 묶음을 닫아도 그 글은 기록에 든다(코드 리뷰 웨이브 3 수정 리포트의 열린 질문).
+    withWriteOrigin(LOCAL_ORIGIN, runEditFlush);
   } finally {
     syncingEdit = wasSyncing;
   }

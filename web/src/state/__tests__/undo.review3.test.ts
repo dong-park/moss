@@ -22,6 +22,7 @@ import { deleteConnection, readConnection } from "@/state/ydoc/model";
 import { LOCAL_ORIGIN, UNTRACKED_ORIGIN } from "@/state/ydoc/origin";
 import { getBoardUndoGroupState } from "@/state/ydoc/undo";
 import { dispatchOp } from "@/state/bridge/mossBridge";
+import { registerEditFlush } from "@/state/editFlush";
 import { createLinkMemo } from "@/components/workspace/linkMemo";
 import {
   addMemo,
@@ -124,6 +125,32 @@ describe("기록 안 하는 origin의 편집 묶음은 단계를 끊지 않는�
     pressUndo();
     expect(note(u)?.content).toBe("");
     expect(note(id)?.content).toBe("from bridge");
+  });
+
+  it("브리지가 내 편집 묶음을 닫을 때 flush가 내보내는 내 글은 기록에 든다", async () => {
+    // 수정 리포트의 열린 질문: 기록 안 하는 문맥이 묶음을 닫아도 flush는 사용자의 글을 쓴다.
+    const P = await bootBoard();
+    const u = addMemo(100, 100);
+    await readyCheck(P);
+    let pending: string | null = null;
+    const off = registerEditFlush(() => {
+      if (pending !== null) ws().setContent(u, pending);
+      pending = null;
+    });
+    try {
+      ws().setEditing(u);
+      // 편집기 디바운스에 남은 글 — 아직 문서에 안 갔다.
+      pending = "마지막 0.2초 글";
+      await dispatchOp("notes.create", { content: "from bridge", x: 600, y: 100 });
+      await sleep(600);
+      expect(note(u)?.content).toBe("마지막 0.2초 글");
+      // 브리지가 편집을 빼앗았어도 내 글은 cmd+z로 되돌릴 수 있다.
+      expect(um().undoStack.length).toBeGreaterThanOrEqual(1);
+      pressUndo();
+      expect(note(u)?.content).toBe("");
+    } finally {
+      off();
+    }
   });
 });
 
