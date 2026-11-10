@@ -62,8 +62,9 @@ export function useCardFlowShortcuts(): void {
         const card = store.cards.find((c) => c.id === id);
         if (!card || !isExpandable(card)) return;
         e.preventDefault();
-        store.setTitle(id, (card.title ?? "") + e.key);
+        // cmd-z-undo 웨이브 3: 편집에 먼저 들어가 첫 글자를 편집 묶음 안에서 쓴다 — 편집 전체가 1단계.
         store.enterEditOnSelected();
+        store.setTitle(id, (card.title ?? "") + e.key);
       }
     };
 

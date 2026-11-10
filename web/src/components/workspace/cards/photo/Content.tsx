@@ -1,7 +1,13 @@
 "use client";
 
 import { useRef } from "react";
-import { CARD_MAX_HEIGHT, CARD_MIN_HEIGHT, PHOTO_CAPTION_MAX, useWorkspace } from "@/state/workspace";
+import {
+  CARD_MAX_HEIGHT,
+  CARD_MIN_HEIGHT,
+  PHOTO_CAPTION_MAX,
+  runAsUserAction,
+  useWorkspace,
+} from "@/state/workspace";
 import { storePhoto } from "../../canvasCapture";
 import { usePhotoUrl } from "./usePhotoUrl";
 import { useT } from "@/i18n/Provider";
@@ -130,11 +136,14 @@ function EmptyPhoto({ cardId, width }: { cardId: string; width: number }) {
     if (!file) return;
     const photo = await storePhoto(file);
     if (!photo) return; // 형식·크기 거부는 storePhoto가 토스트로 알린다.
-    setAttachment(cardId, photo.ref, { mediaType: photo.mediaType });
-    if (photo.naturalW && photo.naturalH) {
-      const h = Math.min(CARD_MAX_HEIGHT, Math.max(CARD_MIN_HEIGHT, (width * photo.naturalH) / photo.naturalW));
-      resizeCard(cardId, { width, height: h });
-    }
+    // cmd-z-undo 웨이브 3: 사진 고르기 한 번 — 첨부와 비율 맞추기가 기록 1단계.
+    runAsUserAction(() => {
+      setAttachment(cardId, photo.ref, { mediaType: photo.mediaType });
+      if (photo.naturalW && photo.naturalH) {
+        const h = Math.min(CARD_MAX_HEIGHT, Math.max(CARD_MIN_HEIGHT, (width * photo.naturalH) / photo.naturalW));
+        resizeCard(cardId, { width, height: h });
+      }
+    });
   };
 
   return (

@@ -19,7 +19,7 @@ import {
 import { useT } from "@/i18n/Provider";
 import { layout } from "@/design/tokens";
 import { PANEL_WIDTH as SIGNALS_PANEL_WIDTH } from "@/components/signals/SignalsPanel";
-import { PHOTO_DEFAULT_WIDTH } from "@/state/workspace";
+import { PHOTO_DEFAULT_WIDTH, runAsUserAction } from "@/state/workspace";
 import { EMPTY_LINK_CONTENT } from "./linkMemo";
 
 /** 드래그로 인정하기 위한 최소 이동 거리 — 단순 클릭과 구분. */
@@ -326,18 +326,29 @@ export function Dock({
 
   /** 도크 전용 버튼 — `at`이 있으면 끌어 놓은 월드 좌표, null이면 화면 가운데. */
   function createDockOnly(toolId: DockOnlyId, at: { x: number; y: number } | null) {
+    // cmd-z-undo 웨이브 3: 버튼 한 번 = 생성 1단계(앞면 본문 포함). 편집 묶음은 그 뒤 열린다.
     if (toolId === "todo") {
-      const id = at ? addCardAt("text", at.x, at.y) : addCardAtViewportCenter("text");
-      // 빈 항목 하나로 할 일 앞면을 띄우고 카드에서 바로 적는다(TodoFace가 제목에 포커스).
-      setContent(id, "- [ ] ");
-      setEditing(id);
+      runAsUserAction(
+        () => {
+          const id = at ? addCardAt("text", at.x, at.y) : addCardAtViewportCenter("text");
+          // 빈 항목 하나로 할 일 앞면을 띄우고 카드에서 바로 적는다(TodoFace가 제목에 포커스).
+          setContent(id, "- [ ] ");
+          setEditing(id);
+        },
+        { creates: true },
+      );
       return;
     }
     if (toolId === "linkMemo") {
-      // 빈 링크 카드 — 카드 안 입력칸에 주소를 넣는다(LinkInputFace가 포커스).
-      const id = at ? addCardAt("text", at.x, at.y) : addCardAtViewportCenter("text");
-      setContent(id, EMPTY_LINK_CONTENT);
-      setEditing(id);
+      runAsUserAction(
+        () => {
+          // 빈 링크 카드 — 카드 안 입력칸에 주소를 넣는다(LinkInputFace가 포커스).
+          const id = at ? addCardAt("text", at.x, at.y) : addCardAtViewportCenter("text");
+          setContent(id, EMPTY_LINK_CONTENT);
+          setEditing(id);
+        },
+        { creates: true },
+      );
       return;
     }
     // 빈 사진 카드 — 카드의 "사진 고르기"를 눌러 파일 창을 연다.

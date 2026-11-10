@@ -182,13 +182,19 @@ export function openUndoStep(origin: unknown = LOCAL_ORIGIN): void {
   entry.um.stopCapturing();
 }
 
-/** 묶음 시작. 소유자 토큰을 돌려준다. 가장 바깥 묶음만 단계를 열고 captureTimeout을 무한으로 둔다. */
-export function beginUndoGroup(): UndoGroupToken {
+/** 묶음 열기·닫기 옵션. quiet면 깊이와 captureTimeout만 바꾸고 단계를 가르지 않는다(stopCapturing 없음). */
+export type UndoGroupOptions = { quiet?: boolean };
+
+/**
+ * 묶음 시작. 소유자 토큰을 돌려준다. 가장 바깥 묶음만 단계를 열고 captureTimeout을 무한으로 둔다.
+ * quiet: 기록 안 하는 동작(브리지 등)이 바꾼 상태로 여는 묶음 — 사용자 단계를 끊지 않는다.
+ */
+export function beginUndoGroup(opts?: UndoGroupOptions): UndoGroupToken {
   const entry = active();
   const token: UndoGroupToken = { gen: entry ? entry.gen : INERT_GEN, id: ++tokenSeq };
   if (!entry) return token;
   if (entry.depth === 0) {
-    entry.um.stopCapturing();
+    if (!opts?.quiet) entry.um.stopCapturing();
     entry.um.captureTimeout = Number.POSITIVE_INFINITY;
   }
   entry.depth += 1;
@@ -198,9 +204,12 @@ export function beginUndoGroup(): UndoGroupToken {
 
 /**
  * 묶음 끝. 토큰 세대가 지금 보드 기록 세대와 같고 아직 안 끝낸 토큰일 때만 깊이를 내린다.
- * 가장 바깥 묶음이 끝나면 captureTimeout을 500으로 되돌리고 단계를 닫는다.
+ * 가장 바깥 묶음이 끝나면 captureTimeout을 500으로 되돌리고 단계를 닫는다. quiet면 단계는 닫지 않는다.
  */
-export function endUndoGroup(token: UndoGroupToken | null | undefined): void {
+export function endUndoGroup(
+  token: UndoGroupToken | null | undefined,
+  opts?: UndoGroupOptions,
+): void {
   if (!token) return;
   const entry = active();
   if (!entry || token.gen !== entry.gen) return;
@@ -208,7 +217,7 @@ export function endUndoGroup(token: UndoGroupToken | null | undefined): void {
   entry.depth = Math.max(0, entry.depth - 1);
   if (entry.depth === 0) {
     entry.um.captureTimeout = UNDO_CAPTURE_TIMEOUT_MS;
-    entry.um.stopCapturing();
+    if (!opts?.quiet) entry.um.stopCapturing();
   }
 }
 

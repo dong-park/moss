@@ -34,6 +34,7 @@ import { listenerCtx } from "@milkdown/plugin-listener";
 import { nord } from "@milkdown/theme-nord";
 import { Milkdown, MilkdownProvider, useEditor } from "@milkdown/react";
 import { TextSelection } from "@milkdown/prose/state";
+import type { Node as ProseNode } from "@milkdown/prose/model";
 
 import { MarkdownToolbar } from "./MarkdownToolbar";
 import { MEMO_CONTENT_WIDTH } from "./memoLayout";
@@ -90,6 +91,10 @@ export function MilkdownInner({ value, editable, onChange, onBlur, expanded, car
   useEffect(() => {
     emitRef.current = emit;
   });
+  // cmd-z-undo 웨이브 3: 마지막으로 내보낸 시점의 문서. 처음 값은 편집기가 뜬 직후 문서다.
+  // flush는 문자열이 아니라 이 문서로 판정한다 — 직렬화가 원문을 바꿔(끝 줄바꿈, `- `→`* `,
+  // 이스케이프) 치지 않고 닫아도 다른 글로 보이기 때문이다.
+  const lastDocRef = useRef<ProseNode | null>(null);
 
   const { get } = useEditor(
     (root) =>
@@ -111,11 +116,16 @@ export function MilkdownInner({ value, editable, onChange, onBlur, expanded, car
             },
           }));
           const l = ctx.get(listenerCtx);
-          l.markdownUpdated((_, markdown) => emitRef.current(markdown));
+          l.markdownUpdated((lctx, markdown) => {
+            lastDocRef.current = lctx.get(editorViewCtx).state.doc;
+            emitRef.current(markdown);
+          });
           // FEAT-card-entry-mode: 편집 진입(editable) 시 mount 직후 포커스 —
           // 더블클릭→첫 키스트로크 손실 방지. 제목 줄은 포커스를 뺏지 않는다(AC-2).
           l.mounted((mctx) => {
-            if (editable) mctx.get(editorViewCtx).focus();
+            const view = mctx.get(editorViewCtx);
+            lastDocRef.current = view.state.doc;
+            if (editable) view.focus();
           });
         })
         .config(nord)
@@ -157,8 +167,12 @@ export function MilkdownInner({ value, editable, onChange, onBlur, expanded, car
       if (!editor) return;
       let markdown: string | undefined;
       editor.action((ctx) => {
-        const view = ctx.get(editorViewCtx);
-        markdown = ctx.get(serializerCtx)(view.state.doc);
+        const { doc } = ctx.get(editorViewCtx).state;
+        // 마지막으로 내보낸 뒤 문서가 그대로면 쓸 것이 없다(치지 않고 닫기).
+        const last = lastDocRef.current;
+        if (last === null || doc.eq(last)) return;
+        markdown = ctx.get(serializerCtx)(doc);
+        lastDocRef.current = doc;
       });
       if (markdown !== undefined) emitRef.current(markdown);
     });

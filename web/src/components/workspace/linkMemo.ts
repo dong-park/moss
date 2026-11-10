@@ -1,6 +1,6 @@
 import { fetchLinkPreview, isUrlOnly } from "@/state/cardContent";
 import { serializeBlock } from "@/state/blocks";
-import { useWorkspace } from "@/state/workspace";
+import { runAsUserAction, useWorkspace } from "@/state/workspace";
 
 /**
  * 주소 하나로 링크 블록 메모를 만든다 — 캔버스 붙여넣기와 도크 링크 버튼이 같이 쓴다.
@@ -15,14 +15,20 @@ export function createLinkMemo(
   opts: { at?: { x: number; y: number }; centerSize?: { width: number; height: number } } = {},
 ): string | null {
   if (!isUrlOnly(raw.trim())) return null;
-  const ws = useWorkspace.getState();
-  const id = opts.at
-    ? ws.addCardAt("text", opts.at.x, opts.at.y)
-    : ws.addCardAtViewportCenter("text", opts.centerSize);
-  // 위젯(표시 형태)으로 바로 보이게 — 편집 모드 진입 없이 링크 블록만 채운다.
-  ws.setEditing(null);
-  fillLinkMemo(id, raw);
-  return id;
+  // cmd-z-undo 웨이브 3: 만들기·채우기는 붙여넣기 한 번 — 기록 1단계.
+  return runAsUserAction(
+    () => {
+      const ws = useWorkspace.getState();
+      const id = opts.at
+        ? ws.addCardAt("text", opts.at.x, opts.at.y)
+        : ws.addCardAtViewportCenter("text", opts.centerSize);
+      // 위젯(표시 형태)으로 바로 보이게 — 편집 모드 진입 없이 링크 블록만 채운다.
+      ws.setEditing(null);
+      fillLinkMemo(id, raw);
+      return id;
+    },
+    { creates: true },
+  );
 }
 
 /**

@@ -6,6 +6,7 @@ import {
   SYSTEM_BOARD_ID,
   widthForKind,
   PHOTO_DEFAULT_WIDTH,
+  runAsUserAction,
   zoomTier,
 } from "@/state/workspace";
 import { useToasts } from "@/state/notifications";
@@ -250,12 +251,18 @@ export function Canvas() {
           const py = (ch / 2 - v.y) / v.scale - 20;
           // 저장·크기 읽기는 병렬, 카드는 드롭처럼 24px씩 비켜 쌓는다.
           const photos = await Promise.all(imageFiles.map((f) => storePhoto(f)));
-          let i = 0;
-          for (const photo of photos) {
-            if (!photo) continue; // 거부된 사진은 자리를 차지하지 않는다.
-            addPhotoAt(px + i * DROP_STACK_OFFSET_PX, py + i * DROP_STACK_OFFSET_PX, photo);
-            i += 1;
-          }
+          // cmd-z-undo 웨이브 3: 붙여넣기 한 번에 놓인 사진은 모두 기록 1단계.
+          runAsUserAction(
+            () => {
+              let i = 0;
+              for (const photo of photos) {
+                if (!photo) continue; // 거부된 사진은 자리를 차지하지 않는다.
+                addPhotoAt(px + i * DROP_STACK_OFFSET_PX, py + i * DROP_STACK_OFFSET_PX, photo);
+                i += 1;
+              }
+            },
+            { creates: true },
+          );
         })();
         return;
       }
@@ -329,9 +336,16 @@ export function Canvas() {
           i += 1;
           continue;
         }
-        const id = addCardAt("text", wx, wy);
-        setEditing(null);
-        setContent(id, block);
+        // cmd-z-undo 웨이브 3: 파일 하나의 메모 만들기·채우기는 기록 1단계.
+        const id = runAsUserAction(
+          () => {
+            const created = addCardAt("text", wx, wy);
+            setEditing(null);
+            setContent(created, block);
+            return created;
+          },
+          { creates: true },
+        );
         if (useWorkspace.getState().currentBoardId === SYSTEM_BOARD_ID) {
           createdOnSystemBoard.push(id);
         }

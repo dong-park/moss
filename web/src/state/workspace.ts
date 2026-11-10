@@ -1544,19 +1544,40 @@ function writeCardToDocHandle(
   }
   // n23 P2-11: 스냅샷과 달라진 필드만 쓴다. updateNoteFields가 이미 문서와 같은
   // 값은 건너뛰므로, 원격이 바꾼 width 등을 로컬 낡은 값으로 덮지 않는다.
+  // cmd-z-undo 웨이브 3: 기록 안 하는 동작(자동 측정) 안이면 그 동작의 자기 칸만 쓴다.
+  // 스토어에만 둔 다른 칸(드래그·크기 조절 중 x 등)을 기록 밖으로 쓰지 않는다.
+  const own = untrackedOwnFields;
   const diff: Partial<SharedNote> = {};
   const prevRec = prev as Record<string, unknown>;
   for (const [field, value] of Object.entries(shared)) {
     if (field === "createdAt") continue;
+    if (own && !own.includes(field)) continue;
     if (prevRec[field] !== value) (diff as Record<string, unknown>)[field] = value;
   }
   for (const field of Object.keys(prevRec)) {
+    if (own && !own.includes(field)) continue;
     if (!(field in shared) && prevRec[field] !== undefined) {
       (diff as Record<string, unknown>)[field] = undefined;
     }
   }
   if (Object.keys(diff).length > 0) write(diff);
-  setSharedSnapshot(card.id, shared);
+  // 자기 칸만 새 값으로 바꾸고 나머지는 이전 값으로 둔다 — 다음 기록 쓰기가 남은 칸을 쓴다.
+  setSharedSnapshot(card.id, own ? withOwnFieldsFrom(prev, shared, own) : shared);
+}
+
+/** 스냅샷 prev에서 own 칸만 next 값으로 바꾼 사본. next에 없는 칸은 지운다. */
+function withOwnFieldsFrom(
+  prev: SharedNote,
+  next: SharedNote,
+  own: readonly string[],
+): SharedNote {
+  const out = { ...prev } as Record<string, unknown>;
+  const nextRec = next as Record<string, unknown>;
+  for (const field of own) {
+    if (field in nextRec) out[field] = nextRec[field];
+    else delete out[field];
+  }
+  return out as SharedNote;
 }
 
 /** 문서와 비교해 바뀌는 칸이 updatedAt뿐인가. 바뀌는 칸이 없으면 false(쓸 것이 없다). */
@@ -1665,9 +1686,37 @@ function recorded<A extends unknown[], R>(
   };
 }
 
-/** 기록 안 하는 동작 — 동기 구간 전체(안쪽 액션 포함)를 기록 안 하는 origin 문맥으로 돌린다. */
-function untracked<A extends unknown[], R>(fn: (...args: A) => R): (...args: A) => R {
-  return (...args: A): R => withWriteOrigin(UNTRACKED_ORIGIN, () => fn(...args));
+/**
+ * 바깥 사용자 동작 하나 — 화면이 스토어 액션 여러 개를 부르는 손짓(붙여넣기, 도크 버튼 등)을
+ * 기록 1단계로 묶는다. 안쪽 액션은 단계를 다시 열지 않는다. 편집 묶음은 끝난 뒤 맞춘다 —
+ * 새 카드의 편집 묶음은 생성 단계가 닫힌 뒤 열린다. 동기 구간에만 걸린다.
+ */
+export function runAsUserAction<R>(fn: () => R, opts?: { creates?: boolean }): R {
+  return recorded(fn, opts)();
+}
+
+/** 기록 안 하는 동작의 자기 칸. 그 문맥에서 문서 쓰기(diff 갈래)는 이 칸만 쓴다. null이면 제한 없음. */
+let untrackedOwnFields: readonly string[] | null = null;
+
+/**
+ * 기록 안 하는 동작 — 동기 구간 전체(안쪽 액션 포함)를 기록 안 하는 origin 문맥으로 돌린다.
+ * ownFields를 주면 그 동작이 쓰는 칸만 문서에 쓴다.
+ */
+function untracked<A extends unknown[], R>(
+  fn: (...args: A) => R,
+  ownFields?: readonly string[],
+): (...args: A) => R {
+  return (...args: A): R =>
+    withWriteOrigin(UNTRACKED_ORIGIN, () => {
+      if (!ownFields) return fn(...args);
+      const prev = untrackedOwnFields;
+      untrackedOwnFields = ownFields;
+      try {
+        return fn(...args);
+      } finally {
+        untrackedOwnFields = prev;
+      }
+    });
 }
 
 /** 열린 편집 묶음 — 카드 id와 소유자 토큰. */
@@ -1677,6 +1726,11 @@ let syncingEdit = false;
 function editTarget(s: WorkspaceState): string | null {
   const id = s.expandedCardId ?? s.editingId;
   return id && s.cards.some((c) => c.id === id) ? id : null;
+}
+
+/** 기록 안 하는 origin 문맥이 바꾼 상태로 여닫는 묶음은 사용자 단계를 끊지 않는다(quiet). */
+function editGroupOpts(): { quiet: boolean } {
+  return { quiet: currentWriteOrigin() === UNTRACKED_ORIGIN };
 }
 
 /** 편집 묶음을 닫는다. 편집기의 남은 본문을 먼저 내보내고(묶음 안 쓰기), 그 뒤 닫는다. */
@@ -1691,7 +1745,7 @@ function closeEditGroup(): void {
   } finally {
     syncingEdit = wasSyncing;
   }
-  endUndoGroup(g.token);
+  endUndoGroup(g.token, editGroupOpts());
 }
 
 /** 편집 묶음을 지금 상태에 맞춘다 — 대상이 바뀌면 앞 묶음을 닫고 새 묶음을 연다. */
@@ -1704,7 +1758,7 @@ function syncEditGroup(): void {
       const want = editTarget(useWorkspace.getState());
       if ((editGroup?.cardId ?? null) === want) break;
       closeEditGroup();
-      if (want) editGroup = { cardId: want, token: beginUndoGroup() };
+      if (want) editGroup = { cardId: want, token: beginUndoGroup(editGroupOpts()) };
     }
   } finally {
     syncingEdit = false;
@@ -4295,11 +4349,12 @@ const RECORDED_ACTIONS = [
   "restoreFromTrash",
   "toggleAIOptOut",
 ] as const satisfies readonly (keyof WorkspaceState)[];
-const UNTRACKED_ACTIONS = [
-  "setFaceHeight",
-  "setTextMeasuredWidth",
-  "createSubcanvas",
-] as const satisfies readonly (keyof WorkspaceState)[];
+/* 기록 안 하는 동작과 그 자기 칸. 자기 칸이 있으면 문서에는 그 칸만 쓴다(웨이브 3). */
+const UNTRACKED_ACTIONS = {
+  setFaceHeight: ["height", "frameId"],
+  setTextMeasuredWidth: ["width"],
+  createSubcanvas: undefined,
+} as const satisfies Partial<Record<keyof WorkspaceState, readonly string[] | undefined>>;
 
 {
   type AnyFn = (...args: unknown[]) => unknown;
@@ -4307,7 +4362,9 @@ const UNTRACKED_ACTIONS = [
   const patch: Record<string, AnyFn> = {};
   for (const name of CREATING_ACTIONS) patch[name] = recorded(st[name], { creates: true });
   for (const name of RECORDED_ACTIONS) patch[name] = recorded(st[name]);
-  for (const name of UNTRACKED_ACTIONS) patch[name] = untracked(st[name]);
+  for (const [name, own] of Object.entries(UNTRACKED_ACTIONS)) {
+    patch[name] = untracked(st[name], own);
+  }
   useWorkspace.setState(patch as unknown as Partial<WorkspaceState>);
 }
 
