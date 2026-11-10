@@ -35,6 +35,16 @@ function track(id: string, p: Promise<void>): Promise<void> {
   return p;
 }
 
+/**
+ * 예약을 거치지 않고 바로 시작한 미러 쓰기도 진행 중으로 센다(웨이브 5 리뷰 W5-2). 만들기의
+ * persistCard가 그렇다. 미러를 읽고 고쳐 쓰는 보드 이전이 persistSettled로 이 쓰기를 기다린다 —
+ * 안 기다리면 get·merge·put이 엇갈려 만들기의 kind·ref가 사라진다.
+ */
+export function trackPersist<T>(id: string, p: Promise<T>): Promise<T> {
+  track(id, p.then(noop));
+  return p;
+}
+
 /** id별 영속을 300ms 디바운스로 예약. 같은 id 재예약 시 직전 것을 대체(최신 우선). */
 export function schedulePersist(id: string, run: PersistRun): void {
   const existing = timers.get(id);

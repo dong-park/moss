@@ -25,6 +25,7 @@ import {
   isPersistInFlight,
   persistSettled,
   trackConnectionMirrorWrite,
+  trackPersist,
 } from "./cardPersist";
 import {
   initLiveSync,
@@ -93,7 +94,7 @@ import {
   type UndoGroupToken,
   type UndoStackItem,
 } from "./ydoc/undo";
-import { liveFileRefs } from "./undoFiles";
+import { liveFileRefs, setPendingFileRefs } from "./undoFiles";
 import {
   applyUndoTrash,
   archiveMirror,
@@ -391,6 +392,24 @@ function sweepFiles(refs: readonly (string | undefined)[]): void {
     await storage.purgeAttachments(dead.map((ref) => ({ attachmentRef: ref }) as Note));
   });
 }
+
+/**
+ * 웨이브 5 리뷰(W5-1): 함 삭제는 미러 행을 지우고 카드를 5초 되돌리기 스냅샷에만 둔다. 그 스냅샷과,
+ * 지우기·되살리기가 도는 동안의 틈이 가리키는 사진 파일을 파일 규칙 5번으로 건다. 스냅샷을 버릴
+ * 때는 subcanvasFileRefs를 sweepFiles로 넘겨 파일 규칙으로 다시 판정한다 — 남은 기록 단계가
+ * 쥔 파일은 남는다.
+ */
+const funnelFilesInFlight = new Set<readonly (string | undefined)[]>();
+
+function subcanvasFileRefs(p: PendingSubcanvasUndo): (string | undefined)[] {
+  return [...p.funnelNotes, ...p.notes].map((n) => n.attachmentRef);
+}
+
+setPendingFileRefs(function* () {
+  const pending = useWorkspace.getState().pendingSubcanvasUndo;
+  if (pending) yield* subcanvasFileRefs(pending);
+  for (const refs of funnelFilesInFlight) yield* refs;
+});
 
 /**
  * cmd-z-undo n6: 동작이 놓은 사진 파일. 기록 단계에 들었으면 그 단계가 쥐고(되살릴 ref까지),
@@ -1453,7 +1472,8 @@ function persistCardDexie(card: Card, boardId: string | null): Promise<Note> {
     const embedInput = card.title ? `${card.title}\n\n${content}` : content;
     enqueueEmbedRaw(card.id, embedInput, !!card.aiOptOut);
   }
-  return storage.saveNote({
+  // 웨이브 5 리뷰(W5-2): 바로 시작한 쓰기도 진행 중으로 센다 — 보드 이전이 이 쓰기 뒤에 미러를 고친다.
+  return trackPersist(card.id, storage.saveNote({
     id: card.id,
     boardId,
     kind: card.kind,
@@ -1476,7 +1496,7 @@ function persistCardDexie(card: Card, boardId: string | null): Promise<Note> {
     title: card.title,
     aiOptOut: !!card.aiOptOut,
     rotation: card.rotation ?? 0,
-  });
+  }));
 }
 
 /* ─────────── n23 작업 2: 공유 문서 쓰기의 단일 통로 ───────────
@@ -2487,7 +2507,16 @@ async function cascadeDeleteFunnels(
 
   // 지우기 전에 표시하고 실행 취소 기간을 세운다 — 행이 사라진 뒤 sync가 끼어도 되살리거나 지우지 않는다.
   const roots = funnelCards.flatMap((fc) => (fc.boardRef ? [fc.boardRef] : []));
-  const release = await markServerDeletes(boardSubtree(await db.boards.toArray(), roots), true);
+  const subtree = boardSubtree(await db.boards.toArray(), roots);
+  // 웨이브 5 리뷰(W5-1): 미러 행을 지운 뒤 스냅샷이 서기 전에도 그 안 사진 파일을 쥔다.
+  const inFlight = [
+    ...funnelCards.map((fc) => fc.attachmentRef),
+    ...(await db.notes.where("boardId").anyOf(subtree.map((b) => b.id)).toArray()).map(
+      (n) => n.attachmentRef,
+    ),
+  ];
+  const release = await markServerDeletes(subtree, true);
+  funnelFilesInFlight.add(inFlight);
   try {
     for (const fc of funnelCards) {
       if (!fc.boardRef) continue;
@@ -2519,9 +2548,9 @@ async function cascadeDeleteFunnels(
     for (const fc of funnelCards) if (fc.boardRef) delete counts[fc.boardRef];
     set({ boards: freshBoards, subcanvasCounts: counts });
 
-    // 직전 undo가 남아 있으면 그건 즉시 확정(blob purge) — undo 스택은 1개만 유지.
+    // 직전 undo가 남아 있으면 그건 즉시 확정 — undo 스택은 1개만 유지. 사진 파일은 새 스냅샷을
+    // 세운 뒤 파일 규칙으로 청소한다(W5-1).
     const prev = get().pendingSubcanvasUndo;
-    if (prev) void storage.purgeAttachments([...prev.funnelNotes, ...prev.notes]);
 
     const expiresAt = Date.now() + BOARD_UNDO_MS;
     set({
@@ -2536,15 +2565,17 @@ async function cascadeDeleteFunnels(
         expiresAt,
       },
     });
+    if (prev) sweepFiles(subcanvasFileRefs(prev));
     setTimeout(() => {
       const cur = get().pendingSubcanvasUndo;
       if (cur && cur.expiresAt === expiresAt) {
-        void storage.purgeAttachments([...cur.funnelNotes, ...cur.notes]);
         unshareFinalizedBoards(cur.boards);
         set({ pendingSubcanvasUndo: null });
+        sweepFiles(subcanvasFileRefs(cur));
       }
     }, BOARD_UNDO_MS);
   } finally {
+    funnelFilesInFlight.delete(inFlight);
     release();
   }
 }
@@ -4329,6 +4360,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     // 2) 카드의 boardId 변경 — 본문/위치는 그대로.
     const card = get().cards.find((c) => c.id === cardId);
     if (card) {
+      // 웨이브 5 리뷰(W5-2): 예약 쓰기와 이미 시작된 쓰기가 끝난 뒤 미러를 고친다 — 안 그러면
+      // 늦은 쓰기가 옛 boardId로 덮거나 get·merge·put이 엇갈린다(moveCardToBoard와 같다).
+      await flushCard(card.id);
+      await persistSettled([card.id]);
       await storage.saveNote({ id: card.id, boardId: id });
       await moveCardBetweenDocs(
         card.id,
@@ -4513,6 +4548,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     // 아래 saveNote 직후 옛 boardId(바깥 보드)로 덮어써 새로고침 시 카드가 되돌아온다.
     // cancel이 아니라 flush — 디바운스 창 안의 마지막 본문·좌표 편집을 보존한다.
     await flushCard(cardId);
+    // 웨이브 5 리뷰(W5-2): 이미 시작된 쓰기도 끝난 뒤 미러를 고친다(moveCardToBoard와 같다).
+    await persistSettled([cardId]);
     // FEAT-sticky-redesign §4: 파일함(다른 캔버스)으로 이동하면 판 소속은 풀린다.
     await storage.saveNote({ id: cardId, boardId: targetBoardId, frameId: undefined });
     await moveCardBetweenDocs(
@@ -4572,6 +4609,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     if (!storage.initialized) await storage.init();
     // 회귀 수정: moveCardToSubcanvas와 같은 디바운스 경쟁 — flush로 막는다.
     await flushCard(cardId);
+    // 웨이브 5 리뷰(W5-2): 이미 시작된 쓰기(만든 직후의 persistCard)도 기다린다. 안 기다리면
+    // 아래 saveNote의 get·merge·put이 엇갈려 미러 행이 kind "text", ref 없음이 된다.
+    await persistSettled([cardId]);
     // 보드 id가 곧 문서 키다 — 시스템 보드도 예외 없는 UUID id를 쓴다(n1).
     // FEAT-sticky-redesign §4: 다른 캔버스로 나가면 판 소속은 풀린다.
     await storage.saveNote({
@@ -4623,16 +4663,23 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   undoSubcanvasRemove: async () => {
     const pending = get().pendingSubcanvasUndo;
     if (!pending) return;
+    // 웨이브 5 리뷰(W5-1): 미러 행을 다시 쓸 때까지 사진 파일을 쥔다 — 그 사이 청소가 지우지 않게.
+    const holding = subcanvasFileRefs(pending);
+    funnelFilesInFlight.add(holding);
     set({ pendingSubcanvasUndo: null });
     const db = getDB();
-    // blob은 아직 안 지웠으므로(만료 전) row만 되돌리면 미디어까지 복원된다.
-    await db.boards.bulkPut(pending.boards);
-    await cancelServerDeletes(pending.boards);
-    // P1 AC-8: 되살아난 보드들은 "지운 보드" 목록에서 뺀다.
-    await useStorage
-      .getState()
-      .forgetDeletedBoards(pending.boards.map((b) => b.id));
-    await db.notes.bulkPut([...pending.funnelNotes, ...pending.notes]);
+    try {
+      // blob은 아직 안 지웠으므로(만료 전) row만 되돌리면 미디어까지 복원된다.
+      await db.boards.bulkPut(pending.boards);
+      await cancelServerDeletes(pending.boards);
+      // P1 AC-8: 되살아난 보드들은 "지운 보드" 목록에서 뺀다.
+      await useStorage
+        .getState()
+        .forgetDeletedBoards(pending.boards.map((b) => b.id));
+      await db.notes.bulkPut([...pending.funnelNotes, ...pending.notes]);
+    } finally {
+      funnelFilesInFlight.delete(holding);
+    }
     if (pending.connections.length)
       await db.connections.bulkPut(pending.connections);
     if (pending.embeddings.length)
@@ -4652,12 +4699,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   clearSubcanvasUndo: () => {
     const pending = get().pendingSubcanvasUndo;
     if (!pending) return;
-    // undo 포기 = 삭제 확정 → 보류했던 OPFS blob 영구 정리.
-    void useStorage
-      .getState()
-      .purgeAttachments([...pending.funnelNotes, ...pending.notes]);
+    // undo 포기 = 삭제 확정 → 보류했던 사진 파일을 파일 규칙으로 청소한다(W5-1). 남은 기록
+    // 단계가 쥔 파일은 남는다.
     unshareFinalizedBoards(pending.boards);
     set({ pendingSubcanvasUndo: null });
+    sweepFiles(subcanvasFileRefs(pending));
   },
 
   /* ─────────── FEAT-memo-fulltext-search (W4) ─────────── */
