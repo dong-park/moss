@@ -320,3 +320,21 @@ function Live({ id }: { id: string }) {
   const c = useWorkspace((s) => s.cards.find((x) => x.id === id));
   return c ? <DraggableCard card={c} /> : null;
 }
+
+describe("편집 모드가 없는 카드에 이어 친 제목", () => {
+  // 코드 리뷰 웨이브 3 r2: 사진은 글자 키 경로를 지나도 editingId가 서지 않는다.
+  it("고른 사진에 'abc'를 치면 1단계이고 cmd+z 1번에 제목이 돌아간다", async () => {
+    const P = await bootBoard();
+    const id = ws().addPhotoAt(100, 100, { ref: "opfs:x.png", mediaType: "image/png", naturalW: 10, naturalH: 10 });
+    useWorkspace.setState({ selectedIds: [id], editingId: null });
+    await readyCheck(P);
+    const before = note(id)?.title;
+    renderHook(() => useCardFlowShortcuts());
+    for (const key of ["a", "b", "c"]) fireEvent.keyDown(window, { key });
+    await sleep(600);
+    expect(note(id)?.title).toBe(`${before ?? ""}abc`);
+    expect(um().undoStack.length).toBe(1);
+    pressUndo();
+    expect(note(id)?.title ?? "").toBe(before ?? "");
+  });
+});
