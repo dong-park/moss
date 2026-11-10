@@ -947,8 +947,8 @@ const BRIDGE_CASES: BridgeCase[] = [
       expect(readConnection(doc(), c.cid)).toBeDefined();
     },
     call: (c) => dispatchOp("notes.delete", { id: c.m5 }),
-    // 연결선 사라짐 칸은 n5가 더한다(브리프).
-    changed: (c) => !note(c.m5),
+    // n5: ws.remove가 닿은 연결선을 같은 트랜잭션으로 P 문서에서 지운다(바깥 origin을 따른다).
+    changed: (c) => !note(c.m5) && !readConnection(doc(), c.cid),
   },
   {
     no: "6-6 notes.delete 사진 카드",
