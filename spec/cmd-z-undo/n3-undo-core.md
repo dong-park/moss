@@ -32,7 +32,7 @@
 
 ## 완료 기준
 
-- [ ] 이 노드의 캔버스 시험도 spec.md 「준비 확인」 공통 규칙을 따른다. 준비 뒤 getter로 clear하고 0.6초 기다린 뒤 지금 보드와 undoStack 길이 0을 확인한다. 행 given의 동작 가운데 then이 그 결과를 보는 동작은 준비가 아니다. 준비 확인 뒤에 스토어 액션으로 하고 기록한다. 예: T7·T11의 "X를 옮겼다". T23은 뺀다: 보드 열기 자체가 시험 동작이라 clear 없이 연 직후의 undoStack 길이를 잰다(스펙 :38의 T23 제외). 그 대신 T23의 열기 전후 단언을 지킨다: 둘째는 열기 직전에 빈 글상자가 미러와 문서에 있고, 연 뒤에 둘 다에서 사라졌다. 셋째는 시드 조건 넷으로 열고, 연 뒤에 시드 카드가 문서에 있다. 정리·시드 쓰기가 실제로 일어난 뒤에도 단계 0인지 보기 위해서다. 이 getter는 이 노드가 만든다
+- [ ] 이 노드의 캔버스 시험도 spec.md 「준비 확인」 공통 규칙을 따른다. 준비 뒤 getter로 clear하고 0.6초 기다린 뒤 지금 보드와 undoStack 길이 0을 확인한다. 행 given의 동작 가운데 then이 그 결과를 보는 동작은 준비가 아니다. 준비 확인 뒤에 스토어 액션으로 하고 기록한다. 예: T7·T11의 "X를 옮겼다". 이 정의는 내 탭의 동작에만 쓴다. 다른 탭·다른 기기의 동작은 그쪽 Y.Doc에서 하고 update로 이어 붙인다. 내 기록에 들어가지 않는다(스펙 AP3). 부정형 판정 앞에는 긍정 단언을 둔다(스펙 :461). 없음을 보는 판정이면 동작 직전에 그 대상이 있다고 단언한다. 그대로·0을 보는 판정이면 cmd+z 직전에 undoStack이, cmd+shift+z 직전에 redoStack이 1 이상이라고 단언한다. 행이 단계가 아니라고 적은 동작은 빼고 센다. 드래그로 옮기기는 moveCard 뒤 commitMove다. moveCard만으로는 문서에 쓰지 않는다(workspace.ts:2633-2643). T23은 뺀다: 보드 열기 자체가 시험 동작이라 clear 없이 연 직후의 undoStack 길이를 잰다(스펙 :38의 T23 제외). 그 대신 T23의 열기 전후 단언을 지킨다: 둘째는 열기 직전에 빈 글상자가 미러와 문서에 있고, 연 뒤에 둘 다에서 사라졌다. 셋째는 시드 조건 넷으로 열고, 연 뒤에 시드 카드가 문서에 있다. 정리·시드 쓰기가 실제로 일어난 뒤에도 단계 0인지 보기 위해서다. 이 getter는 이 노드가 만든다
 - [ ] T5, T7, T11, T22, T23 then 칸의 「확인」이 통과한다. 확인: `cd web && bunx vitest run src/state/__tests__/undo.core.test.ts src/components/workspace/__tests__/undoKeys.test.ts`
 - [ ] 탭1 되돌리기가 탭2 문서에 반영되고, 그 뒤 탭1 쓰기도 탭2에 반영된다. 같은 명령의 테스트 이름으로 확인
 - [ ] 기존 회귀: `cd web && bunx vitest run src/state/__tests__/storeOnYjs.test.ts src/state/__tests__/penMode.test.ts src/state/__tests__/textTool.test.ts src/state/__tests__/n23-single-source.test.ts` 통과
