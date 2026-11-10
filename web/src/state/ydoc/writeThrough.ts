@@ -22,7 +22,7 @@ import {
   putNote,
   readNote,
 } from "./model";
-import { transactLocal, type WriteOrigin } from "./origin";
+import { transactLocal, UNTRACKED_ORIGIN, type WriteOrigin } from "./origin";
 import { forgetSharedSnapshot } from "./sharedSnapshot";
 
 // n23 재심사 2R-7: 비활성 문서 close 타이머는 activeDoc이 키 단위로 소유한다.
@@ -148,7 +148,8 @@ export function clearBoardRecords(
         connectionsMap(doc).clear();
         metaMap(doc).clear();
         filesMap(doc).clear();
-      });
+        // cmd-z-undo: 덮어쓰기 가져오기는 사용자 캔버스 동작이 아니다 — 기록에 넣지 않는다.
+      }, UNTRACKED_ORIGIN);
     },
     opts,
   );

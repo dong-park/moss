@@ -14,7 +14,7 @@ import {
   readConnections,
   readNotes,
 } from "../ydoc/model";
-import { transactLocal } from "../ydoc/origin";
+import { transactLocal, UNTRACKED_ORIGIN } from "../ydoc/origin";
 
 /**
  * FEAT-onboarding-routes n1 — 시스템 보드를 UUID id의 평범한 보드 행으로 이전.
@@ -91,7 +91,8 @@ async function copyLegacyDoc(board: Board): Promise<void> {
       for (const connection of connections) {
         putConnection(target.doc, connection);
       }
-    });
+      // cmd-z-undo: 이전은 사용자 동작이 아니다 — cmd+z 기록에 넣지 않는다.
+    }, UNTRACKED_ORIGIN);
   } finally {
     await destroyQuietly(legacy);
     await destroyQuietly(target);

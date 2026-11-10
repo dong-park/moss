@@ -6,7 +6,7 @@
 **id**: CZ-4
 **상위**: spec/cmd-z-undo/spec.md
 **deps**: n3, n2
-**상태**: 아직 안 함
+**상태**: 진행
 **담당 행**: T4, T6, T8, T9, T10, T20, T5의 화면 수준 칸 전부(여러 장 드래그, 휴지통 드롭, 놓기 길 포함)
 **사람 확인**: 불필요
 
@@ -32,19 +32,19 @@
 
 ## 완료 기준
 
-- [ ] 준비 확인 규칙(spec.md 「준비 확인」 공통 규칙, 스펙 리뷰 19바퀴 AN0): 이 노드의 캔버스 cmd+z 시험에 쓴다. 순서: 준비를 하고, n3가 내보내는 지금 보드 UndoManager getter로 clear하고, 실제 시간 0.6초 기다리고, 준비 확인을 한다. 준비 확인은 둘이다: 지금 보드가 그 행의 보드다. undoStack 길이가 0이다. 준비 확인이 실패하면 그 시험은 실패다. 행 given의 동작 가운데 then이 그 결과를 보는 동작은 준비가 아니다. then이 되돌아가는지 보든 그대로인지 보든 같다. 예: 만들었다·지웠다·고쳤다·살렸다·옮겼다·바꿨다·그었다. 준비 확인 뒤에 스토어 액션으로 실제로 하고 기록한다. 이 정의는 내 탭의 동작에만 쓴다. 다른 탭·다른 기기의 동작은 그쪽 Y.Doc에서 하고 update로 이어 붙인다. 내 기록에 들어가지 않는다. 부정형 판정 앞의 긍정 단언은 spec.md 「준비 확인」 공통 규칙의 닫힌 목록에 있는 판정에만 둔다. 목록 밖의 "없음·그대로·0" 판정에는 두지 않는다. 행이 따로 둔 단언은 이 목록과 별개로 지킨다. T5 드롭 직후 frameId, T20 첫째 칸 바뀜, T23 둘째 연 뒤 사라짐, T23 셋째 연 뒤 시드 카드가 그렇다. 화면 컴포넌트가 여러 호출을 한 단계로 묶는 동작은 드래그(DraggableCard)와 크기 조절(ResizeHandles)이다. 스토어 수준 시험은 드래그 시작부터 끝까지의 호출을 n3의 묶음 시작·끝 API로 감싼다. 드래그는 이동 호출(moveCard 또는 여러 장이면 moveSelectedBy) 여러 번, commitMove, resolveMembership을 조건 없이 이 순서로, 크기 조절은 resizeCard 여러 번이다. 여러 장 드래그는 이동 중에도 문서에 쓴다(workspace.ts:2672). 감싸지 않으면 n4 뒤에는 진입점마다 단계가 끊긴다. 그와 별도로 n4가 화면 수준 시험을 하나씩 둔다(spec.md 「준비 확인」 공통 규칙). moveCard만으로는 문서에 쓰지 않는다(workspace.ts:2633-2643). 준비 방법은 구현자가 고른다. 스토어 액션도, model.ts 헬퍼와 Dexie 직접 쓰기도 된다. 보드 열기는 loadFromStorage나 setCurrentBoard로 한다. connectCards처럼 await 뒤 문서에 쓰는 준비 동작은 그 쓰기가 문서에 보인 뒤 clear한다. 행이 가짜 타이머나 가짜 시계를 쓰면 준비와 준비 확인은 실제 시간으로 하고, 가짜 타이머는 그 뒤에 켠다. setImmediate는 가짜로 바꾸지 않는다. 예: vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] }). 기본 설정은 setImmediate까지 바꿔 Dexie 읽기·쓰기가 멈춘다. 동작 뒤 조건 대기가 2초 안에 서지 않으면 그 경우도 실패다. 준비할 때 걸리는 곳: 관찰자는 LOCAL_ORIGIN 쓰기를 스토어에 반영하지 않는다(origin.ts:23-25). 연결선 문서 쓰기·지우기는 source 메모의 미러 행과 연결선 미러 행을 읽는다(writeThrough.ts:94-98, storage.ts:674-679). 연결선 살리기는 trashConnections 행과, 되살린 메모 반대편 메모의 미러 행을 읽는다(storage.ts:460-471). 비시스템 보드는 db.boards 행이 있어야 열린다(workspace.ts:2161-2170). T20은 준비 확인에서 준비한 P 카드가 P 문서, 스토어 cards, 미러 notes에 모두 있는지도 본다. 연결선 쓰기·지우기가 source 메모의 미러 행을 읽기 때문이다(writeThrough.ts:94-98)(스펙 T20 when 맨 앞 문장). T20은 단계 0을 재는 행이라 스토어에 없는 카드에 쓰는 빈 동작도 단계 0으로 거짓 통과한다(workspace.ts:3140 `if (!prev || prev.height === h) return`). 같은 이유로 T20 첫째의 setFaceHeight·setTextMeasuredWidth 호출은 매번 값을 바꾸고, 호출마다 그 칸이 P 문서에서 바뀌었는지 본다. setTextMeasuredWidth 대상은 autoWidth가 켜진 글상자다(:3126-3127). T20 다섯째와 6-13은 브리지 호출 직전에 그 연결선이 P 문서와 미러 connections에 있다고 단언한다(행의 when 다섯째)
-- [ ] T4 캔버스 쪽, T6, T8, T9, T10, T20 then 칸의 「확인」이 통과한다. T20 6-5의 연결선 사라짐 칸은 빼고 판정한다(n5가 더함). 확인: `cd web && bunx vitest run src/state/__tests__/undo.steps.test.ts`
-- [ ] 글상자를 편집하는 동안 자동 폭·높이 측정 액션을 편집 쓰기 사이마다 다른 값으로 직접 불러도 편집을 마친 뒤 undoStack 길이가 1이고 cmd+z 1번에 편집 전 글로 돌아간다. 기록 안 하는 동작이 단계를 안 여는 분기는 이 테스트로 판정하지 않는다. 편집 묶음 깊이가 이미 막기 때문이다(스펙 AT5). 대신 깊이 0에서 await 사이에 두 번 쓰는 기록 동작 하나를 코드에서 골라, 두 쓰기 사이에 기록 안 하는 쓰기를 끼워도 1단계인지 본다. 이 분기를 빼면 그 경우가 2단계가 되어 실패한다. 고른 동작과 실패 출력 한 줄을 구현 메모에 남긴다
-- [ ] 위 진입점 목록의 동작마다 정상 입력으로 한 번 부르면 undoStack이 정확히 1 늘어난다. 정상 입력은 지금 보드의 일반 카드이고 그 동작이 값을 바꾸는 입력이다. commitMove는 움직인 카드, resolveMembership은 소속이 바뀌는 카드, resizeCard는 크기가 바뀌는 입력이다. await 뒤 문서에 쓰는 진입점은 그 동작이 낸 문서 변화가 보일 때까지 실제 시간으로 최대 2초 조건 대기하고, 그 뒤 0.1초 더 기다려 잰다. 기대 변화: connectCards는 그 연결선, setConnectionLabel은 그 연결선의 label 칸, restoreFromTrash는 살린 메모와 되돌린 연결선. removeConnection은 그 연결선이 문서에서 사라짐이다. 이 넷은 promise를 돌려주지 않거나(connectCards :3266·setConnectionLabel :3315의 void saveConnection, removeConnection :3294의 void storage.removeConnection) await 뒤에 쓴다(restoreFromTrash). 이 밖에도 await 뒤나 void 비동기로 문서에 쓰는 진입점은 모두 같은 대기로 잰다. 함 만들기(createSubcanvas)는 기록하지 않으므로 +1 대상이 아니다(메인 결정, 스펙 기록 안 하는 쓰기 목록). 함 카드 삭제는 0이고 이 노드가 판정한다. 다른 보드 메모 살리기는 0이고 n5가 만들고 n6이 T15로 판정한다. 같은 명령의 테스트 이름으로 확인
-- [ ] T20 다섯째는 `spec/cmd-z-undo/rows/T20.json`의 다섯째 given·when·then 칸 전부를 따른다. given의 "새로 잇는 두 메모는 둘 다 P 메모이고 기존 연결선과 다른 방향 쌍"을 지킨다. 같은 방향 쌍이면 connectCards가 새 행 없이 기존 선을 돌려준다(workspace.ts:3239-3248). 판정 대상은 사진 카드·판 만들기, 연결선 잇기·지우기, 기대 변화 넷, 지운 연결선이 cmd+z로 안 돌아옴이다. 준비는 「준비 확인 규칙」을 따른다. 기존 연결선의 양 끝 메모와 새로 이을 두 메모도 준비 확인 대상이다. 여섯째와 같은 조건 대기로 재고 가짜 타이머를 쓰지 않는다
-- [ ] T20 여섯째의 경우 6-1~6-13(행의 when 칸)마다 세 칸이 통과한다. 단 6-5의 기대 변화 가운데 "그 연결선이 P 문서에서 사라짐"은 n5가 만드는 동작이라 이 노드는 빼고 판정하고, n5가 같은 테스트에 더한다. 세 칸: 호출 성공(throw 없음), P 문서가 바뀜, P undoStack 길이 그대로. 구현 메모에 경우 번호와 세 칸 결과 표를 남긴다. 멤버십 쓰기는 P가 시스템 보드일 때 시험한다. 같은 명령의 테스트 이름으로 확인
-- [ ] T20 "빼면 실패" 넷을 구현 메모에 실패 출력 한 줄씩 남긴다: 브리지 origin 넘기기를 빼면 넷째·다섯째와 여섯째 표의 한 줄 이상이(셋째 칸에서), 멤버십 origin을 빼면 둘째가, 편집 중 브리지 쓰기의 origin을 LOCAL_ORIGIN으로 바꾸면 셋째가 실패한다. 단계를 안 여는 분기는 위 깊이 0 비동기 경우가 판정한다
-- [ ] 함 삭제가 undoStack 길이를 바꾸지 않는다. 같은 명령의 테스트 이름으로 확인
-- [ ] 구현 메모에 model.ts 밖 직접 transactLocal 7곳 표, 진입점 표, 「브라우저 확인」 항목이 있다
-- [ ] 기존 회귀: `cd web && bunx vitest run src/state/__tests__/undo.core.test.ts src/state/__tests__/membership.test.ts src/state/__tests__/memoHeight.test.ts src/state/__tests__/subcanvas.test.ts src/state/__tests__/penMode.test.ts src/state/__tests__/frames.test.ts` 통과
-- [ ] `cd web && npx tsc --noEmit` 통과
-- [ ] 실경로: 드래그·크기 조절 테스트가 실제 스토어 액션 순서를 탄다. 우회했으면 구현 메모에 갭을 적는다
-- [ ] 화면 수준 묶음 시험(T5 화면 칸 전부, T6 첫째 화면 칸): 보드 문서와 UndoManager가 열린 상태에서 준비 확인을 한 뒤 시작한다. DraggableCard와 ResizeHandles의 mouseup 처리에서 나가는 모든 길마다 시험을 하나씩 둔다. 이른 return 길(DraggableCard.tsx:832, :842, :856, :866, :874)과 ResizeHandles 글상자 너비 경로(:98-132, setTextWidth가 이동마다 문서에 씀)도 든다. 길 목록은 코드에서 찾아 구현 메모 표로 남긴다. 내보내기·함 흡수처럼 놓은 뒤 비동기로 끝나는 길은 commit 약속이 끝날 때까지 실제 시간 최대 2초 조건 대기한 뒤 단언한다. 길마다 셋을 단언한다. 첫째, cmd+z 앞에 그 길이 실제로 쓴 결과가 문서에 있다. 소속이 바뀌는 길이면 모든 카드의 frameId도 본다. 둘째, 길이 끝난 뒤 묶음 깊이 0, captureTimeout 500이다. 셋째, 쓴 것이 있으면 undoStack이 1 늘고 cmd+z 1번에 그 길의 쓰기가 모두 돌아간다. 애니메이션이 있는 길은 element.animate를 가짜로 심고 onfinish를 손으로 부른 뒤 판정한다(본보기 DraggableCard.trashDrop.test.tsx:158-166, jsdom에는 animate가 없어 runTrash가 바로 지운다 :731-733). 반드시 든 경우: 판 F 안 드롭, 두 카드 판 F 안 드롭, 두 카드 휴지통 드롭(지우기 뒤 판정), 이동 없이 놓기, 내보내기, 함 흡수, 크기 조절 30번, 판 크기 조절로 X가 F에 들어옴(cmd+z 앞 X frameId F), 크기 조절 중 언마운트(다음 동작 둘이 2단계), 편집 중 그 카드 끌기(편집을 마친 뒤 1단계, cmd+z 1번에 편집과 이동이 함께 돌아간다), 편집 중 그 카드 원격 삭제(묶음 깊이 0, 다음 동작 둘이 2단계), 펜 모드를 켠 채 보드 바꾸기(새 보드 깊이 1, 옛 토큰 끝이 와도 1, 펜 두 획 1단계). 컴포넌트의 묶음 호출을 빼면 실패함을 구현 메모에 실패 출력 한 줄씩 남긴다. 확인: `cd web && bunx vitest run src/components/workspace/__tests__/DraggableCard.undo.test.tsx src/components/workspace/__tests__/ResizeHandles.undo.test.tsx src/state/__tests__/undo.steps.test.ts`
+- [x] 준비 확인 규칙(spec.md 「준비 확인」 공통 규칙, 스펙 리뷰 19바퀴 AN0): 이 노드의 캔버스 cmd+z 시험에 쓴다. 순서: 준비를 하고, n3가 내보내는 지금 보드 UndoManager getter로 clear하고, 실제 시간 0.6초 기다리고, 준비 확인을 한다. 준비 확인은 둘이다: 지금 보드가 그 행의 보드다. undoStack 길이가 0이다. 준비 확인이 실패하면 그 시험은 실패다. 행 given의 동작 가운데 then이 그 결과를 보는 동작은 준비가 아니다. then이 되돌아가는지 보든 그대로인지 보든 같다. 예: 만들었다·지웠다·고쳤다·살렸다·옮겼다·바꿨다·그었다. 준비 확인 뒤에 스토어 액션으로 실제로 하고 기록한다. 이 정의는 내 탭의 동작에만 쓴다. 다른 탭·다른 기기의 동작은 그쪽 Y.Doc에서 하고 update로 이어 붙인다. 내 기록에 들어가지 않는다. 부정형 판정 앞의 긍정 단언은 spec.md 「준비 확인」 공통 규칙의 닫힌 목록에 있는 판정에만 둔다. 목록 밖의 "없음·그대로·0" 판정에는 두지 않는다. 행이 따로 둔 단언은 이 목록과 별개로 지킨다. T5 드롭 직후 frameId, T20 첫째 칸 바뀜, T23 둘째 연 뒤 사라짐, T23 셋째 연 뒤 시드 카드가 그렇다. 화면 컴포넌트가 여러 호출을 한 단계로 묶는 동작은 드래그(DraggableCard)와 크기 조절(ResizeHandles)이다. 스토어 수준 시험은 드래그 시작부터 끝까지의 호출을 n3의 묶음 시작·끝 API로 감싼다. 드래그는 이동 호출(moveCard 또는 여러 장이면 moveSelectedBy) 여러 번, commitMove, resolveMembership을 조건 없이 이 순서로, 크기 조절은 resizeCard 여러 번이다. 여러 장 드래그는 이동 중에도 문서에 쓴다(workspace.ts:2672). 감싸지 않으면 n4 뒤에는 진입점마다 단계가 끊긴다. 그와 별도로 n4가 화면 수준 시험을 하나씩 둔다(spec.md 「준비 확인」 공통 규칙). moveCard만으로는 문서에 쓰지 않는다(workspace.ts:2633-2643). 준비 방법은 구현자가 고른다. 스토어 액션도, model.ts 헬퍼와 Dexie 직접 쓰기도 된다. 보드 열기는 loadFromStorage나 setCurrentBoard로 한다. connectCards처럼 await 뒤 문서에 쓰는 준비 동작은 그 쓰기가 문서에 보인 뒤 clear한다. 행이 가짜 타이머나 가짜 시계를 쓰면 준비와 준비 확인은 실제 시간으로 하고, 가짜 타이머는 그 뒤에 켠다. setImmediate는 가짜로 바꾸지 않는다. 예: vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] }). 기본 설정은 setImmediate까지 바꿔 Dexie 읽기·쓰기가 멈춘다. 동작 뒤 조건 대기가 2초 안에 서지 않으면 그 경우도 실패다. 준비할 때 걸리는 곳: 관찰자는 LOCAL_ORIGIN 쓰기를 스토어에 반영하지 않는다(origin.ts:23-25). 연결선 문서 쓰기·지우기는 source 메모의 미러 행과 연결선 미러 행을 읽는다(writeThrough.ts:94-98, storage.ts:674-679). 연결선 살리기는 trashConnections 행과, 되살린 메모 반대편 메모의 미러 행을 읽는다(storage.ts:460-471). 비시스템 보드는 db.boards 행이 있어야 열린다(workspace.ts:2161-2170). T20은 준비 확인에서 준비한 P 카드가 P 문서, 스토어 cards, 미러 notes에 모두 있는지도 본다. 연결선 쓰기·지우기가 source 메모의 미러 행을 읽기 때문이다(writeThrough.ts:94-98)(스펙 T20 when 맨 앞 문장). T20은 단계 0을 재는 행이라 스토어에 없는 카드에 쓰는 빈 동작도 단계 0으로 거짓 통과한다(workspace.ts:3140 `if (!prev || prev.height === h) return`). 같은 이유로 T20 첫째의 setFaceHeight·setTextMeasuredWidth 호출은 매번 값을 바꾸고, 호출마다 그 칸이 P 문서에서 바뀌었는지 본다. setTextMeasuredWidth 대상은 autoWidth가 켜진 글상자다(:3126-3127). T20 다섯째와 6-13은 브리지 호출 직전에 그 연결선이 P 문서와 미러 connections에 있다고 단언한다(행의 when 다섯째)
+- [x] T4 캔버스 쪽, T6, T8, T9, T10, T20 then 칸의 「확인」이 통과한다. T20 6-5의 연결선 사라짐 칸은 빼고 판정한다(n5가 더함). 확인: `cd web && bunx vitest run src/state/__tests__/undo.steps.test.ts`
+- [x] 글상자를 편집하는 동안 자동 폭·높이 측정 액션을 편집 쓰기 사이마다 다른 값으로 직접 불러도 편집을 마친 뒤 undoStack 길이가 1이고 cmd+z 1번에 편집 전 글로 돌아간다. 기록 안 하는 동작이 단계를 안 여는 분기는 이 테스트로 판정하지 않는다. 편집 묶음 깊이가 이미 막기 때문이다(스펙 AT5). 대신 깊이 0에서 await 사이에 두 번 쓰는 기록 동작 하나를 코드에서 골라, 두 쓰기 사이에 기록 안 하는 쓰기를 끼워도 1단계인지 본다. 이 분기를 빼면 그 경우가 2단계가 되어 실패한다. 고른 동작과 실패 출력 한 줄을 구현 메모에 남긴다
+- [x] 위 진입점 목록의 동작마다 정상 입력으로 한 번 부르면 undoStack이 정확히 1 늘어난다. 정상 입력은 지금 보드의 일반 카드이고 그 동작이 값을 바꾸는 입력이다. commitMove는 움직인 카드, resolveMembership은 소속이 바뀌는 카드, resizeCard는 크기가 바뀌는 입력이다. await 뒤 문서에 쓰는 진입점은 그 동작이 낸 문서 변화가 보일 때까지 실제 시간으로 최대 2초 조건 대기하고, 그 뒤 0.1초 더 기다려 잰다. 기대 변화: connectCards는 그 연결선, setConnectionLabel은 그 연결선의 label 칸, restoreFromTrash는 살린 메모와 되돌린 연결선. removeConnection은 그 연결선이 문서에서 사라짐이다. 이 넷은 promise를 돌려주지 않거나(connectCards :3266·setConnectionLabel :3315의 void saveConnection, removeConnection :3294의 void storage.removeConnection) await 뒤에 쓴다(restoreFromTrash). 이 밖에도 await 뒤나 void 비동기로 문서에 쓰는 진입점은 모두 같은 대기로 잰다. 함 만들기(createSubcanvas)는 기록하지 않으므로 +1 대상이 아니다(메인 결정, 스펙 기록 안 하는 쓰기 목록). 함 카드 삭제는 0이고 이 노드가 판정한다. 다른 보드 메모 살리기는 0이고 n5가 만들고 n6이 T15로 판정한다. 같은 명령의 테스트 이름으로 확인
+- [x] T20 다섯째는 `spec/cmd-z-undo/rows/T20.json`의 다섯째 given·when·then 칸 전부를 따른다. given의 "새로 잇는 두 메모는 둘 다 P 메모이고 기존 연결선과 다른 방향 쌍"을 지킨다. 같은 방향 쌍이면 connectCards가 새 행 없이 기존 선을 돌려준다(workspace.ts:3239-3248). 판정 대상은 사진 카드·판 만들기, 연결선 잇기·지우기, 기대 변화 넷, 지운 연결선이 cmd+z로 안 돌아옴이다. 준비는 「준비 확인 규칙」을 따른다. 기존 연결선의 양 끝 메모와 새로 이을 두 메모도 준비 확인 대상이다. 여섯째와 같은 조건 대기로 재고 가짜 타이머를 쓰지 않는다
+- [x] T20 여섯째의 경우 6-1~6-13(행의 when 칸)마다 세 칸이 통과한다. 단 6-5의 기대 변화 가운데 "그 연결선이 P 문서에서 사라짐"은 n5가 만드는 동작이라 이 노드는 빼고 판정하고, n5가 같은 테스트에 더한다. 세 칸: 호출 성공(throw 없음), P 문서가 바뀜, P undoStack 길이 그대로. 구현 메모에 경우 번호와 세 칸 결과 표를 남긴다. 멤버십 쓰기는 P가 시스템 보드일 때 시험한다. 같은 명령의 테스트 이름으로 확인
+- [x] T20 "빼면 실패" 넷을 구현 메모에 실패 출력 한 줄씩 남긴다: 브리지 origin 넘기기를 빼면 넷째·다섯째와 여섯째 표의 한 줄 이상이(셋째 칸에서), 멤버십 origin을 빼면 둘째가, 편집 중 브리지 쓰기의 origin을 LOCAL_ORIGIN으로 바꾸면 셋째가 실패한다. 단계를 안 여는 분기는 위 깊이 0 비동기 경우가 판정한다
+- [x] 함 삭제가 undoStack 길이를 바꾸지 않는다. 같은 명령의 테스트 이름으로 확인
+- [x] 구현 메모에 model.ts 밖 직접 transactLocal 7곳 표, 진입점 표, 「브라우저 확인」 항목이 있다
+- [x] 기존 회귀: `cd web && bunx vitest run src/state/__tests__/undo.core.test.ts src/state/__tests__/membership.test.ts src/state/__tests__/memoHeight.test.ts src/state/__tests__/subcanvas.test.ts src/state/__tests__/penMode.test.ts src/state/__tests__/frames.test.ts` 통과
+- [x] `cd web && npx tsc --noEmit` 통과
+- [x] 실경로: 드래그·크기 조절 테스트가 실제 스토어 액션 순서를 탄다. 우회했으면 구현 메모에 갭을 적는다
+- [x] 화면 수준 묶음 시험(T5 화면 칸 전부, T6 첫째 화면 칸): 보드 문서와 UndoManager가 열린 상태에서 준비 확인을 한 뒤 시작한다. DraggableCard와 ResizeHandles의 mouseup 처리에서 나가는 모든 길마다 시험을 하나씩 둔다. 이른 return 길(DraggableCard.tsx:832, :842, :856, :866, :874)과 ResizeHandles 글상자 너비 경로(:98-132, setTextWidth가 이동마다 문서에 씀)도 든다. 길 목록은 코드에서 찾아 구현 메모 표로 남긴다. 내보내기·함 흡수처럼 놓은 뒤 비동기로 끝나는 길은 commit 약속이 끝날 때까지 실제 시간 최대 2초 조건 대기한 뒤 단언한다. 길마다 셋을 단언한다. 첫째, cmd+z 앞에 그 길이 실제로 쓴 결과가 문서에 있다. 소속이 바뀌는 길이면 모든 카드의 frameId도 본다. 둘째, 길이 끝난 뒤 묶음 깊이 0, captureTimeout 500이다. 셋째, 쓴 것이 있으면 undoStack이 1 늘고 cmd+z 1번에 그 길의 쓰기가 모두 돌아간다. 애니메이션이 있는 길은 element.animate를 가짜로 심고 onfinish를 손으로 부른 뒤 판정한다(본보기 DraggableCard.trashDrop.test.tsx:158-166, jsdom에는 animate가 없어 runTrash가 바로 지운다 :731-733). 반드시 든 경우: 판 F 안 드롭, 두 카드 판 F 안 드롭, 두 카드 휴지통 드롭(지우기 뒤 판정), 이동 없이 놓기, 내보내기, 함 흡수, 크기 조절 30번, 판 크기 조절로 X가 F에 들어옴(cmd+z 앞 X frameId F), 크기 조절 중 언마운트(다음 동작 둘이 2단계), 편집 중 그 카드 끌기(편집을 마친 뒤 1단계, cmd+z 1번에 편집과 이동이 함께 돌아간다), 편집 중 그 카드 원격 삭제(묶음 깊이 0, 다음 동작 둘이 2단계), 펜 모드를 켠 채 보드 바꾸기(새 보드 깊이 1, 옛 토큰 끝이 와도 1, 펜 두 획 1단계). 컴포넌트의 묶음 호출을 빼면 실패함을 구현 메모에 실패 출력 한 줄씩 남긴다. 확인: `cd web && bunx vitest run src/components/workspace/__tests__/DraggableCard.undo.test.tsx src/components/workspace/__tests__/ResizeHandles.undo.test.tsx src/state/__tests__/undo.steps.test.ts`
 
 ## 파일 포인터
 
@@ -66,3 +66,112 @@
 | `web/src/state/membership.ts` | :172, :183 |
 
 ## 구현 메모
+
+2026-11-10 runner. 완료 기준 13개를 모두 확인했다. 새 시험 70개와 기존 회귀 108개가 통과한다.
+
+**장치**
+- 진입점: `workspace.ts` 끝의 `recorded()`가 액션을 감싼다. 가장 바깥 액션에서만 `openUndoStep(문맥 origin)`을 부른다.
+- 기록 안 하는 동작: `untracked()`가 동기 구간을 `withWriteOrigin(UNTRACKED_ORIGIN)`으로 돌린다. 안쪽 액션도 같은 origin이다.
+- `origin.ts`: `transactLocal`은 origin이 없으면 문맥 origin을 쓴다. 문맥 밖이면 LOCAL_ORIGIN이다.
+- 편집 묶음: 스토어 구독이 editingId·expandedCardId·cards를 따른다. 닫기 전에 `runEditFlush()`를 부른다(`web/src/state/editFlush.ts`).
+- 편집기 flush: `MarkdownEditor.tsx` MilkdownInner가 편집 가능할 때 등록한다. serializer로 지금 본문을 읽어 안 내보낸 글이면 onChange로 쓴다.
+- 브리지: `dispatchOp`의 `ws`를 Proxy로 감싼다. 모든 액션이 기록 안 하는 문맥에서 돈다. storage·writeThrough 직접 호출은 `BRIDGE_ORIGIN`을 넘긴다.
+- 수정 시각만 바뀐 쓰기: `writeCardToDocHandle`이 문서와 비교해 updatedAt만 바뀌면 기록 안 하는 origin으로 쓴다.
+
+**model.ts 밖 직접 transactLocal — 8곳**
+
+removeSelected 한 곳을 일반·함 둘로 나눠 7곳이 8곳이 됐다.
+
+| 위치 | 쓰기 | origin |
+|---|---|---|
+| attachments.ts:142 | uploadAttachment files 맵 | UNTRACKED 명시 |
+| attachments.ts:173 | markQuotaFailed files 맵 | UNTRACKED 명시 |
+| workspace.ts:2858 | commitMove 좌표 | 문맥(진입점) |
+| workspace.ts:3701 | removeSelected 일반 메모 | 문맥(진입점) |
+| workspace.ts:3706 | removeSelected 함 카드 | UNTRACKED 명시 |
+| writeThrough.ts:146 | clearBoardRecords 덮어쓰기 가져오기 | 문맥, 손대지 않음 |
+| dexieMigration.ts:326 | Dexie→문서 이전 | 문맥, 손대지 않음 |
+| systemBoardMigration.ts:84 | 옛 시스템 문서 복사 | 문맥, 손대지 않음 |
+
+**진입점 표** — 후보는 withActiveDoc·persistCard·persistCardDebounced·storage 쓰기를 부르는 액션이다. 줄은 workspace.ts 구현 줄이다.
+
+| 처리 | 액션(줄) |
+|---|---|
+| 단계 열기 + 편집 묶음 먼저 닫기 | addCardAt 2699, addPhotoAt 2745, addCardAtViewportCenter 2780, addFrameAt 2902, addFrameAtViewportCenter 2915, connectToNewMemo 3431, commitAndAddNext 3767 |
+| 단계 열기 | moveSelectedBy 2804, commitMove 2839, resizeCard 2872, resolveMembership 2924, resizeFrame 3003, renameFrame 3038, setFrameBackground 3053, clearFrameBackground 3088, deleteFrame 3110, setContent 3151, setTitle 3167, commitTitle 3182, setMemoColor 3203, setCardRotation 3221, setTextStyle 3237, setTextWidth 3257, setAttachment 3343, connectCards 3397, removeConnection 3448, setConnectionLabel 3458, setOverlay 3506, penUndo 3524, penRedo 3544, penClear 3564, remove 3584, removeSelected 3641, restoreFromTrash 3741, toggleAIOptOut 3855 |
+| 기록 안 함(문맥) | setTextMeasuredWidth 3277, setFaceHeight 3294, createSubcanvas 3915 |
+| 감싸지 않음 | moveCard 2792·moveFrame 2956: 문서에 안 쓴다. hardDeleteNote 3320: n3이 UNTRACKED. moveCardToSubcanvas 4000·moveCardToBoard 4061·promoteCardToNewBoard 3822: moveCardBetweenDocs가 UNTRACKED. renameBoard 2529: meta만 쓴다(기록 범위 밖). undoSubcanvasRemove 4130: Dexie만 쓴다 |
+
+- await 뒤 쓰기에 origin을 넘기는 길: connectCards·setConnectionLabel의 saveConnection, removeConnection, createSubcanvas의 persistCard, moveCardBetweenDocs, 멤버십 :172·:183, 브리지의 writeNoteRecord·deleteNoteRecord·writeBoardRecord·updateNoteTitle·saveConnection·removeConnection.
+- 함 카드 삭제: remove의 deleteNoteDoc이 함이면 UNTRACKED다. removeSelected는 함 쪽 트랜잭션을 따로 연다.
+
+**DraggableCard mouseup 길 표** — 줄은 DraggableCard.tsx다. 묶음은 첫 이동 :662에서 연다.
+
+| 길 | 닫는 자리 | 시험 |
+|---|---|---|
+| 다중 선택 클릭, 이동 없음 | :869 | 다중 선택 중 클릭 |
+| 이동 없는 클릭 | :880 | 이동 없이 놓기 |
+| 휴지통 | done :756 | 휴지통 한 장(jsdom 즉시), 휴지통 두 장(가짜 animate) |
+| 내보내기 | done :756 | 내보내기(브레드크럼) |
+| 함 흡수 | done :756 | 함 흡수 |
+| 함 흡수 거부, 카드 남음 :788 | done :756 | 함 흡수 거부(사이클 가드) |
+| 보통 드롭 한 장·여러 장·판 | :991, resolveMembership 뒤 | 보통 드롭, 여러 장 드롭, 판 단독 드래그 |
+| 언마운트 | 정리 effect | 드래그 중 언마운트 |
+
+**ResizeHandles 길 표** — 묶음은 누를 때 :110에서 연다.
+
+| 길 | 닫는 자리 | 시험 |
+|---|---|---|
+| 메모·사진 크기 조절 | onUp :232 | 메모 크기 조절 30번 |
+| 판 크기 조절 | onUp :232, resolveMembership 뒤 | 판 크기 조절로 X가 F에 들어옴 |
+| 글상자 좌우 핸들 | 자기 onUp :134 | 글상자 오른쪽 핸들, 글상자 왼쪽 핸들 |
+| 누르고 안 움직임 | onUp :232 | 누르고 움직이지 않고 놓기 |
+| 언마운트 | 정리 effect :101, 안 닫힌 토큰만 | 크기 조절 중 언마운트 |
+
+**T20 여섯째 경우 표** — 실제 시간이다. 세 칸은 호출 성공, P 문서 바뀜, undoStack 그대로다.
+
+| 경우 | 호출 성공 | 문서 바뀜 | undoStack 0 | 브리지 origin을 빼면 |
+|---|---|---|---|---|
+| 6-1 notes.create | 통과 | 통과 | 통과 | 실패 |
+| 6-2 notes.update content | 통과 | 통과 | 통과 | 실패 |
+| 6-3 notes.update title | 통과 | 통과 | 통과 | 실패 |
+| 6-4 notes.update width·height | 통과 | 통과 | 통과 | 실패 |
+| 6-5 notes.delete 일반 메모 | 통과 | 통과 | 통과 | 실패 |
+| 6-6 notes.delete 사진 | 통과 | 통과 | 통과 | 실패 |
+| 6-7 notes.delete 판 | 통과 | 통과 | 통과 | 실패 |
+| 6-8 photos.create | 통과 | 통과 | 통과 | 실패 |
+| 6-9 frames.create | 통과 | 통과 | 통과 | 실패 |
+| 6-10 notes.createBoard | 통과 | 통과 | 통과 | 통과 |
+| 6-11 connections.create label | 통과 | 통과 | 통과 | 실패 |
+| 6-12 connections.create 다른 보드 target | 통과 | 통과 | 통과 | 실패 |
+| 6-13 connections.delete | 통과 | 통과 | 통과 | 실패 |
+
+- 6-5의 연결선 사라짐 칸은 뺐다. n5가 더한다.
+- 6-10은 origin을 빼도 통과한다. createSubcanvas가 스스로 기록 안 하는 동작이기 때문이다.
+
+**빼면 실패** — 고친 줄을 되돌려 돌린 출력이다. 변이 스크립트는 레포 밖 scratchpad의 mutate.py다.
+- 단계를 안 여는 분기(undo.ts openUndoStep의 UNTRACKED 검사): `× … 깊이 0 비동기 동작: 휴지통 살리기의 연결선 쓰기와 카드 쓰기 사이에 브리지 쓰기가 끼어도 1단계다`.
+  - 고른 동작은 restoreFromTrash다. 연결선 쓰기와 카드 쓰기 사이에 브리지 notes.update가 끼는 순서를 단언한다.
+- 브리지 origin 넘기기: 17개 실패. 넷째 `× … 넷째: 브리지가 메모를 만들고 …`, 다섯째 `× … 다섯째: 브리지가 사진·판을 만들고 …`, 여섯째 12줄 `× … 6-1 notes.create …`.
+- 멤버십 origin: `× … 둘째: 시스템 보드 P에 브리지가 메모 1개 쓰고 1개 지우고, 멤버십이 …`.
+- 편집 중 브리지 쓰기를 LOCAL_ORIGIN으로: `× … 셋째: Y 편집 사이에 브리지가 Z를 고쳐도 편집이 1단계 …`.
+- 진입점 감싸기(RECORDED 목록): 진입점 17개 실패, 예 `× … commitMove(움직인 카드): undoStack +1`.
+- 편집 묶음 구독: 6개 실패, 예 `× … T8 … 첫째: 펼친 창에서 1초씩 쉬며 두 번 치고 마치면 …`.
+- 수정 시각만 쓰기·측정 액션의 기록 안 함: 각각 `× … T20 … 첫째: 측정 6번·수정 시각만 쓰기 …`.
+- DraggableCard 묶음 열기: 6개 실패, 예 `× … 보통 드롭: 판 밖 A를 F 안에 놓으면 +1 …`.
+- DraggableCard 언마운트 닫기: `× … 드래그 중 언마운트 …`.
+- 휴지통 묶음을 지우기 전에 닫기: `× … 휴지통 두 장(가짜 animate) …`.
+- ResizeHandles 묶음 열기: 5개 실패, 예 `× … 메모 크기 조절 30번 …`.
+- ResizeHandles 언마운트 닫기: `× … 크기 조절 중 언마운트 …`.
+- 판 크기 조절 묶음을 resolveMembership 앞에서 닫기: `× … 판 크기 조절로 X가 F에 들어옴 …`.
+
+**실경로 갭**
+- 화면 시험은 실제 컴포넌트와 실제 스토어 액션, 실제 보드 문서·UndoManager를 탄다.
+- jsdom 대역 3가지: elementsFromPoint 스텁, 가짜 element.animate, MarkdownEditor 모킹.
+- T8 둘째와 T9의 편집기는 flush 훅을 등록하는 흉내다. 실제 Milkdown flush는 vitest에서 돌리지 않았다.
+- T8 둘째의 창 닫기는 MemoExpandDialog close와 같은 순서(commitTitle, setExpandedCard(null))를 스토어로 불렀다. 대화상자를 렌더하지 않았다.
+
+**브라우저 확인** — 에이전트가 돌리지 않았다. 확인 안 됨.
+- [ ] T4 편집기 쪽: 펼친 창에서 ' 끝'을 치고 cmd+z 3번이면 ' 끝'이 사라지고 편집 전 글이다.
+- [ ] 펼친 창에서 치고 0.2초 안에 Esc로 닫아도 마지막 글자가 남는다. 이어서 캔버스 cmd+z 1번에 편집 전 글로 돌아간다.
+- [ ] 펼친 창 편집기 flush가 리스너와 같은 글을 두 번 쓰지 않는다.
