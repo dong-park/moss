@@ -25,12 +25,38 @@ export const UNTRACKED_ORIGIN: unique symbol = Symbol("moss-untracked-origin");
 export type WriteOrigin = typeof LOCAL_ORIGIN | typeof UNTRACKED_ORIGIN;
 
 /**
- * 로컬 쓰기를 트랜잭션으로 감싼다. n1의 모든 쓰기 헬퍼가 내부에서 이 함수를 쓴다.
- * origin을 주지 않으면 LOCAL_ORIGIN(기록하는 쓰기)이다. 바깥에 이미 열린
- * 트랜잭션이 있으면 yjs가 바깥 origin을 쓴다.
+ * cmd-z-undo n4 — 동기 쓰기 origin 문맥.
+ *
+ * 기록 안 하는 동작(자동 측정, 브리지 등)은 동작 전체를 withWriteOrigin(UNTRACKED_ORIGIN, fn)
+ * 으로 감싼다. 그 안에서 origin 없이 열린 transactLocal은 문맥 origin을 쓴다 — 안쪽에서
+ * 부르는 동작(예: setFaceHeight 안의 resolveMembership)까지 같은 origin으로 돈다.
+ * 문맥은 동기 구간에만 걸린다. await 뒤 쓰기는 origin을 인자로 넘긴다.
  */
-export function transactLocal<T>(doc: Y.Doc, fn: () => T, origin: WriteOrigin = LOCAL_ORIGIN): T {
-  return doc.transact(fn, origin);
+let ambientOrigin: WriteOrigin = LOCAL_ORIGIN;
+
+/** 지금 동기 문맥의 쓰기 origin. 문맥 밖이면 LOCAL_ORIGIN. */
+export function currentWriteOrigin(): WriteOrigin {
+  return ambientOrigin;
+}
+
+/** fn의 동기 구간을 origin 문맥으로 돌린다. 끝나면 이전 문맥으로 돌아간다. */
+export function withWriteOrigin<T>(origin: WriteOrigin, fn: () => T): T {
+  const prev = ambientOrigin;
+  ambientOrigin = origin;
+  try {
+    return fn();
+  } finally {
+    ambientOrigin = prev;
+  }
+}
+
+/**
+ * 로컬 쓰기를 트랜잭션으로 감싼다. n1의 모든 쓰기 헬퍼가 내부에서 이 함수를 쓴다.
+ * origin을 주지 않으면 지금 문맥 origin이다(문맥 밖이면 LOCAL_ORIGIN, 기록하는 쓰기).
+ * 바깥에 이미 열린 트랜잭션이 있으면 yjs가 바깥 origin을 쓴다.
+ */
+export function transactLocal<T>(doc: Y.Doc, fn: () => T, origin?: WriteOrigin): T {
+  return doc.transact(fn, origin ?? ambientOrigin);
 }
 
 

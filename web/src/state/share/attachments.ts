@@ -32,7 +32,7 @@ import { getBlob, getBlobUrl, putBlob } from "@/state/db/opfs";
 import { useToasts } from "@/state/notifications";
 import { getActiveBoardDoc, getOrOpenBoardDoc } from "@/state/ydoc/activeDoc";
 import { filesMap, readDocFile, readNotes, setDocFile } from "@/state/ydoc/model";
-import { transactLocal } from "@/state/ydoc/origin";
+import { transactLocal, UNTRACKED_ORIGIN } from "@/state/ydoc/origin";
 import { writeToBoardDoc } from "@/state/ydoc/writeThrough";
 import { useCollab } from "@/state/collab";
 import { useShare } from "./store";
@@ -138,10 +138,15 @@ export async function uploadAttachment(
       const session = await useAuth.getState().ensureSession();
       const saved = await deps.files.upload(boardId, blob, filename, session.accessToken);
       await writeToBoardDoc(boardId, (doc) =>
-        transactLocal(doc, () => {
-          setDocFile(doc, localRef, saved.id);
-          filesMap(doc).delete(uploadFailedKey(localRef));
-        }),
+        // cmd-z-undo n4: files 맵 매핑은 기록 안 하는 origin.
+        transactLocal(
+          doc,
+          () => {
+            setDocFile(doc, localRef, saved.id);
+            filesMap(doc).delete(uploadFailedKey(localRef));
+          },
+          UNTRACKED_ORIGIN,
+        ),
       );
     } catch (err) {
       if (err instanceof AuthRequestError && err.status === 413) {
@@ -165,7 +170,11 @@ async function markQuotaFailed(boardId: string, localRef: string): Promise<void>
   notifyOnce(`quota:${boardId}`, t("collab.attachment.quotaFailed"));
   await writeToBoardDoc(boardId, (doc) => {
     if (readDocFile(doc, localRef)) return;
-    transactLocal(doc, () => filesMap(doc).set(uploadFailedKey(localRef), UPLOAD_FAILED_QUOTA));
+    transactLocal(
+      doc,
+      () => filesMap(doc).set(uploadFailedKey(localRef), UPLOAD_FAILED_QUOTA),
+      UNTRACKED_ORIGIN,
+    );
   }).catch(() => {
     /* 문서를 못 열면 표시만 빠진다 — 다른 기기는 '올리는 중'을 본다 */
   });

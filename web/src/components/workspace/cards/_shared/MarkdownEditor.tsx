@@ -28,6 +28,7 @@ import {
   defaultValueCtx,
   editorViewCtx,
   editorViewOptionsCtx,
+  serializerCtx,
 } from "@milkdown/core";
 import { listenerCtx } from "@milkdown/plugin-listener";
 import { nord } from "@milkdown/theme-nord";
@@ -41,6 +42,7 @@ import { markdownPlaceholder } from "./markdownPlaceholder";
 import { BubbleMenuHost } from "./editor/BubbleMenuHost";
 import { EditorRegion } from "./editor/EditorRegion";
 import { registerMemoBodyFocus } from "./memoTitleFocus";
+import { registerEditFlush } from "@/state/editFlush";
 
 import "@milkdown/theme-nord/style.css";
 import "prosemirror-view/style/prosemirror.css";
@@ -77,6 +79,17 @@ export function MilkdownInner({ value, editable, onChange, onBlur, expanded, car
     onChangeRef.current = onChange;
     onBlurRef.current = onBlur;
   });
+  // cmd-z-undo n4: 마지막으로 내보낸 본문. flush와 리스너가 같은 글을 두 번 쓰지 않게 한다.
+  const lastEmittedRef = useRef(value);
+  const emit = (markdown: string) => {
+    if (markdown === lastEmittedRef.current) return;
+    lastEmittedRef.current = markdown;
+    onChangeRef.current(markdown);
+  };
+  const emitRef = useRef(emit);
+  useEffect(() => {
+    emitRef.current = emit;
+  });
 
   const { get } = useEditor(
     (root) =>
@@ -98,7 +111,7 @@ export function MilkdownInner({ value, editable, onChange, onBlur, expanded, car
             },
           }));
           const l = ctx.get(listenerCtx);
-          l.markdownUpdated((_, markdown) => onChangeRef.current(markdown));
+          l.markdownUpdated((_, markdown) => emitRef.current(markdown));
           // FEAT-card-entry-mode: 편집 진입(editable) 시 mount 직후 포커스 —
           // 더블클릭→첫 키스트로크 손실 방지. 제목 줄은 포커스를 뺏지 않는다(AC-2).
           l.mounted((mctx) => {
@@ -134,6 +147,22 @@ export function MilkdownInner({ value, editable, onChange, onBlur, expanded, car
     });
     return () => registerMemoBodyFocus(cardId, null);
   }, [cardId, get]);
+
+  // cmd-z-undo n4: 편집 묶음을 닫기 직전 스토어가 부른다. 리스너의 0.2초 디바운스에 남은
+  // 본문을 지금 내보낸다 — 창을 닫으면 편집기가 destroy돼 그 글이 버려지기 때문이다.
+  useEffect(() => {
+    if (!editable) return;
+    return registerEditFlush(() => {
+      const editor = get();
+      if (!editor) return;
+      let markdown: string | undefined;
+      editor.action((ctx) => {
+        const view = ctx.get(editorViewCtx);
+        markdown = ctx.get(serializerCtx)(view.state.doc);
+      });
+      if (markdown !== undefined) emitRef.current(markdown);
+    });
+  }, [editable, get]);
 
   return (
     <>

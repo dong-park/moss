@@ -18,6 +18,7 @@ import { useAuth } from "@/state/auth";
 import { configureAIClient } from "@/state/ai/client";
 import type { BoardFile, FilesApi } from "@/state/share/files";
 import { dispatchOp, type BridgeNote } from "@/state/bridge/mossBridge";
+import { UNTRACKED_ORIGIN } from "@/state/ydoc/origin";
 
 // 1x1 PNG.
 const PNG_B64 =
@@ -568,6 +569,8 @@ describe("dispatchOp", () => {
       expect(r.id).toMatch(/^cx-/);
       expect(saveConnection).toHaveBeenCalledWith(
         expect.objectContaining({ sourceNoteId: "a", targetNoteId: "b", label: "관련" }),
+        // cmd-z-undo n4: 브리지 쓰기는 기록 안 하는 origin으로 문서까지 간다.
+        { origin: UNTRACKED_ORIGIN },
       );
       await expect(
         dispatchOp("connections.create", { sourceNoteId: "a" }),
@@ -601,7 +604,7 @@ describe("dispatchOp", () => {
       const removeConnection = vi.fn(async () => {});
       useStorage.setState({ removeConnection });
       await dispatchOp("connections.delete", { id: "x1" });
-      expect(removeConnection).toHaveBeenCalledWith("x1");
+      expect(removeConnection).toHaveBeenCalledWith("x1", { origin: UNTRACKED_ORIGIN });
     });
   });
 

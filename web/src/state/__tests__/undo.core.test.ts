@@ -520,8 +520,8 @@ describe("묶음 API — 깊이·토큰·세대", () => {
     entryMove(a, 200, 200);
     openUndoStep(UNTRACKED_ORIGIN);
     updateNoteField(doc(), a, "updatedAt", Date.now() + 1, UNTRACKED_ORIGIN);
-    ws().moveCard(a, 210, 210);
-    ws().commitMove([a]);
+    // n4부터 commitMove는 진입점이라 스스로 단계를 연다 — 단계를 열지 않는 기록 쓰기로 잇는다.
+    updateNoteField(doc(), a, "x", 210, LOCAL_ORIGIN);
     expect(um().undoStack.length).toBe(1);
     expect(getBoardUndoGroupState()?.depth).toBe(0);
   });

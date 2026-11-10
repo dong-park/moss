@@ -73,7 +73,12 @@ interface StorageState {
    * saveNote의 mergeNote가 무변경/없는 노트도 새로 만들며 updatedAt을 올리는 문제 회피.
    * 미러를 고친 뒤 그 노트의 보드 문서에도 쓴다 — 원본은 Y.Doc이다.
    */
-  updateNoteTitle: (id: string, title: string | undefined) => Promise<void>;
+  /** opts.origin은 문서 쓰기 origin이다(cmd-z-undo n4: 브리지는 기록 안 하는 origin). */
+  updateNoteTitle: (
+    id: string,
+    title: string | undefined,
+    opts?: { origin?: WriteOrigin },
+  ) => Promise<void>;
   removeNote: (id: string) => Promise<void>;
 
   /**
@@ -137,10 +142,12 @@ interface StorageState {
   purgeAttachments: (notes: Note[]) => Promise<void>;
 
   loadConnections: (noteIds?: string[]) => Promise<Connection[]>;
+  /** opts.origin은 await 뒤 문서 쓰기까지 넘기는 origin이다(cmd-z-undo n4). */
   saveConnection: (
     patch: Partial<Connection> & { id: string },
+    opts?: { origin?: WriteOrigin },
   ) => Promise<void>;
-  removeConnection: (id: string) => Promise<void>;
+  removeConnection: (id: string, opts?: { origin?: WriteOrigin }) => Promise<void>;
 
   updateSettings: (patch: Partial<Settings>) => Promise<void>;
   refreshQuota: () => Promise<QuotaInfo | null>;
@@ -324,7 +331,8 @@ export const useStorage = create<StorageState>((set, get) => ({
     return next;
   },
 
-  updateNoteTitle: async (id, title) => {
+  updateNoteTitle: async (id, title, opts) => {
+    const origin = opts?.origin;
     const db = getDB();
     const prev = await db.notes.get(id);
     if (!prev) return; // 없는 노트는 새로 만들지 않는다(P1-2).
@@ -334,8 +342,8 @@ export const useStorage = create<StorageState>((set, get) => ({
     await db.notes.update(id, { title: next, updatedAt });
     // 원본은 보드 문서다. 제목·updatedAt 두 키만 바꿔 미러의 낡은 본문으로 덮지 않는다.
     await writeToBoardDoc(prev.boardId ?? null, (doc) => {
-      updateNoteField(doc, id, "title", next);
-      updateNoteField(doc, id, "updatedAt", updatedAt);
+      updateNoteField(doc, id, "title", next, origin);
+      updateNoteField(doc, id, "updatedAt", updatedAt, origin);
     });
   },
 
@@ -667,7 +675,7 @@ export const useStorage = create<StorageState>((set, get) => ({
       .toArray();
   },
 
-  saveConnection: async (patch) => {
+  saveConnection: async (patch, opts) => {
     const db = getDB();
     const prev = await db.connections.get(patch.id);
     const next = mergeConnection(prev, patch);
@@ -677,15 +685,15 @@ export const useStorage = create<StorageState>((set, get) => ({
     // 보드 정보가 공유 문서로 샌다.
     // n23 재심사 2R-6: 저장은 Dexie 미러 + 소유 문서를 storage 한 액션으로 합친다.
     // 소유 보드는 원본 문서의 source 메모에서 판정한다(미러는 locate 힌트일 뿐).
-    await writeConnectionRecord(next);
+    await writeConnectionRecord(next, undefined, opts?.origin);
   },
 
-  removeConnection: async (id) => {
+  removeConnection: async (id, opts) => {
     const db = getDB();
     const conn = await db.connections.get(id);
     await db.connections.delete(id);
     // n23 재심사 2R-6: 삭제도 한 액션에서 소유 문서까지 지운다.
-    if (conn) await deleteConnectionRecord(id, conn.sourceNoteId);
+    if (conn) await deleteConnectionRecord(id, conn.sourceNoteId, undefined, opts?.origin);
   },
 
   updateSettings: async (patch) => {

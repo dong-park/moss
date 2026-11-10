@@ -32,6 +32,7 @@ import {
 } from "./workspace";
 import { deleteBoardDoc } from "./ydoc/activeDoc";
 import { deleteNoteRecord, writeNoteRecord } from "./ydoc/writeThrough";
+import { UNTRACKED_ORIGIN } from "./ydoc/origin";
 
 export interface MembershipDeps {
   api: ShareApi;
@@ -169,7 +170,8 @@ async function ensureSystemBoardCard(boardId: string): Promise<void> {
     aiOptOut: false,
     rotation: 0,
   });
-  await writeNoteRecord(note);
+  // cmd-z-undo n4: 멤버십 동기화 쓰기는 기록 안 하는 origin.
+  await writeNoteRecord(note, UNTRACKED_ORIGIN);
   if (useWorkspace.getState().currentBoardId === SYSTEM_BOARD_ID) {
     const card = __internal.decodeNoteToCard(note);
     useWorkspace.setState((s) => ({ cards: [...s.cards, card] }));
@@ -180,7 +182,7 @@ async function removeSystemBoardCards(boardId: string): Promise<void> {
   const ids = await systemBoardCardIds(boardId);
   if (ids.length === 0) return;
   await getDB().notes.bulkDelete(ids);
-  for (const id of ids) await deleteNoteRecord(id, SYSTEM_BOARD_ID);
+  for (const id of ids) await deleteNoteRecord(id, SYSTEM_BOARD_ID, UNTRACKED_ORIGIN);
   const gone = new Set(ids);
   useWorkspace.setState((s) => ({ cards: s.cards.filter((c) => !gone.has(c.id)) }));
 }

@@ -13,6 +13,7 @@ import {
   type Card,
 } from "@/state/workspace";
 import { memoFace } from "./cards/text/face";
+import { beginUndoGroup, endUndoGroup, type UndoGroupToken } from "@/state/ydoc/undo";
 
 type HandleDir = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
 
@@ -80,12 +81,24 @@ export function ResizeHandles({
     originCardY: number;
     cleanup: () => void;
   } | null>(null);
+  // cmd-z-undo n4: 크기 조절 1회 = 기록 1단계. 누를 때 열고 마지막 쓰기 뒤에 닫는다.
+  // 끝은 cleanup() 안에 두지 않는다 — 언마운트 정리도 cleanup()을 부르기 때문이다.
+  const groupRef = useRef<UndoGroupToken | null>(null);
+  const endGroup = () => {
+    const token = groupRef.current;
+    groupRef.current = null;
+    endUndoGroup(token);
+  };
 
   // 드래그 도중 컴포넌트 unmount되면 window 리스너 누수 — 안전한 cleanup.
+  // cmd-z-undo n4: 언마운트 정리는 아직 안 닫힌 묶음 토큰만 닫는다.
   useEffect(() => {
     return () => {
       dragRef.current?.cleanup();
       dragRef.current = null;
+      const token = groupRef.current;
+      groupRef.current = null;
+      endUndoGroup(token);
     };
   }, []);
 
@@ -93,6 +106,8 @@ export function ResizeHandles({
     if (e.button !== 0) return;
     e.stopPropagation();
     e.preventDefault();
+    endGroup();
+    groupRef.current = beginUndoGroup();
 
     // FEAT-text-tool: textbox 좌우 핸들 — 고정 폭 전환. 높이는 손대지 않는다(내용 높이).
     if (isTextbox) {
@@ -116,6 +131,7 @@ export function ResizeHandles({
       const onUp = () => {
         dragRef.current = null;
         cleanup();
+        endGroup();
       };
       dragRef.current = {
         dir,
@@ -212,6 +228,8 @@ export function ResizeHandles({
           .map((c) => c.id);
         resolveMembership(ids);
       }
+      // 판 크기 조절은 resolveMembership 뒤에 닫는다.
+      endGroup();
     };
 
     dragRef.current = {
