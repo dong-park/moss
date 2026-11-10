@@ -42,6 +42,7 @@ import { normalizeTitle } from "@/state/memoTitle";
 import { isMemoColor } from "@/components/workspace/memoVariety";
 import { makeAttachmentFilename } from "@/state/db/opfs";
 import { storeAttachment } from "@/state/share/attachments";
+import { UNTRACKED_ORIGIN, withWriteOrigin, type WriteOrigin } from "@/state/ydoc/origin";
 import {
   MAX_ATTACHMENT_BYTES,
   MAX_IMAGE_BYTES,
@@ -299,11 +300,30 @@ function base64ToBlob(dataBase64: string, mimeType: string): Blob {
  * 데이터 op를 useWorkspace 액션으로 디스패치한다. 순수하게 store만 만지므로
  * 테스트에서 store를 갈아끼워 단위 검증할 수 있다(WS 전송 계층과 분리).
  */
+/**
+ * cmd-z-undo n4: 브리지 쓰기는 사람의 cmd+z 기록에 들어가지 않는다. 스토어 액션은 모두
+ * 기록 안 하는 origin 문맥에서 부른다 — 액션이 단계를 열지 않고, 동기 쓰기와 액션이 넘기는
+ * await 뒤 쓰기(connectCards·setConnectionLabel의 saveConnection 등)가 그 origin을 쓴다.
+ */
+function untrackedActions<T extends object>(state: T): T {
+  return new Proxy(state, {
+    get(target, key, receiver) {
+      const value = Reflect.get(target, key, receiver);
+      if (typeof value !== "function") return value;
+      return (...args: unknown[]) =>
+        withWriteOrigin(UNTRACKED_ORIGIN, () => (value as (...a: unknown[]) => unknown)(...args));
+    },
+  });
+}
+
+/** 브리지가 storage·writeThrough에 직접 넘기는 문서 쓰기 origin. */
+const BRIDGE_ORIGIN: WriteOrigin = UNTRACKED_ORIGIN;
+
 export async function dispatchOp(
   op: string,
   params: Record<string, unknown> = {},
 ): Promise<unknown> {
-  const ws = useWorkspace.getState();
+  const ws = untrackedActions(useWorkspace.getState());
   switch (op) {
     case "ping":
       return { connected: true, boardId: ws.currentBoardId, cards: ws.cards.length };
@@ -396,7 +416,7 @@ export async function dispatchOp(
       // n23 P1-5: saveNote가 정규화된 Note를 돌려준다 — Dexie read-back이 비어
       // Y.Doc 쓰기를 조용히 건너뛰던 경로가 없다.
       const saved = await storage.saveNote(note);
-      await writeNoteRecord(saved);
+      await writeNoteRecord(saved, BRIDGE_ORIGIN);
       return { id, kind: "text", boardId: storageId };
     }
 
@@ -438,9 +458,11 @@ export async function dispatchOp(
       if (content !== undefined) {
         // n23 P1-5: saveNote가 정규화된 Note를 돌려준다.
         const saved = await useStorage.getState().saveNote({ id, content });
-        await writeNoteRecord(saved);
+        await writeNoteRecord(saved, BRIDGE_ORIGIN);
       }
-      if (title !== undefined) await useStorage.getState().updateNoteTitle(id, title);
+      if (title !== undefined) {
+        await useStorage.getState().updateNoteTitle(id, title, { origin: BRIDGE_ORIGIN });
+      }
       if (moves) {
         const w = width ?? note.width;
         // 메모(text)는 정사각형 — 폭을 바꾸면 높이도 같이 맞춘다.
@@ -452,7 +474,7 @@ export async function dispatchOp(
           ...(w !== undefined ? { width: w } : {}),
           ...(h !== undefined ? { height: h } : {}),
         });
-        await writeNoteRecord(saved);
+        await writeNoteRecord(saved, BRIDGE_ORIGIN);
       }
       return { id };
     }
@@ -469,7 +491,7 @@ export async function dispatchOp(
       // 판은 휴지통 대상이 아니다(spec §2) — 지금처럼 즉시 삭제.
       if (note.kind === "frame") await useStorage.getState().removeNote(id);
       else await useStorage.getState().trashNote(id);
-      await deleteNoteRecord(id, note.boardId ?? null);
+      await deleteNoteRecord(id, note.boardId ?? null, BRIDGE_ORIGIN);
       void ws.refreshTrashCount();
       return { id };
     }
@@ -556,8 +578,8 @@ export async function dispatchOp(
       // n23 P1-5: saveNote가 정규화된 Note를 돌려준다.
       const savedNote = await storage.saveNote(note);
       const savedBoard = await getDB().boards.get(childBoardId);
-      if (savedBoard) await writeBoardRecord(savedBoard);
-      await writeNoteRecord(savedNote);
+      if (savedBoard) await writeBoardRecord(savedBoard, BRIDGE_ORIGIN);
+      await writeNoteRecord(savedNote, BRIDGE_ORIGIN);
       return { id, kind: "board", boardRef: childBoardId, boardId: storageId };    }
 
     case "ai.preview": {
@@ -684,14 +706,17 @@ export async function dispatchOp(
       const id = `cx-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6)}`;
       // mergeConnection이 source="manual"/status="active"/createdAt을 채운다.
       // n23 재심사 2R-6: Dexie 미러와 소유 문서 쓰기는 saveConnection 한 액션이 함께 한다.
-      await useStorage.getState().saveConnection({
-        id,
-        sourceNoteId,
-        targetNoteId,
-        label,
-        ...(sourceSide ? { sourceSide } : {}),
-        ...(targetSide ? { targetSide } : {}),
-      });
+      await useStorage.getState().saveConnection(
+        {
+          id,
+          sourceNoteId,
+          targetNoteId,
+          label,
+          ...(sourceSide ? { sourceSide } : {}),
+          ...(targetSide ? { targetSide } : {}),
+        },
+        { origin: BRIDGE_ORIGIN },
+      );
       return { id };
     }
 
@@ -699,7 +724,7 @@ export async function dispatchOp(
       const id = String(params.id ?? "");
       if (!id) throw new Error("id가 필요합니다");
       // n23 재심사 2R-6: 미러 삭제와 소유 문서 삭제를 한 액션이 함께 한다.
-      await useStorage.getState().removeConnection(id);
+      await useStorage.getState().removeConnection(id, { origin: BRIDGE_ORIGIN });
       return { id };
     }
 

@@ -19,6 +19,7 @@ import { $prose } from "@milkdown/utils";
 import { commonmark } from "@milkdown/preset-commonmark";
 import { gfm } from "@milkdown/preset-gfm";
 import { listener } from "@milkdown/plugin-listener";
+import { history } from "@milkdown/plugin-history";
 
 import { markdownPlaceholder } from "../markdownPlaceholder";
 import { wikilink } from "./wikilink";
@@ -211,6 +212,7 @@ export const editorPlugins: MilkdownPlugin[] = [
   commonmark,
   gfm,
   listener,
+  history, // (cmd-z-undo n2) Mod-z 되돌리기 · Shift-Mod-z/Mod-y 다시 실행
   markdownPlaceholder,
   pasteSlot,
   bubbleSlot,

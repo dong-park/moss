@@ -28,11 +28,13 @@ import {
   defaultValueCtx,
   editorViewCtx,
   editorViewOptionsCtx,
+  serializerCtx,
 } from "@milkdown/core";
 import { listenerCtx } from "@milkdown/plugin-listener";
 import { nord } from "@milkdown/theme-nord";
 import { Milkdown, MilkdownProvider, useEditor } from "@milkdown/react";
 import { TextSelection } from "@milkdown/prose/state";
+import type { Node as ProseNode } from "@milkdown/prose/model";
 
 import { MEMO_CONTENT_WIDTH } from "./memoLayout";
 import { editorPlugins, refreshBubble, setBubbleScrollEl } from "./editor/extensions";
@@ -40,6 +42,7 @@ import { markdownPlaceholder } from "./markdownPlaceholder";
 import { BubbleMenuHost } from "./editor/BubbleMenuHost";
 import { EditorRegion } from "./editor/EditorRegion";
 import { registerMemoBodyFocus } from "./memoTitleFocus";
+import { registerEditFlush } from "@/state/editFlush";
 
 import "@milkdown/theme-nord/style.css";
 import "prosemirror-view/style/prosemirror.css";
@@ -76,6 +79,21 @@ export function MilkdownInner({ value, editable, onChange, onBlur, expanded, car
     onChangeRef.current = onChange;
     onBlurRef.current = onBlur;
   });
+  // cmd-z-undo n4: 마지막으로 내보낸 본문. flush와 리스너가 같은 글을 두 번 쓰지 않게 한다.
+  const lastEmittedRef = useRef(value);
+  const emit = (markdown: string) => {
+    if (markdown === lastEmittedRef.current) return;
+    lastEmittedRef.current = markdown;
+    onChangeRef.current(markdown);
+  };
+  const emitRef = useRef(emit);
+  useEffect(() => {
+    emitRef.current = emit;
+  });
+  // cmd-z-undo 웨이브 3: 마지막으로 내보낸 시점의 문서. 처음 값은 편집기가 뜬 직후 문서다.
+  // flush는 문자열이 아니라 이 문서로 판정한다 — 직렬화가 원문을 바꿔(끝 줄바꿈, `- `→`* `,
+  // 이스케이프) 치지 않고 닫아도 다른 글로 보이기 때문이다.
+  const lastDocRef = useRef<ProseNode | null>(null);
 
   const { get } = useEditor(
     (root) =>
@@ -97,11 +115,16 @@ export function MilkdownInner({ value, editable, onChange, onBlur, expanded, car
             },
           }));
           const l = ctx.get(listenerCtx);
-          l.markdownUpdated((_, markdown) => onChangeRef.current(markdown));
+          l.markdownUpdated((lctx, markdown) => {
+            lastDocRef.current = lctx.get(editorViewCtx).state.doc;
+            emitRef.current(markdown);
+          });
           // FEAT-card-entry-mode: 편집 진입(editable) 시 mount 직후 포커스 —
           // 더블클릭→첫 키스트로크 손실 방지. 제목 줄은 포커스를 뺏지 않는다(AC-2).
           l.mounted((mctx) => {
-            if (editable) mctx.get(editorViewCtx).focus();
+            const view = mctx.get(editorViewCtx);
+            lastDocRef.current = view.state.doc;
+            if (editable) view.focus();
           });
         })
         .config(nord)
@@ -133,6 +156,26 @@ export function MilkdownInner({ value, editable, onChange, onBlur, expanded, car
     });
     return () => registerMemoBodyFocus(cardId, null);
   }, [cardId, get]);
+
+  // cmd-z-undo n4: 편집 묶음을 닫기 직전 스토어가 부른다. 리스너의 0.2초 디바운스에 남은
+  // 본문을 지금 내보낸다 — 창을 닫으면 편집기가 destroy돼 그 글이 버려지기 때문이다.
+  useEffect(() => {
+    if (!editable) return;
+    return registerEditFlush(() => {
+      const editor = get();
+      if (!editor) return;
+      let markdown: string | undefined;
+      editor.action((ctx) => {
+        const { doc } = ctx.get(editorViewCtx).state;
+        // 마지막으로 내보낸 뒤 문서가 그대로면 쓸 것이 없다(치지 않고 닫기).
+        const last = lastDocRef.current;
+        if (last === null || doc.eq(last)) return;
+        markdown = ctx.get(serializerCtx)(doc);
+        lastDocRef.current = doc;
+      });
+      if (markdown !== undefined) emitRef.current(markdown);
+    });
+  }, [editable, get]);
 
   return (
     <>

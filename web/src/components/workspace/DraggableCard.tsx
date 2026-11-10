@@ -30,6 +30,7 @@ import { AIOptOutBadge } from "@/components/privacy/AIOptOutBadge";
 import { ExpandIcon, LockIcon } from "@/components/icons";
 import { useT } from "@/i18n/Provider";
 import { nextTiltAngle } from "./dragTilt";
+import { beginUndoGroup, endUndoGroup, type UndoGroupToken } from "@/state/ydoc/undo";
 
 const DRAG_THRESHOLD = 3; // px — 이 거리 넘으면 드래그로 인식
 
@@ -195,6 +196,23 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
   const [tiltActive, setTiltActive] = useState(false);
   // 안착 스프링. 안착 중 다시 잡으면 멈춰야 옛 스프링과 새 드래그가 같은 변수에 쓰지 않는다.
   const settleAnimRef = useRef<{ stop: () => void } | null>(null);
+  // cmd-z-undo n4: 드래그 1회 = 기록 1단계. 묶음은 첫 이동에서 열고 mouseup의 모든 길에서
+  // 닫는다. 휴지통·함 흡수·내보내기 드롭은 그 동작이 끝난 뒤(flyInto의 done) 닫는다.
+  const dragGroupRef = useRef<UndoGroupToken | null>(null);
+  const flyGroupsRef = useRef(new Set<UndoGroupToken>());
+  const dragListenersRef = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    const flyGroups = flyGroupsRef.current;
+    return () => {
+      // 언마운트 정리: 리스너를 떼고 아직 안 닫힌 묶음을 닫는다.
+      dragListenersRef.current?.();
+      dragListenersRef.current = null;
+      endUndoGroup(dragGroupRef.current);
+      dragGroupRef.current = null;
+      for (const t of flyGroups) endUndoGroup(t);
+      flyGroups.clear();
+    };
+  }, []);
   // FEAT-frame-feel T4: 판 드래그 종료 시 멤버들에 걸어 둔 안착 스프링들. 다시 잡으면
   // 옛 스프링을 멈춘다(FEAT-drag-tilt과 같은 규율).
   const wobbleSettleRef = useRef<{ stop: () => void } | null>(null);
@@ -639,6 +657,9 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
       const dy = ev.clientY - d.startY;
       if (!d.moved && Math.hypot(dx, dy) > DRAG_THRESHOLD) {
         d.moved = true;
+        // cmd-z-undo n4: 첫 이동에서 드래그 묶음을 연다. 여러 장 드래그는 이동 중에도 쓴다.
+        endUndoGroup(dragGroupRef.current);
+        dragGroupRef.current = beginUndoGroup();
         // 임계를 넘는 순간 카드가 떠오른다(lift). 묶음이면 선택 전체.
         setDragging(card.id, d.multi);
         if (willTilt) startTilt();
@@ -722,11 +743,18 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
       bumpScale: number,
       commit: () => Promise<unknown> | void,
       after?: () => void,
+      group?: UndoGroupToken | null,
     ) => {
       const cardEl = containerRef.current;
+      if (group) flyGroupsRef.current.add(group);
       const done = () => {
         releaseLift();
         after?.();
+        // cmd-z-undo n4: 드롭 동작(지우기·옮기기)이 끝난 뒤 드래그 묶음을 닫는다.
+        if (group) {
+          flyGroupsRef.current.delete(group);
+          endUndoGroup(group);
+        }
       };
       if (!cardEl || typeof cardEl.animate !== "function" || !targetEl) {
         void Promise.resolve(commit()).finally(done);
@@ -765,20 +793,23 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
     };
 
     // 함 위에서 놓았을 때 — 흡수 후 그 서브 캔버스로 이동.
-    const runAbsorb = (funnelId: string) =>
+    const runAbsorb = (funnelId: string, group: UndoGroupToken | null) =>
       flyInto(
         document.querySelector<HTMLElement>(`[data-card-id="${funnelId}"]`),
         1.08,
         () => moveCardToSubcanvas(card.id, funnelId),
+        undefined,
+        group,
       );
 
     // FEAT-eject: 브레드크럼 조각 위에서 놓았을 때 — 흡수의 역모션 후 상위 보드로.
-    const runEject = (crumbBoardId: string) =>
+    const runEject = (crumbBoardId: string, group: UndoGroupToken | null) =>
       flyInto(
         document.querySelector<HTMLElement>(`[data-crumb-board-id="${crumbBoardId}"]`),
         1.12,
         () => moveCardToBoard(card.id, crumbBoardId),
         () => setDropTargetCrumb(null),
+        group,
       );
 
     /**
@@ -786,7 +817,7 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
      * 다중이면 놓은 순간의 선택을 고정해 둔다. 240ms 모션 사이에 다른 카드를 누르면
      * 선택이 바뀌어, 그대로 removeSelected를 부르면 엉뚱한 카드를 지운다.
      */
-    const runTrash = (multi: boolean) => {
+    const runTrash = (multi: boolean, group: UndoGroupToken | null) => {
       const ids = multi ? useWorkspace.getState().selectedIds : [card.id];
       flyInto(
         document.querySelector<HTMLElement>('[data-dock-id="trash"]'),
@@ -796,6 +827,8 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
           if (multi) ws.removeSelected(ids);
           else ws.remove(card.id);
         },
+        undefined,
+        group,
       );
     };
 
@@ -815,6 +848,10 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
     const onUp = () => {
       const d = dragRef.current;
       dragRef.current = null;
+      dragListenersRef.current = null;
+      // cmd-z-undo n4: 이 드래그의 묶음 토큰. 아래 모든 길이 닫는다.
+      const group = dragGroupRef.current;
+      dragGroupRef.current = null;
       if (tiltRaf) {
         cancelAnimationFrame(tiltRaf);
         tiltRaf = 0;
@@ -829,6 +866,7 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
       // 다중선택 중 클릭만 했다면 단일 선택으로 환원 (Figma 스타일). lift 없었음.
       if (d && !d.moved && d.multi) {
         selectOne(card.id);
+        endUndoGroup(group);
         return;
       }
       // 드래그하지 않은 단순 클릭 — 정리할 lift 없음.
@@ -839,6 +877,7 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
         setDropTargetFrame(null);
         // 한 번 누르기는 선택까지다(2026-09-22 사용자 결정). 선택한 채로 글자를
         // 치면 제목 편집으로 들어간다 — useCardFlowShortcuts가 맡는다.
+        endUndoGroup(group);
         return;
       }
       // FEAT-trash-drag: 휴지통 위에서 놓았으면 흡수 모션 후 삭제(다중 선택 포함).
@@ -852,12 +891,12 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
         setDropTargetTrash(false);
         setDropTargetFrame(null);
         if (willWobble) endWobble();
-        runTrash(d.multi);
+        runTrash(d.multi, group);
         return;
       }
       // FEAT-eject: 브레드크럼 조각 위에서 놓았으면 역모션 후 상위 보드로 내보낸다(crumb 우선).
       if (!d.multi && hoveredCrumbId) {
-        runEject(hoveredCrumbId);
+        runEject(hoveredCrumbId, group);
         hoveredCrumbId = null;
         hoveredFunnelId = null;
         setDropTargetFunnel(null);
@@ -867,7 +906,7 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
       }
       // FEAT-subcanvas: 함 위에서 놓았으면 흡수 모션 후 그 서브 캔버스로 이동.
       if (!d.multi && hoveredFunnelId) {
-        runAbsorb(hoveredFunnelId);
+        runAbsorb(hoveredFunnelId, group);
         hoveredFunnelId = null;
         setDropTargetTrash(false);
         setDropTargetFrame(null);
@@ -948,10 +987,18 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
           snapMemo(card.id);
         }
       }
+      // cmd-z-undo n4: 보통 드롭은 마지막 쓰기(resolveMembership) 뒤에 묶음을 닫는다.
+      endUndoGroup(group);
     };
 
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
+    dragListenersRef.current = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      if (tiltRaf) cancelAnimationFrame(tiltRaf);
+      if (wobbleRaf) cancelAnimationFrame(wobbleRaf);
+    };
   };
 
   const onDoubleClick = (e: React.MouseEvent) => {

@@ -101,7 +101,17 @@ export function BlockMenu() {
       const tr = state.tr.insert(insertPos, parsedDoc.content);
       view.dispatch(tr.scrollIntoView());
       cursorPosRef.current = null;
+      // cmd-z-undo: 넣은 뒤 편집기에 포커스를 돌린다 — 포커스가 밖에 있으면 cmd+z가 편집기
+      // 기록에 닿지 않는다. 메모 창이 열려 있어 캔버스 cmd+z도 막혀 아무것도 안 된다.
+      view.focus();
     });
+  };
+
+  /** 대화상자가 닫힐 때 포커스를 메뉴 버튼(사라졌을 수 있다) 대신 편집기로 보낸다. */
+  const focusEditorOnClose = (e: Event) => {
+    e.preventDefault();
+    if (loading) return;
+    getEditor().action((ctx: Ctx) => ctx.get(editorViewCtx).focus());
   };
 
   /* ── 마운트 해제 정리(리뷰 P1-1: 마이크 누수) ───────────────────
@@ -301,6 +311,7 @@ export function BlockMenu() {
           <Dialog.Content
             className="fixed left-1/2 top-1/2 z-[var(--z-modal)] w-80 -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-bg p-3 shadow-card-lift focus:outline-none"
             aria-describedby={undefined}
+            onCloseAutoFocus={focusEditorOnClose}
           >
             <Dialog.Title className="mb-2 text-sm font-semibold text-text">
               {t("workspace.memoEditor.blockMenu.linkDialogTitle")}
@@ -359,6 +370,7 @@ export function BlockMenu() {
           <Dialog.Content
             className="fixed left-1/2 top-1/2 z-[var(--z-modal)] w-72 -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-bg p-3 shadow-card-lift focus:outline-none"
             aria-describedby={undefined}
+            onCloseAutoFocus={focusEditorOnClose}
           >
             <Dialog.Title className="mb-2 text-sm font-semibold text-text">
               {t("workspace.memoEditor.blockMenu.audioDialogTitle")}

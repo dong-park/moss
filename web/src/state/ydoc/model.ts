@@ -11,7 +11,7 @@ import {
   readFields,
   writeFields,
 } from "@moss/doc-model";
-import { transactLocal } from "./origin";
+import { transactLocal, type WriteOrigin } from "./origin";
 
 /**
  * FEAT-collab-auth n1 — 보드 Yjs 문서 구조 (D3).
@@ -132,14 +132,14 @@ export function yMapToBoard(map: Y.Map<unknown>): SharedBoard {
 
 /** 메모 하나를 전부 쓴다(생성·일괄 갱신). 로컬 origin 트랜잭션.
  * SharedNote도 받는다 — 문서는 lastVisitedAt(기기 로컬)을 쓰지 않는다. */
-export function putNote(doc: Y.Doc, note: Note | SharedNote): void {
+export function putNote(doc: Y.Doc, note: Note | SharedNote, origin?: WriteOrigin): void {
   transactLocal(doc, () => {
     const notes = notesMap(doc);
     const existing = notes.get(note.id);
     const map = existing ?? new Y.Map<unknown>();
     writeFields(map, note, NOTE_FIELDS);
     if (!existing) notes.set(note.id, map);
-  });
+  }, origin);
 }
 
 /**
@@ -151,6 +151,7 @@ export function updateNoteField<K extends keyof SharedNote>(
   noteId: string,
   field: K,
   value: SharedNote[K],
+  origin?: WriteOrigin,
 ): void {
   transactLocal(doc, () => {
     const notes = notesMap(doc);
@@ -159,7 +160,7 @@ export function updateNoteField<K extends keyof SharedNote>(
     if (!map) return;
     if (value === undefined) map.delete(field);
     else if (map.get(field) !== value) map.set(field, value);
-  });
+  }, origin);
 }
 
 /**
@@ -171,6 +172,7 @@ export function updateNoteFields(
   doc: Y.Doc,
   noteId: string,
   fields: Partial<SharedNote>,
+  origin?: WriteOrigin,
 ): void {
   transactLocal(doc, () => {
     const map = notesMap(doc).get(noteId);
@@ -182,13 +184,13 @@ export function updateNoteFields(
         map.set(field, value);
       }
     }
-  });
+  }, origin);
 }
 
-export function deleteNote(doc: Y.Doc, noteId: string): void {
+export function deleteNote(doc: Y.Doc, noteId: string, origin?: WriteOrigin): void {
   transactLocal(doc, () => {
     notesMap(doc).delete(noteId);
-  });
+  }, origin);
 }
 
 export function readNote(doc: Y.Doc, noteId: string): SharedNote | undefined {
@@ -203,20 +205,20 @@ export function readNotes(doc: Y.Doc): SharedNote[] {
 
 /* ── 연결선 ────────────────────────────────────────────────────── */
 
-export function putConnection(doc: Y.Doc, connection: Connection): void {
+export function putConnection(doc: Y.Doc, connection: Connection, origin?: WriteOrigin): void {
   transactLocal(doc, () => {
     const connections = connectionsMap(doc);
     const existing = connections.get(connection.id);
     const map = existing ?? new Y.Map<unknown>();
     writeFields(map, connection, CONNECTION_FIELDS);
     if (!existing) connections.set(connection.id, map);
-  });
+  }, origin);
 }
 
-export function deleteConnection(doc: Y.Doc, connectionId: string): void {
+export function deleteConnection(doc: Y.Doc, connectionId: string, origin?: WriteOrigin): void {
   transactLocal(doc, () => {
     connectionsMap(doc).delete(connectionId);
-  });
+  }, origin);
 }
 
 export function readConnections(doc: Y.Doc): Connection[] {
@@ -232,22 +234,23 @@ export function readConnection(doc: Y.Doc, connectionId: string): Connection | u
 /* ── 보드 메타 ─────────────────────────────────────────────────── */
 
 /** 보드 필드를 전부 쓴다. 보드당 문서 1개라 meta Y.Map 하나를 채운다. */
-export function putBoard(doc: Y.Doc, board: Board): void {
+export function putBoard(doc: Y.Doc, board: Board, origin?: WriteOrigin): void {
   transactLocal(doc, () => {
     writeFields(metaMap(doc), board, BOARD_FIELDS);
-  });
+  }, origin);
 }
 
 export function updateMetaField<K extends keyof SharedBoard>(
   doc: Y.Doc,
   field: K,
   value: SharedBoard[K],
+  origin?: WriteOrigin,
 ): void {
   transactLocal(doc, () => {
     const meta = metaMap(doc);
     if (value === undefined) meta.delete(field);
     else meta.set(field, value);
-  });
+  }, origin);
 }
 
 export function readBoard(doc: Y.Doc): SharedBoard {
@@ -257,11 +260,16 @@ export function readBoard(doc: Y.Doc): SharedBoard {
 /* ── 첨부 파일 매핑 (n10) ──────────────────────────────────────── */
 
 /** 로컬 참조(`opfs:<file>`)에 서버 fileId를 적는다. 업로드 성공 때만 부른다. */
-export function setDocFile(doc: Y.Doc, localRef: string, fileId: string): void {
+export function setDocFile(
+  doc: Y.Doc,
+  localRef: string,
+  fileId: string,
+  origin?: WriteOrigin,
+): void {
   transactLocal(doc, () => {
     const files = filesMap(doc);
     if (files.get(localRef) !== fileId) files.set(localRef, fileId);
-  });
+  }, origin);
 }
 
 /** 로컬 참조에 매인 서버 fileId. 아직 업로드 전이거나 실패면 undefined. */

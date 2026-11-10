@@ -7,8 +7,9 @@
  * 충돌 배너)는 걷어낸다(spec §7). 같은 기기의 탭 2개가 같은 보드를 열면
  * Yjs 업데이트를 BroadcastChannel로 그대로 주고받아 문서가 수렴한다.
  *
- *  - 발신: 활성 보드 Y.Doc의 `update` 이벤트 중 로컬 origin(LOCAL_ORIGIN)만
- *    방송한다. y-indexeddb 복원·원격 적용은 재방송하지 않는다(origin이 다르다).
+ *  - 발신: 활성 보드 Y.Doc의 `update` 이벤트 중 이 탭의 쓰기만 방송한다 —
+ *    LOCAL_ORIGIN, UNTRACKED_ORIGIN, 이 탭 보드 UndoManager(cmd-z-undo n3).
+ *    y-indexeddb 복원·원격 적용은 재방송하지 않는다(origin이 다르다).
  *  - 수신: 같은 보드 키의 업데이트를 채널 origin으로 적용한다. 그 origin은
  *    LOCAL_ORIGIN이 아니라서 스토어 반영 observer(n3의 bindActiveDocReflection)가
  *    정상적으로 통과시킨다.
@@ -17,7 +18,8 @@
  * ───────────────────────────────────────────────────────────── */
 
 import * as Y from "yjs";
-import { LOCAL_ORIGIN } from "../ydoc/origin";
+import { isLocalOrigin } from "../ydoc/origin";
+import { isBoardUndoManager } from "../ydoc/undo";
 
 const CHANNEL_NAME = "moss-ydoc-sync";
 
@@ -26,6 +28,14 @@ export const MAX_UPDATE_BYTES = 10 * 1024 * 1024;
 
 /** 채널로 적용한 업데이트의 origin — 로컬이 아님을 표시(재방송·반영 구분). */
 const CHANNEL_ORIGIN: unique symbol = Symbol("moss-channel-origin");
+
+/**
+ * 같은 기기 다른 탭에서 온 변경인가. 탭끼리는 Dexie를 함께 쓴다 — 휴지통과 기록 보관은
+ * 변경을 만든 탭이 맞추고, 받는 탭은 휴지통을 만지지 않는다(cmd-z-undo 웨이브 4 리뷰 W4-4).
+ */
+export function isChannelOrigin(origin: unknown): boolean {
+  return origin === CHANNEL_ORIGIN;
+}
 
 export type YDocSyncMsg = {
   type: "ydoc-update";
@@ -76,8 +86,9 @@ export function attachLiveDoc(doc: Y.Doc, key: string): void {
   currentDoc = doc;
   currentKey = key;
   const onUpdate = (update: Uint8Array, origin: unknown) => {
-    // 로컬 origin만 방송 — y-indexeddb 복원·채널 적용은 재방송하지 않는다.
-    if (origin !== LOCAL_ORIGIN) return;
+    // 이 탭의 쓰기만 방송 — 기록하는 로컬·기록 안 하는 로컬·이 탭 UndoManager의
+    // 되돌리기(cmd-z-undo n3). y-indexeddb 복원·채널 적용·원격은 재방송하지 않는다.
+    if (!isLocalOrigin(origin) && !isBoardUndoManager(origin)) return;
     postUpdate(key, update);
   };
   doc.on("update", onUpdate);

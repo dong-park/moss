@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   __internal,
+  __trashIdleForTest,
   SYSTEM_BOARD_ID,
   useWorkspace,
   type Card,
@@ -571,7 +572,7 @@ describe("함 삭제 5초 undo (#1)", () => {
     ).toBe(true);
   });
 
-  it("blob 삭제는 undo 만료까지 연기 — 삭제 직후엔 purge 안 하고, clear(포기) 시 purge", async () => {
+  it("blob 삭제는 undo 만료까지 연기 — 삭제 직후엔 안 지우고, clear(포기) 시 파일 규칙으로 지운다", async () => {
     await useStorage.getState().init();
     await useWorkspace.getState().createBoard("부모");
     const funnelId = useWorkspace.getState().createSubcanvas(0, 0);
@@ -580,20 +581,35 @@ describe("함 삭제 5초 undo (#1)", () => {
     await waitFor(() =>
       useWorkspace.getState().boards.some((b) => b.id === childRef),
     );
+    // 서브 보드 안 사진 메모 — 미러 행만 가리킨다.
+    await useStorage.getState().saveNote({
+      id: "photo-in-child",
+      boardId: childRef,
+      kind: "photo",
+      attachmentRef: "opfs:child.png",
+      mediaType: "image/png",
+    });
 
-    const purgeSpy = vi.spyOn(useStorage.getState(), "purgeAttachments");
+    const purged: string[] = [];
+    const purgeSpy = vi
+      .spyOn(useStorage.getState(), "purgeAttachments")
+      .mockImplementation(async (notes) => {
+        for (const n of notes) if (n.attachmentRef) purged.push(n.attachmentRef);
+      });
 
     useWorkspace.getState().selectOne(funnelId);
     useWorkspace.getState().removeSelected();
     await waitFor(() => useWorkspace.getState().pendingSubcanvasUndo !== null);
+    await __trashIdleForTest();
 
-    // 삭제 직후: blob purge는 아직 호출되지 않아야 한다(undo 창 동안 보존).
-    expect(purgeSpy).not.toHaveBeenCalled();
+    // 삭제 직후: undo 창 동안 스냅샷이 파일을 쥔다(웨이브 5 리뷰 W5-1).
+    expect(purged).toEqual([]);
 
-    // 포기(×) → 보류 blob 정리 호출 + 스냅샷 비움
+    // 포기(×) → 스냅샷 비움, 아무도 안 가리키는 파일을 지운다.
     useWorkspace.getState().clearSubcanvasUndo();
-    expect(purgeSpy).toHaveBeenCalledTimes(1);
     expect(useWorkspace.getState().pendingSubcanvasUndo).toBeNull();
+    await __trashIdleForTest();
+    expect(purged).toEqual(["opfs:child.png"]);
 
     purgeSpy.mockRestore();
   });

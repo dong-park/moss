@@ -22,8 +22,18 @@ import {
   cancelPersist,
   flushCard,
   flushAll,
+  isPersistInFlight,
+  persistSettled,
+  trackConnectionMirrorWrite,
+  trackPersist,
 } from "./cardPersist";
-import { initLiveSync, attachLiveDoc, broadcastDocWrite, notifyNoteChanges } from "./db/liveSync"; // W8/n3: 다중 탭 동기화
+import {
+  initLiveSync,
+  attachLiveDoc,
+  broadcastDocWrite,
+  isChannelOrigin,
+  notifyNoteChanges,
+} from "./db/liveSync"; // W8/n3: 다중 탭 동기화
 import {
   activateBoardDoc,
   getActiveBoardDoc,
@@ -39,6 +49,7 @@ import {
   updateNoteField,
   updateNoteFields,
   deleteNote as deleteNoteDoc,
+  deleteConnection as deleteConnectionDoc,
   putBoard as putBoardDoc,
   notesMap,
   connectionsMap,
@@ -51,7 +62,52 @@ import {
   toSharedNote,
   type SharedNote,
 } from "./ydoc/model";
-import { isRemoteTransaction, transactLocal } from "./ydoc/origin";
+import {
+  currentWriteOrigin,
+  isRemoteTransaction,
+  LOCAL_ORIGIN,
+  transactLocal,
+  UNTRACKED_ORIGIN,
+  withWriteOrigin,
+  type WriteOrigin,
+} from "./ydoc/origin";
+import { runEditFlush } from "./editFlush";
+import {
+  addFileStep,
+  addTrashStep,
+  beginUndoGroup,
+  captureUndoStep,
+  createBoardUndo,
+  disposeActiveBoardUndo,
+  disposeAllBoardUndo,
+  dropTrashStep,
+  endUndoGroup,
+  getBoardUndoKey,
+  isBoardUndoManager,
+  openUndoStep,
+  readFileStep,
+  readTrashStep,
+  registerUndoStepHooks,
+  trashActionFor,
+  type TrashStepEntry,
+  type UndoDirection,
+  type UndoGroupToken,
+  type UndoStackItem,
+} from "./ydoc/undo";
+import { liveFileRefs, setPendingFileRefs } from "./undoFiles";
+import {
+  applyUndoTrash,
+  archiveMirror,
+  enqueueTrashJob,
+  parkVanishedConnections,
+  runTrashJob,
+  trackTrashWrite,
+  trashIdle,
+  trashNotesFromDoc,
+  untrashConnections,
+  untrashOnBoard,
+  type DocTrashEntry,
+} from "./undoTrash";
 import type { MemoColor } from "@/components/workspace/memoVariety";
 import {
   clearSharedSnapshots,
@@ -316,19 +372,57 @@ function fitFrameHeight(width: number, bg: { w: number; h: number }): number {
   return clamp(Math.round((width * bg.h) / bg.w), FRAME_MIN_HEIGHT, CARD_MAX_HEIGHT);
 }
 
-/** 판 배경 파일 삭제. 실패는 무시하고 고아로 둔다. */
-function dropFrameBackgroundFile(ref: string | undefined): void {
-  if (!ref) return;
-  void useStorage
-    .getState()
-    .purgeAttachments([{ attachmentRef: ref } as Note])
-    .catch(() => undefined);
+/**
+ * cmd-z-undo n6: 사진 파일 청소 — 파일 규칙(undoFiles.liveFileRefs) 넷 가운데 아무도 안 가리키는
+ * 파일만 지운다. 규칙을 보기 전에 예약 미러 쓰기를 먼저 내보낸다 — 안 내보내면 낡은 미러가 옛
+ * ref를 0.3초 더 가리켜 옛 파일을 못 지운다. 휴지통 쓰기 차례에 넣어 앞서 건 휴지통 쓰기가 끝난
+ * 뒤 본다. 실패는 무시하고 고아로 둔다.
+ */
+function sweepFiles(refs: readonly (string | undefined)[]): void {
+  const list = [...new Set(refs.filter((r): r is string => !!r))];
+  if (list.length === 0) return;
+  if (!useStorage.getState().initialized) return;
+  void enqueueTrashJob(async () => {
+    const storage = useStorage.getState();
+    if (!storage.initialized) return;
+    await flushAll();
+    const live = await liveFileRefs(list);
+    const dead = list.filter((r) => !live.has(r));
+    if (dead.length === 0) return;
+    await storage.purgeAttachments(dead.map((ref) => ({ attachmentRef: ref }) as Note));
+  });
 }
-/** 새 ref 저장(디바운스)이 끝난 뒤 옛 파일을 지운다 — 저장 전에 닫혀도 행이 지워진 파일을 가리키지 않게. */
-function dropFrameBackgroundFileAfterSave(id: string, ref: string | undefined): void {
-  void flushCard(id)
-    .catch(() => undefined)
-    .then(() => dropFrameBackgroundFile(ref));
+
+/**
+ * 웨이브 5 리뷰(W5-1): 함 삭제는 미러 행을 지우고 카드를 5초 되돌리기 스냅샷에만 둔다. 그 스냅샷과,
+ * 지우기·되살리기가 도는 동안의 틈이 가리키는 사진 파일을 파일 규칙 5번으로 건다. 스냅샷을 버릴
+ * 때는 subcanvasFileRefs를 sweepFiles로 넘겨 파일 규칙으로 다시 판정한다 — 남은 기록 단계가
+ * 쥔 파일은 남는다.
+ */
+const funnelFilesInFlight = new Set<readonly (string | undefined)[]>();
+
+function subcanvasFileRefs(p: PendingSubcanvasUndo): (string | undefined)[] {
+  return [...p.funnelNotes, ...p.notes].map((n) => n.attachmentRef);
+}
+
+setPendingFileRefs(function* () {
+  const pending = useWorkspace.getState().pendingSubcanvasUndo;
+  if (pending) yield* subcanvasFileRefs(pending);
+  for (const refs of funnelFilesInFlight) yield* refs;
+});
+
+/**
+ * cmd-z-undo n6: 동작이 놓은 사진 파일. 기록 단계에 들었으면 그 단계가 쥐고(되살릴 ref까지),
+ * 단계가 기록에서 빠질 때 청소한다. 기록에 안 들었으면(기록 안 하는 동작, 기록 없음) 놓은
+ * 파일을 바로 청소한다.
+ */
+function holdOrSweepFiles(
+  item: UndoStackItem | null,
+  held: readonly (string | undefined)[],
+  released: readonly (string | undefined)[],
+): void {
+  if (item) addFileStep(item, held);
+  else sweepFiles(released);
 }
 export const FRAME_DEFAULT_WIDTH = 320;
 export const FRAME_DEFAULT_HEIGHT = 220;
@@ -1378,7 +1472,8 @@ function persistCardDexie(card: Card, boardId: string | null): Promise<Note> {
     const embedInput = card.title ? `${card.title}\n\n${content}` : content;
     enqueueEmbedRaw(card.id, embedInput, !!card.aiOptOut);
   }
-  return storage.saveNote({
+  // 웨이브 5 리뷰(W5-2): 바로 시작한 쓰기도 진행 중으로 센다 — 보드 이전이 이 쓰기 뒤에 미러를 고친다.
+  return trackPersist(card.id, storage.saveNote({
     id: card.id,
     boardId,
     kind: card.kind,
@@ -1401,7 +1496,7 @@ function persistCardDexie(card: Card, boardId: string | null): Promise<Note> {
     title: card.title,
     aiOptOut: !!card.aiOptOut,
     rotation: card.rotation ?? 0,
-  });
+  }));
 }
 
 /* ─────────── n23 작업 2: 공유 문서 쓰기의 단일 통로 ───────────
@@ -1413,16 +1508,30 @@ function persistCardDexie(card: Card, boardId: string | null): Promise<Note> {
 
 /** 카드의 공유 필드를 활성 문서에 반영한다(없으면 생성). 문서에 안 실리는 기기 로컬
  * 필드(lastVisitedAt)는 쓰지 않는다. 생성 시각은 불변이라 기존 메모에는 갱신하지 않는다. */
-function writeCardToDoc(card: Card, boardId: string | null): void {
-  withActiveDoc(boardId, (doc) => writeCardToDocHandle(doc, card, boardId));
+function writeCardToDoc(card: Card, boardId: string | null, origin?: WriteOrigin): void {
+  withActiveDoc(boardId, (doc) => writeCardToDocHandle(doc, card, boardId, origin));
+}
+
+/**
+ * cmd-z-undo 웨이브 4 리뷰 2바퀴(W4-7): 보드에 있는 카드의 미러 행을 지금 카드 값으로 바로 쓴다.
+ * 예약 쓰기는 버린다. 휴지통 행을 뺀 뒤에 부른다 — 휴지통 행이 있는 동안 돈 쓰기는 saveNote가
+ * 건너뛰었다(휴지통이 이긴다).
+ */
+async function writeMirrorNow(ids: string[], boardId: string | null): Promise<void> {
+  for (const id of ids) {
+    const card = useWorkspace.getState().cards.find((c) => c.id === id);
+    if (!card) continue;
+    cancelPersist(id);
+    await persistCardDexie(card, boardId);
+  }
 }
 
 function persistCard(
   card: Card,
   boardId: string | null,
-  opts?: { doc?: boolean },
+  opts?: { doc?: boolean; origin?: WriteOrigin },
 ): Promise<Note> {
-  if (opts?.doc !== false) writeCardToDoc(card, boardId);
+  if (opts?.doc !== false) writeCardToDoc(card, boardId, opts?.origin);
   return persistCardDexie(card, boardId);
 }
 
@@ -1495,11 +1604,24 @@ function withActiveDoc(
  * n23 재심사 2R-2: 문서 쓰기 단일 출구가 갱신하고 삭제 경로가 버린다. */
 
 /** 문서 하나에 카드 공유 필드를 쓴다(없으면 생성). 활성/비활성 보드 공통 경로. */
-function writeCardToDocHandle(doc: Y.Doc, card: Card, boardId: string | null): void {
+function writeCardToDocHandle(
+  doc: Y.Doc,
+  card: Card,
+  boardId: string | null,
+  origin?: WriteOrigin,
+): void {
   const full = initialNoteFromCard(card, boardId);
   const shared = toSharedNote(full);
+  const write = (fields: Partial<SharedNote>) =>
+    // cmd-z-undo n4: 수정 시각만 바뀐 쓰기는 기록 안 하는 origin(T20 첫째).
+    updateNoteFields(
+      doc,
+      card.id,
+      fields,
+      onlyStampChanges(doc, card.id, fields) ? UNTRACKED_ORIGIN : origin,
+    );
   if (notesMap(doc).get(card.id) === undefined) {
-    putNoteDoc(doc, full);
+    putNoteDoc(doc, full, origin);
     setSharedSnapshot(card.id, shared);
     return;
   }
@@ -1508,25 +1630,60 @@ function writeCardToDocHandle(doc: Y.Doc, card: Card, boardId: string | null): v
     // 스냅샷이 없으면(재로드 뒤 첫 갱신) 전체를 갱신한다 — 생성 시각은 보존.
     const fields: Partial<SharedNote> = { ...shared };
     delete fields.createdAt;
-    updateNoteFields(doc, card.id, fields);
+    write(fields);
     setSharedSnapshot(card.id, shared);
     return;
   }
   // n23 P2-11: 스냅샷과 달라진 필드만 쓴다. updateNoteFields가 이미 문서와 같은
   // 값은 건너뛰므로, 원격이 바꾼 width 등을 로컬 낡은 값으로 덮지 않는다.
+  // cmd-z-undo 웨이브 3: 기록 안 하는 동작(자동 측정) 안이면 그 동작의 자기 칸만 쓴다.
+  // 스토어에만 둔 다른 칸(드래그·크기 조절 중 x 등)을 기록 밖으로 쓰지 않는다.
+  const own = untrackedOwnFields;
   const diff: Partial<SharedNote> = {};
   const prevRec = prev as Record<string, unknown>;
   for (const [field, value] of Object.entries(shared)) {
     if (field === "createdAt") continue;
+    if (own && !own.includes(field)) continue;
     if (prevRec[field] !== value) (diff as Record<string, unknown>)[field] = value;
   }
   for (const field of Object.keys(prevRec)) {
+    if (own && !own.includes(field)) continue;
     if (!(field in shared) && prevRec[field] !== undefined) {
       (diff as Record<string, unknown>)[field] = undefined;
     }
   }
-  if (Object.keys(diff).length > 0) updateNoteFields(doc, card.id, diff);
-  setSharedSnapshot(card.id, shared);
+  if (Object.keys(diff).length > 0) write(diff);
+  // 자기 칸만 새 값으로 바꾸고 나머지는 이전 값으로 둔다 — 다음 기록 쓰기가 남은 칸을 쓴다.
+  setSharedSnapshot(card.id, own ? withOwnFieldsFrom(prev, shared, own) : shared);
+}
+
+/** 스냅샷 prev에서 own 칸만 next 값으로 바꾼 사본. next에 없는 칸은 지운다. */
+function withOwnFieldsFrom(
+  prev: SharedNote,
+  next: SharedNote,
+  own: readonly string[],
+): SharedNote {
+  const out = { ...prev } as Record<string, unknown>;
+  const nextRec = next as Record<string, unknown>;
+  for (const field of own) {
+    if (field in nextRec) out[field] = nextRec[field];
+    else delete out[field];
+  }
+  return out as SharedNote;
+}
+
+/** 문서와 비교해 바뀌는 칸이 updatedAt뿐인가. 바뀌는 칸이 없으면 false(쓸 것이 없다). */
+function onlyStampChanges(doc: Y.Doc, noteId: string, fields: Partial<SharedNote>): boolean {
+  const map = notesMap(doc).get(noteId) as Y.Map<unknown> | undefined;
+  if (!map) return false;
+  let stamp = false;
+  for (const [field, value] of Object.entries(fields)) {
+    const changes = value === undefined ? map.has(field) : map.get(field) !== value;
+    if (!changes) continue;
+    if (field !== "updatedAt") return false;
+    stamp = true;
+  }
+  return stamp;
 }
 
 /** 보드 전환·로드 시 활성 문서에 원격 반영 observer를 건다. 이전 것을 해제한다. */
@@ -1561,11 +1718,339 @@ async function loadBoardCards(storageBid: string | null): Promise<Card[]> {
  * observer·liveSync attach 세 배선을 함께 소유한다 — 보드 전환 지점은 이 함수만 부른다.
  */
 async function activateBoard(storageBid: string | null) {
+  // cmd-z-undo n3: 보드를 떠나면(같은 보드 재로드도) 그 보드 기록을 버린다(D6 B).
+  // 새 기록은 불러오기·정리·시드가 끝난 뒤 openBoardHistory가 만든다.
+  disposeActiveBoardUndo();
   const handle = await activateBoardDoc(storageBid);
   bindActiveDocReflection(handle.doc, storageBid);
   attachLiveDoc(handle.doc, docKeyForBoard(storageBid));
   return handle;
 }
+
+/** cmd-z-undo n3: 펜 모드 묶음 토큰. 묶음은 스토어가 소유하고 penMode 상태를 따른다. */
+let penGroupToken: UndoGroupToken | null = null;
+
+/**
+ * cmd-z-undo n3: 활성 보드의 캔버스 기록을 만든다. 불러오기·정리·시드가 끝난 뒤에만 부른다.
+ * 펜 모드가 켜진 채 보드를 바꿨으면 새 기록에서 펜 묶음을 다시 연다. 옛 보드 토큰은
+ * 세대가 달라 늦게 끝나도 무시된다.
+ */
+function openBoardHistory(storageBid: string | null): void {
+  if (!isActiveBoard(storageBid)) return;
+  const handle = getActiveBoardDoc();
+  if (!handle) return;
+  createBoardUndo(docKeyForBoard(storageBid), handle.doc);
+  penGroupToken = useWorkspace.getState().penMode ? beginUndoGroup() : null;
+  reopenEditGroup();
+}
+
+/* ─────────── cmd-z-undo n4: 동작 하나 = 기록 1단계 ───────────
+ *
+ * 문서에 쓰는 사용자 동작(스토어 액션)은 recorded()로 감싼다. 가장 바깥 액션의 진입에서만
+ * openUndoStep으로 새 단계를 연다 — 안쪽에서 부르는 다른 액션(setFaceHeight 안의
+ * resolveMembership 등)은 단계를 열지 않는다. openUndoStep은 묶음 안(깊이 > 0)이거나
+ * 기록 안 하는 origin 문맥이면 아무것도 안 한다(undo.ts). 그래서 브리지·자동 측정처럼
+ * 기록 안 하는 문맥에서 들어온 액션은 단계를 가르지 않는다.
+ *
+ * 편집 묶음은 스토어가 소유한다: editingId나 expandedCardId가 가리키는 카드마다 연다.
+ * 액션 안의 상태 변화는 액션이 끝난 뒤 한 번에 맞춘다. 카드를 만드는 액션은 시작할 때
+ * 열린 편집 묶음을 먼저 닫는다 — 생성이 1단계, 그 뒤 편집이 1단계다.
+ */
+let actionDepth = 0;
+
+function recorded<A extends unknown[], R>(
+  fn: (...args: A) => R,
+  opts?: { creates?: boolean },
+): (...args: A) => R {
+  return (...args: A): R => {
+    if (actionDepth === 0) {
+      const origin = currentWriteOrigin();
+      if (opts?.creates && origin !== UNTRACKED_ORIGIN) closeEditGroup();
+      openUndoStep(origin);
+    }
+    actionDepth += 1;
+    try {
+      return fn(...args);
+    } finally {
+      actionDepth -= 1;
+      if (actionDepth === 0) syncEditGroup();
+    }
+  };
+}
+
+/**
+ * 바깥 사용자 동작 하나 — 화면이 스토어 액션 여러 개를 부르는 손짓(붙여넣기, 도크 버튼 등)을
+ * 기록 1단계로 묶는다. 안쪽 액션은 단계를 다시 열지 않는다. 편집 묶음은 끝난 뒤 맞춘다 —
+ * 새 카드의 편집 묶음은 생성 단계가 닫힌 뒤 열린다. 동기 구간에만 걸린다.
+ */
+export function runAsUserAction<R>(fn: () => R, opts?: { creates?: boolean }): R {
+  return recorded(fn, opts)();
+}
+
+/**
+ * 앞 동작에 이어 쓴다 — 안쪽 액션이 새 단계를 열지 않는다. 쓰기는 yjs가 맨 위 단계에 합친다
+ * (captureTimeout 안일 때). 부르는 쪽은 맨 위 단계가 자기 앞 쓰기 그대로인지(undoTopMarker)
+ * 먼저 확인한다. 열어 두는 묶음이 없어서 다른 동작은 늘 스스로 단계를 연다.
+ */
+export function continueUserAction<R>(fn: () => R): R {
+  actionDepth += 1;
+  try {
+    return fn();
+  } finally {
+    actionDepth -= 1;
+    if (actionDepth === 0) syncEditGroup();
+  }
+}
+
+/** 기록 안 하는 동작의 자기 칸. 그 문맥에서 문서 쓰기(diff 갈래)는 이 칸만 쓴다. null이면 제한 없음. */
+let untrackedOwnFields: readonly string[] | null = null;
+
+/**
+ * 기록 안 하는 동작 — 동기 구간 전체(안쪽 액션 포함)를 기록 안 하는 origin 문맥으로 돌린다.
+ * ownFields를 주면 그 동작이 쓰는 칸만 문서에 쓴다.
+ */
+function untracked<A extends unknown[], R>(
+  fn: (...args: A) => R,
+  ownFields?: readonly string[],
+): (...args: A) => R {
+  return (...args: A): R =>
+    withWriteOrigin(UNTRACKED_ORIGIN, () => {
+      if (!ownFields) return fn(...args);
+      const prev = untrackedOwnFields;
+      untrackedOwnFields = ownFields;
+      try {
+        return fn(...args);
+      } finally {
+        untrackedOwnFields = prev;
+      }
+    });
+}
+
+/** 열린 편집 묶음 — 카드 id와 소유자 토큰. */
+let editGroup: { cardId: string; token: UndoGroupToken } | null = null;
+let syncingEdit = false;
+
+function editTarget(s: WorkspaceState): string | null {
+  const id = s.expandedCardId ?? s.editingId;
+  return id && s.cards.some((c) => c.id === id) ? id : null;
+}
+
+/** 기록 안 하는 origin 문맥이 바꾼 상태로 여닫는 묶음은 사용자 단계를 끊지 않는다(quiet). */
+function editGroupOpts(): { quiet: boolean } {
+  return { quiet: currentWriteOrigin() === UNTRACKED_ORIGIN };
+}
+
+/** 편집 묶음을 닫는다. 편집기의 남은 본문을 먼저 내보내고(묶음 안 쓰기), 그 뒤 닫는다. */
+function closeEditGroup(): void {
+  const g = editGroup;
+  if (!g) return;
+  editGroup = null;
+  const wasSyncing = syncingEdit;
+  syncingEdit = true;
+  try {
+    // flush가 내보내는 글은 언제나 사용자가 친 글이다. 브리지처럼 기록 안 하는 문맥이
+    // 묶음을 닫아도 그 글은 기록에 든다(코드 리뷰 웨이브 3 수정 리포트의 열린 질문).
+    withWriteOrigin(LOCAL_ORIGIN, runEditFlush);
+  } finally {
+    syncingEdit = wasSyncing;
+  }
+  endUndoGroup(g.token, editGroupOpts());
+}
+
+/** 편집 묶음을 지금 상태에 맞춘다 — 대상이 바뀌면 앞 묶음을 닫고 새 묶음을 연다. */
+function syncEditGroup(): void {
+  if (actionDepth > 0 || syncingEdit) return;
+  syncingEdit = true;
+  try {
+    // flush 쓰기가 상태를 또 바꿀 수 있어 몇 번 다시 본다.
+    for (let i = 0; i < 4; i++) {
+      const want = editTarget(useWorkspace.getState());
+      if ((editGroup?.cardId ?? null) === want) break;
+      closeEditGroup();
+      if (want) editGroup = { cardId: want, token: beginUndoGroup(editGroupOpts()) };
+    }
+  } finally {
+    syncingEdit = false;
+  }
+}
+
+/** 보드 기록을 새로 만들면 옛 묶음 토큰은 무효다 — 지금 상태로 다시 연다. */
+function reopenEditGroup(): void {
+  editGroup = null;
+  syncEditGroup();
+}
+
+/* ─────────── cmd-z-undo n5: 되돌리기와 휴지통·미러 ───────────
+ *
+ * 메모는 보드, 휴지통, 기록 보관 가운데 한 곳에만 있다(스펙 「상태 모델」). 관찰자는 이 탭의
+ * 되돌리기·다시 실행이 바꾼 메모를 모으기만 하고, 단계가 적용된 직후(stack-item-popped)
+ * applyUndoStep이 단계 meta로 휴지통을 맞춘다. 되돌리기는 반대로, 다시 실행은 그대로다.
+ */
+/**
+ * 웨이브 4 리뷰(W4-2·W4-3): 트랜잭션 직전 보드 문서 값. 휴지통 행은 지우기 직전 문서 값으로
+ * 만든다 — 미러는 0.3초 늦고 단계 meta는 그 단계 때의 옛 값이다. 지워진 Y.Map은 관찰자에서
+ * 더 읽을 수 없어 트랜잭션이 시작될 때 읽어 둔다. 연결선은 다른 기기·되돌리기 트랜잭션마다,
+ * 메모는 이 탭의 되돌리기·다시 실행 트랜잭션에서만 읽는다(메모 5000장에 약 11ms).
+ */
+type PreTransaction = {
+  connections: Map<string, Connection>;
+  notes: Map<string, SharedNote> | null;
+};
+const preTransaction = new WeakMap<Y.Transaction, PreTransaction>();
+
+type UndoTouched = {
+  doc: Y.Doc;
+  /** 사라진 메모 id → 그 카드의 기기 로컬 lastVisitedAt. */
+  vanished: Map<string, number | undefined>;
+  changed: Set<string>;
+  pre: PreTransaction | null;
+};
+let undoTouched: UndoTouched | null = null;
+
+function undoTouchedFor(doc: Y.Doc, transaction: Y.Transaction): UndoTouched {
+  if (!undoTouched || undoTouched.doc !== doc) {
+    undoTouched = { doc, vanished: new Map(), changed: new Set(), pre: null };
+  }
+  undoTouched.pre = preTransaction.get(transaction) ?? undoTouched.pre;
+  return undoTouched;
+}
+
+/** 트랜잭션 직전 문서에 있었고 지금 문서에 없는 연결선. touching을 주면 그 메모에 닿은 것만. */
+function vanishedConnections(
+  doc: Y.Doc,
+  pre: PreTransaction | null | undefined,
+  touching?: string,
+): Connection[] {
+  if (!pre) return [];
+  const out: Connection[] = [];
+  for (const c of pre.connections.values()) {
+    if (touching !== undefined && c.sourceNoteId !== touching && c.targetNoteId !== touching) continue;
+    if (!readConnection(doc, c.id)) out.push(c);
+  }
+  return out;
+}
+
+/** 보드 문서에서 ids 메모에 닿은 연결선. 스토어는 양 끝이 지금 카드인 선만 들고 있어 문서를 훑는다. */
+function docConnectionsTouching(doc: Y.Doc, ids: ReadonlySet<string>): Connection[] {
+  return readConnections(doc).filter((c) => ids.has(c.sourceNoteId) || ids.has(c.targetNoteId));
+}
+
+/** 단계 meta에 적을 메모 내용 — 문서 값에 기기 로컬 lastVisitedAt을 합친다. */
+function trashStepNote(doc: Y.Doc, id: string, card: Card | undefined): Note | null {
+  const shared = readNote(doc, id);
+  if (!shared) return null;
+  return { ...shared, lastVisitedAt: card?.lastVisitedAt ?? Date.now() } as Note;
+}
+
+/**
+ * 스토어 연결선을 문서에 맞춘다. 양 끝 카드가 늦게 반영돼 건너뛴 선을 더하고, 끝 카드가
+ * 사라진 선을 뺀다. 문서 쓰기 전인 스토어 선(connectCards의 await 앞)은 그대로 둔다.
+ */
+function syncConnectionsFromDoc(doc: Y.Doc): void {
+  const state = useWorkspace.getState();
+  const ids = new Set(state.cards.map((c) => c.id));
+  const both = (c: Connection) => ids.has(c.sourceNoteId) && ids.has(c.targetNoteId);
+  const byId = new Map(state.connections.filter(both).map((c) => [c.id, c] as const));
+  for (const c of readConnections(doc)) {
+    if (c.status === "active" && both(c) && !byId.has(c.id)) byId.set(c.id, c);
+  }
+  const next = [...byId.values()];
+  if (next.length === state.connections.length && next.every((c, i) => c === state.connections[i])) {
+    return;
+  }
+  const selected = state.selectedConnectionId;
+  useWorkspace.setState({
+    connections: next,
+    selectedConnectionId: selected && next.some((c) => c.id === selected) ? selected : null,
+  });
+}
+
+/**
+ * 단계가 적용된 직후 — 바뀐 카드의 기준값·수정 시각을 맞추고, 사라진 메모를 단계 meta대로
+ * 휴지통에 넣거나 기록 보관한다. 다시 나타난 메모의 휴지통 빼기는 관찰자가 한다.
+ */
+function applyUndoStep(item: Parameters<typeof readTrashStep>[0], direction: UndoDirection): void {
+  const touched = undoTouched;
+  undoTouched = null;
+  const doc = getActiveBoardDoc()?.doc;
+  if (!doc) return;
+  if (touched && touched.doc === doc) {
+    const now = Date.now();
+    const boardId = useWorkspace.getState().currentBoardId;
+    for (const id of touched.changed) {
+      if (!readNote(doc, id)) continue;
+      // D3 A: 되돌린 카드의 수정 시각은 지금이다. 기록하지 않는 쓰기라 단계를 늘리지 않는다.
+      updateNoteField(doc, id, "updatedAt", now, UNTRACKED_ORIGIN);
+      // 실패 모드 17: 문서 쓰기 기준값을 문서 값으로 맞춘다. 안 맞추면 되돌린 뒤 원래 값을 다시
+      // 골라도 기준값과 같아 쓰기가 빠진다. 문서에서 읽어 만든 카드라 문서 값과 같다.
+      const card = useWorkspace.getState().cards.find((c) => c.id === id);
+      if (card) {
+        setSharedSnapshot(id, { ...toSharedNote(initialNoteFromCard(card, boardId)), updatedAt: now });
+      }
+    }
+    const entries = readTrashStep(item);
+    const put: Note[] = [];
+    const archive: string[] = [];
+    for (const [id, lastVisitedAt] of touched.vanished) {
+      const entry = entries.find((e) => e.note.id === id);
+      if (!entry || trashActionFor(entry, direction) !== "put") {
+        archive.push(id);
+        continue;
+      }
+      // W4-3: 휴지통 행은 적용 직전 문서 값이다. 단계 meta의 내용은 문서 값이 없을 때만 쓴다 —
+      // 되돌린 뒤 브리지나 다른 기기가 고친 글을 잃지 않고, 살릴 때 남의 글을 덮지 않는다.
+      const shared = touched.pre?.notes?.get(id);
+      put.push(
+        shared
+          ? ({ ...shared, lastVisitedAt: lastVisitedAt ?? entry.note.lastVisitedAt } as Note)
+          : entry.note,
+      );
+    }
+    // W4-2: 이 적용이 문서에서 지운 연결선 전부를 판정한다. 살리기가 2단계로 갈려 카드 단계를
+    // 먼저 되돌렸어도, 다음 적용이 지운 선은 끝 메모가 휴지통에 있어 연결선 휴지통에 들어간다.
+    const connections = vanishedConnections(doc, touched.pre);
+    if (put.length > 0 || archive.length > 0 || connections.length > 0) {
+      void enqueueTrashJob(async () => {
+        await applyUndoTrash(doc, { put, archive, connections });
+        notifyNoteChanges();
+        void useWorkspace.getState().refreshTrashCount();
+      });
+    }
+  }
+  syncConnectionsFromDoc(doc);
+}
+
+registerUndoStepHooks({
+  onApplied: applyUndoStep,
+  // 건너뛴 단계는 휴지통 동작을 적용하지 않는다. n6: 그 단계가 쥔 파일은 놓아 파일 규칙으로 청소한다.
+  onSkipped: (items) => {
+    const refs = items.flatMap(readFileStep);
+    dropTrashStep(items);
+    sweepFiles(refs);
+  },
+  // n6: 깊이 상한, 다시 실행 버림, 보드를 떠날 때(clear 뒤 destroy)·로그아웃의 clear. 빠진 단계가
+  // 쥔 파일을 파일 규칙으로 청소한다. 부를 때 그 단계들은 이미 기록에 없다.
+  onDropped: (items) => sweepFiles(items.flatMap(readFileStep)),
+});
+
+/**
+ * cmd-z-undo n6: 로그아웃하면 지금 보드 기록이 통째로 사라진다(D4 A). 보드를 떠날 때와 같은
+ * 순서로 비우고 청소한 뒤 destroy하고, 보드에 남은 사용자를 위해 빈 기록을 새로 만든다.
+ */
+function resetBoardHistory(): void {
+  if (getBoardUndoKey() === null) return;
+  closeEditGroup();
+  endUndoGroup(penGroupToken);
+  penGroupToken = null;
+  disposeActiveBoardUndo();
+  openBoardHistory(useWorkspace.getState().currentBoardId);
+}
+
+/** 테스트용 — 되돌리기·원격 반영이 넣은 휴지통 쓰기가 모두 끝나면 풀린다. */
+export function __trashIdleForTest(): Promise<void> {
+  return trashIdle();
+}
+
 
 function bindActiveDocReflection(doc: Y.Doc, storageBoardId: string | null): void {
   unbindDocReflection?.();
@@ -1574,6 +2059,11 @@ function bindActiveDocReflection(doc: Y.Doc, storageBoardId: string | null): voi
   const reflect = (events: Y.YEvent<Y.AbstractType<unknown>>[], transaction: Y.Transaction): void => {
     if (!isRemoteTransaction(transaction)) return;
     if (!isActiveBoard(storageBoardId)) return;
+    // cmd-z-undo n5: 이 탭의 되돌리기·다시 실행은 휴지통을 만지지 않는다. 휴지통은 단계 meta가
+    // 맞춘다(applyUndoStep). 여기서는 바뀐 메모만 모은다.
+    const ownUndo = isBoardUndoManager(transaction.origin);
+    // 웨이브 4 리뷰(W4-4): 같은 기기 다른 탭의 변경 — 휴지통은 그 탭이 맞춘다.
+    const otherTab = isChannelOrigin(transaction.origin);
     const changed = new Set<string>();
     for (const ev of events) {
       if (ev.path.length >= 1) {
@@ -1588,16 +2078,57 @@ function bindActiveDocReflection(doc: Y.Doc, storageBoardId: string | null): voi
     const state = useWorkspace.getState();
     const nextCards = [...state.cards];
     let dirty = false;
+    let cardSetChanged = false;
+    const appeared: string[] = [];
     for (const id of changed) {
       const shared = readNote(doc, id);
       const idx = nextCards.findIndex((c) => c.id === id);
       if (!shared) {
         if (idx !== -1) {
+          const lastVisitedAt = nextCards[idx].lastVisitedAt;
           nextCards.splice(idx, 1);
           dirty = true;
-          // 원격·다른 탭 삭제는 휴지통으로만 옮긴다. removeNote는 purge까지 해서
-          // 삭제한 탭이 만든 휴지통 행을 지워 버린다(n3 리뷰 P0).
-          void useStorage.getState().trashNote(id).then(notifyNoteChanges);
+          cardSetChanged = true;
+          forgetSharedSnapshot(id);
+          if (ownUndo) {
+            // 되돌리기·다시 실행이 지운 메모 — 예약 미러 쓰기를 취소한다. 남겨 두면 0.3초 뒤
+            // 미러 행이 되살아난다. 휴지통에 넣을지는 단계 meta가 정한다.
+            cancelPersist(id);
+            undoTouchedFor(doc, transaction).vanished.set(id, lastVisitedAt);
+          } else if (otherTab) {
+            // 웨이브 4 리뷰(W4-4): 같은 기기 다른 탭의 삭제. 휴지통·기록 보관·보드 이전의 미러는
+            // 그 탭이 맞춘다 — 이 탭의 0.3초 안 글도 문서에 있어 그 탭이 쓰는 행에 남는다.
+            // 이 탭은 예약 미러 쓰기만 버린다. 이 탭의 쓰기가 이미 돌고 있었으면 끝난 뒤 그 미러 행을
+            // 치운다 — 늦은 put이 생성을 되돌린 메모의 미러 행을 되살리지 않게(1바퀴 W4-4, A2).
+            // 돌고 있던 쓰기가 없으면 미러 행은 안 만진다. 3바퀴(R3-1): 이 보드 문서에서 사라진 메모가
+            // 다른 보드로 옮겼거나 바로 살린 메모일 수 있다 — 지우면 살아 있는 메모가 검색·표 보기·
+            // 파일 규칙에서 빠진다. 늦은 쓰기가 휴지통 넣기 뒤에 끝나는 경우는 saveNote의 "휴지통이
+            // 이긴다"가 막는다(2바퀴 W4-7). 예약 쓰기가 기록 보관 뒤·삭제 방송 앞에 끝나는 경우는
+            // 알려진 위험이다(2바퀴 R2-3).
+            // 휴지통 배지는 그 탭의 휴지통 쓰기 뒤를 노려 다시 읽는다(탭 사이 휴지통 알림은 없다).
+            const writing = isPersistInFlight(id);
+            cancelPersist(id);
+            void enqueueTrashJob(async () => {
+              if (writing) await archiveMirror(doc, id);
+              notifyNoteChanges();
+              void useWorkspace.getState().refreshTrashCount();
+            });
+          } else {
+            // 원격 삭제는 휴지통으로만 옮긴다. removeNote는 purge까지 해서
+            // 삭제한 기기가 만든 휴지통 행을 지워 버린다(n3 리뷰 P0).
+            // n5: 예약 미러 쓰기를 먼저 내보낸다 — 0.3초 안에 쓴 글도 휴지통에 남는다.
+            // 웨이브 4 리뷰(W4-1): 같은 삭제가 문서에서 함께 지운 연결선은 미러에 아직 없어도
+            // 지우기 직전 문서 값으로 판정한다(trashNote는 미러에 있는 선만 옮긴다).
+            const removed = vanishedConnections(doc, preTransaction.get(transaction), id);
+            void enqueueTrashJob(async () => {
+              await flushCard(id);
+              if (readNote(doc, id)) return; // 그새 문서에 다시 나타났다
+              await useStorage.getState().trashNote(id);
+              await parkVanishedConnections(doc, removed);
+              notifyNoteChanges();
+              void useWorkspace.getState().refreshTrashCount();
+            });
+          }
         }
         continue;
       }
@@ -1606,8 +2137,13 @@ function bindActiveDocReflection(doc: Y.Doc, storageBoardId: string | null): voi
         idx !== -1 ? (nextCards[idx].lastVisitedAt ?? Date.now()) : Date.now();
       const card = decodeNoteToCard({ ...shared, lastVisitedAt });
       if (idx !== -1) nextCards[idx] = card;
-      else nextCards.push(card);
+      else {
+        nextCards.push(card);
+        appeared.push(id);
+        cardSetChanged = true;
+      }
       dirty = true;
+      if (ownUndo) undoTouchedFor(doc, transaction).changed.add(id);
       // 6(d): 원격 반영의 Dexie 파생 쓰기는 디바운스로 합친다 — 키 입력 1자마다
       // 전행 get+put 하던 비용을 제거. 문서는 원격이 이미 원본이라 쓰지 않는다.
       // FEAT-memo-table-view: 표는 미러를 읽으므로 미러 쓰기가 끝난 뒤에 알린다.
@@ -1617,6 +2153,21 @@ function bindActiveDocReflection(doc: Y.Doc, storageBoardId: string | null): voi
       });
     }
     if (dirty) useWorkspace.setState({ cards: nextCards });
+    if (appeared.length > 0) {
+      // n5: 보드에 다시 나타난 메모는 휴지통에 없다(되돌리기·다시 실행·원격 모두). 미러 행을
+      // 바로 써서 휴지통 살리기의 반대편 미러 확인이 0.3초를 기다리지 않게 한다.
+      // W4-4: 다른 탭이 되살린 메모의 휴지통 빼기는 그 탭이 한다.
+      // 2바퀴(W4-7): 휴지통이 이긴다 — 휴지통 행을 먼저 빼고 미러를 쓴다. 휴지통 행이 있는 동안
+      // 돈 예약 쓰기는 건너뛰었으니 지금 카드 값으로 다시 쓴다.
+      void enqueueTrashJob(async () => {
+        if (!otherTab) await untrashOnBoard(doc, appeared);
+        if (isActiveBoard(storageBoardId)) await writeMirrorNow(appeared, storageBoardId);
+        notifyNoteChanges();
+        void useWorkspace.getState().refreshTrashCount();
+      });
+    }
+    // n5(실패 모드 18): 연결선 반영이 카드 반영보다 먼저 돌았으면 양 끝 카드가 없어 건너뛰었다.
+    if (cardSetChanged) syncConnectionsFromDoc(doc);
   };
 
   notesMap(doc).observeDeep(reflect);
@@ -1647,7 +2198,8 @@ function bindActiveDocReflection(doc: Y.Doc, storageBoardId: string | null): voi
     if (ids.length === 0) return;
     const storage = useStorage.getState();
     if (!storage.initialized) return;
-    void (async () => {
+    // W4-5: 휴지통으로 옮기는 쪽이 이 쓰기가 끝나길 기다린다 — 늦은 put이 옮긴 선을 되살리지 않게.
+    void trackConnectionMirrorWrite((async () => {
       const db = getDB();
       // n23 P2-13: id마다 한 건씩 쓰지 않고 bulk로 합친다.
       const puts: Connection[] = [];
@@ -1658,20 +2210,47 @@ function bindActiveDocReflection(doc: Y.Doc, storageBoardId: string | null): voi
         if (conn) puts.push(conn);
         else deletes.push(id);
       }
-      if (puts.length > 0) await db.connections.bulkPut(puts);
-      if (deletes.length > 0) await db.connections.bulkDelete(deletes);
-    })();
+      // 2바퀴(W4-6): 휴지통이 이긴다 — 연결선 휴지통에 있는 선은 미러에 쓰지 않는다. 다른 탭이
+      // 휴지통에 옮긴 뒤 닿은 이 탭의 늦은 쓰기가 선을 미러에 되살리지 않게 한다. 다시 나타난
+      // 선은 untrashConnections가 휴지통 행을 빼며 미러에 쓴다.
+      try {
+        await db.transaction("rw", [db.connections, db.trashConnections], async () => {
+          const parked = new Set(
+            (await db.trashConnections.bulkGet(puts.map((c) => c.id))).flatMap((c) => (c ? [c.id] : [])),
+          );
+          const live = puts.filter((c) => !parked.has(c.id));
+          if (live.length > 0) await db.connections.bulkPut(live);
+          if (deletes.length > 0) await db.connections.bulkDelete(deletes);
+        });
+      } catch {
+        /* DB가 닫히는 중(테스트 teardown·새로고침 경계) — 보드를 떠날 때 내보낸 쓰기도 여기로 온다. */
+      }
+    })());
   };
 
   const reflectConnections = (events: Y.YEvent<Y.AbstractType<unknown>>[], transaction: Y.Transaction): void => {
     if (!isRemoteTransaction(transaction)) return;
     if (!isActiveBoard(storageBoardId)) return;
+    // W4-2: 이 탭의 되돌리기·다시 실행이 지운 연결선은 applyUndoStep이 적용 직전 값으로 판정한다.
+    if (isBoardUndoManager(transaction.origin)) undoTouchedFor(doc, transaction);
+    const otherTab = isChannelOrigin(transaction.origin);
     const changed = new Set<string>();
+    const reappeared: string[] = [];
     for (const ev of events) {
       if (ev.path.length >= 1) changed.add(String(ev.path[0]));
-      else for (const key of (ev as Y.YMapEvent<unknown>).keysChanged) changed.add(key);
+      else {
+        for (const [key, change] of (ev as Y.YMapEvent<unknown>).changes.keys) {
+          changed.add(key);
+          if (change.action !== "delete") reappeared.push(key);
+        }
+      }
     }
     if (changed.size === 0) return;
+    // n5: 문서에 다시 나타난 연결선의 휴지통 행을 뺀다 — 되돌리기·다시 실행과 원격이 같은 규칙.
+    // W4-4: 다른 탭이 되살린 선의 휴지통 빼기는 그 탭이 한다.
+    if (reappeared.length > 0 && !otherTab) {
+      void enqueueTrashJob(() => untrashConnections(doc, reappeared));
+    }
     for (const id of changed) pendingConnIds.add(id);
     if (connTimer === null) connTimer = setTimeout(flushConnections, CONNECTION_MIRROR_DEBOUNCE_MS);
     // FEAT-connectors: 화면의 연결선도 바로 맞춘다. 양 끝이 현재 카드인 active 선만 그린다.
@@ -1697,7 +2276,21 @@ function bindActiveDocReflection(doc: Y.Doc, storageBoardId: string | null): voi
   };
   connectionsMap(doc).observeDeep(reflectConnections);
 
+  // W4-2·W4-3: 다른 기기·되돌리기 트랜잭션 직전 문서 값을 읽어 둔다(PreTransaction).
+  // 다른 탭 변경은 휴지통을 안 만져 읽지 않는다.
+  const capturePre = (transaction: Y.Transaction): void => {
+    if (!isRemoteTransaction(transaction) || isChannelOrigin(transaction.origin)) return;
+    if (!isActiveBoard(storageBoardId)) return;
+    const ownUndo = isBoardUndoManager(transaction.origin);
+    preTransaction.set(transaction, {
+      connections: new Map(readConnections(doc).map((c) => [c.id, c] as const)),
+      notes: ownUndo ? new Map(readNotes(doc).map((n) => [n.id, n] as const)) : null,
+    });
+  };
+  doc.on("beforeTransaction", capturePre);
+
   unbindDocReflection = () => {
+    doc.off("beforeTransaction", capturePre);
     notesMap(doc).unobserveDeep(reflect);
     metaMap(doc).unobserve(reflectMeta);
     connectionsMap(doc).unobserveDeep(reflectConnections);
@@ -1705,7 +2298,9 @@ function bindActiveDocReflection(doc: Y.Doc, storageBoardId: string | null): voi
       clearTimeout(connTimer);
       connTimer = null;
     }
-    pendingConnIds.clear();
+    // 2바퀴(W4-6): 남은 연결선 미러 쓰기를 버리지 않고 내보낸다. 버리면 다른 탭이 지운 선의 미러
+    // 행이 남는다. 문서는 지금 읽는다(flushConnections가 첫 await 전에 읽는다).
+    flushConnections();
   };
 }
 
@@ -1757,11 +2352,12 @@ async function moveCardBetweenDocs(
   // 원본 문서에 없으면(이전 안 된 옛 행) Dexie 미러로 폴백한다.
   const source = shared ?? ((await getDB().notes.get(cardId)) as Note | undefined);
 
+  // cmd-z-undo n4: 보드 사이 옮기기는 기록 안 하는 origin(await 뒤 쓰기라 인자로 넘긴다).
   if (fromIsActive) {
-    withActiveDoc(fromBoardId, (doc) => deleteNoteDoc(doc, cardId));
+    withActiveDoc(fromBoardId, (doc) => deleteNoteDoc(doc, cardId, UNTRACKED_ORIGIN));
   } else {
     broadcastDocWrite(docKeyForBoard(fromBoardId), fromHandle.doc, () =>
-      deleteNoteDoc(fromHandle.doc, cardId),
+      deleteNoteDoc(fromHandle.doc, cardId, UNTRACKED_ORIGIN),
     );
   }
   forgetSharedSnapshot(cardId);
@@ -1775,10 +2371,10 @@ async function moveCardBetweenDocs(
       lastVisitedAt: Date.now(),
     };
     if (toIsActive) {
-      withActiveDoc(toBoardId, (doc) => putNoteDoc(doc, moved));
+      withActiveDoc(toBoardId, (doc) => putNoteDoc(doc, moved, UNTRACKED_ORIGIN));
     } else {
       broadcastDocWrite(docKeyForBoard(toBoardId), toHandle.doc, () =>
-        putNoteDoc(toHandle.doc, moved),
+        putNoteDoc(toHandle.doc, moved, UNTRACKED_ORIGIN),
       );
     }
     setSharedSnapshot(cardId, toSharedNote(moved));
@@ -1947,7 +2543,16 @@ async function cascadeDeleteFunnels(
 
   // 지우기 전에 표시하고 실행 취소 기간을 세운다 — 행이 사라진 뒤 sync가 끼어도 되살리거나 지우지 않는다.
   const roots = funnelCards.flatMap((fc) => (fc.boardRef ? [fc.boardRef] : []));
-  const release = await markServerDeletes(boardSubtree(await db.boards.toArray(), roots), true);
+  const subtree = boardSubtree(await db.boards.toArray(), roots);
+  // 웨이브 5 리뷰(W5-1): 미러 행을 지운 뒤 스냅샷이 서기 전에도 그 안 사진 파일을 쥔다.
+  const inFlight = [
+    ...funnelCards.map((fc) => fc.attachmentRef),
+    ...(await db.notes.where("boardId").anyOf(subtree.map((b) => b.id)).toArray()).map(
+      (n) => n.attachmentRef,
+    ),
+  ];
+  const release = await markServerDeletes(subtree, true);
+  funnelFilesInFlight.add(inFlight);
   try {
     for (const fc of funnelCards) {
       if (!fc.boardRef) continue;
@@ -1979,9 +2584,9 @@ async function cascadeDeleteFunnels(
     for (const fc of funnelCards) if (fc.boardRef) delete counts[fc.boardRef];
     set({ boards: freshBoards, subcanvasCounts: counts });
 
-    // 직전 undo가 남아 있으면 그건 즉시 확정(blob purge) — undo 스택은 1개만 유지.
+    // 직전 undo가 남아 있으면 그건 즉시 확정 — undo 스택은 1개만 유지. 사진 파일은 새 스냅샷을
+    // 세운 뒤 파일 규칙으로 청소한다(W5-1).
     const prev = get().pendingSubcanvasUndo;
-    if (prev) void storage.purgeAttachments([...prev.funnelNotes, ...prev.notes]);
 
     const expiresAt = Date.now() + BOARD_UNDO_MS;
     set({
@@ -1996,15 +2601,17 @@ async function cascadeDeleteFunnels(
         expiresAt,
       },
     });
+    if (prev) sweepFiles(subcanvasFileRefs(prev));
     setTimeout(() => {
       const cur = get().pendingSubcanvasUndo;
       if (cur && cur.expiresAt === expiresAt) {
-        void storage.purgeAttachments([...cur.funnelNotes, ...cur.notes]);
         unshareFinalizedBoards(cur.boards);
         set({ pendingSubcanvasUndo: null });
+        sweepFiles(subcanvasFileRefs(cur));
       }
     }, BOARD_UNDO_MS);
   } finally {
+    funnelFilesInFlight.delete(inFlight);
     release();
   }
 }
@@ -2134,20 +2741,25 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         ...c,
         height: memoHeight(c.kind, c.width, c.height),
       }));
-      await Promise.all(seeds.map((card) => persistCard(card, SYSTEM_BOARD_ID)));
+      // cmd-z-undo n3: 시드는 기록 안 하는 origin — 열자마자 cmd+z가 시드를 지우지 않게.
+      await Promise.all(
+        seeds.map((card) => persistCard(card, SYSTEM_BOARD_ID, { origin: UNTRACKED_ORIGIN })),
+      );
       await storage.updateSettings({ installPromptShown: true });
       set({ cards: seeds, boards, connections: [] });
+      openBoardHistory(storageBid);
       return;
     }
 
     // FEAT-text-tool: 빈 textbox는 불러올 때 지운다. 원본 문서와 미러 모두에서.
     const pruned = pruneEmptyTextboxes(await loadBoardCards(storageBid));
     if (pruned.removedIds.length > 0) {
-      await storage.hardDeleteNotes(pruned.removedIds, storageBid);
+      await storage.hardDeleteNotes(pruned.removedIds, storageBid, { origin: UNTRACKED_ORIGIN });
     }
     const cards = pruned.cards;
     const connections = await loadBoardConnections(cards.map((c) => c.id));
     set({ cards, boards, connections, selectedConnectionId: null });
+    openBoardHistory(storageBid);
     void get().refreshSubcanvasCounts();
     void get().refreshTrashCount();
   },
@@ -2185,7 +2797,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     // FEAT-text-tool: 빈 textbox는 불러올 때 지운다. 원본 문서와 미러 모두에서.
     const pruned = pruneEmptyTextboxes(await loadBoardCards(storageBid));
     if (pruned.removedIds.length > 0) {
-      await storage.hardDeleteNotes(pruned.removedIds, storageBid);
+      await storage.hardDeleteNotes(pruned.removedIds, storageBid, { origin: UNTRACKED_ORIGIN });
     }
     const cards = pruned.cards;
     const connections = await loadBoardConnections(cards.map((c) => c.id));
@@ -2222,6 +2834,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       lastNonSystemBoardId: lastNonSystem,
       viewport: restored,
     });
+    // cmd-z-undo n3: 새 보드 기록은 불러오기·정리가 끝나고 스토어를 바꾼 뒤 만든다.
+    openBoardHistory(storageBid);
     // 표 행 열기·표 복귀처럼 URL을 거치지 않은 전환도 주소를 따라오게 한다.
     // URL에서 온 전환이면 경로가 이미 같아 navigator가 아무것도 안 한다.
     boardNavigator?.(id);
@@ -2614,7 +3228,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       // 사진은 인라인 편집에 들어가지 않는다 — 캡션은 우클릭으로 연다.
       editingId: null,
     }));
-    void persistCard(card, get().currentBoardId);
+    const { result: saved, item } = captureUndoStep(() => persistCard(card, get().currentBoardId));
+    void saved;
+    // cmd-z-undo n6: 생성 단계가 사진 ref를 쥔다 — 되돌려 기록 보관된 사진을 다시 실행이 되살린다.
+    if (item) addFileStep(item, [card.attachmentRef]);
     return id;
   },
 
@@ -2829,8 +3446,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       if (!storage.initialized) return;
       const cards = get().cards.filter((c) => groupIds.includes(c.id));
       const db = getDB();
+      // cmd-z-undo 웨이브 4 리뷰 2바퀴: saveNote가 같은 트랜잭션에서 휴지통을 읽는다(휴지통이 이긴다).
       await db
-        .transaction("rw", db.notes, () =>
+        .transaction("rw", [db.notes, db.trash], () =>
           // n23 P1-7: 드래그 중(D4)에는 좌표를 문서에 쓰지 않는다 — 좌표는 드롭 때
           // commitMove가 한 번 쓴다. 여기서는 Dexie 미러만 갱신한다.
           Promise.all(cards.map((card) => persistCard(card, boardId, { doc: false }))),
@@ -2915,8 +3533,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       }),
     }));
     if (!updated) return;
-    persistCardDebounced(updated, get().currentBoardId);
-    if (oldRef && oldRef !== photo.ref) dropFrameBackgroundFileAfterSave(id, oldRef);
+    const next = updated;
+    const { item } = captureUndoStep(() => persistCardDebounced(next, get().currentBoardId));
+    // cmd-z-undo n6: 옛 파일을 바로 지우지 않는다. 단계가 옛 ref와 새 ref를 쥐고(되돌리기는 옛
+    // 사진을, 다시 실행은 새 사진을 되살린다), 단계가 기록에서 빠질 때 파일 규칙으로 청소한다.
+    if (oldRef !== photo.ref) holdOrSweepFiles(item, [oldRef, photo.ref], [oldRef]);
     if (resized) {
       get().resolveMembership(
         get()
@@ -2944,8 +3565,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       }),
     }));
     if (!updated) return;
-    persistCardDebounced(updated, get().currentBoardId);
-    dropFrameBackgroundFileAfterSave(id, oldRef);
+    const next = updated;
+    const { item } = captureUndoStep(() => persistCardDebounced(next, get().currentBoardId));
+    // cmd-z-undo n6: 옛 파일은 단계가 쥔다 — 되돌리면 옛 사진이 다시 보인다.
+    holdOrSweepFiles(item, [oldRef], [oldRef]);
   },
 
   deleteFrame: (id) => {
@@ -2963,16 +3586,26 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       expandedCardId: s.expandedCardId === id ? null : s.expandedCardId,
     }));
     cancelPersist(id);
-    dropFrameBackgroundFile(card.attachmentRef);
     const boardId = get().currentBoardId;
     const afterDelete = new Map(get().cards.map((c) => [c.id, c]));
+    let item: UndoStackItem | null = null;
     withActiveDoc(boardId, (doc) => {
-      for (const mid of memberIds) {
-        const member = afterDelete.get(mid);
-        if (member) writeCardToDocHandle(doc, member, boardId);
-      }
-      deleteNoteDoc(doc, id);
+      // cmd-z-undo n6: 멤버 frameId 해제와 판 삭제를 한 트랜잭션으로 — 1단계이고 cmd+z 1번에
+      // 판과 멤버 소속이 함께 돌아온다. origin은 바깥 동작을 따른다.
+      item = captureUndoStep(() =>
+        transactLocal(doc, () => {
+          for (const mid of memberIds) {
+            const member = afterDelete.get(mid);
+            if (member) writeCardToDocHandle(doc, member, boardId);
+          }
+          deleteNoteDoc(doc, id);
+        }),
+      ).item;
     });
+    // cmd-z-undo n6: 배경 파일을 바로 지우지 않는다. 판 삭제 단계가 쥐고, 단계가 기록에서 빠질 때
+    // 파일 규칙으로 청소한다. 기록에 안 들었으면 미러 행을 지운 뒤 청소한다(아래).
+    const held = item as UndoStackItem | null;
+    if (held) addFileStep(held, [card.attachmentRef]);
     // n23 재심사 2R-2: 삭제한 판의 스냅샷을 버린다(누수 방지).
     forgetSharedSnapshot(id);
     const storage = useStorage.getState();
@@ -2981,12 +3614,24 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     // deleteFrame과 멤버 frameId 해제를 한 트랜잭션으로 — setFrameMembership이 여는
     // "rw" db.notes 트랜잭션은 이미 진행 중인 이 트랜잭션(같은 테이블 부분집합)을
     // Dexie가 재사용해 그대로 원자적이다.
-    void db.transaction("rw", db.notes, async () => {
-      await setFrameMembership(
-        memberIds.map((mid) => ({ id: mid, frameId: undefined })),
+    // cmd-z-undo 웨이브 4 리뷰(W4-5): 판의 이미 시작된 미러 쓰기가 끝난 뒤 지운다 — 늦은 put이 행을 되살린다.
+    const mirrored = persistSettled([id]).then(() =>
+      db.transaction("rw", db.notes, async () => {
+        await setFrameMembership(
+          memberIds.map((mid) => ({ id: mid, frameId: undefined })),
+        );
+        await db.notes.delete(id);
+      }),
+    );
+    if (!held && card.attachmentRef) {
+      const ref = card.attachmentRef;
+      void mirrored.then(
+        () => sweepFiles([ref]),
+        () => undefined,
       );
-      await db.notes.delete(id);
-    });
+    } else {
+      void mirrored;
+    }
   },
 
   setContent: (id, content) => {
@@ -3176,15 +3821,18 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     // 원본 문서와 미러에서 연결선·임베딩까지 정리한다. 막 만든 상자는 미러에 없을
     // 수 있어 보드를 넘긴다.
     void storage
-      .hardDeleteNotes([id], get().currentBoardId)
+      // cmd-z-undo n3: 빈 채로 마친 글상자 지우기는 기록 안 하는 origin.
+      .hardDeleteNotes([id], get().currentBoardId, { origin: UNTRACKED_ORIGIN })
       .catch(() => undefined);
   },
 
   setAttachment: (id, ref, meta) => {
     let updated: Card | undefined;
+    let oldRef: string | undefined;
     set((s) => ({
       cards: s.cards.map((c) => {
         if (c.id !== id) return c;
+        oldRef = c.attachmentRef;
         updated = {
           ...c,
           attachmentRef: ref,
@@ -3195,7 +3843,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       }),
     }));
     if (updated) {
-      void persistCard(updated, get().currentBoardId);
+      const next = updated;
+      const { result: saved, item } = captureUndoStep(() => persistCard(next, get().currentBoardId));
+      void saved;
+      // cmd-z-undo n6: 단계가 옛 ref와 새 ref를 쥔다. 기록에 안 들면 예전처럼 아무것도 안 지운다.
+      if (item && oldRef !== ref) addFileStep(item, [oldRef, ref]);
     }
   },
 
@@ -3263,7 +3915,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       selectedIds: [],
     }));
     const storage = useStorage.getState();
-    if (storage.initialized) void storage.saveConnection(connection);
+    // cmd-z-undo n4: 문서 쓰기는 await 뒤라 지금 문맥 origin을 인자로 넘긴다(브리지면 기록 안 함).
+    if (storage.initialized) void storage.saveConnection(connection, { origin: currentWriteOrigin() });
     return connection.id;
   },
 
@@ -3291,7 +3944,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         s.selectedConnectionId === id ? null : s.selectedConnectionId,
     }));
     const storage = useStorage.getState();
-    if (storage.initialized) void storage.removeConnection(id);
+    if (storage.initialized) void storage.removeConnection(id, { origin: currentWriteOrigin() });
   },
 
   setConnectionLabel: (id, label) => {
@@ -3312,7 +3965,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     if (storage.initialized)
       // label 없는 객체를 patch로 보내면 mergeConnection이 옛 값을 남긴다 —
       // undefined를 명시해 지운다(AC-6: 빈 문자열이면 label 제거).
-      void storage.saveConnection(trimmed ? updated : { ...updated, label: undefined });
+      void storage.saveConnection(trimmed ? updated : { ...updated, label: undefined }, {
+        origin: currentWriteOrigin(),
+      });
   },
 
   selectConnection: (id) => set({ selectedConnectionId: id, selectedIds: [] }),
@@ -3458,8 +4113,30 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         : s.selectedConnectionId,
     }));
     cancelPersist(id);
-    // n3: 카드를 문서에서도 지운다(휴지통 스냅샷은 Dexie 미러에서 읽는다).
-    withActiveDoc(boardAtDeletion, (doc) => deleteNoteDoc(doc, id));
+    // n3: 카드를 문서에서도 지운다.
+    // cmd-z-undo n4: 함 카드 삭제는 기록 안 하는 origin(함 삭제는 cmd+z 대상 밖).
+    const fromDoc: { doc: Y.Doc; entry: DocTrashEntry }[] = [];
+    withActiveDoc(boardAtDeletion, (doc) => {
+      if (funnel) {
+        deleteNoteDoc(doc, id, UNTRACKED_ORIGIN);
+        return;
+      }
+      // cmd-z-undo n5: 닿은 연결선 가운데 이 보드 문서에 있는 것을 같은 트랜잭션으로 지운다.
+      // origin은 바깥 동작을 따른다(브리지 notes.delete면 기록 안 하는 origin). 단계 meta에
+      // 휴지통 넣음과 그때의 메모·연결선 내용을 적는다 — 되돌리기·다시 실행이 휴지통을 맞춘다.
+      const touching = docConnectionsTouching(doc, new Set([id]));
+      const snap = trashStepNote(doc, id, card);
+      const { item } = captureUndoStep(() =>
+        transactLocal(doc, () => {
+          for (const c of touching) deleteConnectionDoc(doc, c.id);
+          deleteNoteDoc(doc, id);
+        }),
+      );
+      if (item && snap) addTrashStep(item, [{ action: "put", note: snap, connections: touching }]);
+      // 웨이브 4 리뷰(W4-1): 휴지통 행은 지우기 직전 문서 값이다. 막 다른 기기에서 온 선이나
+      // cmd+z로 막 되살아난 선은 미러 쓰기가 0.3초 늦어도 연결선 휴지통에 들어간다.
+      if (snap) fromDoc.push({ doc, entry: { note: snap, connections: touching } });
+    });
     // n23 재심사 2R-2: 삭제한 메모의 스냅샷을 버린다(다른 id 재사용 시 누수 방지).
     forgetSharedSnapshot(id);
     const storage = useStorage.getState();
@@ -3467,8 +4144,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     if (funnel) {
       void cascadeDeleteFunnels([funnel], boardAtDeletion, set, get);
     } else {
-      // FEAT-trash: 메모는 영구 삭제 대신 휴지통으로.
-      void storage.trashNote(id).then(() => get().refreshTrashCount());
+      // FEAT-trash: 메모는 영구 삭제 대신 휴지통으로. n5: 뒤에 오는 되돌리기의 휴지통 쓰기가 이 쓰기를 기다린다.
+      // 문서에 메모가 없었으면(활성 문서 밖) 지금처럼 미러에서 넣는다.
+      const hit = fromDoc[0];
+      const write = hit ? trashNotesFromDoc(hit.doc, [hit.entry]) : storage.trashNote(id);
+      void trackTrashWrite(write).then(() => get().refreshTrashCount());
     }
   },
 
@@ -3503,6 +4183,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     );
     const funnelIdSet = new Set(funnelCards.map((c) => c.id));
     const boardAtDeletion = get().currentBoardId;
+    const cardsBefore = get().cards;
     set((s) => ({
       cards: s.cards.filter((c) => !idSet.has(c.id)),
       selectedIds: s.selectedIds.filter((x) => !ids.includes(x)),
@@ -3526,20 +4207,57 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     for (const id of remainingIds) cancelPersist(id);
     // n23 재심사 2R-2: 삭제한 메모의 스냅샷을 버린다(누수 방지).
     for (const id of remainingIds) forgetSharedSnapshot(id);
-    // n3: 문서에서도 지운다(휴지통 스냅샷은 Dexie 미러에서).
-    withActiveDoc(boardAtDeletion, (doc) =>
-      transactLocal(doc, () => {
-        for (const id of remainingIds) deleteNoteDoc(doc, id);
-      }),
-    );
+    // n3: 문서에서도 지운다.
+    // cmd-z-undo n4: 함 쪽은 기록 안 하는 origin이라 일반 메모와 트랜잭션을 나눈다.
+    const fromDoc: { doc: Y.Doc; entries: DocTrashEntry[] }[] = [];
+    withActiveDoc(boardAtDeletion, (doc) => {
+      const general = remainingIds.filter((id) => !funnelIdSet.has(id));
+      const funnels = remainingIds.filter((id) => funnelIdSet.has(id));
+      if (general.length > 0) {
+        // cmd-z-undo n5: remove와 같다 — 닿은 연결선 가운데 이 보드 문서에 있는 것을 같은
+        // 트랜잭션으로 지우고, 단계 meta에 메모마다 휴지통 넣음을 적는다.
+        const touching = docConnectionsTouching(doc, new Set(general));
+        const entries: TrashStepEntry[] = [];
+        for (const id of general) {
+          const snap = trashStepNote(doc, id, cardsBefore.find((c) => c.id === id));
+          if (!snap) continue;
+          const mine = touching.filter((c) => c.sourceNoteId === id || c.targetNoteId === id);
+          entries.push({ action: "put", note: snap, connections: mine });
+        }
+        const { item } = captureUndoStep(() =>
+          transactLocal(doc, () => {
+            for (const c of touching) deleteConnectionDoc(doc, c.id);
+            for (const id of general) deleteNoteDoc(doc, id);
+          }),
+        );
+        if (item) addTrashStep(item, entries);
+        // 웨이브 4 리뷰(W4-1): remove와 같다 — 휴지통 행은 지우기 직전 문서 값이다.
+        fromDoc.push({ doc, entries: entries.map(({ note, connections }) => ({ note, connections })) });
+      }
+      if (funnels.length > 0) {
+        transactLocal(
+          doc,
+          () => {
+            for (const id of funnels) deleteNoteDoc(doc, id);
+          },
+          UNTRACKED_ORIGIN,
+        );
+      }
+    });
     const storage = useStorage.getState();
     if (!storage.initialized) return;
     // 함이 아닌 일반 메모는 휴지통으로(AC-2). frameIds는 위에서 deleteFrame이 이미
     // 처리했으므로 여기서 다시 지우지 않는다.
     const generalIds = remainingIds.filter((id) => !funnelIdSet.has(id));
-    void storage.trashNotes(generalIds).then(() =>
-      get().refreshTrashCount(),
-    );
+    // 문서 값이 없는 메모(활성 문서 밖)는 지금처럼 미러에서 넣는다.
+    const hit = fromDoc[0];
+    const fromDocIds = new Set(hit?.entries.map((e) => e.note.id) ?? []);
+    const mirrorIds = generalIds.filter((id) => !fromDocIds.has(id));
+    const write = (async () => {
+      if (hit) await trashNotesFromDoc(hit.doc, hit.entries);
+      if (mirrorIds.length > 0) await storage.trashNotes(mirrorIds);
+    })();
+    void trackTrashWrite(write).then(() => get().refreshTrashCount());
     // 함 카드는 cascade + 5초 undo.
     if (funnelCards.length > 0) {
       void cascadeDeleteFunnels(funnelCards, boardAtDeletion, set, get);
@@ -3561,21 +4279,52 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   restoreFromTrash: async (id) => {
     const storage = useStorage.getState();
     if (!storage.initialized) await storage.init();
+    // cmd-z-undo n5: 같은 id 카드가 이미 보드에 있으면 덧붙이지 않는다. 원격이나 되돌리기가
+    // 먼저 되살렸고 휴지통 행만 남았다 — 그 행을 빼고 끝낸다(실패 모드 3).
+    if (get().cards.some((c) => c.id === id)) {
+      const doc = getActiveBoardDoc()?.doc;
+      const boardId = get().currentBoardId;
+      // 웨이브 4 리뷰 2바퀴(W4-7): 휴지통 행을 먼저 빼고 미러를 쓴다 — 휴지통 행이 남은 동안의
+      // 미러 쓰기는 건너뛰었다(휴지통이 이긴다).
+      if (doc) {
+        await enqueueTrashJob(async () => {
+          await untrashOnBoard(doc, [id]);
+          if (readNote(doc, id)) await writeMirrorNow([id], boardId);
+        });
+      }
+      void get().refreshTrashCount();
+      return;
+    }
     const v = get().viewport;
     const { sx, sy } = viewportCenterScreenPoint();
-    // 화면 가운데 정렬 — 카드 폭 절반을 빼고 상단 여백 20px(중앙 생성과 같은 규약).
-    const entry = await getDB().trash.get(id);
-    const w = entry?.note.width ?? 0;
     const boardId = get().currentBoardId;
-    const note = await storage.restoreNote(id, {
-      boardId,
-      x: (sx - v.x) / v.scale - w / 2,
-      y: (sy - v.y) / v.scale - 20,
+    // n5: 휴지통 쓰기 차례에 await 없이 바로 넣는다. 살리는 도중 원격이나 되돌리기가 같은 메모를
+    // 되살려도 관찰자의 휴지통 빼기가 이 살리기 뒤에 돈다. 그새 행이 빠졌으면 아무것도 안 한다.
+    const note = await runTrashJob(async () => {
+      // 화면 가운데 정렬 — 카드 폭 절반을 빼고 상단 여백 20px(중앙 생성과 같은 규약).
+      const entry = await getDB().trash.get(id);
+      if (!entry) return null;
+      const w = entry.note.width ?? 0;
+      // n5(U8·W2): 지금 보드 id를 넘겨 다른 보드로 살리면 연결선 쓰기도 기록하지 않게 한다.
+      return storage.restoreNote(
+        id,
+        { boardId, x: (sx - v.x) / v.scale - w / 2, y: (sy - v.y) / v.scale - 20 },
+        { currentBoardId: boardId },
+      );
     });
-    if (note.boardId === boardId) {
+    if (!note) {
+      void get().refreshTrashCount();
+      return;
+    }
+    if (note.boardId === boardId && !get().cards.some((c) => c.id === id)) {
       set((s) => ({ cards: [...s.cards, decodeNoteToCard(note)] }));
       // n3: 복구한 메모를 문서에도 되돌린다.
-      withActiveDoc(boardId, (doc) => putNoteDoc(doc, note));
+      // n5: 단계 meta에 휴지통 뺌과 그때의 메모·연결선 내용을 적는다 — 되돌리면 휴지통으로 돌려보낸다.
+      withActiveDoc(boardId, (doc) => {
+        const { item } = captureUndoStep(() => putNoteDoc(doc, note));
+        const connections = docConnectionsTouching(doc, new Set([id]));
+        if (item) addTrashStep(item, [{ action: "take", note, connections }]);
+      });
       // n23 재심사 2R-2: 복구도 문서 쓰기 — 스냅샷을 맞춘다.
       setSharedSnapshot(note.id, toSharedNote(note));
     }
@@ -3656,6 +4405,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     // 2) 카드의 boardId 변경 — 본문/위치는 그대로.
     const card = get().cards.find((c) => c.id === cardId);
     if (card) {
+      // 웨이브 5 리뷰(W5-2): 예약 쓰기와 이미 시작된 쓰기가 끝난 뒤 미러를 고친다 — 안 그러면
+      // 늦은 쓰기가 옛 boardId로 덮거나 get·merge·put이 엇갈린다(moveCardToBoard와 같다).
+      await flushCard(card.id);
+      await persistSettled([card.id]);
       await storage.saveNote({ id: card.id, boardId: id });
       await moveCardBetweenDocs(
         card.id,
@@ -3772,7 +4525,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         isSystem: false,
         parentBoardId,
       });
-      await persistCard(card, parentBoardId);
+      // cmd-z-undo n4: 함 만들기는 기록 안 하는 origin. await 뒤 쓰기라 인자로 넘긴다.
+      await persistCard(card, parentBoardId, { origin: UNTRACKED_ORIGIN });
       await writeBoardToDoc(childBoardId);
       const boards = await storage.loadBoards();
       set({ boards });
@@ -3839,6 +4593,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     // 아래 saveNote 직후 옛 boardId(바깥 보드)로 덮어써 새로고침 시 카드가 되돌아온다.
     // cancel이 아니라 flush — 디바운스 창 안의 마지막 본문·좌표 편집을 보존한다.
     await flushCard(cardId);
+    // 웨이브 5 리뷰(W5-2): 이미 시작된 쓰기도 끝난 뒤 미러를 고친다(moveCardToBoard와 같다).
+    await persistSettled([cardId]);
     // FEAT-sticky-redesign §4: 파일함(다른 캔버스)으로 이동하면 판 소속은 풀린다.
     await storage.saveNote({ id: cardId, boardId: targetBoardId, frameId: undefined });
     await moveCardBetweenDocs(
@@ -3898,6 +4654,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     if (!storage.initialized) await storage.init();
     // 회귀 수정: moveCardToSubcanvas와 같은 디바운스 경쟁 — flush로 막는다.
     await flushCard(cardId);
+    // 웨이브 5 리뷰(W5-2): 이미 시작된 쓰기(만든 직후의 persistCard)도 기다린다. 안 기다리면
+    // 아래 saveNote의 get·merge·put이 엇갈려 미러 행이 kind "text", ref 없음이 된다.
+    await persistSettled([cardId]);
     // 보드 id가 곧 문서 키다 — 시스템 보드도 예외 없는 UUID id를 쓴다(n1).
     // FEAT-sticky-redesign §4: 다른 캔버스로 나가면 판 소속은 풀린다.
     await storage.saveNote({
@@ -3949,16 +4708,23 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   undoSubcanvasRemove: async () => {
     const pending = get().pendingSubcanvasUndo;
     if (!pending) return;
+    // 웨이브 5 리뷰(W5-1): 미러 행을 다시 쓸 때까지 사진 파일을 쥔다 — 그 사이 청소가 지우지 않게.
+    const holding = subcanvasFileRefs(pending);
+    funnelFilesInFlight.add(holding);
     set({ pendingSubcanvasUndo: null });
     const db = getDB();
-    // blob은 아직 안 지웠으므로(만료 전) row만 되돌리면 미디어까지 복원된다.
-    await db.boards.bulkPut(pending.boards);
-    await cancelServerDeletes(pending.boards);
-    // P1 AC-8: 되살아난 보드들은 "지운 보드" 목록에서 뺀다.
-    await useStorage
-      .getState()
-      .forgetDeletedBoards(pending.boards.map((b) => b.id));
-    await db.notes.bulkPut([...pending.funnelNotes, ...pending.notes]);
+    try {
+      // blob은 아직 안 지웠으므로(만료 전) row만 되돌리면 미디어까지 복원된다.
+      await db.boards.bulkPut(pending.boards);
+      await cancelServerDeletes(pending.boards);
+      // P1 AC-8: 되살아난 보드들은 "지운 보드" 목록에서 뺀다.
+      await useStorage
+        .getState()
+        .forgetDeletedBoards(pending.boards.map((b) => b.id));
+      await db.notes.bulkPut([...pending.funnelNotes, ...pending.notes]);
+    } finally {
+      funnelFilesInFlight.delete(holding);
+    }
     if (pending.connections.length)
       await db.connections.bulkPut(pending.connections);
     if (pending.embeddings.length)
@@ -3978,12 +4744,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   clearSubcanvasUndo: () => {
     const pending = get().pendingSubcanvasUndo;
     if (!pending) return;
-    // undo 포기 = 삭제 확정 → 보류했던 OPFS blob 영구 정리.
-    void useStorage
-      .getState()
-      .purgeAttachments([...pending.funnelNotes, ...pending.notes]);
+    // undo 포기 = 삭제 확정 → 보류했던 사진 파일을 파일 규칙으로 청소한다(W5-1). 남은 기록
+    // 단계가 쥔 파일은 남는다.
     unshareFinalizedBoards(pending.boards);
     set({ pendingSubcanvasUndo: null });
+    sweepFiles(subcanvasFileRefs(pending));
   },
 
   /* ─────────── FEAT-memo-fulltext-search (W4) ─────────── */
@@ -4073,6 +4838,98 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 }));
 
+/* cmd-z-undo n4: 단계를 여는 진입점 — 문서에 쓰는 사용자 동작 전부(구현 메모 「진입점 표」).
+ * 카드를 만드는 액션은 열린 편집 묶음을 먼저 닫는다. 기록 안 하는 동작은 문맥으로 감싼다. */
+const CREATING_ACTIONS = [
+  "addCardAt",
+  "addPhotoAt",
+  "addFrameAt",
+  "addCardAtViewportCenter",
+  "addFrameAtViewportCenter",
+  "connectToNewMemo",
+  "commitAndAddNext",
+] as const satisfies readonly (keyof WorkspaceState)[];
+const RECORDED_ACTIONS = [
+  "moveSelectedBy",
+  "commitMove",
+  "resizeCard",
+  "resolveMembership",
+  "resizeFrame",
+  "renameFrame",
+  "setFrameBackground",
+  "clearFrameBackground",
+  "deleteFrame",
+  "setContent",
+  "setTitle",
+  "commitTitle",
+  "setMemoColor",
+  "setCardRotation",
+  "setTextStyle",
+  "setTextWidth",
+  "setAttachment",
+  "connectCards",
+  "removeConnection",
+  "setConnectionLabel",
+  "setOverlay",
+  "penUndo",
+  "penRedo",
+  "penClear",
+  "remove",
+  "removeSelected",
+  "restoreFromTrash",
+  "toggleAIOptOut",
+] as const satisfies readonly (keyof WorkspaceState)[];
+/* 기록 안 하는 동작과 그 자기 칸. 자기 칸이 있으면 문서에는 그 칸만 쓴다(웨이브 3). */
+const UNTRACKED_ACTIONS = {
+  setFaceHeight: ["height", "frameId"],
+  setTextMeasuredWidth: ["width"],
+  createSubcanvas: undefined,
+} as const satisfies Partial<Record<keyof WorkspaceState, readonly string[] | undefined>>;
+
+{
+  type AnyFn = (...args: unknown[]) => unknown;
+  const st = useWorkspace.getState() as unknown as Record<string, AnyFn>;
+  const patch: Record<string, AnyFn> = {};
+  for (const name of CREATING_ACTIONS) patch[name] = recorded(st[name], { creates: true });
+  for (const name of RECORDED_ACTIONS) patch[name] = recorded(st[name]);
+  for (const [name, own] of Object.entries(UNTRACKED_ACTIONS)) {
+    patch[name] = untracked(st[name], own);
+  }
+  useWorkspace.setState(patch as unknown as Partial<WorkspaceState>);
+}
+
+/* cmd-z-undo n3: 펜 묶음은 penMode 상태를 따른다. setPenMode만이 아니라
+ * armTextPlacement처럼 penMode를 바로 끄는 길도 덮으려고 액션이 아니라 구독으로 건다. */
+useWorkspace.subscribe((s, prev) => {
+  if (s.penMode === prev.penMode) return;
+  if (s.penMode) {
+    endUndoGroup(penGroupToken);
+    penGroupToken = beginUndoGroup();
+  } else {
+    endUndoGroup(penGroupToken);
+    penGroupToken = null;
+  }
+});
+
+/* cmd-z-undo n4: 편집 묶음은 editingId·expandedCardId·cards를 따른다. setEditing에 걸지
+ * 않는다 — editingId를 바꾸는 길 대부분이 setEditing을 거치지 않고, 원격 반영은 편집 중인
+ * 카드를 cards에서만 뺀다. */
+useWorkspace.subscribe((s, prev) => {
+  if (
+    s.editingId === prev.editingId &&
+    s.expandedCardId === prev.expandedCardId &&
+    s.cards === prev.cards
+  ) {
+    return;
+  }
+  syncEditGroup();
+});
+
+/* cmd-z-undo n6: 로그아웃(세션이 있다가 사라짐)이면 지금 보드 기록을 비우고 쥔 파일을 청소한다. */
+useAuth.subscribe((s, prev) => {
+  if (prev.session && !s.session) resetBoardHistory();
+});
+
 /* 테스트·디버깅용 export — 프로덕션 코드는 직접 호출 금지. */
 export const __internal = {
   decodeNoteToCard,
@@ -4090,5 +4947,8 @@ export async function __resetBoardDocsForTest(): Promise<void> {
   unbindDocReflection?.();
   unbindDocReflection = null;
   clearSharedSnapshots();
+  disposeAllBoardUndo();
+  penGroupToken = null;
+  editGroup = null;
   await destroyBoardDocs();
 }

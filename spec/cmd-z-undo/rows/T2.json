@@ -1,0 +1,19 @@
+{
+  "id": "T2",
+  "kind": "task",
+  "title": "편집 중 cmd+z는 편집기 안에서 방금 친 글자를 되돌린다",
+  "given": "펼친 메모 창(expandedCardId)에서 편집 중이다. 본문 '장보기'를 치고 1초 쉰 뒤 ' 우유'를 쳤다. 실제 Milkdown 편집기를 띄우는 기존 테스트는 없다. 새 테스트가 Editor.make와 commonmark와 history로 jsdom에 띄운다. node+jsdom에서는 됨, vitest는 미확인. 안 되면 EditorView로 대신하고 브라우저 확인으로 넘긴다. jsdom에서 Mod는 ctrl이라 시험은 ctrlKey로 한다",
+  "when": "cmd+z를 1번 누르고 이어서 cmd+shift+z를 1번 누른다",
+  "then": "cmd+z 뒤 본문은 '장보기'이고 편집기는 열려 있다. cmd+shift+z 뒤 본문은 '장보기 우유'다. 캔버스의 다른 카드는 그대로다. 블록 삽입 1번도 cmd+z 1번에 사라진다. 확인: 실제 Milkdown을 띄운 vitest. 띄울 수 없으면 브라우저 수동과 스크린샷",
+  "confidence": "mid",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": [
+    "2026-11-10 n1 결과 반영: 펼친 메모 창에서 편집, n1 6번 편집기 시험 방법"
+  ]
+}

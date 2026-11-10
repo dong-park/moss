@@ -6,6 +6,7 @@ import {
   SYSTEM_BOARD_ID,
   widthForKind,
   PHOTO_DEFAULT_WIDTH,
+  runAsUserAction,
   zoomTier,
 } from "@/state/workspace";
 import { useToasts } from "@/state/notifications";
@@ -30,6 +31,7 @@ import { ConnectorLayer } from "./connectors/ConnectorLayer";
 import { ConnectionHandlesLayer } from "./connectors/ConnectionHandles";
 import { isUrlOnly } from "@/state/cardContent";
 import { createLinkMemo } from "./linkMemo";
+import { handleUndoKeyDown, isTypingTarget, isUndoZKey } from "./undoKeys";
 import { serializeBlock } from "@/state/blocks";
 import {
   DROP_STACK_OFFSET_PX,
@@ -249,12 +251,18 @@ export function Canvas() {
           const py = (ch / 2 - v.y) / v.scale - 20;
           // 저장·크기 읽기는 병렬, 카드는 드롭처럼 24px씩 비켜 쌓는다.
           const photos = await Promise.all(imageFiles.map((f) => storePhoto(f)));
-          let i = 0;
-          for (const photo of photos) {
-            if (!photo) continue; // 거부된 사진은 자리를 차지하지 않는다.
-            addPhotoAt(px + i * DROP_STACK_OFFSET_PX, py + i * DROP_STACK_OFFSET_PX, photo);
-            i += 1;
-          }
+          // cmd-z-undo 웨이브 3: 붙여넣기 한 번에 놓인 사진은 모두 기록 1단계.
+          runAsUserAction(
+            () => {
+              let i = 0;
+              for (const photo of photos) {
+                if (!photo) continue; // 거부된 사진은 자리를 차지하지 않는다.
+                addPhotoAt(px + i * DROP_STACK_OFFSET_PX, py + i * DROP_STACK_OFFSET_PX, photo);
+                i += 1;
+              }
+            },
+            { creates: true },
+          );
         })();
         return;
       }
@@ -328,9 +336,16 @@ export function Canvas() {
           i += 1;
           continue;
         }
-        const id = addCardAt("text", wx, wy);
-        setEditing(null);
-        setContent(id, block);
+        // cmd-z-undo 웨이브 3: 파일 하나의 메모 만들기·채우기는 기록 1단계.
+        const id = runAsUserAction(
+          () => {
+            const created = addCardAt("text", wx, wy);
+            setEditing(null);
+            setContent(created, block);
+            return created;
+          },
+          { creates: true },
+        );
         if (useWorkspace.getState().currentBoardId === SYSTEM_BOARD_ID) {
           createdOnSystemBoard.push(id);
         }
@@ -357,10 +372,8 @@ export function Canvas() {
 
   /* ─ Space + Delete/Backspace 키 처리 ─ */
   useEffect(() => {
-    const isTyping = () => {
-      const el = document.activeElement as HTMLElement | null;
-      return !!el?.matches("input, textarea, [contenteditable='true']");
-    };
+    // 입력칸 판정은 undoKeys의 규칙 하나를 쓴다(코드 리뷰 웨이브 2 F5).
+    const isTyping = () => isTypingTarget(document.activeElement);
 
     const onDown = (e: KeyboardEvent) => {
       // FEAT-connectors: 연결 드래그 중이면 이 핸들러가 Escape를 먼저 잡아 부모 보드로
@@ -371,17 +384,22 @@ export function Canvas() {
         setSpaceDown(true);
         return;
       }
+      // cmd-z-undo n3: cmd+z·cmd+shift+z 경로 판정은 undoKeys 한 곳에서 한다 —
+      // 펜 모드면 펜 획 기록(FEAT-pen-drawing-engine D3), 편집·펼친 창·입력칸이면
+      // 그쪽 기본 동작, 그 밖에는 보드 기록. e.code KeyZ도 받는다(한글 입력기).
+      if (handleUndoKeyDown(e)) {
+        e.preventDefault();
+        return;
+      }
       // FEAT-markdown-memo-pen: 펜 모드 키 — 다른 캔버스 키보다 우선.
       if (penMode) {
         const mod = e.metaKey || e.ctrlKey;
         if (e.key === "Escape") {
           e.preventDefault();
           setPenMode(false);
-        } else if (mod && (e.key === "z" || e.key === "Z")) {
-          // FEAT-pen-drawing-engine D3: 펜 그리기 undo/redo (스펙 AC-7).
+        } else if (mod && isUndoZKey(e)) {
+          // 펜 모드의 cmd+z는 위 handleUndoKeyDown이 처리했다. 다른 키로 새지 않게 막는다.
           e.preventDefault();
-          if (e.shiftKey) useWorkspace.getState().penRedo();
-          else useWorkspace.getState().penUndo();
         } else if (mod && e.key === "Backspace") {
           e.preventDefault();
           useWorkspace.getState().penClear();

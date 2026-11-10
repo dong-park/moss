@@ -22,7 +22,7 @@ import {
   putNote,
   readNote,
 } from "./model";
-import { transactLocal } from "./origin";
+import { transactLocal, UNTRACKED_ORIGIN, type WriteOrigin } from "./origin";
 import { forgetSharedSnapshot } from "./sharedSnapshot";
 
 // n23 재심사 2R-7: 비활성 문서 close 타이머는 activeDoc이 키 단위로 소유한다.
@@ -68,22 +68,23 @@ export async function writeToBoardDoc(
 }
 
 /** 메모를 자기 보드 문서에 쓴다(없으면 생성). */
-export function writeNoteRecord(note: Note): Promise<void> {
-  return writeToBoardDoc(note.boardId ?? null, (doc) => putNote(doc, note));
+export function writeNoteRecord(note: Note, origin?: WriteOrigin): Promise<void> {
+  return writeToBoardDoc(note.boardId ?? null, (doc) => putNote(doc, note, origin));
 }
 
 export function deleteNoteRecord(
   id: string,
   storageBoardId: string | null,
+  origin?: WriteOrigin,
 ): Promise<void> {
   // n23 재심사 2R-2: 문서에서 지운 메모의 공유 스냅샷을 버린다(누수 방지).
   forgetSharedSnapshot(id);
-  return writeToBoardDoc(storageBoardId, (doc) => deleteNote(doc, id));
+  return writeToBoardDoc(storageBoardId, (doc) => deleteNote(doc, id, origin));
 }
 
 /** 보드 메타를 자기 문서에 쓴다. */
-export function writeBoardRecord(board: Board): Promise<void> {
-  return writeToBoardDoc(board.id, (doc) => putBoard(doc, board));
+export function writeBoardRecord(board: Board, origin?: WriteOrigin): Promise<void> {
+  return writeToBoardDoc(board.id, (doc) => putBoard(doc, board, origin));
 }
 
 /**
@@ -110,26 +111,28 @@ async function resolveSourceBoardId(
 export async function writeConnectionRecord(
   connection: Connection,
   sourceBoardId?: string | null,
+  origin?: WriteOrigin,
 ): Promise<void> {
   let boardId = sourceBoardId;
   if (boardId === undefined) {
     boardId = await resolveSourceBoardId(connection.sourceNoteId);
     if (boardId === undefined) return; // 소유자 미상 — 쓸 문서가 없다.
   }
-  await writeToBoardDoc(boardId, (doc) => putConnection(doc, connection));
+  await writeToBoardDoc(boardId, (doc) => putConnection(doc, connection, origin));
 }
 
 export async function deleteConnectionRecord(
   connectionId: string,
   sourceNoteId: string,
   sourceBoardId?: string | null,
+  origin?: WriteOrigin,
 ): Promise<void> {
   let boardId = sourceBoardId;
   if (boardId === undefined) {
     boardId = await resolveSourceBoardId(sourceNoteId);
     if (boardId === undefined) return;
   }
-  await writeToBoardDoc(boardId, (doc) => deleteConnection(doc, connectionId));
+  await writeToBoardDoc(boardId, (doc) => deleteConnection(doc, connectionId, origin));
 }
 
 /** overwrite 가져오기 — 보드 문서의 공유 내용(메모·연결선·메타)을 비운다. */
@@ -145,7 +148,8 @@ export function clearBoardRecords(
         connectionsMap(doc).clear();
         metaMap(doc).clear();
         filesMap(doc).clear();
-      });
+        // cmd-z-undo: 덮어쓰기 가져오기는 사용자 캔버스 동작이 아니다 — 기록에 넣지 않는다.
+      }, UNTRACKED_ORIGIN);
     },
     opts,
   );
