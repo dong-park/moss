@@ -17,14 +17,20 @@ const timers = new Map<
 >();
 
 /*
- * cmd-z-undo 웨이브 4 리뷰(W4-5): 이미 시작된 미러 쓰기. cancelPersist는 타이머만 지운다 —
- * 돌고 있는 쓰기(saveNote의 get 뒤 put)는 못 멈춘다. 미러 행을 지우는 쪽(휴지통·기록 보관·
- * 영구 삭제)은 persistSettled로 그 쓰기가 끝난 뒤 지운다. 안 그러면 늦은 put이 행을 되살린다.
+ * cmd-z-undo 웨이브 4 리뷰(W4-5·W4-8): 이미 시작된 메모 미러 쓰기. cancelPersist는 타이머만
+ * 지운다 — 돌고 있는 쓰기는 못 멈춘다. 미러 행을 지우는 쪽(휴지통·기록 보관·영구 삭제)은
+ * persistSettled로 그 쓰기가 끝난 뒤 지운다. 쓰기는 storage.saveNote 한 곳이 등록한다 —
+ * 예약 쓰기, 바로 쓰기(persistCard), 브리지·멤버십 쓰기가 모두 그 길을 지난다.
  */
 const inflight = new Map<string, Promise<void>>();
 const noop = () => undefined;
 
-function track(id: string, p: Promise<void>): Promise<void> {
+/**
+ * 시작한 메모 미러 쓰기를 등록한다. storage.saveNote가 부른다. p를 그대로 돌려준다.
+ * 같은 쓰기를 두 번 등록해도 해가 없다. 미러를 읽고 고쳐 쓰는 보드 이전도 persistSettled로
+ * 이 쓰기를 기다린다(웨이브 5 리뷰 W5-2) — 안 기다리면 get·merge·put이 엇갈려 kind·ref가 사라진다.
+ */
+export function trackPersist<T>(id: string, p: Promise<T>): Promise<T> {
   const quiet = p.then(noop, noop);
   const prev = inflight.get(id);
   const settled = prev ? Promise.all([prev, quiet]).then(noop) : quiet;
@@ -35,23 +41,13 @@ function track(id: string, p: Promise<void>): Promise<void> {
   return p;
 }
 
-/**
- * 예약을 거치지 않고 바로 시작한 미러 쓰기도 진행 중으로 센다(웨이브 5 리뷰 W5-2). 만들기의
- * persistCard가 그렇다. 미러를 읽고 고쳐 쓰는 보드 이전이 persistSettled로 이 쓰기를 기다린다 —
- * 안 기다리면 get·merge·put이 엇갈려 만들기의 kind·ref가 사라진다.
- */
-export function trackPersist<T>(id: string, p: Promise<T>): Promise<T> {
-  track(id, p.then(noop));
-  return p;
-}
-
 /** id별 영속을 300ms 디바운스로 예약. 같은 id 재예약 시 직전 것을 대체(최신 우선). */
 export function schedulePersist(id: string, run: PersistRun): void {
   const existing = timers.get(id);
   if (existing) clearTimeout(existing.handle);
   const handle = setTimeout(() => {
     timers.delete(id);
-    void track(id, run());
+    void run();
   }, DEBOUNCE_MS);
   timers.set(id, { handle, run });
 }
@@ -62,7 +58,7 @@ export function flushCard(id: string): Promise<void> {
   if (!entry) return Promise.resolve();
   clearTimeout(entry.handle);
   timers.delete(id);
-  return track(id, entry.run());
+  return entry.run();
 }
 
 /** 이미 시작된 id의 미러 쓰기가 있는가. 예약만 된 쓰기는 세지 않는다. */

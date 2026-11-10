@@ -32,7 +32,13 @@ import {
   updateNoteField,
 } from "@/state/ydoc/model";
 import { LOCAL_ORIGIN, UNTRACKED_ORIGIN, type WriteOrigin } from "@/state/ydoc/origin";
-import { connectionMirrorSettled, flushAll, persistSettled } from "@/state/cardPersist";
+import {
+  connectionMirrorSettled,
+  flushAll,
+  persistSettled,
+  trackConnectionMirrorWrite,
+  trackPersist,
+} from "@/state/cardPersist";
 import { liveFileRefs } from "@/state/undoFiles";
 import {
   SYSTEM_BOARD_ID,
@@ -327,15 +333,25 @@ export const useStorage = create<StorageState>((set, get) => ({
     return notes;
   },
 
-  saveNote: async (patch) => {
+  saveNote: (patch) => {
     const db = getDB();
-    const prev = await db.notes.get(patch.id);
-    const next = mergeNote(prev, patch);
-    await db.notes.put(next);
+    // cmd-z-undo 웨이브 4 리뷰 2바퀴:
+    // - W4-8: 메모 미러 쓰기는 모두 여기를 지난다. 진행 중 쓰기를 여기 한 곳에서 등록한다 —
+    //   부르는 곳이 어디든 미러 행을 지우는 쪽의 persistSettled가 기다린다.
+    // - W4-7: 휴지통이 이긴다. 같은 트랜잭션에서 그 id가 휴지통에 있으면 미러 행을 쓰지 않는다.
+    //   다른 탭이 휴지통에 넣은 뒤 끝난 이 탭의 늦은 쓰기가 미러 행을 되살리지 않게 한다.
+    //   살리기·다시 나타남·휴지통 빼기는 휴지통 행을 먼저 지우고 미러를 쓴다.
+    // - 읽기와 쓰기를 한 트랜잭션에 둔다. 뒤에 연 휴지통 트랜잭션이 그 사이에 끼지 못한다.
+    const write = db.transaction("rw", [db.notes, db.trash], async () => {
+      const prev = await db.notes.get(patch.id);
+      const next = mergeNote(prev, patch);
+      if (!(await db.trash.get(patch.id))) await db.notes.put(next);
+      return next;
+    });
     // 빈번한 saveNote 후마다 quota 호출은 비싸므로 호출자가 refreshQuota를 명시적으로 부른다.
     // n23 P1-5: 정규화된 Note를 돌려준다 — 호출자(브리지)가 Dexie read-back 없이
     // 그대로 Y.Doc에 쓸 수 있게. read-back이 비면 쓰기를 조용히 건너뛰던 경로 제거.
-    return next;
+    return trackPersist(patch.id, write);
   },
 
   updateNoteTitle: async (id, title, opts) => {
@@ -484,8 +500,9 @@ export const useStorage = create<StorageState>((set, get) => ({
           }
         }
         const restored: Note = { ...note, boardId, x, y, frameId };
-        await db.notes.put(restored);
+        // cmd-z-undo 웨이브 4 리뷰 2바퀴(W4-7): 휴지통 행을 먼저 지우고 미러를 쓴다.
         await db.trash.delete(id);
+        await db.notes.put(restored);
         // 양 끝이 살아 있는 연결선만 되돌린다(AC-8). 반대편이 아직 휴지통이면
         // trashConnections에 그대로 남아 반대편 복구 때 돌아온다.
         const parked = await db.trashConnections
@@ -699,23 +716,38 @@ export const useStorage = create<StorageState>((set, get) => ({
       .toArray();
   },
 
-  saveConnection: async (patch, opts) => {
+  saveConnection: (patch, opts) => {
     const db = getDB();
-    const prev = await db.connections.get(patch.id);
-    const next = mergeConnection(prev, patch);
-    await db.connections.put(next);
-    // n23 P1-1: 연결선의 Y.Doc 쓰기는 writeThrough 단일 경로(소유=source 메모 보드)만
-    // 담당한다. 여기서 활성 문서에 쓰면 활성 보드가 아닌 소유 보드에도 실려 비공개
-    // 보드 정보가 공유 문서로 샌다.
-    // n23 재심사 2R-6: 저장은 Dexie 미러 + 소유 문서를 storage 한 액션으로 합친다.
-    // 소유 보드는 원본 문서의 source 메모에서 판정한다(미러는 locate 힌트일 뿐).
-    await writeConnectionRecord(next, undefined, opts?.origin);
+    // cmd-z-undo 웨이브 4 리뷰 2바퀴(W4-6): 연결선도 휴지통이 이긴다 — 연결선 휴지통에 있는 선은
+    // 미러에 쓰지 않는다. 읽기와 쓰기를 한 트랜잭션에 둔다.
+    // 미러와 문서 쓰기 전체를 연결선 미러 쓰기로 등록한다. 휴지통 옮기기가 이 쓰기 뒤에 돈다 —
+    // 막 그은 선(connectCards는 await 없이 부른다)의 늦은 문서 쓰기가 휴지통에 옮긴 선을 문서에
+    // 되살려 문서와 연결선 휴지통에 함께 두지 않게 한다.
+    const write = (async () => {
+      const next = await db.transaction("rw", [db.connections, db.trashConnections], async () => {
+        const merged = mergeConnection(await db.connections.get(patch.id), patch);
+        if (!(await db.trashConnections.get(patch.id))) await db.connections.put(merged);
+        return merged;
+      });
+      // n23 P1-1: 연결선의 Y.Doc 쓰기는 writeThrough 단일 경로(소유=source 메모 보드)만
+      // 담당한다. 여기서 활성 문서에 쓰면 활성 보드가 아닌 소유 보드에도 실려 비공개
+      // 보드 정보가 공유 문서로 샌다.
+      // n23 재심사 2R-6: 저장은 Dexie 미러 + 소유 문서를 storage 한 액션으로 합친다.
+      // 소유 보드는 원본 문서의 source 메모에서 판정한다(미러는 locate 힌트일 뿐).
+      await writeConnectionRecord(next, undefined, opts?.origin);
+    })();
+    return trackConnectionMirrorWrite(write);
   },
 
   removeConnection: async (id, opts) => {
     const db = getDB();
-    const conn = await db.connections.get(id);
-    await db.connections.delete(id);
+    // cmd-z-undo 웨이브 4 리뷰 2바퀴: saveConnection처럼 읽기와 지우기를 한 트랜잭션에 둔다 —
+    // 앞서 연 연결선 저장 트랜잭션 뒤에 차례대로 돈다.
+    const conn = await db.transaction("rw", db.connections, async () => {
+      const found = await db.connections.get(id);
+      await db.connections.delete(id);
+      return found;
+    });
     // n23 재심사 2R-6: 삭제도 한 액션에서 소유 문서까지 지운다.
     if (conn) await deleteConnectionRecord(id, conn.sourceNoteId, undefined, opts?.origin);
   },

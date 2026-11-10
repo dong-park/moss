@@ -14,13 +14,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as Y from "yjs";
 import { runAsUserAction, useWorkspace, __trashIdleForTest } from "@/state/workspace";
 import { beginUndoGroup, endUndoGroup } from "@/state/ydoc/undo";
-import { getDB, type Connection } from "@/state/db/schema";
+import { getDB, type Connection, type Note } from "@/state/db/schema";
 import {
   flushAll,
   isPersistInFlight,
   persistSettled,
   schedulePersist,
+  trackPersist,
 } from "@/state/cardPersist";
+import { useStorage } from "@/state/storage";
 import {
   deleteConnection,
   deleteNote,
@@ -535,7 +537,8 @@ describe("W4-5 이미 시작된 0.3초 미러 쓰기가 지운 미러 행을 되
   it("persistSettled는 이미 시작된 쓰기가 끝나야 풀린다 — 예약만 된 쓰기는 기다리지 않는다", async () => {
     vi.useFakeTimers();
     let release: () => void = () => undefined;
-    const run = vi.fn(() => new Promise<void>((r) => { release = r; }));
+    // 2바퀴(W4-8): 진행 중 쓰기는 trackPersist 한 곳이 센다(storage.saveNote가 부른다).
+    const run = vi.fn(() => trackPersist("x", new Promise<void>((r) => { release = r; })));
     schedulePersist("x", run);
     expect(isPersistInFlight("x")).toBe(false);
     let done = false;
@@ -552,6 +555,38 @@ describe("W4-5 이미 시작된 0.3초 미러 쓰기가 지운 미러 행을 되
     release();
     await vi.waitFor(() => expect(settled).toBe(true));
     expect(isPersistInFlight("x")).toBe(false);
+  });
+
+  it("W4-8 바로 쓰기(saveNote)도 진행 중으로 센다 — 예약 없이 부른 쓰기를 persistSettled가 기다린다", async () => {
+    const p = await bootBoard();
+    await readyCheck(p);
+    const write = useStorage.getState().saveNote({ id: "direct-1", boardId: p, kind: "text", x: 0, y: 0 });
+    expect(isPersistInFlight("direct-1")).toBe(true);
+    await persistSettled(["direct-1"]);
+    expect(isPersistInFlight("direct-1")).toBe(false);
+    expect(await getDB().notes.get("direct-1")).toBeDefined();
+    await write;
+  });
+
+  it("W4-7 휴지통이 이긴다 — saveNote는 휴지통에 있는 메모의 미러 행을 쓰지 않고, 살리기는 미러 행을 다시 쓴다", async () => {
+    const p = await bootBoard();
+    const m = addMemo(100, 100);
+    const n = addMemo(600, 100);
+    await flushAll();
+    const cid = await connect(m, n);
+    await readyCheck(p);
+    ws().remove(m);
+    await waitFor(async () => !!(await getDB().trashConnections.get(cid)), "M·선 휴지통");
+    await idle();
+    await useStorage.getState().saveNote({ id: m, content: "늦은 쓰기" });
+    expect(await getDB().notes.get(m)).toBeUndefined();
+    expect(await getDB().trash.get(m)).toBeDefined();
+    // 살리기는 휴지통 행을 먼저 빼고 미러를 쓴다 — 미러 행이 빠지지 않는다.
+    await ws().restoreFromTrash(m);
+    await idle();
+    expect(await getDB().notes.get(m)).toBeDefined();
+    expect(await getDB().connections.get(cid)).toBeDefined();
+    expect(await getDB().trash.get(m)).toBeUndefined();
   });
 
   it("R5a 생성 되돌리기가 이미 시작된 0.3초 예약 미러 쓰기와 엇갈려도 기록 보관한 메모의 미러 행이 없다", async () => {
@@ -671,5 +706,185 @@ describe("대조군 — 살리기와 cmd+z가 같은 틱에 겹친다", () => {
     expect(s.mirrorM).toBe(false);
     expect(s.trashConn).toBe(true);
     expect(s.mirror).toBe(false);
+  });
+});
+
+/* ───────────── 2바퀴: W4-6·W4-7·W4-8 ───────────── */
+
+const mirrorNote = async (id: string) => !!(await getDB().notes.get(id));
+
+describe("W4-8 바로 쓰기(persistCard)도 진행 중 미러 쓰기로 센다", () => {
+  it("N1 만든 직후 같은 틱 cmd+z — 기록 보관 메모의 미러 행이 되살아나지 않는다", async () => {
+    const p = await bootBoard();
+    await readyCheck(p);
+    const id = ws().addCardAt("text", 100, 100);
+    useWorkspace.setState({ editingId: null, selectedIds: [] });
+    expect(um().undoStack.length).toBe(1);
+    expect(pressUndo()).toBe(true);
+    await sleep(800);
+    await idle();
+    expect(note(id)).toBeUndefined();
+    expect(await mirrorNote(id)).toBe(false);
+  });
+
+  it("N1 대조 — 만든 메모의 미러 쓰기가 끝난 뒤 cmd+z면 미러 행이 없다", async () => {
+    const p = await bootBoard();
+    await readyCheck(p);
+    const id = ws().addCardAt("text", 100, 100);
+    useWorkspace.setState({ editingId: null, selectedIds: [] });
+    await waitFor(() => mirrorNote(id), "미러");
+    expect(pressUndo()).toBe(true);
+    await sleep(800);
+    await idle();
+    expect(await mirrorNote(id)).toBe(false);
+  });
+
+  it("N2 제목 확정(persistCard) 직후 같은 틱 remove — 휴지통에만 있다", async () => {
+    const p = await bootBoard();
+    const m = addMemo(100, 100);
+    await flushAll();
+    await readyCheck(p);
+    ws().setTitle(m, "  제목  ");
+    ws().commitTitle(m);
+    ws().remove(m);
+    await sleep(800);
+    await idle();
+    expect(!!(await getDB().trash.get(m))).toBe(true);
+    expect(await mirrorNote(m)).toBe(false);
+  });
+
+  it("N3 대조 — 살린 뒤 브리지가 고친 글, cmd+z로 휴지통에 돌려보낸 행에 브리지 글이 있다", async () => {
+    const p = await bootBoard();
+    const a = addMemo(100, 100);
+    const m = addMemo(600, 100);
+    ws().setContent(m, "원래 글");
+    await flushAll();
+    const cid = await connect(a, m);
+    ws().remove(m);
+    await waitFor(async () => !!(await getDB().trash.get(m)), "휴지통");
+    await readyCheck(p);
+    await ws().restoreFromTrash(m);
+    await sleep(600);
+    await dispatchOp("notes.update", { id: m, content: "브리지 글" });
+    await sleep(600);
+    expect(pressUndo()).toBe(true);
+    await sleep(800);
+    await idle();
+    expect((await getDB().trash.get(m))?.note.content).toBe("브리지 글");
+    expect(!!(await getDB().trashConnections.get(cid))).toBe(true);
+    expect(await mirrorNote(m)).toBe(false);
+  });
+});
+
+describe("W4-6·W4-7 휴지통이 이긴다 — 받는 탭의 늦은 미러 쓰기", () => {
+  let tab1Db: { close: () => void } | null = null;
+  afterEach(() => {
+    tab1Db?.close();
+    tab1Db = null;
+  });
+
+  /** 탭1의 Dexie 쪽 — 새 모듈 인스턴스(다른 탭 = 다른 Dexie 연결, 자기 cardPersist 상태). */
+  async function tab1Side() {
+    vi.resetModules();
+    const mod = await import("@/state/undoTrash");
+    const schema = await import("@/state/db/schema");
+    tab1Db = schema.getDB();
+    expect(schema.getDB).not.toBe(getDB);
+    return mod;
+  }
+  function setupTab(p: string) {
+    const key = docKeyForBoard(p);
+    const tab1 = new Y.Doc();
+    Y.applyUpdate(tab1, Y.encodeStateAsUpdate(doc()));
+    const send = () =>
+      applyIncoming({
+        type: "ydoc-update", key, origin: "tab-1",
+        update: Y.encodeStateAsUpdate(tab1, Y.encodeStateVector(doc())),
+      });
+    return { tab1, send };
+  }
+
+  it("R2-1 받는 탭의 늦은 연결선 미러 쓰기 뒤 0.3초 안에 보드를 떠나도, 연결선이 연결선 휴지통에만 있다", async () => {
+    const p = await bootBoard("P");
+    const q = await ws().createBoard("Q");
+    await ws().setCurrentBoard(p);
+    const a = addMemo(100, 100);
+    const b = addMemo(600, 100);
+    await flushAll();
+    const cid = await connect(a, b);
+    await waitFor(async () => !!(await getDB().notes.get(b)), "B 미러");
+    await readyCheck(p);
+    const { tab1, send } = setupTab(p);
+    const side = await tab1Side();
+    // 탭1이 연결선 label을 고친다 — 이 탭은 연결선 미러 쓰기를 0.3초 뒤로 예약.
+    tab1.transact(() => putConnection(tab1, { ...(readConnection(tab1, cid) as Connection), label: "L" }), "me");
+    send();
+    // 탭1이 B를 지운다(캔버스 remove와 같은 문서 쓰기 + 실제 trashNotesFromDoc). 방송은 아직 안 닿았다.
+    const snapB = readNote(tab1, b)!;
+    const touching = [readConnection(tab1, cid) as Connection];
+    tab1.transact(() => {
+      tab1.getMap("connections").delete(cid);
+      tab1.getMap("notes").delete(b);
+    }, "me");
+    await side.trashNotesFromDoc(tab1, [{ note: { ...snapB, lastVisitedAt: Date.now() } as Note, connections: touching }]);
+    await sleep(400); // 이 탭의 예약 flush가 삭제 방송보다 먼저 돈다
+    expect(!!(await getDB().connections.get(cid))).toBe(false);
+    send();
+    await ws().setCurrentBoard(q); // 0.3초 안에 보드를 떠난다
+    await sleep(700);
+    await idle();
+    expect(!!(await getDB().connections.get(cid))).toBe(false);
+    expect(!!(await getDB().trashConnections.get(cid))).toBe(true);
+    expect(!!(await getDB().trash.get(b))).toBe(true);
+  });
+
+  it("R2-2 받는 탭의 0.3초 메모 미러 쓰기가 보낸 탭의 휴지통 넣기 뒤, 삭제 방송 앞에 끝나도 메모가 휴지통에만 있다", async () => {
+    const p = await bootBoard("P");
+    const b = addMemo(600, 100);
+    ws().setContent(b, "v1");
+    await flushAll();
+    await waitFor(async () => (await getDB().notes.get(b))?.content?.includes("v1") ?? false, "B 미러");
+    await readyCheck(p);
+    const { tab1, send } = setupTab(p);
+    const side = await tab1Side();
+    tab1.transact(() => updateNoteFields(tab1, b, { content: "v2 탭1", updatedAt: Date.now() }), "me");
+    send(); // 이 탭은 B 미러 쓰기를 0.3초 뒤로 예약
+    const snapB = readNote(tab1, b)!;
+    tab1.transact(() => tab1.getMap("notes").delete(b), "me");
+    await side.trashNotesFromDoc(tab1, [{ note: { ...snapB, lastVisitedAt: Date.now() } as Note, connections: [] }]);
+    await sleep(400); // 예약 쓰기가 돌고 끝난다
+    expect(isPersistInFlight(b)).toBe(false);
+    expect(await mirrorNote(b)).toBe(false);
+    send();
+    await idle();
+    await sleep(700);
+    await idle();
+    expect(has(b)).toBe(false);
+    expect(await mirrorNote(b)).toBe(false);
+    expect((await getDB().trash.get(b))?.note.content).toBe("v2 탭1");
+  });
+
+  it("R2-3 생성을 되돌린 다른 탭 뒤 이 탭의 늦은 쓰기가 이미 끝났어도, 기록 보관 메모의 미러 행이 없다", async () => {
+    const p = await bootBoard("P");
+    const b = addMemo(600, 100);
+    ws().setContent(b, "v1");
+    await flushAll();
+    await waitFor(() => mirrorNote(b), "B 미러");
+    await readyCheck(p);
+    const { tab1, send } = setupTab(p);
+    const side = await tab1Side();
+    tab1.transact(() => updateNoteFields(tab1, b, { content: "v2 탭1", updatedAt: Date.now() }), "me");
+    send(); // 이 탭은 B 미러 쓰기를 0.3초 뒤로 예약
+    tab1.transact(() => tab1.getMap("notes").delete(b), "me");
+    await side.archiveMirror(tab1, b); // 탭1의 생성 되돌리기 — 기록 보관
+    await sleep(400); // 이 탭의 예약 쓰기가 돌고 끝난다 — 기록 보관 뒤라 미러 행이 생긴다
+    expect(isPersistInFlight(b)).toBe(false);
+    send();
+    await idle();
+    await sleep(500);
+    await idle();
+    expect(has(b)).toBe(false);
+    expect(await mirrorNote(b)).toBe(false);
+    expect(await getDB().trash.get(b)).toBeUndefined();
   });
 });

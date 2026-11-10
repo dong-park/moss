@@ -22,7 +22,6 @@ import {
   cancelPersist,
   flushCard,
   flushAll,
-  isPersistInFlight,
   persistSettled,
   trackConnectionMirrorWrite,
   trackPersist,
@@ -1512,6 +1511,20 @@ function writeCardToDoc(card: Card, boardId: string | null, origin?: WriteOrigin
   withActiveDoc(boardId, (doc) => writeCardToDocHandle(doc, card, boardId, origin));
 }
 
+/**
+ * cmd-z-undo 웨이브 4 리뷰 2바퀴(W4-7): 보드에 있는 카드의 미러 행을 지금 카드 값으로 바로 쓴다.
+ * 예약 쓰기는 버린다. 휴지통 행을 뺀 뒤에 부른다 — 휴지통 행이 있는 동안 돈 쓰기는 saveNote가
+ * 건너뛰었다(휴지통이 이긴다).
+ */
+async function writeMirrorNow(ids: string[], boardId: string | null): Promise<void> {
+  for (const id of ids) {
+    const card = useWorkspace.getState().cards.find((c) => c.id === id);
+    if (!card) continue;
+    cancelPersist(id);
+    await persistCardDexie(card, boardId);
+  }
+}
+
 function persistCard(
   card: Card,
   boardId: string | null,
@@ -2084,13 +2097,13 @@ function bindActiveDocReflection(doc: Y.Doc, storageBoardId: string | null): voi
           } else if (otherTab) {
             // 웨이브 4 리뷰(W4-4): 같은 기기 다른 탭의 삭제. 휴지통과 기록 보관은 그 탭이 지우기
             // 직전 문서 값으로 맞춘다 — 이 탭의 0.3초 안 글도 문서에 있어 그 행에 남는다.
-            // 이 탭은 예약 미러 쓰기만 버린다. 이미 시작된 쓰기가 있으면 끝난 뒤 그 미러 행을 치운다
-            // — 늦은 put이 생성을 되돌린 메모나 휴지통 메모의 미러 행을 되살리지 않게.
+            // 이 탭은 예약 미러 쓰기를 버린다. 2바퀴(W4-7): 이 탭의 쓰기가 그 탭의 휴지통 넣기·기록
+            // 보관 뒤에 이미 끝났을 수 있다 — 진행 중 쓰기가 끝난 뒤 미러 행을 늘 치운다. 문서에 없는
+            // 메모는 휴지통이든 기록 보관이든 미러 행이 없다(스펙 「상태 모델」). 휴지통은 안 만진다.
             // 휴지통 배지는 그 탭의 휴지통 쓰기 뒤를 노려 다시 읽는다(탭 사이 휴지통 알림은 없다).
-            const writing = isPersistInFlight(id);
             cancelPersist(id);
             void enqueueTrashJob(async () => {
-              if (writing) await archiveMirror(doc, id);
+              await archiveMirror(doc, id);
               notifyNoteChanges();
               void useWorkspace.getState().refreshTrashCount();
             });
@@ -2136,11 +2149,13 @@ function bindActiveDocReflection(doc: Y.Doc, storageBoardId: string | null): voi
     if (dirty) useWorkspace.setState({ cards: nextCards });
     if (appeared.length > 0) {
       // n5: 보드에 다시 나타난 메모는 휴지통에 없다(되돌리기·다시 실행·원격 모두). 미러 행을
-      // 먼저 써서 휴지통 살리기의 반대편 미러 확인이 0.3초를 기다리지 않게 한다.
+      // 바로 써서 휴지통 살리기의 반대편 미러 확인이 0.3초를 기다리지 않게 한다.
       // W4-4: 다른 탭이 되살린 메모의 휴지통 빼기는 그 탭이 한다.
+      // 2바퀴(W4-7): 휴지통이 이긴다 — 휴지통 행을 먼저 빼고 미러를 쓴다. 휴지통 행이 있는 동안
+      // 돈 예약 쓰기는 건너뛰었으니 지금 카드 값으로 다시 쓴다.
       void enqueueTrashJob(async () => {
-        for (const id of appeared) await flushCard(id);
         if (!otherTab) await untrashOnBoard(doc, appeared);
+        if (isActiveBoard(storageBoardId)) await writeMirrorNow(appeared, storageBoardId);
         notifyNoteChanges();
         void useWorkspace.getState().refreshTrashCount();
       });
@@ -2189,8 +2204,21 @@ function bindActiveDocReflection(doc: Y.Doc, storageBoardId: string | null): voi
         if (conn) puts.push(conn);
         else deletes.push(id);
       }
-      if (puts.length > 0) await db.connections.bulkPut(puts);
-      if (deletes.length > 0) await db.connections.bulkDelete(deletes);
+      // 2바퀴(W4-6): 휴지통이 이긴다 — 연결선 휴지통에 있는 선은 미러에 쓰지 않는다. 다른 탭이
+      // 휴지통에 옮긴 뒤 닿은 이 탭의 늦은 쓰기가 선을 미러에 되살리지 않게 한다. 다시 나타난
+      // 선은 untrashConnections가 휴지통 행을 빼며 미러에 쓴다.
+      try {
+        await db.transaction("rw", [db.connections, db.trashConnections], async () => {
+          const parked = new Set(
+            (await db.trashConnections.bulkGet(puts.map((c) => c.id))).flatMap((c) => (c ? [c.id] : [])),
+          );
+          const live = puts.filter((c) => !parked.has(c.id));
+          if (live.length > 0) await db.connections.bulkPut(live);
+          if (deletes.length > 0) await db.connections.bulkDelete(deletes);
+        });
+      } catch {
+        /* DB가 닫히는 중(테스트 teardown·새로고침 경계) — 보드를 떠날 때 내보낸 쓰기도 여기로 온다. */
+      }
     })());
   };
 
@@ -2264,7 +2292,9 @@ function bindActiveDocReflection(doc: Y.Doc, storageBoardId: string | null): voi
       clearTimeout(connTimer);
       connTimer = null;
     }
-    pendingConnIds.clear();
+    // 2바퀴(W4-6): 남은 연결선 미러 쓰기를 버리지 않고 내보낸다. 버리면 다른 탭이 지운 선의 미러
+    // 행이 남는다. 문서는 지금 읽는다(flushConnections가 첫 await 전에 읽는다).
+    flushConnections();
   };
 }
 
@@ -3410,8 +3440,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       if (!storage.initialized) return;
       const cards = get().cards.filter((c) => groupIds.includes(c.id));
       const db = getDB();
+      // cmd-z-undo 웨이브 4 리뷰 2바퀴: saveNote가 같은 트랜잭션에서 휴지통을 읽는다(휴지통이 이긴다).
       await db
-        .transaction("rw", db.notes, () =>
+        .transaction("rw", [db.notes, db.trash], () =>
           // n23 P1-7: 드래그 중(D4)에는 좌표를 문서에 쓰지 않는다 — 좌표는 드롭 때
           // commitMove가 한 번 쓴다. 여기서는 Dexie 미러만 갱신한다.
           Promise.all(cards.map((card) => persistCard(card, boardId, { doc: false }))),
@@ -4246,7 +4277,15 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     // 먼저 되살렸고 휴지통 행만 남았다 — 그 행을 빼고 끝낸다(실패 모드 3).
     if (get().cards.some((c) => c.id === id)) {
       const doc = getActiveBoardDoc()?.doc;
-      if (doc) await enqueueTrashJob(() => untrashOnBoard(doc, [id]));
+      const boardId = get().currentBoardId;
+      // 웨이브 4 리뷰 2바퀴(W4-7): 휴지통 행을 먼저 빼고 미러를 쓴다 — 휴지통 행이 남은 동안의
+      // 미러 쓰기는 건너뛰었다(휴지통이 이긴다).
+      if (doc) {
+        await enqueueTrashJob(async () => {
+          await untrashOnBoard(doc, [id]);
+          if (readNote(doc, id)) await writeMirrorNow([id], boardId);
+        });
+      }
       void get().refreshTrashCount();
       return;
     }
