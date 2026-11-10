@@ -6,7 +6,7 @@
 **id**: CZ-5
 **상위**: spec/cmd-z-undo/spec.md
 **deps**: n4
-**상태**: 아직 안 함
+**상태**: 끝남
 **담당 행**: T12, T13, T14, T21, T24, T25, T20 6-5의 "연결선이 P 문서에서 사라짐" 칸
 **사람 확인**: 불필요
 
@@ -33,15 +33,15 @@ spec.md 「상태 모델」의 합법 전이만 일어난다. 되돌리기·다�
 
 ## 완료 기준
 
-- [ ] 준비 확인 규칙(spec.md 「준비 확인」 공통 규칙, 스펙 리뷰 19바퀴 AN0): 이 노드의 캔버스 cmd+z 시험에 쓴다. 순서: 준비를 하고, n3가 내보내는 지금 보드 UndoManager getter로 clear하고, 실제 시간 0.6초 기다리고, 준비 확인을 한다. 준비 확인은 둘이다: 지금 보드가 그 행의 보드다. undoStack 길이가 0이다. 준비 확인이 실패하면 그 시험은 실패다. 행 given의 동작 가운데 then이 그 결과를 보는 동작은 준비가 아니다. then이 되돌아가는지 보든 그대로인지 보든 같다. 예: 만들었다·지웠다·고쳤다·살렸다·옮겼다·바꿨다·그었다. 준비 확인 뒤에 스토어 액션으로 실제로 하고 기록한다. 이 정의는 내 탭의 동작에만 쓴다. 다른 탭·다른 기기의 동작은 그쪽 Y.Doc에서 하고 update로 이어 붙인다. 내 기록에 들어가지 않는다. 부정형 판정 앞의 긍정 단언은 spec.md 「준비 확인」 공통 규칙의 닫힌 목록에 있는 판정에만 둔다. 목록 밖의 "없음·그대로·0" 판정에는 두지 않는다. 행이 따로 둔 단언은 이 목록과 별개로 지킨다. T5 드롭 직후 frameId, T20 첫째 칸 바뀜, T23 둘째 연 뒤 사라짐, T23 셋째 연 뒤 시드 카드가 그렇다. 화면 컴포넌트가 여러 호출을 한 단계로 묶는 동작은 드래그(DraggableCard)와 크기 조절(ResizeHandles)이다. 스토어 수준 시험은 드래그 시작부터 끝까지의 호출을 n3의 묶음 시작·끝 API로 감싼다. 드래그는 이동 호출(moveCard 또는 여러 장이면 moveSelectedBy) 여러 번, commitMove, resolveMembership을 조건 없이 이 순서로, 크기 조절은 resizeCard 여러 번이다. 여러 장 드래그는 이동 중에도 문서에 쓴다(workspace.ts:2672). 감싸지 않으면 n4 뒤에는 진입점마다 단계가 끊긴다. 그와 별도로 n4가 화면 수준 시험을 하나씩 둔다(spec.md 「준비 확인」 공통 규칙). moveCard만으로는 문서에 쓰지 않는다(workspace.ts:2633-2643). 준비 방법은 구현자가 고른다. 스토어 액션도, model.ts 헬퍼와 Dexie 직접 쓰기도 된다. 보드 열기는 loadFromStorage나 setCurrentBoard로 한다. connectCards처럼 await 뒤 문서에 쓰는 준비 동작은 그 쓰기가 문서에 보인 뒤 clear한다. 행이 가짜 타이머나 가짜 시계를 쓰면 준비와 준비 확인은 실제 시간으로 하고, 가짜 타이머는 그 뒤에 켠다. setImmediate는 가짜로 바꾸지 않는다. 예: vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] }). 기본 설정은 setImmediate까지 바꿔 Dexie 읽기·쓰기가 멈춘다. 동작 뒤 조건 대기가 2초 안에 서지 않으면 그 경우도 실패다. 준비할 때 걸리는 곳: 관찰자는 LOCAL_ORIGIN 쓰기를 스토어에 반영하지 않는다(origin.ts:23-25). 연결선 문서 쓰기·지우기는 source 메모의 미러 행과 연결선 미러 행을 읽는다(writeThrough.ts:94-98, storage.ts:674-679). 연결선 살리기는 trashConnections 행과, 되살린 메모 반대편 메모의 미러 행을 읽는다(storage.ts:460-471). 비시스템 보드는 db.boards 행이 있어야 열린다(workspace.ts:2161-2170)
-- [ ] T12, T13, T14, T21, T24, T25 then 칸의 「확인」이 통과한다. 확인: `cd web && bunx vitest run src/state/__tests__/undo.trash.test.ts`
-- [ ] 같은 명령에서 T15 첫째와 셋째 경우가 통과한다. 첫째: 휴지통에서 살린 A를 되돌리면 A가 보드에 없고 휴지통에 A 행 1개. 셋째: 연결선으로 B와 이어진 C를 살린 뒤 되돌리면 C가 보드에 없고 휴지통에 C 행 1개와 연결선 휴지통 행 1개, B는 보드에 남는다. T15 둘째와 행 전체 판정은 n6이 한다
-- [ ] T24는 기준값 보정 줄을 빼면 실패한다. 구현 메모에 뺐을 때 실패 출력 한 줄을 남긴다
-- [ ] n4가 만든 `web/src/state/__tests__/undo.steps.test.ts`의 T20 6-5 테스트에 "그 연결선이 P 문서 connections에서 사라짐" 판정을 이 노드가 더한다. 6-5가 통과한다: P undoStack 길이 그대로, 연결선 사라짐. remove 안에서 연결선을 문서에서 지우는 줄을 빼면 6-5가 실패함을 구현 메모에 실패 출력 한 줄로 남긴다. 확인: `cd web && bunx vitest run src/state/__tests__/undo.steps.test.ts`
-- [ ] 기존 회귀: `cd web && bunx vitest run src/state/__tests__/trash.test.ts src/state/__tests__/connectors.test.ts src/state/__tests__/storeOnYjs.test.ts src/state/__tests__/undo.core.test.ts src/state/__tests__/undo.steps.test.ts src/state/__tests__/memoSearch.test.ts src/state/__tests__/memoTable.test.ts` 통과
-- [ ] `cd web && npx tsc --noEmit` 통과
-- [ ] 실경로: 테스트가 실제 remove, restoreFromTrash, reflect 경로를 탄다. 우회했으면 구현 메모에 갭을 적는다
-- [ ] 되돌린 뒤 같은 값을 다시 고르면 문서에 쓰인다(코드 리뷰 웨이브 2 F1). 메모 색을 pink로 바꾸고 cmd+z 뒤 다시 pink를 고르면 P 문서 color가 pink다. 크기를 최대로 늘리고 cmd+z 뒤 다시 최대로 늘리면 P 문서 width가 최대값이다. 지금은 되돌리기가 sharedSnapshot을 안 맞춰 비교가 비고 쓰기가 빠진다(workspace.ts:1519-1541). 재현은 실제 workspace 액션과 undoBoard로 짠다. 확인: `cd web && bunx vitest run src/state/__tests__/undo.trash.test.ts`
+- [x] 준비 확인 규칙(spec.md 「준비 확인」 공통 규칙, 스펙 리뷰 19바퀴 AN0): 이 노드의 캔버스 cmd+z 시험에 쓴다. 순서: 준비를 하고, n3가 내보내는 지금 보드 UndoManager getter로 clear하고, 실제 시간 0.6초 기다리고, 준비 확인을 한다. 준비 확인은 둘이다: 지금 보드가 그 행의 보드다. undoStack 길이가 0이다. 준비 확인이 실패하면 그 시험은 실패다. 행 given의 동작 가운데 then이 그 결과를 보는 동작은 준비가 아니다. then이 되돌아가는지 보든 그대로인지 보든 같다. 예: 만들었다·지웠다·고쳤다·살렸다·옮겼다·바꿨다·그었다. 준비 확인 뒤에 스토어 액션으로 실제로 하고 기록한다. 이 정의는 내 탭의 동작에만 쓴다. 다른 탭·다른 기기의 동작은 그쪽 Y.Doc에서 하고 update로 이어 붙인다. 내 기록에 들어가지 않는다. 부정형 판정 앞의 긍정 단언은 spec.md 「준비 확인」 공통 규칙의 닫힌 목록에 있는 판정에만 둔다. 목록 밖의 "없음·그대로·0" 판정에는 두지 않는다. 행이 따로 둔 단언은 이 목록과 별개로 지킨다. T5 드롭 직후 frameId, T20 첫째 칸 바뀜, T23 둘째 연 뒤 사라짐, T23 셋째 연 뒤 시드 카드가 그렇다. 화면 컴포넌트가 여러 호출을 한 단계로 묶는 동작은 드래그(DraggableCard)와 크기 조절(ResizeHandles)이다. 스토어 수준 시험은 드래그 시작부터 끝까지의 호출을 n3의 묶음 시작·끝 API로 감싼다. 드래그는 이동 호출(moveCard 또는 여러 장이면 moveSelectedBy) 여러 번, commitMove, resolveMembership을 조건 없이 이 순서로, 크기 조절은 resizeCard 여러 번이다. 여러 장 드래그는 이동 중에도 문서에 쓴다(workspace.ts:2672). 감싸지 않으면 n4 뒤에는 진입점마다 단계가 끊긴다. 그와 별도로 n4가 화면 수준 시험을 하나씩 둔다(spec.md 「준비 확인」 공통 규칙). moveCard만으로는 문서에 쓰지 않는다(workspace.ts:2633-2643). 준비 방법은 구현자가 고른다. 스토어 액션도, model.ts 헬퍼와 Dexie 직접 쓰기도 된다. 보드 열기는 loadFromStorage나 setCurrentBoard로 한다. connectCards처럼 await 뒤 문서에 쓰는 준비 동작은 그 쓰기가 문서에 보인 뒤 clear한다. 행이 가짜 타이머나 가짜 시계를 쓰면 준비와 준비 확인은 실제 시간으로 하고, 가짜 타이머는 그 뒤에 켠다. setImmediate는 가짜로 바꾸지 않는다. 예: vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] }). 기본 설정은 setImmediate까지 바꿔 Dexie 읽기·쓰기가 멈춘다. 동작 뒤 조건 대기가 2초 안에 서지 않으면 그 경우도 실패다. 준비할 때 걸리는 곳: 관찰자는 LOCAL_ORIGIN 쓰기를 스토어에 반영하지 않는다(origin.ts:23-25). 연결선 문서 쓰기·지우기는 source 메모의 미러 행과 연결선 미러 행을 읽는다(writeThrough.ts:94-98, storage.ts:674-679). 연결선 살리기는 trashConnections 행과, 되살린 메모 반대편 메모의 미러 행을 읽는다(storage.ts:460-471). 비시스템 보드는 db.boards 행이 있어야 열린다(workspace.ts:2161-2170)
+- [x] T12, T13, T14, T21, T24, T25 then 칸의 「확인」이 통과한다. 확인: `cd web && bunx vitest run src/state/__tests__/undo.trash.test.ts`
+- [x] 같은 명령에서 T15 첫째와 셋째 경우가 통과한다. 첫째: 휴지통에서 살린 A를 되돌리면 A가 보드에 없고 휴지통에 A 행 1개. 셋째: 연결선으로 B와 이어진 C를 살린 뒤 되돌리면 C가 보드에 없고 휴지통에 C 행 1개와 연결선 휴지통 행 1개, B는 보드에 남는다. T15 둘째와 행 전체 판정은 n6이 한다
+- [x] T24는 기준값 보정 줄을 빼면 실패한다. 구현 메모에 뺐을 때 실패 출력 한 줄을 남긴다
+- [x] n4가 만든 `web/src/state/__tests__/undo.steps.test.ts`의 T20 6-5 테스트에 "그 연결선이 P 문서 connections에서 사라짐" 판정을 이 노드가 더한다. 6-5가 통과한다: P undoStack 길이 그대로, 연결선 사라짐. remove 안에서 연결선을 문서에서 지우는 줄을 빼면 6-5가 실패함을 구현 메모에 실패 출력 한 줄로 남긴다. 확인: `cd web && bunx vitest run src/state/__tests__/undo.steps.test.ts`
+- [x] 기존 회귀: `cd web && bunx vitest run src/state/__tests__/trash.test.ts src/state/__tests__/connectors.test.ts src/state/__tests__/storeOnYjs.test.ts src/state/__tests__/undo.core.test.ts src/state/__tests__/undo.steps.test.ts src/state/__tests__/memoSearch.test.ts src/state/__tests__/memoTable.test.ts` 통과
+- [x] `cd web && npx tsc --noEmit` 통과
+- [x] 실경로: 테스트가 실제 remove, restoreFromTrash, reflect 경로를 탄다. 우회했으면 구현 메모에 갭을 적는다
+- [x] 되돌린 뒤 같은 값을 다시 고르면 문서에 쓰인다(코드 리뷰 웨이브 2 F1). 메모 색을 pink로 바꾸고 cmd+z 뒤 다시 pink를 고르면 P 문서 color가 pink다. 크기를 최대로 늘리고 cmd+z 뒤 다시 최대로 늘리면 P 문서 width가 최대값이다. 지금은 되돌리기가 sharedSnapshot을 안 맞춰 비교가 비고 쓰기가 빠진다(workspace.ts:1519-1541). 재현은 실제 workspace 액션과 undoBoard로 짠다. 확인: `cd web && bunx vitest run src/state/__tests__/undo.trash.test.ts`
 
 ## 파일 포인터
 
@@ -56,3 +56,27 @@ spec.md 「상태 모델」의 합법 전이만 일어난다. 되돌리기·다�
 | `web/src/state/cardPersist.ts` | 예약 미러 쓰기, cancelPersist |
 
 ## 구현 메모
+
+메인 사실, 2026-11-10 웨이브 4 시작 전, HEAD e04aca9.
+- n4 뒤 줄 번호가 밀렸다. 위 줄 번호 대신 함수 이름으로 찾는다. 지금 줄: workspace.ts writeCardToDocHandle :1516, reflect :1797, reflectConnections :1889, remove :3656, removeSelected :3713, restoreFromTrash :3813. storage.ts removeNote :350, hardDeleteNotes :356.
+- 단계 훅은 undo.ts `registerUndoStepHooks({ onSkipped, onApplied, onDropped })` :64-81이다. n3가 만들었다.
+- 동작 감싸기는 넷이다. `recorded`는 액션 하나, `untracked`는 기록 안 하는 동작, `runAsUserAction`은 화면 동작 묶기, `continueUserAction`은 사진 제목 이어 치기 전용이다. await 뒤 쓰기는 origin 인자를 넘긴다.
+- 기록 안 하는 자동 측정은 자기 칸만 쓴다. sharedSnapshot도 자기 칸만 새 값으로 바꾼다(workspace.ts :1566). 작업 7의 기준값 맞추기가 이 규칙을 깨지 않게 한다.
+- 시험 도구는 `web/src/components/workspace/__tests__/undoTestKit.ts`다. bootBoard·readyCheck·addMemo·note·pressUndo·um·sleep·waitFor·teardown·setupNavigatorStorage가 있다. readyCheck가 「준비 확인」 규칙을 한다.
+- 받아들인 것, 고치지 않는다: 브리지 notes.create가 편집 중 포커스를 뺏음. connectToNewMemo 연결선이 새 메모 편집 단계에 듦. 보드를 바꿀 때 펼친 창 마지막 0.2초 글을 잃음.
+- 끝나면 `cd web && bunx vitest run src/state src/components`를 한 번 돌린다. e04aca9 기준 183파일 1,621개 통과다.
+- playbook `feature` 단계 4·5·6이 이 노드 몫이다. 4 구현, 5 맞는 표면에서 확인, 6 작은 커밋.
+
+runner 메모, 2026-11-10.
+- 휴지통 Dexie 쓰기는 새 모듈 `web/src/state/undoTrash.ts`에 모았다. 쓰기는 한 줄 차례로 돈다. 판정은 실행할 때의 보드 문서로 한다.
+- 단계 meta는 넣음(put)과 뺌(take) 둘만 적는다. 새로 만듦은 적지 않는다. 되돌리기·다시 실행으로 사라진 메모에 휴지통 동작이 없으면 기록 보관이 기본이다.
+- onApplied hook은 runStack 대신 yjs `stack-item-popped`에서 부른다. 관찰자가 모은 변경이 그때 다 들어와 있다.
+- 함 카드 삭제는 연결선을 문서에서 지우지 않는다. 함은 상태 모델 밖이라 기존 동작을 뒀다.
+- restoreFromTrash는 Dexie 쪽을 await 없이 바로 휴지통 차례에 넣는다. 그새 휴지통 행이 빠졌으면 오류 없이 끝난다. 전에는 throw했다.
+- T24 기준값 보정 줄을 뺐을 때: `AssertionError: expected 'pink' to be 'blue' // Object.is equality`.
+- 6-5에서 remove의 연결선 문서 삭제 줄을 뺐을 때: `Error: 6-5 notes.delete 연결선 붙은 일반 메모 기대 변화: 2초 안에 서지 않음`.
+- 변이 확인 14개를 돌렸다. 고친 줄 하나를 빼면 그 행 시험이 실패했다. flush, redraw, early, late 넷은 처음에 살아남아 시험을 고쳤다.
+- 실경로 갭: 다른 기기 E는 이 앱이 E가 되고 나는 Y.Doc과 그 UndoManager로 흉내 낸다. 두 기기가 모두 앱인 경로는 확인 안 됨.
+- T15 넷째·다섯째도 이 노드 시험에 넣었다. 행 판정은 n6 몫이다.
+- 살리기의 연결선 쓰기와 카드 쓰기가 0.5초 넘게 벌어져 2단계가 되면, 카드 단계 되돌리기는 연결선을 휴지통에 못 넣는다. 그 연결선은 다음 cmd+z에 문서에서 사라진다. 확인 안 됨.
+- 전체 스위트 `bunx vitest run src/state src/components`: 184파일 1,651개 통과, 8개 건너뜀, 실패 0.
