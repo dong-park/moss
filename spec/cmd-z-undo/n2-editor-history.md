@@ -56,6 +56,8 @@
 - 확인 안 됨: 실제 브라우저의 meta+z. jsdom은 Mod=ctrl이라 ctrlKey로만 시험했다.
 
 ### 브라우저 확인
-- [ ] T2 then: 메모 펼친 창에서 글자를 치고 cmd+z로 지워지고 cmd+shift+z로 돌아온다
-- [ ] T3 then: 편집기를 연 직후 cmd+z를 눌러도 본문이 그대로다
-- [ ] BlockMenu 블록 삽입 1번이 cmd+z 1번에 사라진다
+- [x] T2 then: 메모 펼친 창에서 글자를 치고 cmd+z로 지워지고 cmd+shift+z로 돌아온다
+- [x] T3 then: 편집기를 연 직후 cmd+z를 눌러도 본문이 그대로다
+- [x] BlockMenu 블록 삽입 1번이 cmd+z 1번에 사라진다
+
+2026-11-10 prover, ego-browser와 Meta 키. T2·T3은 00a0d63에서 통과. BlockMenu는 00a0d63에서 실패했다. 링크 대화상자가 닫힌 뒤 포커스가 BODY로 갔다. db62683에서 넣은 뒤와 닫을 때 편집기에 포커스를 주게 고쳤고 통과했다. 증거는 PR 본문의 prover 절에 있다.
