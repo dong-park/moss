@@ -1,4 +1,5 @@
 import * as Y from "yjs";
+import type { Connection, Note } from "@/state/db/schema";
 import { connectionsMap, notesMap } from "./model";
 import { LOCAL_ORIGIN, UNTRACKED_ORIGIN } from "./origin";
 
@@ -105,11 +106,21 @@ export function createBoardUndo(key: string, doc: Y.Doc): Y.UndoManager {
   managers.add(um);
   const entry: BoardUndo = { key, um, gen: ++genSeq, depth: 0, openTokens: new Set() };
   um.on("stack-item-added", (event) => {
+    // n5: 되돌리기·다시 실행이 반대편 기록에 새로 쌓는 단계는 빈 meta로 만들어진다.
+    // 적용한 단계(currStackItem)의 meta를 옮겨 실어야 다음 방향에서도 휴지통을 맞춘다.
+    if ((um.undoing || um.redoing) && um.currStackItem && um.currStackItem !== event.stackItem) {
+      for (const [k, v] of um.currStackItem.meta) event.stackItem.meta.set(k, v);
+    }
     if (event.type !== "undo") return;
     const over = um.undoStack.length - UNDO_MAX_STEPS;
     if (over <= 0) return;
     const dropped = um.undoStack.splice(0, over);
     callHooks((h) => h.onDropped?.(dropped));
+  });
+  // n5: 적용 hook은 yjs의 stack-item-popped에서 부른다 — 트랜잭션이 끝난 직후라 원격 반영
+  // 관찰자가 모은 변경이 모두 들어와 있다. 기록 장치를 직접 부른 undo()도 같은 길을 탄다.
+  um.on("stack-item-popped", (event) => {
+    callHooks((h) => h.onApplied?.(event.stackItem, event.type));
   });
   boards.set(key, entry);
   activeKey = key;
@@ -229,6 +240,66 @@ export function endUndoGroup(
   }
 }
 
+/* ── 단계 meta: 휴지통 동작 (n5) ─────────────────────────────── */
+
+/**
+ * 단계가 휴지통에 한 일. put은 보드에서 휴지통으로 넣음(삭제), take는 휴지통에서 뺌(살리기).
+ * 새로 만듦은 적지 않는다 — 되돌리기·다시 실행으로 사라진 메모에 휴지통 동작이 없으면
+ * 기록 보관(미러 행만 지움)이 기본이다.
+ * note·connections는 그때의 메모 내용과 그 메모에 닿은 연결선 내용이다. 휴지통 넣기는 미러 대신
+ * 이 내용으로 휴지통 행과 연결선 휴지통 행을 만든다(미러는 0.3초 늦다).
+ */
+export type TrashStepEntry = {
+  action: "put" | "take";
+  note: Note;
+  connections: Connection[];
+};
+
+const TRASH_META = "moss-trash";
+
+/** fn 동기 구간의 기록하는 쓰기가 들어간 단계. 기록에 안 들어갔으면 item이 null이다. */
+export function captureUndoStep<T>(fn: () => T): { result: T; item: StackItem | null } {
+  const entry = active();
+  if (!entry) return { result: fn(), item: null };
+  let item: StackItem | null = null;
+  const onStep = (event: { stackItem: StackItem; type: UndoDirection }) => {
+    if (event.type === "undo" && !entry.um.undoing && !entry.um.redoing) item = event.stackItem;
+  };
+  entry.um.on("stack-item-added", onStep);
+  entry.um.on("stack-item-updated", onStep);
+  try {
+    return { result: fn(), item };
+  } finally {
+    entry.um.off("stack-item-added", onStep);
+    entry.um.off("stack-item-updated", onStep);
+  }
+}
+
+/** 단계에 휴지통 동작을 더한다. 한 단계에 여러 메모가 들 수 있다(여러 장 지우기, 드래그 휴지통). */
+export function addTrashStep(item: StackItem, entries: TrashStepEntry[]): void {
+  if (entries.length === 0) return;
+  const prev = (item.meta.get(TRASH_META) as TrashStepEntry[] | undefined) ?? [];
+  item.meta.set(TRASH_META, [...prev, ...entries]);
+}
+
+export function readTrashStep(item: StackItem): TrashStepEntry[] {
+  return (item.meta.get(TRASH_META) as TrashStepEntry[] | undefined) ?? [];
+}
+
+/** 건너뛴 단계의 휴지통 동작은 적용하지 않는다 — 기록에서 사라지므로 meta도 버린다. */
+export function dropTrashStep(items: StackItem[]): void {
+  for (const item of items) item.meta.delete(TRASH_META);
+}
+
+/**
+ * 이 방향으로 적용할 휴지통 동작. 되돌리기는 반대로, 다시 실행은 그대로다.
+ * put이면 휴지통에 넣고, take면 휴지통에서 뺀다.
+ */
+export function trashActionFor(entry: TrashStepEntry, direction: UndoDirection): "put" | "take" {
+  if (direction === "redo") return entry.action;
+  return entry.action === "put" ? "take" : "put";
+}
+
 /* ── 되돌리기·다시 실행 ───────────────────────────────────────── */
 
 export type UndoResult = {
@@ -255,8 +326,8 @@ function runStack(direction: UndoDirection): UndoResult {
   const applied = item !== null && toAfter > toBefore;
   // popStackItem은 끝에서부터 꺼낸다. 적용된 단계는 마지막으로 꺼낸 것(popped[0])이다.
   const skipped = applied ? popped.slice(1).reverse() : popped.reverse();
+  // onApplied는 stack-item-popped에서 이미 불렸다(createBoardUndo).
   if (skipped.length > 0) callHooks((h) => h.onSkipped?.(skipped, direction));
-  if (applied && item) callHooks((h) => h.onApplied?.(item, direction));
   return { applied, skipped };
 }
 

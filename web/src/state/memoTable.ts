@@ -9,6 +9,7 @@ import { normalizeTitle, normalizeTitleTyping } from "./memoTitle";
 import { useWorkspace, SYSTEM_BOARD_ID } from "./workspace";
 import { subscribeNoteChanges } from "./db/liveSync";
 import { cancelPersist } from "./cardPersist";
+import { UNTRACKED_ORIGIN } from "./ydoc/origin";
 import { useToasts } from "./notifications";
 import { t } from "@/i18n";
 
@@ -635,7 +636,8 @@ export const useMemoTable = create<MemoTableStore>((set, get) => ({
           const st = useStorage.getState();
           for (const id of ids) {
             try {
-              await st.restoreNote(id, { boardId: null, x: 0, y: 0 });
+              // cmd-z-undo n5(W2): 표 보기는 캔버스 기록 밖 — 연결선 쓰기도 기록하지 않는다.
+              await st.restoreNote(id, { boardId: null, x: 0, y: 0 }, { origin: UNTRACKED_ORIGIN });
             } catch {
               /* 이미 복구됐거나 영구 삭제됨 — 다음 id로. */
             }

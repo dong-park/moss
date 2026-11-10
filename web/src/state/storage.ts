@@ -31,7 +31,7 @@ import {
   readConnections as readConnectionsDoc,
   updateNoteField,
 } from "@/state/ydoc/model";
-import type { WriteOrigin } from "@/state/ydoc/origin";
+import { LOCAL_ORIGIN, UNTRACKED_ORIGIN, type WriteOrigin } from "@/state/ydoc/origin";
 import {
   SYSTEM_BOARD_ID,
   isSystemBoardNote,
@@ -106,10 +106,15 @@ interface StorageState {
    * FEAT-trash: 휴지통에서 복구. 원래 보드가 있으면 원래 좌표, 없으면 fallback 좌표·
    * boardId에 frameId를 비운다. 같은 보드에 판이 살아 있으면 frameId를 유지한다.
    * 양 끝 메모가 살아 있는 연결선만 다시 넣는다. 복구한 Note를 돌려준다.
+   *
+   * cmd-z-undo n5: 되돌린 연결선의 문서 쓰기 origin. opts.origin을 주면 그 origin이다(표 보기는
+   * 기록 안 하는 origin). opts.currentBoardId를 주면 살릴 보드가 그 보드일 때만 기록하는
+   * origin이고, 다른 보드로 살리면 기록 안 하는 origin이다. 둘 다 없으면 지금 문맥 origin이다.
    */
   restoreNote: (
     id: string,
     fallback: { boardId: string | null; x: number; y: number },
+    opts?: { origin?: WriteOrigin; currentBoardId?: string | null },
   ) => Promise<Note>;
   /**
    * FEAT-trash: 영구 삭제. ids 생략 시 전체(비우기). 행을 지운 뒤 첨부 blob을 지운다.
@@ -442,7 +447,7 @@ export const useStorage = create<StorageState>((set, get) => ({
     return db.trash.orderBy("deletedAt").reverse().toArray();
   },
 
-  restoreNote: async (id, fallback) => {
+  restoreNote: async (id, fallback, opts) => {
     const db = getDB();
     let back: Connection[] = [];
     const restored = await db.transaction(
@@ -492,7 +497,16 @@ export const useStorage = create<StorageState>((set, get) => ({
       },
     );
     // 되돌린 연결선을 원본 문서에도 쓴다. 소유 문서는 source 메모의 보드다.
-    for (const c of back) await writeConnectionRecord(c);
+    // cmd-z-undo n5(U8·W2): 연결선 쓰기는 반환 전에 나가므로 origin은 여기서 정한다.
+    // 다른 보드로 살리면 지금 보드 기록에 단계를 만들지 않는다.
+    let origin = opts?.origin;
+    if (origin === undefined && opts && "currentBoardId" in opts) {
+      origin =
+        normalizeBoardId(restored.boardId) === normalizeBoardId(opts.currentBoardId)
+          ? LOCAL_ORIGIN
+          : UNTRACKED_ORIGIN;
+    }
+    for (const c of back) await writeConnectionRecord(c, undefined, origin);
     return restored;
   },
 
