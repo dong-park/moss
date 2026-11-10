@@ -6,7 +6,7 @@
 **id**: CZ-2
 **상위**: spec/cmd-z-undo/spec.md
 **deps**: n1
-**상태**: 아직 안 함
+**상태**: 진행
 **담당 행**: T2, T3
 **사람 확인**: 불필요
 
@@ -30,12 +30,12 @@
 
 ## 완료 기준
 
-- [ ] 플러그인 등록 테스트와 기존 편집기 테스트가 통과한다. 확인: `cd web && bunx vitest run src/components/workspace/cards/_shared/editor/__tests__`
-- [ ] 구현 메모에 T3 근거 소스 줄과 「브라우저 확인」 3항목이 있다
-- [ ] 이 노드가 고친 파일에 타입 오류가 없다. 웨이브 2는 n3과 같은 작업 트리를 쓰므로 n3 파일의 오류는 세지 않는다. 확인: `cd web && npx tsc --noEmit 2>&1 | rg "cards/_shared/editor/"` 출력 없음
-- [ ] `web/package.json`과 `web/bun.lock` 둘 다 이 노드 커밋에 들어 있다. 확인: `git log -1 --stat -- web/package.json web/bun.lock`
-- [ ] 커밋은 파일을 지정해 add한다. n3이 고치는 파일을 add하지 않는다
-- [ ] 실경로: 테스트가 실제 editorPlugins 배열을 import해서 쓴다. 우회했으면 구현 메모에 갭을 적는다
+- [x] 플러그인 등록 테스트와 기존 편집기 테스트가 통과한다. 확인: `cd web && bunx vitest run src/components/workspace/cards/_shared/editor/__tests__`
+- [x] 구현 메모에 T3 근거 소스 줄과 「브라우저 확인」 3항목이 있다
+- [x] 이 노드가 고친 파일에 타입 오류가 없다. 웨이브 2는 n3과 같은 작업 트리를 쓰므로 n3 파일의 오류는 세지 않는다. 확인: `cd web && npx tsc --noEmit 2>&1 | rg "cards/_shared/editor/"` 출력 없음
+- [x] `web/package.json`과 `web/bun.lock` 둘 다 이 노드 커밋에 들어 있다. 확인: `git log -1 --stat -- web/package.json web/bun.lock`
+- [x] 커밋은 파일을 지정해 add한다. n3이 고치는 파일을 add하지 않는다
+- [x] 실경로: 테스트가 실제 editorPlugins 배열을 import해서 쓴다. 우회했으면 구현 메모에 갭을 적는다
 
 ## 파일 포인터
 
@@ -49,3 +49,13 @@
 | `web/node_modules/@milkdown/plugin-history` | 7.23.0 이미 설치됨 |
 
 ## 구현 메모
+
+- editorPlugins에 `history`(@milkdown/plugin-history 7.23.0)를 listener 다음에 넣었다. keymap은 Mod-z, Mod-y, Shift-Mod-z다. 기존 코드에 Mod-z·Mod-y 바인딩은 0건이라 충돌 없다.
+- 시험(b)은 가능했다. history.test.ts가 실제 editorPlugins로 Milkdown Editor를 vitest jsdom에서 띄우고 ctrl+z·ctrl+shift+z keydown(keyCode 90 필요)을 쏜다. 5개 시험이 아니라 3개 시험, 13개 파일 101개 통과.
+- T3 근거: 처음 글은 MarkdownEditor.tsx:86 `ctx.set(defaultValueCtx, value)`로 들어가 node_modules/@milkdown/core/src/internal-plugin/editor-state.ts:93 `getDoc`, :122 `EditorState.create`에서 초기 doc이 된다. 트랜잭션이 아니라서 history 기록에 없다. 시험 T3이 이를 확인한다.
+- 확인 안 됨: 실제 브라우저의 meta+z. jsdom은 Mod=ctrl이라 ctrlKey로만 시험했다.
+
+### 브라우저 확인
+- [ ] T2 then: 메모 펼친 창에서 글자를 치고 cmd+z로 지워지고 cmd+shift+z로 돌아온다
+- [ ] T3 then: 편집기를 연 직후 cmd+z를 눌러도 본문이 그대로다
+- [ ] BlockMenu 블록 삽입 1번이 cmd+z 1번에 사라진다
