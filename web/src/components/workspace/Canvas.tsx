@@ -30,7 +30,7 @@ import { ConnectorLayer } from "./connectors/ConnectorLayer";
 import { ConnectionHandlesLayer } from "./connectors/ConnectionHandles";
 import { isUrlOnly } from "@/state/cardContent";
 import { createLinkMemo } from "./linkMemo";
-import { handleUndoKeyDown, isUndoZKey } from "./undoKeys";
+import { handleUndoKeyDown, isTypingTarget, isUndoZKey } from "./undoKeys";
 import { serializeBlock } from "@/state/blocks";
 import {
   DROP_STACK_OFFSET_PX,
@@ -358,10 +358,8 @@ export function Canvas() {
 
   /* ─ Space + Delete/Backspace 키 처리 ─ */
   useEffect(() => {
-    const isTyping = () => {
-      const el = document.activeElement as HTMLElement | null;
-      return !!el?.matches("input, textarea, [contenteditable='true']");
-    };
+    // 입력칸 판정은 undoKeys의 규칙 하나를 쓴다(코드 리뷰 웨이브 2 F5).
+    const isTyping = () => isTypingTarget(document.activeElement);
 
     const onDown = (e: KeyboardEvent) => {
       // FEAT-connectors: 연결 드래그 중이면 이 핸들러가 Escape를 먼저 잡아 부모 보드로

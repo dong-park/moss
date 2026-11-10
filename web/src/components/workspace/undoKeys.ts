@@ -25,7 +25,11 @@ export type UndoKeyState = {
 };
 
 export function isUndoZKey(e: Pick<KeyboardEvent, "key" | "code">): boolean {
-  return e.key === "z" || e.key === "Z" || e.code === "KeyZ";
+  if (e.key === "z" || e.key === "Z") return true;
+  // e.code는 자판 위치라, 라틴 글자가 찍히는 자판에서는 e.key를 따른다.
+  // 독일어 QWERTZ는 KeyZ 자리에 y가 찍힌다 — ctrl+y(다시 실행 관례)를 되돌리기로 받지 않는다.
+  // 한글 입력기처럼 e.key가 라틴 글자가 아닐 때만 e.code로 대신 판정한다.
+  return e.code === "KeyZ" && !/^[a-zA-Z]$/.test(e.key);
 }
 
 /** 키 이벤트 모양과 상태로 cmd+z가 어디로 갈지 정한다. 순수 함수. */
@@ -70,11 +74,30 @@ export function applyUndoKey(action: UndoKeyAction): boolean {
  */
 export function handleUndoKeyDown(e: UndoKeyEvent): boolean {
   const ws = useWorkspace.getState();
-  const action = decideUndoKey(e, {
-    penMode: ws.penMode,
-    editingId: ws.editingId,
-    expandedCardId: ws.expandedCardId,
-    typing: typeof document !== "undefined" && isTypingTarget(document.activeElement),
-  });
+  const action = decideUndoKey(
+    e,
+    undoKeyStateFrom(ws, typeof document !== "undefined" ? document.activeElement : null),
+  );
   return applyUndoKey(action);
+}
+
+/**
+ * 스토어 상태로 키 판정 상태를 만든다. 편집 중·펼친 창 id는 그 카드가 아직 cards에
+ * 있을 때만 센다 — 다른 탭이 그 카드를 지우면 원격 반영이 id를 비우지 않아서, 남은 id가
+ * 캔버스 cmd+z를 계속 막는다(코드 리뷰 웨이브 2 F2). 카드가 없으면 펼친 창도 닫혀 있다.
+ */
+export function undoKeyStateFrom(
+  ws: Pick<
+    ReturnType<typeof useWorkspace.getState>,
+    "penMode" | "editingId" | "expandedCardId" | "cards"
+  >,
+  activeEl: Element | null | undefined,
+): UndoKeyState {
+  const live = (id: string | null) => (id !== null && ws.cards.some((c) => c.id === id) ? id : null);
+  return {
+    penMode: ws.penMode,
+    editingId: live(ws.editingId),
+    expandedCardId: live(ws.expandedCardId),
+    typing: isTypingTarget(activeEl),
+  };
 }

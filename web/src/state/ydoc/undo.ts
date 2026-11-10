@@ -182,14 +182,6 @@ export function openUndoStep(origin: unknown = LOCAL_ORIGIN): void {
   entry.um.stopCapturing();
 }
 
-/**
- * 단계를 닫는다 — 뒤 쓰기가 0.5초 묶음으로 이 단계에 붙지 않게 한다.
- * 묶음 안이거나 기록 안 하는 origin이면 아무것도 안 한다.
- */
-export function closeUndoStep(origin: unknown = LOCAL_ORIGIN): void {
-  openUndoStep(origin);
-}
-
 /** 묶음 시작. 소유자 토큰을 돌려준다. 가장 바깥 묶음만 단계를 열고 captureTimeout을 무한으로 둔다. */
 export function beginUndoGroup(): UndoGroupToken {
   const entry = active();

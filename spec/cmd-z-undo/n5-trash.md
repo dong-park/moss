@@ -41,6 +41,7 @@ spec.md 「상태 모델」의 합법 전이만 일어난다. 되돌리기·다�
 - [ ] 기존 회귀: `cd web && bunx vitest run src/state/__tests__/trash.test.ts src/state/__tests__/connectors.test.ts src/state/__tests__/storeOnYjs.test.ts src/state/__tests__/undo.core.test.ts src/state/__tests__/undo.steps.test.ts src/state/__tests__/memoSearch.test.ts src/state/__tests__/memoTable.test.ts` 통과
 - [ ] `cd web && npx tsc --noEmit` 통과
 - [ ] 실경로: 테스트가 실제 remove, restoreFromTrash, reflect 경로를 탄다. 우회했으면 구현 메모에 갭을 적는다
+- [ ] 되돌린 뒤 같은 값을 다시 고르면 문서에 쓰인다(코드 리뷰 웨이브 2 F1). 메모 색을 pink로 바꾸고 cmd+z 뒤 다시 pink를 고르면 P 문서 color가 pink다. 크기를 최대로 늘리고 cmd+z 뒤 다시 최대로 늘리면 P 문서 width가 최대값이다. 지금은 되돌리기가 sharedSnapshot을 안 맞춰 비교가 비고 쓰기가 빠진다(workspace.ts:1519-1541). 재현 본보기: /private/tmp/claude-501/-Users-dongpark-moss/38916d25-fc9a-486f-8d3c-dcacfa292354/scratchpad/review/wt-w2-a/web/src/state/__tests__/zz-adv-w2a.test.ts. 확인: `cd web && bunx vitest run src/state/__tests__/undo.trash.test.ts`
 
 ## 파일 포인터
 

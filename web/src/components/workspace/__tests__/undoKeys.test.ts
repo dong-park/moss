@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   decideUndoKey,
   isTypingTarget,
+  undoKeyStateFrom,
   type UndoKeyEvent,
   type UndoKeyState,
 } from "@/components/workspace/undoKeys";
@@ -33,6 +34,25 @@ describe("decideUndoKey", () => {
     expect(decideUndoKey(ev({ key: "ㅋ" }), base)).toBe("canvas-undo");
     expect(decideUndoKey(ev({ key: "ㅋ", shiftKey: true }), base)).toBe("canvas-redo");
     expect(decideUndoKey(ev({ key: "ㅋ" }), { ...base, penMode: true })).toBe("pen-undo");
+  });
+
+  it("편집 중·펼친 카드가 다른 탭에서 지워지면 남은 id가 캔버스 cmd+z를 막지 않는다", () => {
+    // 코드 리뷰 웨이브 2 F2. 원격 반영은 editingId·expandedCardId를 비우지 않는다.
+    const gone = { penMode: false, editingId: "gone", expandedCardId: "gone", cards: [] as { id: string }[] };
+    const st = undoKeyStateFrom(gone as never, null);
+    expect(st.editingId).toBeNull();
+    expect(st.expandedCardId).toBeNull();
+    expect(decideUndoKey(ev({}), st)).toBe("canvas-undo");
+    // 카드가 있으면 그대로 편집 중으로 센다.
+    const here = { ...gone, cards: [{ id: "gone" }] };
+    expect(decideUndoKey(ev({}), undoKeyStateFrom(here as never, null))).toBe("none");
+  });
+
+  it("독일어 QWERTZ: KeyZ 자리에 y가 찍히면 ctrl+y를 되돌리기로 받지 않는다", () => {
+    // 코드 리뷰 웨이브 2 F2. e.key가 라틴 글자면 e.key를 따른다.
+    expect(decideUndoKey(ev({ key: "y", code: "KeyZ", metaKey: false, ctrlKey: true }), base)).toBe("none");
+    // QWERTZ의 z는 KeyY 자리다 — e.key로 받는다.
+    expect(decideUndoKey(ev({ key: "z", code: "KeyY", metaKey: false, ctrlKey: true }), base)).toBe("canvas-undo");
   });
 
   it("e.code가 달라도 e.key가 z면 받는다", () => {

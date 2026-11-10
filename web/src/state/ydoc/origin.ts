@@ -33,10 +33,6 @@ export function transactLocal<T>(doc: Y.Doc, fn: () => T, origin: WriteOrigin = 
   return doc.transact(fn, origin);
 }
 
-/** 기록하지 않는 로컬 쓰기 트랜잭션. */
-export function transactUntracked<T>(doc: Y.Doc, fn: () => T): T {
-  return doc.transact(fn, UNTRACKED_ORIGIN);
-}
 
 /** 이 탭의 로컬 쓰기 origin인가 — 기록 여부와 무관하다. */
 export function isLocalOrigin(origin: unknown): origin is WriteOrigin {

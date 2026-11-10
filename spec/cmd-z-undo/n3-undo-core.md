@@ -59,7 +59,7 @@
 
 - 결과: 새 시험 31개 통과(undo.core 23, undoKeys 8). 기존 회귀 4파일 70개 통과. tsc 오류 0, eslint 0.
 - API(`web/src/state/ydoc/undo.ts`): createBoardUndo, disposeBoardUndo, disposeActiveBoardUndo, getBoardUndoManager, getBoardUndoGroupState, openUndoStep(origin), closeUndoStep(origin), beginUndoGroup, endUndoGroup(token), undoBoard, redoBoard, registerUndoStepHooks({onSkipped, onApplied, onDropped}), isBoardUndoManager.
-- origin(`origin.ts`): UNTRACKED_ORIGIN, WriteOrigin, transactUntracked, isLocalOrigin. transactLocal과 model.ts 헬퍼 9곳은 마지막 인자로 origin을 받는다. 주지 않으면 LOCAL_ORIGIN이다.
+- origin(`origin.ts`): UNTRACKED_ORIGIN, WriteOrigin, isLocalOrigin. 기록 안 하는 트랜잭션은 transactLocal(doc, fn, UNTRACKED_ORIGIN) 하나로 연다. transactLocal과 model.ts 헬퍼 9곳은 마지막 인자로 origin을 받는다. 주지 않으면 LOCAL_ORIGIN이다.
 - persistCard·writeCardToDoc·writeCardToDocHandle도 origin을 받는다. 시드가 이 길로 UNTRACKED_ORIGIN을 넘긴다. storage.hardDeleteNotes는 세 번째 인자 opts.origin을 받는다.
 - 기록 수명: activateBoard가 맨 앞에서 지금 기록을 버린다. 새 기록은 openBoardHistory가 정리·시드와 스토어 교체 뒤 만든다. 같은 보드를 loadFromStorage로 다시 열어도 새 기록이다.
 - 펜 묶음은 이 노드가 만들었다. T22 펜 모드 칸에 필요해서다. penMode 스토어 구독으로 열고 닫고, 보드를 열 때 penMode가 켜져 있으면 다시 연다. n4 작업 4는 다시 만들지 않는다.
