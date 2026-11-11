@@ -71,14 +71,17 @@ export function finishCardResize(id: string): void {
 }
 
 /** One numeric/stepper action = one undo step. Invalid and clamped no-ops never open a step. */
-export function resizeCardDimensions(id: string, next: Dimensions): void {
+export function resizeCardDimensions(id: string, next: Dimensions): Dimensions | undefined {
   const card = useWorkspace.getState().cards.find((c) => c.id === id);
   if (!card) return;
   const size = dimensions(card, next);
-  if (!size || (size.width === card.width && (size.height === undefined || size.height === card.height))) return;
+  if (!size) return;
+  if (size.width === card.width && (size.height === undefined || size.height === card.height)) return size;
   runAsUserAction(() => {
     if (applyCardResize(id, size)) finishCardResize(id);
   });
+  const updated = useWorkspace.getState().cards.find((c) => c.id === id);
+  return updated ? { width: updated.width, height: updated.height } : undefined;
 }
 
 /** Opposite edges stay anchored to the drag-start geometry, including at clamp limits. */

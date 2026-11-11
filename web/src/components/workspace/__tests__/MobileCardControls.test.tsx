@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 import { I18nProvider } from "@/i18n/Provider";
 import { serializeBlock } from "@/state/blocks";
-import { useWorkspace, type Card } from "@/state/workspace";
+import { CARD_MAX_WIDTH, useWorkspace, type Card } from "@/state/workspace";
 import { Dock } from "../Dock";
 import { Canvas } from "../Canvas";
 import { useMobileCanvas } from "../mobileCanvas";
@@ -69,4 +69,11 @@ it("keeps numeric resize controls above the mobile keyboard", () => {
   mount(); fireEvent.click(screen.getByRole("button",{name:"크기"}));
   const toolbar=screen.getByRole("toolbar",{name:"선택한 카드 도구"});
   expect(toolbar.style.bottom).toContain(`${window.innerHeight-300+20}px`);
+});
+it("numeric input reflects the clamped width even when the card is already at its limit",()=>{
+  useWorkspace.setState(s=>({cards:s.cards.map(c=>c.id==="a"?{...c,width:CARD_MAX_WIDTH}:c)}));
+  mount();fireEvent.click(screen.getByRole("button",{name:"크기"}));
+  const input=screen.getByRole("spinbutton",{name:"폭"}) as HTMLInputElement;
+  fireEvent.change(input,{target:{value:"99999"}});fireEvent.blur(input);
+  expect(Number(input.value)).toBe(useWorkspace.getState().cards.find(c=>c.id==="a")!.width);
 });
