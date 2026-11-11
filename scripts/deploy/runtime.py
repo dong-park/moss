@@ -135,8 +135,9 @@ class GitHub:
         evidence=json.loads(evidence_file.read_text()); verify_evidence(manifest,evidence)
         return evidence
     def attest(self,subject,manifest):
-        env=dict(os.environ,GH_TOKEN=self.credentials(),DOCKER_CONFIG=self.config['docker_config'])
-        command(['gh','attestation','verify',subject,'--repo',REPOSITORY,
+        env=dict(os.environ,GH_TOKEN=self.credentials(),DOCKER_CONFIG=self.config['docker_config'],
+                 GH_CONFIG_DIR=str(Path(self.config['state_dir'])/'gh'),GH_PROMPT_DISABLED='1',GH_NO_UPDATE_NOTIFIER='1')
+        command([str(Path(self.config['install_dir'])/'bin/gh'),'attestation','verify',subject,'--repo',REPOSITORY,
                  '--signer-workflow',REPOSITORY+'/'+WORKFLOW,'--signer-digest',manifest['sha'],
                  '--source-ref','refs/heads/main','--source-digest',manifest['sha'],
                  '--deny-self-hosted-runners'],env=env,timeout=180)
@@ -148,6 +149,7 @@ class Runtime:
         self.current=None; self.selected=None
         self.env={k:os.environ[k] for k in ('PATH','HOME') if k in os.environ}
         self.env['DOCKER_CONFIG']=config['docker_config']
+        if config.get('install_dir'): self.env['PATH']=str(Path(config['install_dir'])/'bin')+':'+self.env.get('PATH','/usr/bin:/bin')
     def main_sha(self): return self.github.main_sha()
     def compose(self,*args,release=None):
         release=release or self.selected or self.current
