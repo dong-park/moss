@@ -1,54 +1,71 @@
-# 모바일 조작 구현 기록
+# 모바일 캔버스 구현·검증 결과
 
-상태: 진행 중. 기준 `e351374`, 브랜치 `feat/mobile-canvas-interactions`. 운영 배포·push 없음.
+로컬 구현·검증을 마쳤다. 코드 기준은 `e351374` → `6c23ac9`, 브랜치는 `feat/mobile-canvas-interactions`다. 최종 코드 tree `6649d8ac264447fef3b13e8da5bf79dcb20381e2`가 독립 검증 tree와 일치하며 이후 제품 코드 변경은 없다. 배포·push·PR은 하지 않았다.
 
-계획: [해결 계획](mobile-canvas-interaction-plan.md).
+[승인된 계획](mobile-canvas-interaction-plan.md), [이전 조사](mobile-canvas-interaction-research.md). 아래 기기·실행환경 한계를 전체 플랫폼 통과로 해석하지 않는다.
 
-## 현재 구현
+## 변경 동작
 
-- 빈 링크의 모바일 앞면에서 상시 활성 URL input 제거.
-- 하단 선택 도구와 별도 URL 시트. 초안은 완료 전 저장하지 않음. 취소·뒤로가기는 기존 주소 유지.
-- URL 충돌·원본 삭제 확인, visualViewport 추적 공유, 같은 주소의 history entry로 편집 화면 먼저 닫기.
-- 탭 연결의 임시 상태·확정 함수 구현. 캔버스 포인터 배선은 리사이즈 작업 통합 후 진행.
-- 크기 조절 수치·증감 UI 작성. 공통 크기 계산 함수 통합 대기.
+- 기존 모바일 링크는 한 번 탭하면 선택한다. 외부 열기는 별도 버튼이다. 신규 링크는 주소 입력 화면을 바로 연다.
+- 주소 시트는 캔버스 바깥에서 로컬 초안을 편집한다. 완료만 저장하고 취소·뒤로가기는 원본을 유지한다. 저장 시 원본 삭제·동시 URL 변경을 검사하며 기존 URL 검증·늦은 미리보기 응답 방지를 재사용한다.
+- 단독 선택 도구가 추가 도크를 대신한다. 연결은 출발 선택→연결→대상 탭이다. 대상의 링크·입력·체크 동작보다 먼저 처리하고 호환 click도 억제한다. 이동은 pan으로 구분한다.
+- 크기 조절은 포인터를 캔버스와 별도로 소유한다. 터치 hit 영역은 화면상 48 CSS px이며 증감·수치 입력도 제공한다. 숫자 입력칸은 제한을 적용한 실제 크기를 표시한다. 주소 시트와 숫자 도구는 visualViewport에 맞춰 키보드 위로 이동한다.
+- 자동 높이 링크·할 일·textbox는 폭만, 종이는 정사각형, 사진은 비율, 프레임은 기존 크기·소속 규칙을 적용한다. 한 드래그/수치 확정은 undo 한 단계다. 취소·capture 소실·두 번째 손가락·언마운트에서 소유권과 undo 그룹을 닫는다.
+- 데스크톱 자동 높이 카드의 조절점과 연결점을 분리했다. Space를 누른 마우스·펜 입력은 기존 pan 처리자에 양보한다. 하이브리드 기기의 입력 종류가 바뀌어도 진행 중인 조작을 보존한다.
 
-## 검증 기록
+주요 진입점: `web/src/components/workspace/Dock.tsx:359`, `MobileCardControls.tsx:17`, `MobileLinkEditor.tsx:12`, `touchCanvas.ts:30`, `ResizeHandles.tsx:124`. 임시 조작은 `mobileCanvas.ts`, 공통 크기 계산은 `cardSizing.ts`에 있다. 저장 형식·서버 API·의존성 변경은 없다.
 
-- `LinkInputFace.mobile.test.tsx`: 수정 전 활성 input 때문에 1개 실패(RED), 수정 후 통과(GREEN).
-- 링크 시트·모바일 상태·기존 링크 관련 실행 17개 통과. 이후 링크/상태/앞면 13개 통과.
-- `MobileCardControls.test.tsx`: 3개 중 2개 통과, 탭 연결은 배선 전이라 연결선 0개로 실패. 이 실패를 생략하지 않고 통합 후 확인한다.
-- 수치 입력 UI 2개 통과. 이후 입력 동기화 변경으로 재실행 필요.
-- typecheck·변경 구현 lint 0 오류 확인. 이후 수정이 있어 최종 재실행 필요.
-- Ego TaskSpace 27의 로컬 임시 QA 페이지에서 빈 링크 탭은 input 없음·BODY 포커스·선택 도구, 수정 후 취소는 빈 카드 유지 확인.
-- Android 로컬 변경 화면: 빈 링크 선택은 IME 닫힘. 주소 수정 버튼은 시트·IME 표시. 입력칸 bottom 약139px, 완료 bottom 약199px로 visibleViewport 약359px 안에 위치.
-- Android 시스템 뒤로가기: 첫 번은 키보드만 닫고 편집 유지, 두 번째는 편집 종료·같은 페이지 유지. 취소도 빈 링크 유지.
+## 최종 자동 검증
 
-## 진행 중인 통합
+원격 GOAT 관리 작업 트리의 설치 버전은 Node26.6.0 /Bun1.4.4 /Vitest4.1.12 /Next16.4.5다. 아래 명령은 모두 `web/`에서 최종 코드에 실행됐으며 exit0이다.
 
-리사이즈 분리 작업: 원격 `dongpark`, child `mcp:9b66ea33-f4a3-4ae9-8a5f-dd3340f7bb35`.
+| 명령 | 결과 |
+|---|---|
+| `NODE_OPTIONS=--no-experimental-webstorage bun run test` | 216 files, **1977 passed /기존8 skipped**, 실패0·미처리 오류0 |
+| `./node_modules/.bin/vitest run` + 아래 집중11개 파일 | **100 passed /기존 Dock2 skipped**, 실패0·미처리 오류0 |
+| 독립 reviewer probe3개 config | **13 passed**, skip0·실패0·미처리 오류0 |
+| `./node_modules/.bin/tsc --noEmit` | 진단 없음 |
+| `bun run lint` | 오류0·기존 경고3 |
+| `./node_modules/.bin/eslint` + 변경32개 TS/TSX 파일 | 진단 없음 |
+| `bun run check:i18n` | 누락 오류0, unused75개 안내 유지 |
+| `bun run build --webpack` | compile·TypeScript·static8/8 완료, 임시 QA route 없음 |
+| `git diff --check` 및 독립 임시 index의 tree 비교 | 진단 없음, 위 최종 코드 tree 일치 |
 
-- 초기 보고: 포인터 38개·인접 58개 통과, 링크/할 일 정사각형 강제 관련 회귀 3개 실패.
-- 부모가 `workspace.ts`의 자동 높이 정규화까지 수정 범위를 확장해 후속 실행 승인. 자식 ordinal 2 진행 중.
-- 최종 코드·patch·새 검증 결과를 받아 검토하고 로컬에 통합해야 한다. 자식 보고만으로 완료 처리하지 않는다.
-- 예정 API: `cardSizing.ts`의 `resizeCardDimensions(id, {width,height?})`, `ResizeHandles`의 선택적 `mobile` prop.
-- 자식이 맡은 `touchCanvas.ts`는 부모가 아직 수정하지 않았다. 통합 후 연결 모드에서 interactive target보다 먼저 tap 처리, pan과 tap 구분, synthetic checkbox click 억제를 추가한다.
+집중 파일: `Canvas.touch`, `Dock`, `MobileCardControls`, `MobileLinkEditor`, `MobileResizeControls`, `ResizeHandles.touch`, `cardSizing`, `mobileCanvas`, `LinkInputFace.mobile`, `MobileHybrid`, `MobileHistory`의 test 파일이다. 전체 suite skip8개는 기존 Dock 숨김 도구2, 비활성 wobble5, 숨김 toast1이다. 새 skip이나 단언 완화는 없다.
 
-## 개발 검증 환경 — 종료 시 정리
+Node26의 experimental webstorage 기본 실행에서는 기준 코드에서도 `storage.test.ts:67`, `freshV5.test.ts:134` 두 실패가 재현됐다. 호환 옵션은 jsdom이 storage를 제공하게 하는 실행환경 분리이며 테스트·의존성을 바꾼 것이 아니다. 최종 전체 통과는 위 옵션을 명시한 결과다. 최종 기본 Node26 전체 명령은 재실행하지 않았다.
 
-- 임시 검증 페이지 `web/src/app/mobile-interaction-qa/page.tsx`: 실제 Canvas·Dock과 로컬 저장소를 사용. 최종 commit/build 전에 제거한다. 인증 경로를 검증한 것은 아니다.
-- Webpack dev 서버: 127.0.0.1:3309. Ego TaskSpace 27, page p1. 기존 재현 공간 26을 복구한 것이 아니라 구현 검증용 별도 공간이다.
-- Android: SM-N986N, serial R3CR505E55E, Android13 Chrome157. owned adb reverse3309/forward19224. 현재 테스트 출처 localhost:3309만 조작하며 visible 탭·전면 Chrome을 검사한다.
-- 결과 경로 `/tmp/moss-mobile-implementation-20261112/`. HMR로 QA 보드/카드 ID가 바뀔 수 있어 최종 안정 코드에서 중요 과업을 다시 실행한다.
-- old Ego 운영 샘플 정리는 여전히 미확인이다. [조사 기록](mobile-canvas-interaction-research.md) 참조.
+독립 리뷰의 F1~F4와 추가 펜 지적을 모두 반영했다. 최종 [독립 검토](goat-thread://v1/mcp:87ff69fc-a8a9-4939-8b52-778bfe224655)는 **APPROVE, 미해결 P0/P1/P2 0개**다. 상세 명령·출력 보고서는 로컬 `/tmp/moss-mobile-implementation-20261112/review-final.md`에 보존했다.
 
-NOT RUN: 리사이즈·탭 연결 통합 후 회귀/전체 테스트, 최종 typecheck/lint/i18n/build, 독립 코드 검토, 최종 Android 크기·연결·줌/undo, iPhone, 임시 QA 페이지·보드·세션 최종 정리.
+부모 작업 트리에서도 빈 링크 input, 터치 리사이즈, 키보드 가림, 하이브리드 연결, history 전환, 숫자 제한, Space+마우스/펜 회귀의 RED를 확인한 뒤 수정했다. 최종 펜 수정 후 `bun run --cwd web test src/components/workspace/__tests__/Canvas.touch.test.tsx src/components/workspace/__tests__/ResizeHandles.touch.test.tsx`는35개 통과했다. 독립 검토도 기존 probe를 약화하지 않고 재실행했다.
 
-## 통합 1차 검증 (2026-11-12)
+## 실제 클라이언트와 완료 조건
 
-- 리사이즈 원격 commit `2feecd3a9481b55b2a58e20879ff6f31e0f49f42`의 diff를 검토하고 patch SHA256 `815e0037c3ccad9c4054c314bf438cd777fe6aaa48e61204fdc886029fe66d21` 확인 후 적용했다.
-- 수치 UI를 공통 크기 계산에 연결하고, 연결 모드의 캔버스 포인터·호환 click 억제를 구현했다.
-- `bun run --cwd web test` + Canvas.touch/MobileCardControls/MobileLinkEditor/MobileResizeControls/ResizeHandles.touch/cardSizing/mobileCanvas/LinkInputFace.mobile의 8개 파일: **60 passed**.
-- 이후 추가한 interactive target 호환 클릭·hybrid mouse 연결을 포함한 MobileCardControls: **5 passed**.
-- `cd web && ./node_modules/.bin/tsc --noEmit`: exit 0.
-- 모바일 핸들이 크기 조절 모드에서만 표시되는 정책에 맞춰 새 리사이즈 회귀 테스트가 명시적으로 모드에 진입하도록 통합했다. 기존 크기·pan 불변·undo 단언은 유지했다.
-- 위의 진행 중/대기 문구는 초기 기록이다. 현재 연결 배선과 크기 계산은 통합됐으며 전체 검증과 실제 화면 최종 검증을 진행한다.
+Android13 Samsung SM-N986N, Chrome157, 411 CSS px 화면에서 로컬 변경 코드 `localhost:3309`를 사용했다. 실제 Canvas·Dock·Yjs/IndexedDB를 쓰는 임시 QA 화면이며 운영 인증 경로를 검증한 것은 아니다. 매 native 입력 전에 전면 Chrome과 visible 로컬 탭을 검사했다. 별도 표기가 없으면 ADB가 주입한 native 터치다. Android undo는 CDP 외부 키보드 Ctrl+Z로 확인했다.
+
+Ego TaskSpace27에서도 링크·수치 입력·실제 popup URL, 데스크톱 마우스 리사이즈·Space 이동·Next history 상태 복귀를 확인했다. 물리 펜이나 iPhone으로 간주하지 않는다.
+
+| ID | 판정·증거 | 남은 검증 한계 |
+|---|---|---|
+| L1 | PASS: 빈/완성 링크 선택은 입력·외부 이동 없음. BODY 포커스, inline input0 | Android/Ego 및 통합 테스트 범위 |
+| L2 | PASS: 열기는 지정 `https://example.com/#mobile-qa`를 별도 탭에 열고 편집을 시작하지 않음 | Android/Ego 실제 열기 확인 |
+| L3 | UNVERIFIED(부분 검증): 세로 IME visible 높이 약359px 안에 입력·완료·취소 표시. 가로809×331에서도 표시 | 가로 측정 시 IME가 viewport를 줄이지 않아 **가로+IME 조합은 미확인**, Safari 미확인 |
+| L4 | PASS: 신규 링크 완료 저장, 취소·시스템 뒤로가기 초안 폐기·원본 유지 | Android 및 저장/상태 테스트 |
+| L5 | UNVERIFIED(부분 검증): 삭제 guard·동시 URL 변경 오류·원본 보존은 상태/UI 테스트 통과 | 두 실제 협업 클라이언트 충돌·삭제 미실행 |
+| C1 | PASS: 출발→연결→대상 탭으로 선1개·출발 선택 유지 | Android native 및 통합 테스트 |
+| C2 | PASS: 약597px pan 후 화면 밖 대상에 두 번째 선 생성. 무효/자기 자신/빈 곳/취소는 no-op 테스트 통과 | Android 및 상태/통합 테스트 |
+| R1 | PASS: 196ms·48×24px 드래그에서 폭240→287.755, world(0,0,1) 불변 | `android-head-before/after.json` |
+| R2 | PASS: 100%·48.2%·25% native hit 약48.025px. 증감·수치 입력·제한값 표시 확인 | 정확한50%는 자동 테스트, 실제 기기는 UI 단계48.2% |
+| R3 | PASS: 25%에서 한 undo로 폭382.72→287.7. 종류/비율/프레임/손그림 회귀 통과 | 기기의 모든 카드 종류 조합은 미실행 |
+| G1 | UNVERIFIED(부분 검증): cancel/capture 소실/두 번째 손가락/언마운트 테스트 통과, 기기 Back 모드 종료 확인 | 실제 두 손가락 중단 미실행 |
+| G2 | UNVERIFIED(부분 검증): native pan·700ms hold 이동·한 undo, Ego 마우스 resize/Space 이동, 펜 포인터 probe 통과 | 실제 펜·native 두 손가락 pinch·기기 표 전환 미실행 |
+
+`9cde21c`에서 Android 핵심 경로도 재실행했다. 연결1개→resize→한 undo→주소 초안→시스템 뒤로가기 후 폭240, world(0,0,1), inline input0, history operation null, BODY를 확인했다(`android-head-end.json`). 이후 변경은 숫자 표시와 비터치 Space-pan 수정이며 최종 자동 검증에 포함됐다.
+
+자료: [Android 최종 상태](mobile-canvas-evidence/2026-11-12/android-head-end.json), [리사이즈 후](mobile-canvas-evidence/2026-11-12/android-head-after.json), [키보드 가림 전](mobile-canvas-evidence/2026-11-12/android-size-keyboard.png) /[수정 후](mobile-canvas-evidence/2026-11-12/android-size-keyboard-fixed.png), [데스크톱 조절점 전](mobile-canvas-evidence/2026-11-12/ego-desktop-resize-before.png) /[수정 후](mobile-canvas-evidence/2026-11-12/ego-desktop-resize-after.png). 가로 측정 자료는 가로+IME 성공 증거가 아니다.
+
+## 정리·미실행
+
+QA UI의 정상 removeBoard 경로로 각 로컬 출처의 소유 QA 보드를 모두 삭제하고0개를 확인했다. 최초 Ego7/Android6개와 후속 각각2개다. 임시 QA route, 소유 dev 서버, Android 소유 탭, ADB reverse3309/forward19224를 정리했고 Ego TaskSpace27도 keep 없이 종료했다. 원래 저장소와 원래 계획·조사·증거는 수정/삭제하지 않았다. 이전 운영 조사 공간26의 샘플 정리는 여전히 UNVERIFIED이며 이번 소유 QA 보드 정리와 구분한다. 이전 조사 증거의 복사본은 작업 트리에 untracked로 보존했다.
+
+NOT RUN: iPhone Safari(실기기 없음), 실제 협업 클라이언트 충돌/삭제, 가로+IME 조합, 실제 펜·두 손가락 중단/pinch·기기 표 전환, 최종 기본 Node26 전체 suite(기존 환경 실패2건), CI·배포. 위 표의 부분 검증을 전체 플랫폼 PASS로 보고하지 않는다.
