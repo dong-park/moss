@@ -94,3 +94,30 @@ def verify_evidence(m, evidence):
             versions.add(row['version'])
     require(migrations['candidate'][:len(migrations['baseline'])]==migrations['baseline'],
             'previous migration history changed')
+
+
+ROLLBACK_RESULTS = ('not_attempted', 'succeeded', 'failed')
+RUNNING_STATES = ('serving', 'stopped', 'unverified')
+
+
+def release_label(release):
+    """Running identity for reports. A bootstrap baseline has no source SHA and stays unnamed."""
+    return release.get('sha') or 'legacy-bootstrap'
+
+
+def describe(report):
+    """GitHub status text (<=140 chars) from observed running state, never from the requested SHA."""
+    running = report.get('running') if isinstance(report, dict) else None
+    require(isinstance(running, dict) and running.get('state') in RUNNING_STATES
+            and report.get('rollback') in ROLLBACK_RESULTS, 'unsupported report record')
+    rollback = report['rollback']
+    baseline = report.get('baseline') or 'unknown'
+    if running['state'] == 'serving':
+        require(isinstance(running.get('release'), str) and running['release'], 'serving report needs identity')
+        text = f"running {running['release']}; rollback={rollback}"
+    elif running['state'] == 'stopped':
+        text = f'writers stopped; intervention required; baseline {baseline}; rollback={rollback}'
+    else:
+        text = f'writer stop unverified; intervention required; baseline {baseline}; rollback={rollback}'
+    require(len(text) <= 140, 'status description too long')
+    return text

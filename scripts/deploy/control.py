@@ -5,8 +5,8 @@ import json
 from pathlib import Path
 import sys
 import time
-from agent import Store, finish, halt
-from release import REPOSITORY, require, validate
+from agent import Store, deliver, finish, serving, stopped
+from release import digest, release_label, require, validate
 from runtime import GitHub, Runtime, load_config
 
 
@@ -26,23 +26,31 @@ def retry(store,github,ident):
 def rollback(store,runtime,github):
     state=store.read(); current=validate(state['current']); previous=state.get('previous')
     require(previous is not None and not state.get('active'),'no recorded previous release or replacement active')
-    runtime.prepare_rollback(current,previous)
+    # The verified evidence retained at deployment avoids the artifact-retention window; it must still
+    # match the recorded release's signed digest. GitHub stays required for the rollback record and
+    # the previous images' attestation.
+    runtime.prepare_rollback(current,previous,evidence=state.get('current_evidence'))
     deployment=github.repo('/deployments',{'ref':current['sha'],'task':'rollback','environment':'production',
         'auto_merge':False,'required_contexts':[],'production_environment':True,
         'payload':dict(previous,rollback_proof=current),'description':'Operator restore of recorded previous image set'})
-    ident=deployment['id']
-    state['active']={'id':ident,'manifest':current,'phase':'stopping'}; store.save(state)
+    ident=deployment['id']; requested=release_label(previous)
+    state['active']={'id':ident,'manifest':current,'requested':requested,'phase':'stopping','phases':{}}; store.save(state)
+    phase='stopping'
     try:
         runtime.stop()
         runtime.backup(ident)
         require(runtime.migration_compatible(current),'migration state changed during rollback')
+        observed=getattr(runtime,'observed_migrations',None)
+        value=store.read(); value['active']['phase']=phase='rollback'; store.save(value)
         runtime.start_server(previous)
         runtime.start_clients(previous)
         runtime.smoke(previous)
     except Exception:
-        halt(runtime); finish(store,ident,'error',None,rollback=True); raise
-    state=store.read(); state['current']=previous; state['previous']=None; state['paused']=True; store.save(state)
-    finish(store,ident,'success',previous.get('sha'),rollback=True)
+        finish(store,ident,'error',running=stopped(runtime),requested=requested,
+               rollback='failed' if phase=='rollback' else 'not_attempted'); raise
+    finish(store,ident,'success',running=serving(previous),rollback='succeeded',requested=requested,
+           commit={'current':previous,'previous':None,'paused':True,'current_evidence':None,
+                   'current_migrations_sha256':digest(observed) if observed else None})
     return ident
 
 
@@ -60,8 +68,7 @@ def main():
         else:
             require(args.deployment_id is None,'rollback takes no arbitrary target')
             print(rollback(store,runtime,github))
-        from agent import reports
-        reports(store,github)
+        require(deliver(store,github),'result recorded locally; GitHub delivery pending (see status)')
 
 if __name__=='__main__':
     try: main()

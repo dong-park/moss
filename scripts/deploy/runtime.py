@@ -1,5 +1,6 @@
 """Fixed local Docker policy and least-scope GitHub API client (stdlib + openssl + gh)."""
 import base64
+import http.client
 import hashlib
 import json
 import os
@@ -10,10 +11,11 @@ import stat
 import subprocess
 import tempfile
 import time
+import urllib.error
 import urllib.request
 import zipfile
 
-from release import (SERVICES, REPOSITORY, WORKFLOW, Rejected, canonical, digest,
+from release import (SERVICES, REPOSITORY, WORKFLOW, Rejected, canonical, describe, digest,
                      fingerprint, image_set, require, validate, verify_evidence, verify_run)
 
 
@@ -32,11 +34,24 @@ def protected(path, directory=False):
     return path
 
 
-def load_config(path):
+def load_local_config(path):
+    """Protected policy and journal location only: enough for local pause/status. No credential,
+    token-expiry or disk-space preflight, so those controls work during an outage or low disk."""
     protected(path)
-    config=json.loads(path.read_text())
+    config=json.loads(Path(path).read_text())
+    require(isinstance(config,dict),'invalid configuration')
     for key in ('install_dir','state_dir','app_env','bootstrap_file','smoke_config','docker_config'):
-        require(Path(config[key]).is_absolute(),'fixed absolute configuration paths required')
+        require(isinstance(config.get(key),str) and Path(config[key]).is_absolute(),'fixed absolute configuration paths required')
+    protected(config['install_dir'],directory=True)
+    if Path(config['state_dir']).exists(): protected(config['state_dir'],directory=True)
+    require(config.get('project')=='moss','production Compose project must remain moss')
+    require(config.get('repository')==REPOSITORY,'fixed repository')
+    return config
+
+
+def load_config(path):
+    """Full external preflight for anything that reads GitHub, drives Docker or re-enables automation."""
+    config=load_local_config(path)
     for key in ('app_env','bootstrap_file','smoke_config'):
         protected(config[key])
     require(config.get('auth_mode') in ('app','token'),'explicit GitHub auth mode required')
@@ -45,9 +60,6 @@ def load_config(path):
         protected(config['token_file'])
         require(type(config.get('token_expires_at')) is int and config['token_expires_at']>time.time(),
                 'scoped bearer token expiration absent or expired')
-    protected(config['install_dir'],directory=True)
-    require(config.get('project')=='moss','production Compose project must remain moss')
-    require(config.get('repository')==REPOSITORY,'fixed repository')
     fingerprint(config['public_config'])
     require(shutil.disk_usage(config['state_dir']).free >= config['minimum_free_bytes'],'insufficient free disk')
     # The service must be installed outside the application checkout; every executable is admin owned.
@@ -106,8 +118,7 @@ class GitHub:
         return None
     def report(self,value):
         self.repo(f"/deployments/{int(value['id'])}/statuses",{'state':value['state'],
-            'environment':'production','auto_inactive':False,
-            'description':f"running {value.get('sha') or 'unknown bootstrap'}; rollback={value['rollback']}"})
+            'environment':'production','auto_inactive':False,'description':describe(value)})
     def verify(self,manifest,directory):
         run=self.repo(f"/actions/runs/{manifest['run_id']}/attempts/{manifest['run_attempt']}")
         jobs=self.pages(f"/actions/runs/{manifest['run_id']}/attempts/{manifest['run_attempt']}/jobs",'jobs')
@@ -145,6 +156,16 @@ class GitHub:
                  '--signer-workflow',REPOSITORY+'/'+WORKFLOW,'--signer-digest',manifest['sha'],
                  '--source-ref','refs/heads/main','--source-digest',manifest['sha'],
                  '--deny-self-hosted-runners'],env=env,timeout=180)
+
+
+# Fixed loopback routes (approved topology). Any HTTP answer below 500 proves the listener serves requests.
+READINESS=(('server','http://127.0.0.1:8080/health'),('sync','http://127.0.0.1:1234/'),('web','http://127.0.0.1:3001/'))
+# Server start includes Flyway. Beyond this budget the schema is UNKNOWN: writers stop, intervention.
+SERVER_START_SECONDS=660
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self,*args,**kwargs): return None
 
 
 class Runtime:
@@ -247,15 +268,20 @@ class Runtime:
             for image in current['images'].values(): command(['docker','image','inspect',image,'--format','{{.Id}}'],env=self.env)
             require(shutil.disk_usage(self.config['state_dir']).free>=self.config['minimum_free_bytes'],'disk insufficient after pulls')
 
-    def prepare_rollback(self,current,previous):
+    def prepare_rollback(self,current,previous,evidence=None):
         validate(current); self.current=current
         self.smoke_credentials()
         require(current['baseline']==previous['images'],'recorded rollback images differ from rehearsal')
         require(self.topology()==self.config['topology'],'runtime topology differs from baseline')
         require(current['config_sha256']==previous['config_sha256']==fingerprint(self.config['public_config']),
                 'configuration rollback unsupported')
-        with tempfile.TemporaryDirectory(prefix='moss-rollback-proof-') as directory:
-            self.evidence=self.github.verify(current,directory)
+        if evidence is not None:
+            # Retained in the root journal after its attestation was verified at deployment; it must still
+            # hash to the recorded release's signed evidence digest, so no new unsigned proof is accepted.
+            verify_evidence(current,evidence); self.evidence=evidence
+        else:
+            with tempfile.TemporaryDirectory(prefix='moss-rollback-proof-') as directory:
+                self.evidence=self.github.verify(current,directory)
         self.before=self.metadata()
         require(self.migration_compatible(current),'DB no longer matches rehearsed compatibility state')
         for service in SERVICES:
@@ -329,18 +355,50 @@ class Runtime:
         finally: os.close(directory)
     def start_server(self,m):
         self.selected=m
-        self.compose('up','-d','--no-build','--no-deps','--pull','never','--wait','--wait-timeout','180','server',release=m)
+        self.compose('up','-d','--no-build','--no-deps','--pull','never','--wait','--wait-timeout',
+                     str(SERVER_START_SECONDS),'server',release=m)
     def migration_compatible(self,m):
         try:
             actual=self.metadata()
-            return actual in (self.evidence['migrations']['baseline'],self.evidence['migrations']['candidate'])
-        except Exception: return False
+            compatible=actual in (self.evidence['migrations']['baseline'],self.evidence['migrations']['candidate'])
+            self.observed_migrations=actual if compatible else None
+            return compatible
+        except Exception:
+            self.observed_migrations=None; return False
+    def observe(self,release):
+        """Read-only live verification used by operator reconciliation; never starts or stops anything."""
+        self.current=release
+        require(self.topology()==self.config['topology'],'runtime topology differs from approved baseline')
+        for service in SERVICES:
+            info=self.inspect(service)
+            identity=command(['docker','image','inspect',release['images'][service],'--format','{{.Id}}'],env=self.env).decode().strip()
+            require(info['state'].get('Running') is True and identity==info['image'],'running service differs from recorded current')
+        migrations=self.metadata()
+        self.smoke(release)
+        return {'migrations_sha256':digest(migrations)}
     def start_clients(self,m):
         self.selected=m
         for service in ('sync','web'):
             self.compose('up','-d','--no-build','--no-deps','--pull','never','--wait','--wait-timeout','120',service,release=m)
+    def await_ready(self):
+        """Bounded HTTP readiness before the mutation-producing smoke. Versioned images are already
+        healthchecked by --wait; legacy images have no HEALTHCHECK and answer seconds after it returns.
+        Only this read-only probe is retried, never the smoke itself."""
+        end=time.monotonic()+self.config.get('readiness_timeout_seconds',120)
+        opener=urllib.request.build_opener(urllib.request.ProxyHandler({}),_NoRedirect())
+        for service,url in self.config.get('readiness_urls') or READINESS:
+            while True:
+                try:
+                    with opener.open(urllib.request.Request(url,headers={'User-Agent':'moss-deploy/1'}),timeout=3) as response:
+                        ready=response.status<500
+                except urllib.error.HTTPError as error: ready=error.code<500
+                except (OSError,http.client.HTTPException): ready=False
+                if ready: break
+                require(time.monotonic()<end,'service did not become ready: '+service)
+                time.sleep(1)
     def smoke(self,m):
         # The installed smoke performs normal auth and two authenticated Yjs clients. Missing inputs fail closed.
+        self.await_ready()
         args=[str(Path(self.config['install_dir'])/'smoke'),
               '--config',self.config['smoke_config']]
         if m.get('bootstrap'): args.append('--legacy-baseline')
