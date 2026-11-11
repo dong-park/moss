@@ -162,6 +162,10 @@ class GitHub:
 READINESS=(('server','http://127.0.0.1:8080/health'),('sync','http://127.0.0.1:1234/'),('web','http://127.0.0.1:3001/'))
 # Server start includes Flyway. Beyond this budget the schema is UNKNOWN: writers stop, intervention.
 SERVER_START_SECONDS=660
+CLIENT_START_SECONDS=120
+# The compose CLI needs time beyond its own --wait-timeout to create/start containers and report; the
+# subprocess deadline must never cut the wait short.
+COMPOSE_GRACE_SECONDS=90
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -176,7 +180,7 @@ class Runtime:
         self.env['DOCKER_CONFIG']=config['docker_config']
         if config.get('install_dir'): self.env['PATH']=str(Path(config['install_dir'])/'bin')+':'+self.env.get('PATH','/usr/bin:/bin')
     def main_sha(self): return self.github.main_sha()
-    def compose(self,*args,release=None):
+    def compose(self,*args,release=None,timeout=600):
         release=release or self.selected or self.current
         require(release is not None,'no fixed image selection')
         with tempfile.TemporaryDirectory(prefix='moss-compose-') as directory:
@@ -186,7 +190,7 @@ class Runtime:
             return command(['docker','compose','--project-name',self.config['project'],
                             '--env-file',self.config['app_env'],'--env-file',str(env_file),
                             '-f',str(Path(self.config['install_dir'])/'deploy/compose.runtime.yml'),*args],
-                           env=self.env,timeout=600)
+                           env=self.env,timeout=timeout)
     def container(self,service):
         raw=command(['docker','ps','-aq','--filter','label=com.docker.compose.project='+self.config['project'],
                      '--filter','label=com.docker.compose.service='+service],env=self.env).decode().split()
@@ -251,7 +255,11 @@ class Runtime:
         with tempfile.TemporaryDirectory(prefix='moss-evidence-') as directory:
             self.evidence=self.github.verify(m,directory)
         self.before=self.metadata()
-        require(self.before==self.evidence['migrations']['baseline'],'live migration baseline differs from rehearsal')
+        # EXACT rehearsed histories only: the baseline, or the candidate's own history (left applied by a
+        # supported rollback of a release with the same migration set; previous->candidate->previous was
+        # rehearsed on it). Never a prefix/subset, successful rows alone, or a checksum-drifted variant.
+        require(self.before in (self.evidence['migrations']['baseline'],self.evidence['migrations']['candidate']),
+                'live migration history is neither the rehearsed baseline nor candidate')
         if pull:
             # Prove dedicated login/board/public routes while the baseline is still serving.
             self.smoke(current)
@@ -356,7 +364,7 @@ class Runtime:
     def start_server(self,m):
         self.selected=m
         self.compose('up','-d','--no-build','--no-deps','--pull','never','--wait','--wait-timeout',
-                     str(SERVER_START_SECONDS),'server',release=m)
+                     str(SERVER_START_SECONDS),'server',release=m,timeout=SERVER_START_SECONDS+COMPOSE_GRACE_SECONDS)
     def migration_compatible(self,m):
         try:
             actual=self.metadata()
@@ -379,7 +387,8 @@ class Runtime:
     def start_clients(self,m):
         self.selected=m
         for service in ('sync','web'):
-            self.compose('up','-d','--no-build','--no-deps','--pull','never','--wait','--wait-timeout','120',service,release=m)
+            self.compose('up','-d','--no-build','--no-deps','--pull','never','--wait','--wait-timeout',
+                         str(CLIENT_START_SECONDS),service,release=m,timeout=CLIENT_START_SECONDS+COMPOSE_GRACE_SECONDS)
     def await_ready(self):
         """Bounded HTTP readiness before the mutation-producing smoke. Versioned images are already
         healthchecked by --wait; legacy images have no HEALTHCHECK and answer seconds after it returns.

@@ -17,3 +17,14 @@ class AuditTest(unittest.TestCase):
                           (1,b'{"package":[{"severity":"unknown"}]}')]:
             with self.subTest(code=code,data=data):
                 with self.assertRaises(Rejected):clean_report(code,data)
+
+
+class AuditSeverityLevelsTest(unittest.TestCase):
+    def test_info_is_a_known_non_blocking_level(self):
+        self.assertTrue(clean_report(1,b'{"package":[{"severity":"info"},{"severity":"moderate"}]}'))
+        self.assertFalse(clean_report(1,b'{"package":[{"severity":"info"},{"severity":"high"}]}'))
+    def test_unknown_or_malformed_levels_still_fail_closed(self):
+        for severity in ('INFO','informational','none','',None,1):
+            with self.subTest(severity=severity):
+                data=('{"package":[{"severity":'+__import__('json').dumps(severity)+'}]}').encode()
+                with self.assertRaises(Rejected):clean_report(1,data)

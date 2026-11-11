@@ -121,3 +121,27 @@ def describe(report):
         text = f'writer stop unverified; intervention required; baseline {baseline}; rollback={rollback}'
     require(len(text) <= 140, 'status description too long')
     return text
+
+
+# Rejected messages are authored in this code base; still only journal/print ones made of plain characters.
+_SAFE_REASON = re.compile(r"[A-Za-z0-9 .,:;/()_'+-]{1,160}")
+# Exception classes whose NAME (never message) is a useful, data-free category.
+_KNOWN_CLASSES = {'RuntimeError', 'OSError', 'TimeoutError', 'ConnectionError', 'ConnectionRefusedError',
+                  'ConnectionResetError', 'FileNotFoundError', 'FileExistsError', 'PermissionError', 'BlockingIOError',
+                  'TimeoutExpired', 'CalledProcessError', 'HTTPError', 'URLError', 'JSONDecodeError', 'ValueError',
+                  'KeyError', 'TypeError', 'IndexError', 'AttributeError', 'UnicodeError', 'BadZipFile'}
+
+
+def diagnose(error):
+    """Data-free failure record: a code-authored rejection reason, or only the exception class.
+    Child-process output, exception messages, argv, paths and secrets never pass through."""
+    if isinstance(error, Rejected):
+        text = str(error)
+        return {'code': 'rejected', 'reason': text if _SAFE_REASON.fullmatch(text) else 'unprintable rejection'}
+    name = type(error).__name__
+    return {'code': 'error', 'class': name if name in _KNOWN_CLASSES else 'Exception'}
+
+
+def explain(failure):
+    """One operator-facing line for a diagnose() record."""
+    return failure.get('reason') or 'unexpected ' + failure.get('class', 'Exception')

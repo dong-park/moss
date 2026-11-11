@@ -24,9 +24,13 @@ REQUIRED = os.environ.get('MOSS_DEPLOY_DOCKER_TESTS') == 'required'
 
 
 def docker_available():
+    # `docker info --format` can exit 0 without a daemon; only a reachable daemon reports a server version.
     if shutil.which('docker') is None: return False
-    return subprocess.run(['docker', 'info', '--format', '{{.ServerVersion}}'], stdout=subprocess.DEVNULL,
-                          stderr=subprocess.DEVNULL, timeout=30).returncode == 0
+    try:
+        result = subprocess.run(['docker', 'version', '--format', '{{.Server.Version}}'], capture_output=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0 and bool(result.stdout.strip())
 
 
 # Real Flyway 10 table shape (subset of columns irrelevant to the query keeps defaults).

@@ -11,8 +11,17 @@ import tempfile
 import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from release import (ROLLBACK_RESULTS, RUNNING_STATES, Rejected, digest, release_label, require,
-                     validate)
+from release import (ROLLBACK_RESULTS, RUNNING_STATES, Rejected, diagnose, digest, explain, release_label,
+                     require, validate)
+
+
+class Busy(BlockingIOError):
+    """The shared deploy lock is held by the timer or another operator command."""
+
+
+BUSY_EXIT=75  # EX_TEMPFAIL
+BUSY_MESSAGE=('moss-deploy busy: the timer or another operator command holds the deploy lock; '
+              'nothing was changed. Retry shortly.')
 
 
 class Store:
@@ -21,7 +30,8 @@ class Store:
     @contextlib.contextmanager
     def lock(self):
         with (self.path/'lock').open('a') as lock:
-            fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+            try: fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+            except BlockingIOError: raise Busy() from None  # only contention on THIS lock means busy
             try: yield
             finally: fcntl.flock(lock,fcntl.LOCK_UN)
     def read(self):
@@ -56,7 +66,7 @@ def stopped(runtime):
     return {'state':'stopped' if halt(runtime) else 'unverified','release':None}
 
 
-def finish(store,ident,outcome,*,running,rollback='not_attempted',requested=None,commit=None):
+def finish(store,ident,outcome,*,running,rollback='not_attempted',requested=None,commit=None,failure=None):
     """Commit the terminal attempt, any new current/previous release, its outbox report and the
     cleared active marker in ONE atomic journal write. A crash leaves either the old or new state."""
     require(rollback in ROLLBACK_RESULTS and running.get('state') in RUNNING_STATES,'invalid terminal record')
@@ -68,8 +78,11 @@ def finish(store,ident,outcome,*,running,rollback='not_attempted',requested=None
     state['attempts'][str(ident)]={'outcome':outcome,'sha':running.get('sha'),'requested':requested,'running':running,
         'rollback':rollback,'baseline':baseline,'time':int(time.time()),
         'phases':(state.get('active') or {}).get('phases',{})}
-    state['reports'].append({'id':ident,'state':outcome,'sha':running.get('sha'),'requested':requested,'baseline':baseline,
-        'running':{'state':running['state'],'release':running.get('release')},'rollback':rollback})
+    report={'id':ident,'state':outcome,'sha':running.get('sha'),'requested':requested,'baseline':baseline,
+        'running':{'state':running['state'],'release':running.get('release')},'rollback':rollback}
+    if failure is not None:  # data-free diagnose() record plus phase; visible in status and the local outbox
+        state['attempts'][str(ident)]['failure']=failure; report['failure']=failure
+    state['reports'].append(report)
     state['active']=None
     if outcome == 'error': state['paused']=True
     store.save(state)
@@ -80,11 +93,12 @@ def recover(store,runtime):
     if active:
         # A crash can occur between a Docker side effect and its journal write. Never infer DB safety.
         requested=active.get('requested',(active.get('manifest') or {}).get('sha'))
+        failure={'phase':active['phase'],'code':'interrupted'}
         if active['phase'] != 'prepare':
-            finish(store,active['id'],'error',running=stopped(runtime),requested=requested,
+            finish(store,active['id'],'error',running=stopped(runtime),requested=requested,failure=failure,
                    rollback='failed' if active['phase']=='rollback' else 'not_attempted')
         else:
-            finish(store,active['id'],'failure',running=serving(state['current']),requested=requested)
+            finish(store,active['id'],'failure',running=serving(state['current']),requested=requested,failure=failure)
 
 
 def apply(store,runtime,ident,manifest):
@@ -101,8 +115,9 @@ def apply(store,runtime,ident,manifest):
         nonlocal phase
         phase=next_phase; value=store.read(); value['active']['phase']=phase
         value['active']['phases'][phase]=time.time(); store.save(value)
-    def end(outcome,running,rollback='not_attempted'):
-        finish(store,ident,outcome,running=running,rollback=rollback,requested=requested)
+    failure=None
+    def end(outcome,running,rollback='not_attempted',commit=None):
+        finish(store,ident,outcome,running=running,rollback=rollback,requested=requested,failure=failure,commit=commit)
     try:
         runtime.prepare(manifest,current)
         if runtime.main_sha() != manifest['sha']:
@@ -114,8 +129,9 @@ def apply(store,runtime,ident,manifest):
         require(runtime.migration_compatible(manifest),'unknown or incompatible migration state')
         journal('clients'); runtime.start_clients(manifest)
         journal('smoke'); runtime.smoke(manifest)
-    except Exception:
-        # Error details may contain credentials/personal data from a child process; never publish them.
+    except Exception as error:
+        # Child-process details may contain credentials/personal data: only a data-free record is kept.
+        failure=dict(diagnose(error),phase=phase)
         if phase == 'prepare': end('failure',serving(current)); return
         if phase in ('stopping','server'):
             # stopping: sync forced kill or failed persistence; the final backup cannot be claimed consistent.
@@ -124,17 +140,24 @@ def apply(store,runtime,ident,manifest):
             end('error',stopped(runtime)); return
         # backup: the candidate never started. clients/smoke: the candidate server became ready and its
         # history was proven compatible, so the previous app set may be restored.
-        if not halt(runtime): end('error',{'state':'unverified','release':None}); return
+        if not halt(runtime):
+            failure['recovery']='writer stop unverified'; end('error',{'state':'unverified','release':None}); return
         if phase != 'backup' and not runtime.migration_compatible(manifest):
-            end('error',{'state':'stopped','release':None}); return
+            failure['recovery']='migration history not rehearsed'; end('error',{'state':'stopped','release':None}); return
         journal('rollback')
         try:
             runtime.start_server(current)
             runtime.start_clients(current)
             runtime.smoke(current)
-        except Exception:
+            # Record the ACTUAL post-rollback history (candidate migrations stay applied); it must still be
+            # exactly a rehearsed history of this release, or nothing proven is serving.
+            require(runtime.migration_compatible(manifest),'post-rollback migration history not rehearsed')
+            observed=getattr(runtime,'observed_migrations',None)
+        except Exception as rollback_error:
+            failure['rollback']=dict(diagnose(rollback_error),phase='rollback')
             end('error',stopped(runtime),'failed'); return
-        end('failure',serving(current),'succeeded'); return
+        end('failure',serving(current),'succeeded',
+            commit={'current_migrations_sha256':digest(observed) if observed else None}); return
     observed=getattr(runtime,'observed_migrations',None)
     finish(store,ident,'success',running=serving(manifest),requested=requested,
            commit={'previous':current,'current':manifest,'current_evidence':getattr(runtime,'evidence',None),
@@ -210,12 +233,9 @@ def reconcile(store,runtime,ident):
     store.save(state)
 
 
-def main():
-    parser=argparse.ArgumentParser()
-    parser.add_argument('--config',default='/etc/moss-deploy/config.json')
-    parser.add_argument('command',choices=['poll','dry-run','pause','resume','status','bootstrap','reconcile'])
-    parser.add_argument('attempt',type=int,nargs='?')
-    args=parser.parse_args()
+def main(args=None):
+    """Raises on failure (Busy for lock contention); run() maps outcomes to exit codes."""
+    args=args or parse()
     from runtime import Runtime, GitHub, load_config, load_local_config
     # pause/status need only the protected policy and journal: they keep working with an expired
     # token or low disk. Everything that talks to GitHub/Docker or re-enables automation preflights fully.
@@ -262,21 +282,40 @@ def main():
                 current=store.read()['current']
                 try:
                     manifest=deployment_manifest(deployment)
-                except Rejected:
+                except Rejected as error:
                     # Invalid request data is terminal before any Docker action; writers are untouched.
-                    finish(store,ident,'failure',running=serving(current))
+                    finish(store,ident,'failure',running=serving(current),failure=dict(diagnose(error),phase='validate'))
                 else:
                     try:
                         apply(store,runtime,ident,manifest)
-                    except Rejected:
+                    except Rejected as error:
                         require(not store.read().get('active'),'active release needs reconciliation')
-                        finish(store,ident,'failure',running=serving(current),requested=manifest['sha'])
+                        finish(store,ident,'failure',running=serving(current),requested=manifest['sha'],
+                               failure=dict(diagnose(error),phase='validate'))
             delivered=deliver(store,github)
         require(delivered,'result delivery pending')
 
+def parse(argv=None):
+    parser=argparse.ArgumentParser()
+    parser.add_argument('--config',default='/etc/moss-deploy/config.json')
+    parser.add_argument('command',choices=['poll','dry-run','pause','resume','status','bootstrap','reconcile'])
+    parser.add_argument('attempt',type=int,nargs='?')
+    return parser.parse_args(argv)
+
+
+def run(argv=None):
+    args=parse(argv)
+    try:
+        main(args)
+    except Busy:
+        if args.command=='poll': return 0  # the timer simply tries again next minute
+        print(BUSY_MESSAGE,file=sys.stderr); return BUSY_EXIT
+    except Exception as error:
+        print('moss-deploy failed closed: '+explain(diagnose(error))+
+              '. Inspect `status` and the operator runbook.',file=sys.stderr)
+        return 1
+    return 0
+
+
 if __name__=='__main__':
-    try: main()
-    except BlockingIOError: sys.exit(0)  # another timer/operator holds the shared lock
-    except Exception:
-        print('moss-deploy failed closed; inspect protected state and operator runbook',file=sys.stderr)
-        sys.exit(1)
+    sys.exit(run())

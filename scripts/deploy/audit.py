@@ -16,7 +16,8 @@ def clean_report(code,output):
     for advisories in report.values():
         require(isinstance(advisories,list) and advisories,'invalid audit advisory collection')
         for item in advisories:
-            require(isinstance(item,dict) and item.get('severity') in ('low','moderate','high','critical'),
+            # npm's documented levels: info < low < moderate < high < critical. Anything else fails closed.
+            require(isinstance(item,dict) and item.get('severity') in ('info','low','moderate','high','critical'),
                     'invalid or unknown advisory')
             severities.append(item['severity'])
     return not any(value in ('high','critical') for value in severities)

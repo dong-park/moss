@@ -5,8 +5,8 @@ import json
 from pathlib import Path
 import sys
 import time
-from agent import Store, deliver, finish, serving, stopped
-from release import digest, release_label, require, validate
+from agent import BUSY_EXIT, BUSY_MESSAGE, Busy, Store, deliver, finish, serving, stopped
+from release import diagnose, digest, explain, release_label, require, validate
 from runtime import GitHub, Runtime, load_config
 
 
@@ -38,15 +38,18 @@ def rollback(store,runtime,github):
     phase='stopping'
     try:
         runtime.stop()
+        value=store.read(); value['active']['phase']=phase='backup'; store.save(value)
         runtime.backup(ident)
         require(runtime.migration_compatible(current),'migration state changed during rollback')
-        observed=getattr(runtime,'observed_migrations',None)
         value=store.read(); value['active']['phase']=phase='rollback'; store.save(value)
         runtime.start_server(previous)
         runtime.start_clients(previous)
         runtime.smoke(previous)
-    except Exception:
-        finish(store,ident,'error',running=stopped(runtime),requested=requested,
+        # Record the ACTUAL post-rollback history; it must still be exactly a rehearsed history.
+        require(runtime.migration_compatible(current),'post-rollback migration history not rehearsed')
+        observed=getattr(runtime,'observed_migrations',None)
+    except Exception as error:
+        finish(store,ident,'error',running=stopped(runtime),requested=requested,failure=dict(diagnose(error),phase=phase),
                rollback='failed' if phase=='rollback' else 'not_attempted'); raise
     finish(store,ident,'success',running=serving(previous),rollback='succeeded',requested=requested,
            commit={'current':previous,'previous':None,'paused':True,'current_evidence':None,
@@ -54,12 +57,16 @@ def rollback(store,runtime,github):
     return ident
 
 
-def main():
+def parse(argv=None):
     parser=argparse.ArgumentParser()
     parser.add_argument('--config',default='/etc/moss-deploy/config.json')
     parser.add_argument('command',choices=['retry','rollback-previous'])
     parser.add_argument('deployment_id',type=int,nargs='?')
-    args=parser.parse_args(); config=load_config(Path(args.config)); store=Store(config['state_dir'])
+    return parser.parse_args(argv)
+
+
+def main(args=None):
+    args=args or parse(); config=load_config(Path(args.config)); store=Store(config['state_dir'])
     with store.lock():
         github=GitHub(config); runtime=Runtime(config,github)
         if args.command=='retry':
@@ -70,7 +77,18 @@ def main():
             print(rollback(store,runtime,github))
         require(deliver(store,github),'result recorded locally; GitHub delivery pending (see status)')
 
+def run(argv=None):
+    args=parse(argv)
+    try:
+        main(args)
+    except Busy:
+        print(BUSY_MESSAGE,file=sys.stderr); return BUSY_EXIT
+    except Exception as error:
+        print('Operator action failed closed: '+explain(diagnose(error))+'. Inspect `agent.py status` and the runbook.',
+              file=sys.stderr)
+        return 1
+    return 0
+
+
 if __name__=='__main__':
-    try: main()
-    except Exception:
-        print('Operator action failed closed; inspect protected state and runbook',file=sys.stderr); sys.exit(1)
+    sys.exit(run())

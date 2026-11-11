@@ -160,4 +160,3 @@ GitHub Deployments API를 요청·결과 기록에 사용한다. 배포 명세 v
 - 설치된 Next 문서 `web/node_modules/next/dist/docs/01-app/02-guides/environment-variables.md`와 `01-app/03-api-reference/05-config/01-next-config-js/deploymentId.md`: 공개 변수 빌드 고정과 버전 불일치 처리 근거.
 
 NOT RUN: 자동화 구현, 이미지 빌드/발행, 호스트 설치·권한/시크릿 변경, DB/Flyway 조회, 백업/복원, 실제 배포·복구. 읽기 전용 현황 조사와 계획 문서만 완료했다.
-
