@@ -4,8 +4,8 @@ import { createServer } from 'node:http';
 import { fingerprint, sha256, smokeConfig, Evidence, endpoint } from './core.mjs';
 
 test('production smoke fails closed before contacting services without dedicated credentials', () => {
-  assert.throws(() => smokeConfig({}), /MOSS_SMOKE_DEDICATED_ACCOUNT/);
-  assert.throws(() => smokeConfig({ MOSS_SMOKE_DEDICATED_ACCOUNT: 'yes' }), /MOSS_SMOKE_EMAIL/);
+  assert.throws(() => smokeConfig({}), /dedicated smoke account/);
+  assert.throws(() => smokeConfig({ dedicated_account: true }), /email/);
 });
 test('endpoint refuses credentials and non-network protocols', () => {
   for (const value of ['https://a:b@example.com', 'file:///tmp/a', 'https://a?token=x']) assert.throws(() => endpoint(value));
@@ -19,7 +19,7 @@ test('a missing mandatory phase cannot become success', async () => {
 });
 test('public fingerprint rejects empty asset proof, wrong revision and changed asset bytes', async t => {
   const revision = 'a'.repeat(40);
-  const server = createServer((req, res) => { res.end(req.url === '/build-info.json' ? JSON.stringify({ revision }) : req.url === '/' ? '<script src="/_next/static/a.js"></script>' : 'actual'); });
+  const server = createServer((req, res) => { res.end(req.url === '/api/deployment' ? JSON.stringify({ sha: revision, status: 'ready' }) : req.url === '/' ? '<script src="/_next/static/a.js"></script>' : 'actual'); });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(() => new Promise(resolve => server.close(resolve)));
   const url = `http://127.0.0.1:${server.address().port}`;
@@ -68,7 +68,7 @@ test('legacy CLI is explicit and cannot be mixed with an inferred SHA', async ()
 });
 test('legacy fingerprint verifies assets without inventing a revision', async t => {
   const server = createServer((req, res) => {
-    if (req.url === '/build-info.json') { res.statusCode = 404; res.end(); }
+    if (req.url === '/api/deployment') { res.statusCode = 404; res.end(); }
     else res.end(req.url === '/' ? '<script src="/_next/static/old.js"></script>' : 'old-client');
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));

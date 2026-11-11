@@ -1,13 +1,12 @@
 // Runs under Bun, using the packages in the actual web image (or installed web workspace).
 import { createRequire } from 'node:module';
-import { createInterface } from 'node:readline';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-export async function createClient(packagePath) {
-  const require = createRequire(resolve(packagePath));
-  const Y = await import(pathToFileURL(require.resolve('yjs')).href);
-  const { HocuspocusProvider, HocuspocusProviderWebsocket } = await import(pathToFileURL(require.resolve('@hocuspocus/provider')).href);
+export async function createClient(packagePath, packages) {
+  const require = packages ? null : createRequire(resolve(packagePath));
+  const Y = packages?.Y ?? await import(pathToFileURL(require.resolve('yjs')).href);
+  const { HocuspocusProvider, HocuspocusProviderWebsocket } = packages ?? await import(pathToFileURL(require.resolve('@hocuspocus/provider')).href);
   let config, access, clients = [];
   const keys = new Set();
   const wait = async (predicate, label) => {
@@ -100,16 +99,4 @@ export async function createClient(packagePath) {
     },
     close,
   };
-}
-
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  let client;
-  try {
-    client = await createClient(process.env.MOSS_CLIENT_PACKAGE ?? '/app/package.json');
-    for await (const line of createInterface({ input: process.stdin, crlfDelay: Infinity })) {
-      const { id, op, args } = JSON.parse(line);
-      try { console.log(`MOSS_RPC ${JSON.stringify({ id, ok: true, result: await client.run(op, args) })}`); }
-      catch { console.log(`MOSS_RPC ${JSON.stringify({ id, ok: false, error: `client operation failed: ${op}` })}`); }
-    }
-  } finally { await client?.close(); }
 }

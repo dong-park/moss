@@ -12,10 +12,15 @@ export async function docker(args, options = {}) {
   }
 }
 export async function imageIdentity(reference) {
-  const [image] = JSON.parse(await docker(['image', 'inspect', reference]));
+  const image = JSON.parse(await docker(['image', 'inspect', '--format', '{"Id":{{json .Id}},"RepoDigests":{{json .RepoDigests}}}', reference]));
   if (!/^sha256:[a-f0-9]{64}$/.test(image.Id)) throw new Error('invalid inspected image ID');
   if (reference.includes('@sha256:') && !image.RepoDigests?.includes(reference)) throw new Error('local image does not match requested digest reference');
   return { reference, id: image.Id, repoDigests: image.RepoDigests ?? [] };
+}
+export async function containerIdentity(name) {
+  // Inspect only necessary fields. Never retrieve Config.Env, including for production baseline reads.
+  const projection = '{"Id":{{json .Id}},"Image":{{json .Image}},"State":{{json .State}},"Mounts":{{json .Mounts}},"Config":{"Labels":{{json .Config.Labels}}},"NetworkSettings":{"Ports":{{json .NetworkSettings.Ports}}}}';
+  return JSON.parse(await docker(['inspect', '--format', projection, name]));
 }
 export function rpcWorker(command, args, options = {}) {
   const child = spawn(command, args, { stdio: ['pipe', 'pipe', 'pipe'], ...options });

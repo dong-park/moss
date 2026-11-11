@@ -1,73 +1,82 @@
 # Actual-image release rehearsal
 
-This C4 harness consumes already-produced images. It **never builds or pulls**. A parent must approve capacity, preload the candidate/baseline digest references and `postgres:18-alpine`, and verify an unknown first-release baseline's image mapping before running it. No source revision is inferred for a legacy baseline.
+This C4 harness consumes produced images. The parent owns capacity, image builds/publication, independent review, evidence signing and production activation. The harness never builds or implicitly pulls.
 
 ```sh
-node deploy/rehearsal/run.mjs \
-  --sha "$CANDIDATE_SHA" \
-  --images /private/candidate-images.json \
-  --baseline /private/baseline-images.json \
-  --config /private/public-config.json \
-  --output /private/evidence.json
+node deploy/rehearsal/pull.mjs --input /private/rehearsal-input.json
+bun deploy/rehearsal/run.ts --input /private/rehearsal-input.json --output /private/evidence.json
 ```
 
-Both image files are `{ "web": "ghcr.io/ORG/WEB@sha256:...", "server": "ghcr.io/ORG/SERVER@sha256:...", "sync": "ghcr.io/ORG/SYNC@sha256:..." }`. All three digest references must exist locally. The harness inspects and records image IDs/repository digests, then runs those IDs to avoid mutable tag races. `REHEARSAL_POSTGRES_IMAGE` can override the local Postgres image reference; the running database must report major 18.
-
-Public config format:
+`run.mjs` is also a Node entrypoint. Input is the artifact emitted by the root publisher:
 
 ```json
 {
-  "api_url": "https://api.example.com",
-  "sync_url": "wss://sync.example.com",
-  "web_url": "https://moss.example.com",
-  "identity_path": "/build-info.json",
-  "assets": [
-    { "path": "/_next/static/chunks/ACTUAL.js", "sha256": "ACTUAL_64_HEX_HASH" }
-  ]
+  "sha": "EXACT_40_HEX_CANDIDATE_SHA",
+  "images": { "web": "GHCR_DIGEST_REF", "server": "GHCR_DIGEST_REF", "sync": "GHCR_DIGEST_REF" },
+  "baseline": { "web": "PREVIOUS_DIGEST_REF", "server": "PREVIOUS_DIGEST_REF", "sync": "PREVIOUS_DIGEST_REF" },
+  "baseline_sha": null,
+  "legacy_baseline": true,
+  "public_config": {
+    "api_url": "https://moss-rehearsal.invalid",
+    "sync_url": "wss://sync-rehearsal.invalid",
+    "google_client_id": "rehearsal.apps.googleusercontent.com",
+    "terms_version": "isolated-rehearsal-v1"
+  },
+  "config_sha256": "CANONICAL_PUBLIC_CONFIG_HASH"
 }
 ```
 
-Use actual exported build assets and a nonempty asset list. The identity response must contain `revision` equal to the candidate's exact 40-character SHA. In rehearsal, public hostnames are replaced by unique loopback ports while the same expected identity/asset hashes are checked. This is an API/protocol integration rehearsal; it does not exercise the browser's compiled endpoint URLs or browser-local IndexedDB/OPFS.
+Normal mode accepts three pinned `ghcr.io/...@sha256:64hex` references in each image set. All must be explicitly pulled before running. Image IDs and repository digests are projected with Docker `--format`, then immutable IDs are used throughout. Container inspection projects only IDs, image ID, state, mounts, labels and port bindings; `Config.Env` is never retrieved.
 
-The harness generates its own UUID project name, private temporary Compose file, credentials, isolated network, ephemeral loopback ports, two Postgres volumes and two attachment volumes. It never reads a production env file, targets a supplied Compose project, or mounts production resources. Its cleanup uses only that generated project. Full database dumps/attachment archives and temporary credentials remain outside the repository and are removed with that private temporary directory. Evidence contains no credentials or user rows.
+The public-config fingerprint covers **only** the exact four fields `api_url`, `sync_url`, `google_client_id`, `terms_version`. It is SHA256 of recursively key-sorted compact ASCII JSON (Python `ensure_ascii=True`, UTF-8 bytes). Input hashes must match. Smoke URLs, credentials, asset lists, HTML paths and container names never enter this fingerprint. A known baseline requires an exact SHA and `legacy_baseline:false`; a legacy baseline requires `baseline_sha:null`, never an inferred source revision. `RELEASE_SHA` is passed to candidate services and known-baseline services only.
 
-The normal signup/login routes create a test-only account and board. An unauthenticated token request must fail. Two Yjs clients write real note maps, converge, discard local state and reconnect. The actual sync image must flush live clients on SIGTERM; another restart tests offline edits. Old provider/Yjs packages come from the baseline web image, and new packages come from the candidate web image. Previous → candidate → previous retains the same test database and verifies candidate-created data with the old client.
+## Isolated execution
 
-All writers (web/server/sync) stop before `pg_dump` and attachment archiving. A separate Postgres instance and attachment volume receive the backup, and authenticated clients verify the document fixture and attachment bytes. The original database and attachments stay intact. An unhealthy command in the real candidate server image must fail readiness, followed by a healthy candidate recovering the fixture. Finally, an isolated restored Flyway checksum is corrupted; server startup must fail validation and must not become healthy. That failed fixture is destroyed rather than repaired or rolled back.
+The harness creates a UUID project, private temporary Compose file, random credentials, internal network, random loopback ports, two Postgres volumes and two attachment volumes. Postgres must report major 18 (`REHEARSAL_POSTGRES_IMAGE` overrides its local image). No production env file, database, resource name or credential is used. Every Docker resource created by the harness belongs to that uniquely labelled fixture; cleanup targets only its generated project and transient helpers.
 
-The evidence envelope is:
+Normal email signup/login creates an isolated account and board (a nonempty configured terms version is required). An unauthenticated board-token request must be denied. Two actual Hocuspocus/Yjs clients write real note maps, converge, discard local state and reconnect. Provider/Yjs packages come from the corresponding baseline/candidate web image, exercising the actual older client protocol. Graceful stop order is **web → sync → server**, each command completing before the next. Live sync edits must survive SIGTERM and offline edits must converge after restart.
 
-- `sha`: exact candidate SHA.
-- `images` and `baseline`: pinned GHCR `{web,server,sync}` references.
-- `config_sha256`: SHA256 of recursively key-sorted compact UTF-8 public config JSON; array ordering is preserved.
-- `checks`: `normal_auth`, `two_clients`, `graceful_persistence`, `reconnect`, `offline_edits`, `backup_restore`, `previous_new_previous`, `old_client`, `failed_rollout`, `migration_failure`. Each is true only after its actual operation passes.
-- `migrations.baseline` and `migrations.candidate`: `{version,checksum,success}` rows in installed-rank order from the actual databases.
-- `identities`, `public`, `postgresVersion`, `phases`, timestamps and `status` provide review evidence. A failed mandatory phase keeps `status=failed`.
+Previous → candidate → previous retains the fixture database and verifies candidate-created data with the old client. Every start asserts actual running IDs against the selected set, including unknown-source legacy baselines. Public candidate `GET /api/deployment` must return `{status:"ready",sha:EXACT_SHA}`. A no-network, read-only transient web-image container runs `tar -C /app -cf - .next/static`; the host hashes regular-file bytes directly from that archive, without extracting image-controlled paths. Live HTML static references must be present in this image-derived manifest and public bytes must match. No operator asset hashes are accepted.
 
-Evidence uses create-exclusive mode 0600; supply a fresh output path. The parent owns schema validation, signing, production routing/activation, independent C4 review, exact-head CI and any rollback decision.
+All writers stop before `pg_dump` and attachment archiving. Separate Postgres and attachment volumes receive the backup; normal authenticated clients verify document contents and attachment bytes there. Originals remain intact. An unhealthy command in the candidate server image must fail readiness; the complete **baseline image set** is then restored and must read the candidate-created fixture. Finally an isolated restored Flyway checksum is corrupted: candidate startup must fail migration validation and remain unhealthy. The failed isolated fixture is destroyed, not repaired or automatically rolled back.
 
-## Production smoke
+The rehearsal uses protocol clients rather than a browser. Compiled browser endpoint URLs, browser-local IndexedDB/OPFS, public proxy routing and production process restarts require their own parent-owned gates.
 
-```sh
-MOSS_SMOKE_DEDICATED_ACCOUNT=yes \
-MOSS_SMOKE_EMAIL=... MOSS_SMOKE_PASSWORD=... MOSS_SMOKE_BOARD_ID=... \
-MOSS_SMOKE_EVIDENCE=/private/smoke-evidence.json \
-scripts/deploy/smoke --sha "$CANDIDATE_SHA" --config /etc/moss-deploy/smoke.json
-```
+## Local registry validation
 
-The wrapper runs Bun (`BUN_BIN` overrides its executable). Use a secret manager/credential file to supply dedicated credentials, not a shell history containing real passwords. The dedicated account must already own the dedicated board. Missing credentials/acknowledgment fail before network calls; no JWT signing or test-only auth bypass exists. The host must have the existing web dependencies installed; `MOSS_CLIENT_PACKAGE` overrides the path to that existing web `package.json` without installing anything.
+The parent may create a unique loopback registry and push actual produced images/baseline copies there. Both pull and run accept `--local-registry`, which permits **only** `127.0.0.1:<valid-port>/moss-{matching web|server|sync}@sha256:64hex`. It rejects localhost aliases, other hosts/repositories, tags and cross-service mappings. This mode still checks real repository digests and exact running IDs, including legacy images; it never invents GHCR mappings. Evidence sets `local_only:true`, `attestation_eligible:false`, `registry_kind:"local"`. Host schema/verification must reject it for promotion. Normal workflow remains GHCR-only.
 
-Smoke verifies public build identity and asset bytes, API `/health`, normal authenticated two-client sync, persistence after all clients close, and reconnect with offline edits. It removes only its uniquely keyed note/meta entries and leaves the board and account intact. It does not restart production services, access the database, upload files or mutate Docker resources. Persistence here is proven by fresh clients after Hocuspocus unload; process-restart/disk proof belongs to the isolated rehearsal.
+## Evidence
 
-## Local verification
+Evidence is create-exclusive mode 0600 at a fresh output path. Required fields are `sha`, `images`, `baseline`, `baseline_sha`, `legacy_baseline`, `config_sha256`, plus `checks` booleans: `normal_auth`, `two_clients`, `graceful_persistence`, `reconnect`, `offline_edits`, `backup_restore`, `previous_new_previous`, `old_client`, `failed_rollout`, `migration_failure`. A check becomes true only after its operation passes. Overall status stays failed until all phases and fixture cleanup pass.
+
+`migrations.baseline`/`candidate` contain only `{version,checksum,success}` in installed-rank order from actual Flyway history. Image identities, public build identity/assets, archive hashes, Postgres version, phase results and timestamps provide provenance; no account credentials, user rows or auth tokens enter evidence. Private dump/archive/credentials are removed with the fixture directory. The parent validates/signs evidence and compares current/post-server migrations exactly before production activation.
+
+## Production smoke and packaging
 
 ```sh
-node --test deploy/rehearsal/*.test.mjs
-node --check deploy/rehearsal/run.mjs
-node --check deploy/rehearsal/client.mjs
-node --check scripts/deploy/smoke.mjs
+bun scripts/deploy/smoke.ts --sha "$SHA" --config /etc/moss-deploy/smoke.json
+# Unknown-source legacy baseline only:
+bun scripts/deploy/smoke.ts --legacy-baseline --config /etc/moss-deploy/smoke.json
+# Fixed executable wrapper accepts the same arguments:
+scripts/deploy/smoke --sha "$SHA" --config /etc/moss-deploy/smoke.json
 ```
 
-A negative fingerprint test first failed because an empty asset proof was accepted (3 passed, 1 failed); the guard was corrected and that test now passes. These lightweight tests verify guardrails/configuration/evidence handling, not real-image integration. Do not sign unit-test output as rehearsal success. Full image execution remains a separate mandatory gate.
+The protected JSON config contains `public_config` (the same exact four fields), `web_url`, `dedicated_account:true`, `email`, `password`, `board_id`, and `containers:{web,server,sync}` actual running names/IDs. Optional `images:{web,server,sync}` pins expected GHCR refs; the parent always owns exact release image mapping. Optional `html_paths:["/"]` checks additional configured HTML entrypoints. No `assets` field is accepted. Credentials are read from this config, never exported by the runtime or printed. Missing dedicated credentials fail before Docker/network calls. Account and board must already exist and the account must own the board.
 
-Legacy production verification uses `bun scripts/deploy/smoke.ts --legacy-baseline --config FILE` (the fixed executable wrapper also accepts it). Its config additionally supplies `legacy_images` (three verified/pinned GHCR digest references) and `legacy_containers` (three running Docker container names/IDs). The script uses read-only Docker inspection to compare each actual running image ID with the pinned reference, checks public HTML and every referenced static asset against the expected hashes, and exercises the same authenticated sync checks. It deliberately omits the revision endpoint and records `sha: null`, `legacy_baseline: true`. A legacy verification can never establish a candidate revision. The parent must verify the exported baseline mapping and keep this mode out of normal candidate activation.
+Smoke projects actual running image identities, extracts static asset hashes from that exact web image, checks public identity/HTML/bytes and API health, then exercises normal authenticated two-client sync, persistence after all clients close, and offline/reconnect edits. Only its uniquely keyed note/meta entries are removed. It does not restart production services, access a production DB or mount production data. The asset helper is a newly created uniquely labelled read-only/no-network container, removed automatically. Legacy mode omits the revision endpoint and records `sha:null`; it can never prove a candidate SHA.
+
+Successful evidence is emitted as JSON on stdout. Optional `MOSS_SMOKE_EVIDENCE` writes a fresh private evidence file too. `BUN_BIN` selects Bun; source execution can use `MOSS_CLIENT_PACKAGE` for an existing dependency installation. To install without a checkout or node_modules, generate the real self-contained runtime archive:
+
+```sh
+BUN_BIN=/path/to/bun node scripts/deploy/smoke.package.mjs \
+  --package sync/package.json --output /private/moss-smoke-runtime.tar.gz
+```
+
+This bundles the existing locked provider/Yjs packages using Bun, then creates an archive containing `smoke`, self-contained `smoke.mjs`, and `manifest.json` (bundle and source-package hashes). Output must be outside the repository and must not already exist. The installer extracts this actual artifact into its reviewed runtime directory and runs `smoke --sha SHA --config FILE`. Host runtime dependencies are Bun and Docker, not npm packages. No generated bundle/binary is committed.
+
+## Verification
+
+`node --test deploy/rehearsal/*.test.mjs` covers contract/fingerprint/legacy/local-mode guards, fixture isolation, release SHA propagation, and GNU/PAX/USTAR archive hashing (including links/corruption rejection). Syntax: `node --check` on new `.mjs` and `sh -n scripts/deploy/smoke`.
+
+RED: the original fingerprint accepted empty assets, and the initial config parser rejected the root's exact four-field public config. Each regression test failed before its fix and passes afterward. The archive was produced, extracted outside the checkout and executed without node_modules; it failed closed on absent dedicated credentials. These checks do not substitute for actual-image rehearsal, exact-head CI or production smoke with dedicated credentials.

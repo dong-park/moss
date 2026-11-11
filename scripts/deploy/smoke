@@ -1,4 +1,4 @@
 #!/bin/sh
 set -eu
 # Credentials must be dedicated; the JS entrypoint validates them before any network request.
-exec "${BUN_BIN:-bun}" "$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)/smoke.mjs" "$@"
+exec "${BUN_BIN:-bun}" "$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)/smoke.ts" "$@"

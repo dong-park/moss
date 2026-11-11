@@ -3,16 +3,18 @@ import { tmpdir } from 'node:os';
 import { resolve, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { canonical, checkedFetch, cli, Evidence, fingerprint, pinnedImages, publicConfig, sha256 } from './core.mjs';
-import { docker, imageIdentity, rpcWorker } from './docker.mjs';
+import { checkedFetch, cli, Evidence, fingerprint, rehearsalInput, sha256 } from './core.mjs';
+import { imageAssets } from './assets.mjs';
+import { docker, containerIdentity, imageIdentity, rpcWorker } from './docker.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const checks = ['normal_auth', 'two_clients', 'graceful_persistence', 'reconnect', 'offline_edits', 'backup_restore', 'previous_new_previous', 'old_client', 'failed_rollout', 'migration_failure'];
-export function composeSpec({ images, secret, password, terms, restored = false, unhealthy = false, runId }) {
+export function composeSpec({ images, secret, password, terms, restored = false, unhealthy = false, runId, releaseSha, googleClientId = '' }) {
   const database = restored ? 'restored' : 'postgres', files = restored ? 'restored_files' : 'files';
   const labels = { 'com.moss.rehearsal': runId };
   const db = { image: images.postgres, labels, environment: { POSTGRES_USER: 'rehearsal', POSTGRES_PASSWORD: password, POSTGRES_DB: 'moss' }, healthcheck: { test: ['CMD-SHELL', 'pg_isready -U rehearsal -d moss'], interval: '1s', timeout: '3s', retries: 60 } };
-  const serverEnv = { PORT: '8080', DATABASE_URL: `jdbc:postgresql://${database}:5432/moss`, DATABASE_USER: 'rehearsal', DATABASE_PASSWORD: password, JWT_SECRET: secret, SYNC_INTERNAL_URL: 'http://sync:1235', SYNC_INTERNAL_SECRET: secret, FILES_DIR: '/data/files', GOOGLE_CLIENT_ID: '', ALLOWED_ORIGINS: 'http://127.0.0.1', PUBLIC_BASE_URL: 'http://server:8080', MOSS_TERMS_VERSION: terms, MOSS_ACCOUNT_CAP: '100', TRUSTED_PROXY_HOPS: '0' };
+  const release = releaseSha ? { RELEASE_SHA: releaseSha } : {};
+  const serverEnv = { ...release, PORT: '8080', DATABASE_URL: `jdbc:postgresql://${database}:5432/moss`, DATABASE_USER: 'rehearsal', DATABASE_PASSWORD: password, JWT_SECRET: secret, SYNC_INTERNAL_URL: 'http://sync:1235', SYNC_INTERNAL_SECRET: secret, FILES_DIR: '/data/files', GOOGLE_CLIENT_ID: googleClientId, ALLOWED_ORIGINS: 'http://127.0.0.1', PUBLIC_BASE_URL: 'http://server:8080', MOSS_TERMS_VERSION: terms, MOSS_ACCOUNT_CAP: '100', TRUSTED_PROXY_HOPS: '0' };
   return {
     services: {
       postgres: { ...db, volumes: ['postgres:/var/lib/postgresql'] },
@@ -20,22 +22,20 @@ export function composeSpec({ images, secret, password, terms, restored = false,
       server: { image: images.server, labels, environment: serverEnv, ports: [{ target: 8080, host_ip: '127.0.0.1', published: '0' }], volumes: [`${files}:/data/files`], stop_grace_period: '45s',
         ...(unhealthy ? { entrypoint: ['bash', '-c', 'sleep 300'] } : {}),
       },
-      sync: { image: images.sync, labels, environment: { PORT: '1234', INTERNAL_PORT: '1235', SYNC_INTERNAL_HOST: '0.0.0.0', SYNC_INTERNAL_SECRET: secret, JWT_SECRET: secret, DATABASE_URL: `postgres://${database}:5432/moss`, DATABASE_USER: 'rehearsal', DATABASE_PASSWORD: password, KTOR_INTERNAL_URL: 'http://server:8080', PUBLIC_BASE_URL: 'http://server:8080' }, ports: [{ target: 1234, host_ip: '127.0.0.1', published: '0' }], stop_grace_period: '45s' },
-      web: { image: images.web, labels, environment: { MOSS_INTERNAL_API_URL: 'http://server:8080', OPENAI_API_KEY: '', ANTHROPIC_API_KEY: '' }, ports: [{ target: 3000, host_ip: '127.0.0.1', published: '0' }] },
+      sync: { image: images.sync, labels, environment: { ...release, PORT: '1234', INTERNAL_PORT: '1235', SYNC_INTERNAL_HOST: '0.0.0.0', SYNC_INTERNAL_SECRET: secret, JWT_SECRET: secret, DATABASE_URL: `postgres://${database}:5432/moss`, DATABASE_USER: 'rehearsal', DATABASE_PASSWORD: password, KTOR_INTERNAL_URL: 'http://server:8080', PUBLIC_BASE_URL: 'http://server:8080' }, ports: [{ target: 1234, host_ip: '127.0.0.1', published: '0' }], stop_grace_period: '45s' },
+      web: { image: images.web, labels, environment: { ...release, MOSS_INTERNAL_API_URL: 'http://server:8080', OPENAI_API_KEY: '', ANTHROPIC_API_KEY: '' }, ports: [{ target: 3000, host_ip: '127.0.0.1', published: '0' }] },
     },
     networks: { default: { labels, internal: true } },
     volumes: Object.fromEntries(['postgres', 'restored_postgres', 'files', 'restored_files'].map(name => [name, { labels }])),
   };
 }
 export async function run(argv) {
-  const args = cli(argv, ['--sha', '--images', '--baseline', '--config', '--output']);
-  if (!/^[a-f0-9]{40}$/.test(args['--sha'])) throw new Error('exact candidate SHA required');
-  const candidate = pinnedImages(JSON.parse(await readFile(args['--images'], 'utf8')));
-  const baseline = pinnedImages(JSON.parse(await readFile(args['--baseline'], 'utf8')));
-  const raw = JSON.parse(await readFile(args['--config'], 'utf8'));
-  const config = publicConfig({ ...raw, sha: args['--sha'] });
-  const e = new Evidence('rehearsal', args['--sha'], `moss-rehearsal-${randomUUID()}`), runId = e.data.runId;
-  Object.assign(e.data, { sha: args['--sha'], images: candidate, baseline, config_sha256: sha256(canonical(raw)), checks: Object.fromEntries(checks.map(k => [k, false])), migrations: {} });
+  const local = argv.includes('--local-registry');
+  const args = cli(argv.filter(arg => arg !== '--local-registry'), ['--input', '--output']);
+  const input = rehearsalInput(JSON.parse(await readFile(args['--input'], 'utf8')), { local });
+  const candidate = input.images, baseline = input.baseline;
+  const e = new Evidence('rehearsal', input.sha, `moss-rehearsal-${randomUUID()}`), runId = e.data.runId;
+  Object.assign(e.data, { sha: input.sha, images: candidate, baseline, baseline_sha: input.baseline_sha, legacy_baseline: input.legacy_baseline, config_sha256: input.config_sha256, local_only: local, attestation_eligible: !local, registry_kind: local ? 'local' : 'ghcr', checks: Object.fromEntries(checks.map(k => [k, false])), migrations: {} });
   const identities = { candidate: {}, baseline: {} };
   // Resolve all local images first; never build or pull implicitly, and use their immutable local IDs thereafter.
   for (const [kind, refs] of Object.entries({ candidate, baseline })) {
@@ -46,15 +46,16 @@ export async function run(argv) {
   const work = await mkdtemp(join(tmpdir(), 'moss-rehearsal-'));
   const compose = join(work, 'compose.json');
   const secret = randomBytes(32).toString('hex'), password = randomBytes(24).toString('hex');
-  const terms = 'isolated-rehearsal-v1';
+  const terms = input.public_config.terms_version;
+  if (!terms) throw new Error('isolated normal-signup rehearsal requires configured terms version');
   let active = 'baseline', restored = false, unhealthy = false, worker, created = false, operationsComplete = false, workerClosed = false;
   const ids = kind => ({ ...Object.fromEntries(Object.entries(identities[kind]).map(([s, info]) => [s, info.id])), postgres: pg.id });
-  const saveCompose = () => writeFile(compose, JSON.stringify(composeSpec({ images: ids(active), secret, password, terms, restored, unhealthy, runId })), { mode: 0o600 });
+  const saveCompose = () => writeFile(compose, JSON.stringify(composeSpec({ images: ids(active), secret, password, terms, restored, unhealthy, runId, googleClientId: input.public_config.google_client_id, releaseSha: active === 'candidate' ? input.sha : input.baseline_sha })), { mode: 0o600 });
   const dc = (...command) => docker(['compose', '--project-name', runId, '--file', compose, ...command]);
   async function cid(service) {
     const id = (await dc('ps', '--all', '--quiet', service)).trim();
     if (!/^[a-f0-9]{12,64}$/.test(id)) throw new Error(`missing own container: ${service}`);
-    const [inspect] = JSON.parse(await docker(['inspect', id]));
+    const inspect = await containerIdentity(id);
     if (inspect.Config.Labels['com.moss.rehearsal'] !== runId) throw new Error('container ownership mismatch');
     return { id, inspect };
   }
@@ -91,8 +92,9 @@ export async function run(argv) {
     return JSON.parse((await sql(`SELECT COALESCE(json_agg(row_to_json(m)), '[]'::json) FROM (SELECT version, checksum, success FROM flyway_schema_history ORDER BY installed_rank) m`)).trim());
   }
   async function stopWriters() {
-    await dc('stop', '--timeout', '45', 'web', 'server', 'sync');
-    for (const service of ['web', 'server', 'sync']) {
+    // Web can write through routes; sync must finish its DB writes before server shuts down.
+    for (const service of ['web', 'sync', 'server']) {
+      await dc('stop', '--timeout', '45', service);
       const { inspect } = await cid(service);
       if (inspect.State.Running || !(service === 'sync' ? [0] : [0, 143]).includes(inspect.State.ExitCode) || inspect.State.OOMKilled) throw new Error(`${service} did not stop gracefully`);
     }
@@ -110,7 +112,7 @@ export async function run(argv) {
   const account = { api: 'http://server:8080', sync: 'ws://sync:1234', board, email: `rehearsal-${randomUUID()}@example.com`, password: randomBytes(24).toString('hex'), terms };
   async function client(kind, signup = false) {
     if (worker) { await worker.call('close'); await worker.end(); worker = undefined; }
-    worker = rpcWorker('docker', ['run', '--rm', '-i', '--pull=never', '--label', `com.moss.rehearsal=${runId}`, '--name', `${runId}-client-${randomBytes(3).toString('hex')}`, '--network', `${runId}_default`, '--read-only', '--tmpfs', '/tmp:rw,nosuid,size=32m', '--mount', `type=bind,src=${here},dst=/harness,readonly`, '--entrypoint', 'bun', identities[kind].web.id, '/harness/client.mjs']);
+    worker = rpcWorker('docker', ['run', '--rm', '-i', '--pull=never', '--label', `com.moss.rehearsal=${runId}`, '--name', `${runId}-client-${randomBytes(3).toString('hex')}`, '--network', `${runId}_default`, '--read-only', '--tmpfs', '/tmp:rw,nosuid,size=32m', '--mount', `type=bind,src=${here},dst=/harness,readonly`, '--entrypoint', 'bun', identities[kind].web.id, '/harness/client-worker.mjs']);
     return worker.call('init', { ...account, signup });
   }
   const values = {};
@@ -155,7 +157,9 @@ export async function run(argv) {
     await phase('old_client', async () => {
       await stopWriters(); await worker.call('close'); active = 'candidate'; await start();
       e.data.migrations.candidate = await migrations();
-      e.data.public = await fingerprint(await hostURL('web', 3000), config.expected);
+      const extracted = await imageAssets(identities.candidate.web.id, runId);
+      e.data.asset_artifact = { image: extracted.identity, archive_sha256: extracted.archive_sha256, files: extracted.assets.length };
+      e.data.public = await fingerprint(await hostURL('web', 3000), { revision: input.sha, assets: extracted.assets });
       await editPair('candidate-old-client'); return fresh();
     });
     await phase('previous_new_previous', async () => {
@@ -202,12 +206,14 @@ export async function run(argv) {
       let rejected = false;
       try { await health('server', 4); } catch { rejected = true; }
       if (!rejected) throw new Error('unhealthy candidate accepted');
-      // This is our deliberately unhealthy image process; stop it, then prove the original candidate recovers.
-      await dc('stop', '--timeout', '5', 'server'); unhealthy = false; await start();
-      await client('candidate'); await worker.call('pair'); return worker.call('assert', { values });
+      // Recover the actual previous service set after the candidate fails readiness.
+      await dc('stop', '--timeout', '5', 'server'); unhealthy = false; active = 'baseline'; await start();
+      await client('baseline'); await worker.call('pair'); await worker.call('assert', { values });
+      return { recovered: 'baseline', images: baseline, fixtureVerified: true };
     });
     await phase('migration_failure', async () => {
       await worker.call('close'); await stopWriters();
+      active = 'candidate';
       const changed = (await sql("UPDATE flyway_schema_history SET checksum = checksum + 1 WHERE version = '1' RETURNING version")).trim();
       if (!changed.startsWith('1')) throw new Error('migration failure injection did not modify isolated history');
       await saveCompose(); await dc('up', '-d', '--no-build', '--pull', 'never', 'server');
