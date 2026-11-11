@@ -8,7 +8,7 @@ from urllib.parse import urlsplit
 SERVICES = ('web', 'server', 'sync')
 REPOSITORY = 'dong-park/moss'
 WORKFLOW = '.github/workflows/release.yml'
-GATES = ('contract', 'ci / web-checks', 'ci / sync-checks', 'ci / mcp-checks', 'ci / server-checks',
+GATES = ('contract', 'ci / web-checks', 'ci / sync-checks', 'ci / mcp-checks', 'ci / deploy-checks', 'ci / server-checks',
          'audit / web', 'audit / server', 'build (web)', 'build (server)', 'build (sync)', 'rehearsal')
 PUBLIC_KEYS = {'api_url', 'sync_url', 'google_client_id', 'terms_version'}
 

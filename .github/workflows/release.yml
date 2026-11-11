@@ -27,7 +27,10 @@ jobs:
           echo '8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  /tmp/actionlint.tar.gz' | sha256sum --check --strict
           tar -xzf /tmp/actionlint.tar.gz -C /tmp actionlint
           /tmp/actionlint
-      - run: python3 -m unittest discover -s scripts/deploy/tests -v
+      - name: Deployer tests including real Postgres metadata
+        env:
+          MOSS_DEPLOY_DOCKER_TESTS: required
+        run: python3 -m unittest discover -s scripts/deploy/tests -v
   build:
     needs: [ci, audit, contract]
     runs-on: ubuntu-latest

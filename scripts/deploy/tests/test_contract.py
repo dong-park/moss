@@ -66,6 +66,16 @@ class ContractTest(unittest.TestCase):
             broken = dict(run); broken[key] = value
             with self.assertRaises(release.Rejected): release.verify_run(m, broken, jobs)
 
+    def test_every_reused_check_job_is_a_host_verified_gate(self):
+        # A new CI/audit job (e.g. the real-Postgres executor tests) must not escape host run verification.
+        import re
+        root = Path(__file__).resolve().parents[3] / '.github/workflows'
+        for workflow, prefix in (('ci.yml', 'ci'), ('audit.yml', 'audit')):
+            section = (root / workflow).read_text().split('\njobs:\n', 1)[1]
+            names = {f'{prefix} / {name}' for name in re.findall(r'^  ([A-Za-z0-9_-]+):\s*$', section, re.M)}
+            self.assertEqual(names, {g for g in release.GATES if g.startswith(prefix + ' / ')})
+        self.assertIn('ci / deploy-checks', release.GATES)
+
 class EvidenceTest(unittest.TestCase):
     def evidence(self):
         m=manifest()

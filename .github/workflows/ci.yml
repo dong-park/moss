@@ -72,6 +72,25 @@ jobs:
       - run: bun run typecheck
       - run: bun run test
 
+  deploy-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "24"
+      # The executor's real docker/psql boundary runs against an owned Postgres 18 container.
+      # "required" turns a missing Docker daemon into a failure instead of a skip.
+      - name: Deployer tests including real Postgres metadata
+        env:
+          MOSS_DEPLOY_DOCKER_TESTS: required
+        run: python3 -m unittest discover -s scripts/deploy/tests -v
+      - run: node --test deploy/rehearsal/*.test.mjs
+
   server-checks:
     runs-on: ubuntu-latest
     timeout-minutes: 20

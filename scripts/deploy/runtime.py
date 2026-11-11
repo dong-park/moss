@@ -176,11 +176,22 @@ class Runtime:
         values=command(['docker','inspect','--format',projection,self.container(service)],env=self.env).decode().splitlines()
         state,mounts,networks,image,ports=map(json.loads,values)
         return {'state':state,'mounts':mounts,'networks':networks,'image':image,'ports':ports}
+    METADATA_SQL=(b"SELECT coalesce(json_agg(t), '[]'::json) FROM "
+                  b"(SELECT version, checksum, success FROM flyway_schema_history ORDER BY installed_rank) t;\n")
     def metadata(self):
-        result=command(['docker','exec',self.container('postgres'),'sh','-c',
-            '''psql -X -A -t -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c 'SELECT coalesce(json_agg(t), '\''[]'\''::json) FROM (SELECT version, checksum, success FROM flyway_schema_history ORDER BY installed_rank) t' '''.strip()],env=self.env)
-        value=json.loads(result)
-        require(value and all(row.get('success') is True for row in value),'Flyway state unknown or failed')
+        # SQL travels on stdin; the fixed shell script only expands the container's own
+        # credential variables, so no SQL quoting is nested inside shell or Python quoting.
+        result=command(['docker','exec','-i',self.container('postgres'),'sh','-c',
+                        'exec psql -X -q -A -t -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"'],
+                       input=self.METADATA_SQL,env=self.env)
+        try: value=json.loads(result)
+        except ValueError: raise Rejected('Flyway metadata unreadable') from None
+        require(isinstance(value,list) and value,'Flyway state unknown or empty')
+        for row in value:
+            require(isinstance(row,dict) and set(row)=={'version','checksum','success'}
+                    and isinstance(row['version'],str) and row['version']
+                    and (row['checksum'] is None or type(row['checksum']) is int)
+                    and row['success'] is True,'Flyway state unknown or failed')
         return value
     def topology(self):
         result={}
