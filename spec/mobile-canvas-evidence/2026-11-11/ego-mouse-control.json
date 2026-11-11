@@ -1,0 +1,26 @@
+{
+  "surface": "Ego desktop mouse positive control",
+  "before": {
+    "source": {
+      "x": 200,
+      "y": 216.5
+    },
+    "target": {
+      "x": 200.99999237060547,
+      "y": 451.5
+    },
+    "lines": 0
+  },
+  "after": {
+    "lines": 2,
+    "active": "BODY"
+  },
+  "undo": {
+    "lines": 2
+  },
+  "cleanup": {
+    "method": "Control+z",
+    "lineCountAfter": 0,
+    "note": "Meta+z did not remove the line; Control+z did, verified by DOM after settling."
+  }
+}

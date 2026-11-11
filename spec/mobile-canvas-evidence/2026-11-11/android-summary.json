@@ -1,0 +1,57 @@
+{
+  "device": {
+    "model": "SM-N986N",
+    "android": "13",
+    "chrome": "157.0.8103.48",
+    "screen": "1440x3088",
+    "dpr": 3.5
+  },
+  "link": {
+    "beforeActive": {
+      "tag": "BODY",
+      "label": null
+    },
+    "afterActive": {
+      "tag": "INPUT",
+      "label": "링크"
+    },
+    "viewportAfter": {
+      "w": 411,
+      "h": 752,
+      "dpr": 3.5,
+      "vh": 358.8571472167969
+    },
+    "imeShownAfter": true,
+    "nativeKeyboardScreenshot": "android-link-keyboard.png"
+  },
+  "resize": {
+    "beforeWorld": "translate(0px, 0px) scale(1)",
+    "afterWorld": "translate(44.1601px, 22.08px) scale(1)",
+    "beforeCard": {
+      "width": "240px",
+      "height": "",
+      "left": "80px",
+      "top": "360px"
+    },
+    "afterCard": {
+      "width": "240px",
+      "height": "",
+      "left": "80px",
+      "top": "360px"
+    },
+    "nativeTouchDurationMs": 196.09999990463257
+  },
+  "connection": {
+    "selectedCard": "c-mwc7q3fa-1",
+    "resizeHandles": 8,
+    "connectionHandles": 0,
+    "linePaths": 0,
+    "exactHandleDrag": "NOT RUN on Android; unavailable start handle after selection"
+  },
+  "cleanup": {
+    "androidTestCardsRemoved": true,
+    "androidBaselineCardsPresent": true,
+    "worldRestored": "translate(0px, 0px) scale(1)",
+    "egoCleanup": "UNVERIFIED: TaskSpace26 no longer exists; no replacement space opened"
+  }
+}
