@@ -65,6 +65,10 @@ Final smoke archive at that artifact directory: `smoke-runtime-final.tar.gz`, SH
 
 Read-only final Docker projection confirmed original four Moss image IDs, original start times and zero restarts. No host installation, global CLI change, main push, PR, production stop/restart, production migration/backup/restore or service activation occurred in this lane.
 
+## Parent portability check
+
+On the Mac worktree, `python3 -m unittest discover -s scripts/deploy/tests -v` ran all 27 tests with zero failures. `node --test deploy/rehearsal/*.test.mjs` initially failed two asset fixture tests: BSD tar does not accept GNU tar's `--format gnu` spelling, and its default archive metadata changed the expected rejection path. The fixtures now use Python's independent standard-library tar writer for GNU, PAX and USTAR on both platforms. Every existing hash, long-path, corruption and symlink assertion is unchanged. The same Node command now passes all 17 tests with zero failures/skips; `git diff --check` exits 0. This change does not modify the production asset parser or application images.
+
 ## Remaining gates and operator inputs
 
 NOT RUN: exact-head GitHub Actions/OWASP NVD audit; real GHCR publication/attestation verification; installed root agent against GitHub production requests; independent C4 review; browser old-tab/version-skew/IndexedDB/OPFS checks; production dedicated-account smoke; first production deployment/rollback and downtime measurement. Existing web 8 and MCP 1 platform skips are listed above.
