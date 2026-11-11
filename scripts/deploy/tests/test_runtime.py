@@ -26,3 +26,16 @@ class RuntimeTest(unittest.TestCase):
         with self.assertRaises(Rejected):rt.verify_public_environment(rendered)
 
 if __name__=='__main__':unittest.main()
+
+class ScopedTokenTest(unittest.TestCase):
+    def test_rotation_and_expiry_fail_closed(self):
+        import tempfile,time
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/'token';path.write_text('test-token-one')
+            config={'auth_mode':'token','token_file':str(path),'token_expires_at':int(time.time())+1000}
+            github=runtime.GitHub(config)
+            self.assertEqual(github.credentials(),'test-token-one')
+            path.write_text('test-token-two')
+            self.assertEqual(github.credentials(),'test-token-two')
+            config['token_expires_at']=int(time.time())-1
+            with self.assertRaises(Rejected):github.credentials()

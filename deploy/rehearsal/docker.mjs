@@ -59,3 +59,11 @@ export function rpcWorker(command, args, options = {}) {
     },
   };
 }
+
+export async function migrationValidationFailed(name) {
+  // Only return a classification, never fixture logs or exception payloads.
+  try {
+    const result=await exec('docker',['logs',name],{encoding:'utf8',timeout:15000,maxBuffer:4*1024*1024});
+    return /checksum|validate.*fail|migration.*fail/i.test(result.stdout+'\n'+result.stderr);
+  } catch { throw new Error('unable to classify isolated migration failure'); }
+}

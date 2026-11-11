@@ -40,7 +40,8 @@ class Store:
 
 def finish(store,ident,outcome,sha,rollback=False):
     state=store.read()
-    state['attempts'][str(ident)]={'outcome':outcome,'sha':sha,'rollback':rollback,'time':int(time.time())}
+    state['attempts'][str(ident)]={'outcome':outcome,'sha':sha,'rollback':rollback,'time':int(time.time()),
+                                 'phases':(state.get('active') or {}).get('phases',{})}
     state['reports'].append({'id':ident,'state':outcome,'sha':sha,'rollback':rollback})
     state['active']=None
     if outcome == 'error': state['paused']=True
@@ -61,7 +62,7 @@ def recover(store,runtime):
         # A crash can occur between a Docker side effect and its journal write. Never infer DB safety.
         if active['phase'] != 'prepare':
             halt(runtime)
-            finish(store,active['id'],'error',active['manifest']['sha'])
+            finish(store,active['id'],'error',None)
         else:
             finish(store,active['id'],'failure',active['manifest']['sha'])
 
@@ -73,11 +74,12 @@ def apply(store,runtime,ident,manifest):
     require(not state.get('paused') and not state.get('active'), 'operator intervention or active release')
     current=state['current']
     require(current['images'] == manifest['baseline'], 'baseline changed; new rehearsal required')
-    state['active']={'id':ident,'manifest':manifest,'phase':'prepare'}; store.save(state)
+    state['active']={'id':ident,'manifest':manifest,'phase':'prepare','phases':{'prepare':time.time()}}; store.save(state)
     phase='prepare'
     def journal(next_phase):
         nonlocal phase
-        phase=next_phase; value=store.read(); value['active']['phase']=phase; store.save(value)
+        phase=next_phase; value=store.read(); value['active']['phase']=phase
+        value['active']['phases'][phase]=time.time(); store.save(value)
     try:
         runtime.prepare(manifest,current)
         if runtime.main_sha() != manifest['sha']:
@@ -94,7 +96,7 @@ def apply(store,runtime,ident,manifest):
         if phase == 'prepare': finish(store,ident,'failure',current.get('sha')); return
         if phase == 'stopping':
             # Includes sync forced kill or failed persistence. Cannot claim final backup was consistent.
-            halt(runtime); finish(store,ident,'error',current.get('sha')); return
+            halt(runtime); finish(store,ident,'error',None); return
         try:
             require(halt(runtime),'writers could not be stopped')
             if phase not in ('backup',):
@@ -103,7 +105,7 @@ def apply(store,runtime,ident,manifest):
             runtime.start_clients(current)
             runtime.smoke(current)
         except Exception:
-            halt(runtime); finish(store,ident,'error',current.get('sha')); return
+            halt(runtime); finish(store,ident,'error',None); return
         finish(store,ident,'failure',current.get('sha'),rollback=True); return
     state=store.read(); state['previous']=current; state['current']=manifest; store.save(state)
     finish(store,ident,'success',manifest['sha'])

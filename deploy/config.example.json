@@ -20,5 +20,8 @@
     "google_client_id": null,
     "terms_version": null
   },
-  "topology": null
+  "topology": null,
+  "auth_mode": "token",
+  "token_file": "/etc/moss-deploy/github-token",
+  "token_expires_at": null
 }

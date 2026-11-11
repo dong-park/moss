@@ -39,6 +39,11 @@ export async function smoke(argv, env = process.env, runtime = {}) {
       if (health.status !== 'ok') throw new Error('API not healthy');
       return health;
     });
+    await e.phase('public_internal_denied', async () => {
+      const response=await fetch(`${config.api_url}/internal/deployment`,{redirect:'error',signal:AbortSignal.timeout(15000)});
+      if (![403,404].includes(response.status)) throw new Error('public ingress must block internal control paths');
+      return { status:response.status };
+    });
     client = await createClient(env.MOSS_CLIENT_PACKAGE ?? fileURLToPath(new URL('../../web/package.json', import.meta.url)), runtime.packages);
     await e.phase('normal_auth', () => client.run('init', { api: config.api_url, sync: config.sync_url, ...credentials, signup: false }));
     await e.phase('two_clients', async () => {
@@ -60,7 +65,7 @@ export async function smoke(argv, env = process.env, runtime = {}) {
       return client.run('assert', { values: { [offline]: runId } });
     });
     await e.phase('cleanup', async () => { const proof = await client.run('clean'); await client.close(); return proof; });
-    e.finish(['running_image_identity', 'image_static_assets', 'public_identity', 'api_health', 'normal_auth', 'two_clients', 'sync_persistence', 'reconnect_offline', 'cleanup']);
+    e.finish(['running_image_identity', 'image_static_assets', 'public_identity', 'api_health', 'public_internal_denied', 'normal_auth', 'two_clients', 'sync_persistence', 'reconnect_offline', 'cleanup']);
   } catch (error) {
     error.evidence = e.data;
     throw error;

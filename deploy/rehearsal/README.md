@@ -32,7 +32,7 @@ The public-config fingerprint covers **only** the exact four fields `api_url`, `
 
 ## Isolated execution
 
-The harness creates a UUID project, private temporary Compose file, random credentials, internal network, random loopback ports, two Postgres volumes and two attachment volumes. Postgres must report major 18 (`REHEARSAL_POSTGRES_IMAGE` overrides its local image). No production env file, database, resource name or credential is used. Every Docker resource created by the harness belongs to that uniquely labelled fixture; cleanup targets only its generated project and transient helpers.
+The harness creates a UUID project, private temporary Compose file, random credentials, internal database/control network plus an isolated edge network for Docker loopback publication, random loopback ports, two Postgres volumes and two attachment volumes. Postgres must report major 18 (`REHEARSAL_POSTGRES_IMAGE` overrides its local image). No production env file, database, resource name or credential is used. Every Docker resource created by the harness belongs to that uniquely labelled fixture; cleanup targets only its generated project and transient helpers.
 
 Normal email signup/login creates an isolated account and board (a nonempty configured terms version is required). An unauthenticated board-token request must be denied. Two actual Hocuspocus/Yjs clients write real note maps, converge, discard local state and reconnect. Provider/Yjs packages come from the corresponding baseline/candidate web image, exercising the actual older client protocol. Graceful stop order is **web → sync → server**, each command completing before the next. Live sync edits must survive SIGTERM and offline edits must converge after restart.
 
@@ -70,7 +70,7 @@ Successful evidence is emitted as JSON on stdout. Optional `MOSS_SMOKE_EVIDENCE`
 
 ```sh
 BUN_BIN=/path/to/bun node scripts/deploy/smoke.package.mjs \
-  --package sync/package.json --output /private/moss-smoke-runtime.tar.gz
+  --package web/package.json --output /private/moss-smoke-runtime.tar.gz
 ```
 
 This bundles the existing locked provider/Yjs packages using Bun, then creates an archive containing `smoke`, self-contained `smoke.mjs`, and `manifest.json` (bundle and source-package hashes). Output must be outside the repository and must not already exist. The installer extracts this actual artifact into its reviewed runtime directory and runs `smoke --sha SHA --config FILE`. Host runtime dependencies are Bun and Docker, not npm packages. No generated bundle/binary is committed.

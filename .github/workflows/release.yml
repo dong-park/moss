@@ -58,10 +58,10 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Validate complete public configuration
         env:
-          API_URL: ${{ vars.PUBLIC_BASE_URL }}
+          API_URL: ${{ vars.NEXT_PUBLIC_MOSS_API_URL }}
           SYNC_URL: ${{ vars.NEXT_PUBLIC_MOSS_SYNC_URL }}
-          GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
-          TERMS_VERSION: ${{ vars.MOSS_TERMS_VERSION }}
+          GOOGLE_CLIENT_ID: ${{ vars.NEXT_PUBLIC_GOOGLE_CLIENT_ID }}
+          TERMS_VERSION: ${{ vars.NEXT_PUBLIC_MOSS_TERMS_VERSION }}
         run: python3 scripts/deploy/publish.py config > public-config.json
       - id: image
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
@@ -76,10 +76,10 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
           build-args: |
             BUILD_SHA=${{ github.sha }}
-            NEXT_PUBLIC_MOSS_API_URL=${{ vars.PUBLIC_BASE_URL }}
+            NEXT_PUBLIC_MOSS_API_URL=${{ vars.NEXT_PUBLIC_MOSS_API_URL }}
             NEXT_PUBLIC_MOSS_SYNC_URL=${{ vars.NEXT_PUBLIC_MOSS_SYNC_URL }}
-            NEXT_PUBLIC_GOOGLE_CLIENT_ID=${{ vars.GOOGLE_CLIENT_ID }}
-            NEXT_PUBLIC_MOSS_TERMS_VERSION=${{ vars.MOSS_TERMS_VERSION }}
+            NEXT_PUBLIC_GOOGLE_CLIENT_ID=${{ vars.NEXT_PUBLIC_GOOGLE_CLIENT_ID }}
+            NEXT_PUBLIC_MOSS_TERMS_VERSION=${{ vars.NEXT_PUBLIC_MOSS_TERMS_VERSION }}
       - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
           subject-name: ghcr.io/dong-park/moss-${{ matrix.service }}
@@ -130,14 +130,15 @@ jobs:
       - name: Assemble exact candidate and successful baseline
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          API_URL: ${{ vars.PUBLIC_BASE_URL }}
+          API_URL: ${{ vars.NEXT_PUBLIC_MOSS_API_URL }}
           SYNC_URL: ${{ vars.NEXT_PUBLIC_MOSS_SYNC_URL }}
-          GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
-          TERMS_VERSION: ${{ vars.MOSS_TERMS_VERSION }}
+          GOOGLE_CLIENT_ID: ${{ vars.NEXT_PUBLIC_GOOGLE_CLIENT_ID }}
+          TERMS_VERSION: ${{ vars.NEXT_PUBLIC_MOSS_TERMS_VERSION }}
         run: python3 scripts/deploy/publish.py inputs
       - name: Run authenticated actual-image compatibility and recovery rehearsal
         run: |
           bun install --cwd sync --frozen-lockfile
+          bun run deploy/rehearsal/pull.mjs --input rehearsal-input.json
           bun run deploy/rehearsal/run.ts --input rehearsal-input.json --output evidence.json
       - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:

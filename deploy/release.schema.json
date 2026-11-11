@@ -20,10 +20,12 @@
   ],
   "properties": {
     "version": {
-      "const": 1
+      "const": 1,
+      "type": "integer"
     },
     "runtime_contract": {
-      "const": 1
+      "const": 1,
+      "type": "integer"
     },
     "repository": {
       "const": "dong-park/moss"

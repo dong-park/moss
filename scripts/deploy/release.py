@@ -3,6 +3,7 @@
 import hashlib
 import json
 import re
+from urllib.parse import urlsplit
 
 SERVICES = ('web', 'server', 'sync')
 REPOSITORY = 'dong-park/moss'
@@ -53,7 +54,10 @@ def validate(m):
 def fingerprint(values):
     require(isinstance(values,dict) and set(values) == PUBLIC_KEYS, 'public config keys mismatch')
     require(all(isinstance(v,str) and v and len(v) < 2048 and '\n' not in v for v in values.values()), 'missing public config')
-    require(values['api_url'].startswith('https://') and values['sync_url'].startswith('wss://'), 'TLS public URLs required')
+    for key,scheme in (('api_url','https'),('sync_url','wss')):
+        url=urlsplit(values[key])
+        require(url.scheme==scheme and url.hostname and not url.username and not url.password
+                and not url.query and not url.fragment,'credential-free TLS public URLs required')
     return digest(values)
 
 

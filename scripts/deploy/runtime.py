@@ -35,10 +35,16 @@ def protected(path, directory=False):
 def load_config(path):
     protected(path)
     config=json.loads(path.read_text())
-    for key in ('install_dir','state_dir','app_env','bootstrap_file','app_private_key','smoke_config','docker_config'):
+    for key in ('install_dir','state_dir','app_env','bootstrap_file','smoke_config','docker_config'):
         require(Path(config[key]).is_absolute(),'fixed absolute configuration paths required')
-    for key in ('app_env','bootstrap_file','app_private_key','smoke_config'):
+    for key in ('app_env','bootstrap_file','smoke_config'):
         protected(config[key])
+    require(config.get('auth_mode') in ('app','token'),'explicit GitHub auth mode required')
+    if config['auth_mode']=='app': protected(config['app_private_key'])
+    else:
+        protected(config['token_file'])
+        require(type(config.get('token_expires_at')) is int and config['token_expires_at']>time.time(),
+                'scoped bearer token expiration absent or expired')
     protected(config['install_dir'],directory=True)
     require(config.get('project')=='moss','production Compose project must remain moss')
     require(config.get('repository')==REPOSITORY,'fixed repository')
@@ -64,6 +70,11 @@ class GitHub:
         with urllib.request.urlopen(req,timeout=30) as response:
             return json.load(response)
     def credentials(self):
+        if self.config['auth_mode']=='token':
+            require(self.config['token_expires_at']>time.time()+60,'scoped bearer token expired or expiring')
+            token=Path(self.config['token_file']).read_text().strip()
+            require(token and '\n' not in token,'invalid scoped bearer token file')
+            return token  # reload protected file on every request to permit rotation without restart
         if self.token and time.time()<self.expires: return self.token
         def encoded(value): return base64.urlsafe_b64encode(canonical(value)).rstrip(b'=')
         now=int(time.time())
@@ -296,11 +307,31 @@ class Runtime:
             self.compose('up','-d','--no-build','--no-deps','--pull','never','--wait','--wait-timeout','120',service,release=m)
     def smoke(self,m):
         # The installed smoke performs normal auth and two authenticated Yjs clients. Missing inputs fail closed.
-        args=['bun',str(Path(self.config['install_dir'])/'scripts/deploy/smoke.ts'),
+        args=[str(Path(self.config['install_dir'])/'smoke'),
               '--config',self.config['smoke_config']]
         if m.get('bootstrap'): args.append('--legacy-baseline')
         else: args.extend(['--sha',m['sha']])
-        command(args,env=self.env,timeout=180)
+        smoke_config=json.loads(Path(self.config['smoke_config']).read_text())
+        require(smoke_config['public_config']==self.config['public_config'],'smoke public config differs from release')
+        smoke_config['images']=m['images']
+        smoke_config['containers']={service:self.container(service) for service in SERVICES}
+        with tempfile.TemporaryDirectory(prefix='moss-smoke-') as directory:
+            private=Path(directory)/'config.json'; private.write_bytes(canonical(smoke_config)); private.chmod(0o600)
+            args[args.index('--config')+1]=str(private)
+            output=command(args,env=self.env,timeout=180)
+        proofs=[]
+        for line in output.splitlines():
+            try:
+                proof=json.loads(line)
+                if isinstance(proof,dict) and proof.get('kind')=='production-smoke': proofs.append(proof)
+            except (ValueError,UnicodeError): pass
+        require(len(proofs)==1,'smoke did not produce unique structured evidence')
+        proof=proofs[0]
+        require(proof.get('status')=='passed' and proof.get('sha')==m.get('sha')
+                and proof.get('config_sha256')==m['config_sha256'],'smoke identity/config/result mismatch')
+        report_dir=Path(self.config['state_dir'])/'reports'; report_dir.mkdir(mode=0o700,exist_ok=True)
+        with tempfile.NamedTemporaryFile(prefix='smoke-',suffix='.json',dir=report_dir,delete=False) as report:
+            report.write(canonical(proof)); report.flush(); os.fsync(report.fileno())
         for service,image in m['images'].items():
             identity=command(['docker','image','inspect',image,'--format','{{.Id}}'],env=self.env).decode().strip()
             require(identity==self.inspect(service)['image'],'post-smoke image drift')

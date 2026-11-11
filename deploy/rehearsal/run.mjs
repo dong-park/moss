@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { checkedFetch, cli, Evidence, fingerprint, rehearsalInput, sha256 } from './core.mjs';
 import { imageAssets } from './assets.mjs';
-import { docker, containerIdentity, imageIdentity, rpcWorker } from './docker.mjs';
+import { docker, containerIdentity, imageIdentity, rpcWorker, migrationValidationFailed } from './docker.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const checks = ['normal_auth', 'two_clients', 'graceful_persistence', 'reconnect', 'offline_edits', 'backup_restore', 'previous_new_previous', 'old_client', 'failed_rollout', 'migration_failure'];
@@ -19,13 +19,13 @@ export function composeSpec({ images, secret, password, terms, restored = false,
     services: {
       postgres: { ...db, volumes: ['postgres:/var/lib/postgresql'] },
       restored: { ...db, volumes: ['restored_postgres:/var/lib/postgresql'] },
-      server: { image: images.server, labels, environment: serverEnv, ports: [{ target: 8080, host_ip: '127.0.0.1', published: '0' }], volumes: [`${files}:/data/files`], stop_grace_period: '45s',
+      server: { image: images.server, labels, networks: ['default','edge'], environment: serverEnv, ports: [{ target: 8080, host_ip: '127.0.0.1', published: '0' }], volumes: [`${files}:/data/files`], stop_grace_period: '45s',
         ...(unhealthy ? { entrypoint: ['bash', '-c', 'sleep 300'] } : {}),
       },
       sync: { image: images.sync, labels, environment: { ...release, PORT: '1234', INTERNAL_PORT: '1235', SYNC_INTERNAL_HOST: '0.0.0.0', SYNC_INTERNAL_SECRET: secret, JWT_SECRET: secret, DATABASE_URL: `postgres://${database}:5432/moss`, DATABASE_USER: 'rehearsal', DATABASE_PASSWORD: password, KTOR_INTERNAL_URL: 'http://server:8080', PUBLIC_BASE_URL: 'http://server:8080' }, ports: [{ target: 1234, host_ip: '127.0.0.1', published: '0' }], stop_grace_period: '45s' },
-      web: { image: images.web, labels, environment: { ...release, MOSS_INTERNAL_API_URL: 'http://server:8080', OPENAI_API_KEY: '', ANTHROPIC_API_KEY: '' }, ports: [{ target: 3000, host_ip: '127.0.0.1', published: '0' }] },
+      web: { image: images.web, labels, networks: ['default','edge'], environment: { ...release, MOSS_INTERNAL_API_URL: 'http://server:8080', OPENAI_API_KEY: '', ANTHROPIC_API_KEY: '' }, ports: [{ target: 3000, host_ip: '127.0.0.1', published: '0' }] },
     },
-    networks: { default: { labels, internal: true } },
+    networks: { default: { labels, internal: true }, edge: { labels } },
     volumes: Object.fromEntries(['postgres', 'restored_postgres', 'files', 'restored_files'].map(name => [name, { labels }])),
   };
 }
@@ -51,7 +51,7 @@ export async function run(argv) {
   let active = 'baseline', restored = false, unhealthy = false, worker, created = false, operationsComplete = false, workerClosed = false;
   const ids = kind => ({ ...Object.fromEntries(Object.entries(identities[kind]).map(([s, info]) => [s, info.id])), postgres: pg.id });
   const saveCompose = () => writeFile(compose, JSON.stringify(composeSpec({ images: ids(active), secret, password, terms, restored, unhealthy, runId, googleClientId: input.public_config.google_client_id, releaseSha: active === 'candidate' ? input.sha : input.baseline_sha })), { mode: 0o600 });
-  const dc = (...command) => docker(['compose', '--project-name', runId, '--file', compose, ...command]);
+  const dc = (...command) => docker(['compose', '--project-name', runId, '--env-file', '/dev/null', '--file', compose, ...command]);
   async function cid(service) {
     const id = (await dc('ps', '--all', '--quiet', service)).trim();
     if (!/^[a-f0-9]{12,64}$/.test(id)) throw new Error(`missing own container: ${service}`);
@@ -93,19 +93,41 @@ export async function run(argv) {
   }
   async function stopWriters() {
     // Web can write through routes; sync must finish its DB writes before server shuts down.
+    const errors=[];
     for (const service of ['web', 'sync', 'server']) {
       await dc('stop', '--timeout', '45', service);
       const { inspect } = await cid(service);
-      if (inspect.State.Running || !(service === 'sync' ? [0] : [0, 143]).includes(inspect.State.ExitCode) || inspect.State.OOMKilled) throw new Error(`${service} did not stop gracefully`);
+      if (inspect.State.Running || !(service === 'sync' ? [0] : [0, 143]).includes(inspect.State.ExitCode) || inspect.State.OOMKilled) errors.push(service);
     }
+    if (errors.length) throw new Error('one or more fixture writers did not stop gracefully');
   }
   async function start() {
     await saveCompose();
     await dc('up', '-d', '--no-build', '--pull', 'never', 'server'); await health();
     await dc('up', '-d', '--no-build', '--pull', 'never', 'sync', 'web'); await health('web');
+    // Legacy images have no healthcheck: their control listener starts only after sync DB initialization.
+    const syncDeadline=Date.now()+60000;
+    let controlReady=false;
+    while (Date.now()<syncDeadline) {
+      try {
+        await dc('exec','-T','sync','bun','-e','const r=await fetch("http://127.0.0.1:1235/deployment",{signal:AbortSignal.timeout(2000)});if(![200,401,404].includes(r.status))process.exit(1)');
+        controlReady=true; break;
+      } catch { await new Promise(resolve=>setTimeout(resolve,500)); }
+    }
+    if (!controlReady) throw new Error('sync control listener not ready');
     for (const service of ['web', 'server', 'sync']) {
       const { inspect } = await cid(service);
       if (inspect.Image !== identities[active][service].id) throw new Error(`${service} running unexpected image`);
+      if (active === 'candidate') {
+        const deadline=Date.now()+120000;
+        let state=inspect.State;
+        while (state.Health?.Status !== 'healthy' && Date.now()<deadline) {
+          if (!state.Running) throw new Error(`${service} stopped before readiness`);
+          await new Promise(resolve=>setTimeout(resolve,500));
+          state=(await cid(service)).inspect.State;
+        }
+        if (state.Health?.Status !== 'healthy') throw new Error(`${service} revision/DB readiness failed`);
+      }
     }
   }
   const board = `b-${randomBytes(5).toString('hex')}`;
@@ -140,7 +162,9 @@ export async function run(argv) {
     await phase('graceful_persistence', async () => {
       // Keep documents alive while SIGTERM drains the real sync image, then discard client memory.
       await stopWriters(); await worker.call('close'); await start();
-      return fresh();
+      // Discard the old process's DNS cache and every local Y.Doc: only durable server state can pass.
+      await client('baseline'); await worker.call('pair');
+      return worker.call('assert',{values});
     });
     await phase('reconnect', () => fresh());
     await phase('offline_edits', async () => {
@@ -176,7 +200,7 @@ export async function run(argv) {
       const attachment = await worker.call('upload', { content });
       await worker.call('download', { id: attachment.id, content });
       await worker.call('close'); await stopWriters();
-      const dump = await docker(['compose', '--project-name', runId, '--file', compose, 'exec', '-T', 'postgres', 'pg_dump', '-U', 'rehearsal', '-d', 'moss', '--format=custom'], { encoding: 'buffer' });
+      const dump = await docker(['compose', '--project-name', runId, '--env-file', '/dev/null', '--file', compose, 'exec', '-T', 'postgres', 'pg_dump', '-U', 'rehearsal', '-d', 'moss', '--format=custom'], { encoding: 'buffer' });
       if (!dump.length) throw new Error('empty database backup');
       const source = await cid('server');
       const volume = source.inspect.Mounts.find(m => m.Destination === '/data/files')?.Name;
@@ -211,6 +235,17 @@ export async function run(argv) {
       await client('baseline'); await worker.call('pair'); await worker.call('assert', { values });
       return { recovered: 'baseline', images: baseline, fixtureVerified: true };
     });
+    await phase('forced_shutdown_rejected',async()=>{
+      await worker.call('close');
+      await dc('kill','--signal','SIGKILL','sync');
+      let rejected=false;
+      try { await stopWriters(); } catch { rejected=true; }
+      const stopped=await cid('sync');
+      if (!rejected || stopped.inspect.State.ExitCode!==137) throw new Error('forced shutdown was accepted as durable');
+      // Only this isolated known fixture is restarted; the production agent pauses on this outcome.
+      await start(); await client('baseline'); await worker.call('pair'); await worker.call('assert',{values});
+      return {exitCode:137,rejectedAsDurable:true};
+    });
     await phase('migration_failure', async () => {
       await worker.call('close'); await stopWriters();
       active = 'candidate';
@@ -221,8 +256,7 @@ export async function run(argv) {
       try { await health('server', 15); } catch { rejected = true; }
       const state = await cid('server');
       if (!rejected || state.inspect.State.Running || state.inspect.State.ExitCode === 0) throw new Error('migration failure was not fatal');
-      const logs = await docker(['logs', state.id]);
-      if (!/checksum|validate.*fail|migration.*fail/i.test(logs)) throw new Error('startup failure was not a migration validation failure');
+      if (!await migrationValidationFailed(state.id)) throw new Error('startup failure was not a migration validation failure');
       // No rollback or repair of the rejected migration. The isolated fixture is destroyed in cleanup.
       return { rejected: true, exitCode: state.inspect.State.ExitCode, reason: 'isolated Flyway checksum validation' };
     });
@@ -235,7 +269,7 @@ export async function run(argv) {
       try { if (created) await e.phase('cleanup', async () => { await dc('down', '--volumes', '--remove-orphans', '--timeout', '15'); return { ownProjectRemoved: true }; }); }
       catch (error) { e.data.status = 'failed'; throw error; }
       finally {
-        if (operationsComplete && workerClosed && e.data.phases.find(p => p.name === 'cleanup')?.status === 'passed') e.finish([...checks, 'cleanup']);
+        if (operationsComplete && workerClosed && e.data.phases.find(p => p.name === 'cleanup')?.status === 'passed') e.finish([...checks, 'forced_shutdown_rejected', 'cleanup']);
         e.data.completedAt ??= new Date().toISOString();
         await writeFile(resolve(args['--output']), JSON.stringify(e.data, null, 2) + '\n', { mode: 0o600, flag: 'wx' });
         await rm(work, { recursive: true });

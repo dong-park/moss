@@ -52,6 +52,10 @@ test('compose fixture has no build, production binds, external resources or copi
   }
   assert.equal(spec.services.postgres.ports, undefined);
   assert.equal(spec.networks.default.internal, true);
+  assert.deepEqual(spec.services.server.networks,['default','edge']);
+  assert.deepEqual(spec.services.web.networks,['default','edge']);
+  assert.equal(spec.services.postgres.networks,undefined);
+  assert.equal(spec.services.sync.networks,undefined);
   assert.equal(spec.services.server.environment.DATABASE_PASSWORD, 'unique-password');
   for (const volume of Object.values(spec.volumes)) assert.equal(volume.external, undefined);
   const restored = composeSpec({ images: {}, secret: 's', password: 'p', terms: 't', restored: true, runId: 'owned' });
