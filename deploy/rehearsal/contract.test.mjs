@@ -38,3 +38,8 @@ test('runtime release SHA reaches all services and stays absent for unknown lega
     assert.equal(composeSpec(options).services[service].environment.RELEASE_SHA, undefined);
   }
 });
+
+test('smoke preserves significant password bytes',async()=>{
+  const {smokeConfig}=await import('./core.mjs');
+  assert.equal(smokeConfig({dedicated_account:true,email:'fixture@example.com',password:' secret ',board_id:'fixture-board'}).password,' secret ');
+});

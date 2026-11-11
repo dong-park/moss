@@ -36,7 +36,12 @@ def stage(directory):
         target=directory/name
         with target.open('xb') as output:output.write(binary)
         target.chmod(0o700)
-    gh_help=subprocess.check_output([str(directory/'gh'),'attestation','verify','--help'],text=True)
+    safe_env={'PATH':'/usr/bin:/bin','HOME':str(directory),'XDG_STATE_HOME':str(directory/'state'),
+              'XDG_CACHE_HOME':str(directory/'cache'),'GH_CONFIG_DIR':str(directory/'gh-config'),
+              'GH_NO_UPDATE_NOTIFIER':'1','GH_PROMPT_DISABLED':'1'}
+    version=subprocess.check_output([str(directory/'gh'),'--version'],text=True,env=safe_env)
+    require(version.startswith('gh version 2.103.3 '),'GitHub CLI version mismatch')
+    gh_help=subprocess.check_output([str(directory/'gh'),'attestation','verify','--help'],text=True,env=safe_env)
     for flag in ('--source-digest','--signer-digest','--source-ref','--signer-workflow','--deny-self-hosted-runners'):
         require(flag in gh_help,'provenance policy flag unavailable')
     require(subprocess.check_output([str(directory/'bun'),'--version'],text=True).strip()=='1.3.14','Bun version mismatch')

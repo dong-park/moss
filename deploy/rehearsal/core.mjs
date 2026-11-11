@@ -12,7 +12,9 @@ export function endpoint(value, protocols = ['http:', 'https:']) {
 }
 export function smokeConfig(value) {
   if (value.dedicated_account !== true) throw new Error('dedicated smoke account acknowledgment required');
-  return { email: required(value, 'email'), password: required(value, 'password'), board: required(value, 'board_id') };
+  const email=required(value,'email');
+  required(value,'password'); // Validate presence without changing secret bytes.
+  return { email, password: value.password, board: required(value, 'board_id') };
 }
 export async function checkedFetch(url, options = {}) {
   const response = await fetch(url, { redirect: 'error', ...options, signal: AbortSignal.timeout(15000) });

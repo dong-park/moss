@@ -135,8 +135,12 @@ class GitHub:
         evidence=json.loads(evidence_file.read_text()); verify_evidence(manifest,evidence)
         return evidence
     def attest(self,subject,manifest):
-        env=dict(os.environ,GH_TOKEN=self.credentials(),DOCKER_CONFIG=self.config['docker_config'],
-                 GH_CONFIG_DIR=str(Path(self.config['state_dir'])/'gh'),GH_PROMPT_DISABLED='1',GH_NO_UPDATE_NOTIFIER='1')
+        env={'PATH':os.environ.get('PATH','/usr/bin:/bin'),'HOME':self.config['state_dir'],
+             'GH_TOKEN':self.credentials(),'DOCKER_CONFIG':self.config['docker_config'],
+             'GH_CONFIG_DIR':str(Path(self.config['state_dir'])/'gh'),
+             'XDG_STATE_HOME':self.config['state_dir'],
+             'XDG_CACHE_HOME':str(Path(self.config['state_dir'])/'cache'),
+             'GH_PROMPT_DISABLED':'1','GH_NO_UPDATE_NOTIFIER':'1'}
         command([str(Path(self.config['install_dir'])/'bin/gh'),'attestation','verify',subject,'--repo',REPOSITORY,
                  '--signer-workflow',REPOSITORY+'/'+WORKFLOW,'--signer-digest',manifest['sha'],
                  '--source-ref','refs/heads/main','--source-digest',manifest['sha'],
@@ -184,6 +188,7 @@ class Runtime:
             value=self.inspect(service)
             result[service]={'mounts':sorted([m['Type'],m.get('Name',''),m['Destination']] for m in value['mounts']),
                              'networks':sorted(value['networks']), 'ports':value['ports']}
+            if service=='postgres': result[service]['image']=value['image']
         return result
     def bootstrap(self,baseline):
         require(set(baseline)=={'images','sha','bootstrap','config_sha256'},'invalid bootstrap contract')
@@ -195,8 +200,16 @@ class Runtime:
         for service,image in baseline['images'].items():
             identity=command(['docker','image','inspect',image,'--format','{{.Id}}'],env=self.env).decode().strip()
             require(identity==self.inspect(service)['image'],'bootstrap registry mapping not current image ID')
+    def smoke_credentials(self):
+        value=json.loads(Path(self.config['smoke_config']).read_text())
+        require(value.get('dedicated_account') is True,'dedicated smoke account acknowledgment required')
+        require(all(isinstance(value.get(key),str) and value[key].strip() for key in ('email','password','board_id','web_url')),
+                'dedicated smoke credentials/board missing')
+        require(value.get('public_config')==self.config['public_config'],'smoke public config mismatch')
+        return value
     def prepare(self,m,current,pull=True):
         validate(m); self.current=current
+        self.smoke_credentials()
         self.verify_public_environment(json.loads(self.compose('config','--format','json',release=m)))
         require(m['config_sha256']==fingerprint(self.config['public_config'])==current['config_sha256'],'public config mismatch')
         require(self.topology()==self.config['topology'],'runtime topology differs from approved baseline')
@@ -208,6 +221,8 @@ class Runtime:
         self.before=self.metadata()
         require(self.before==self.evidence['migrations']['baseline'],'live migration baseline differs from rehearsal')
         if pull:
+            # Prove dedicated login/board/public routes while the baseline is still serving.
+            self.smoke(current)
             for service,image in m['images'].items():
                 self.github.attest('oci://'+image,m)
                 command(['docker','pull','--platform','linux/amd64',image],env=self.env,timeout=600)
@@ -223,6 +238,7 @@ class Runtime:
 
     def prepare_rollback(self,current,previous):
         validate(current); self.current=current
+        self.smoke_credentials()
         require(current['baseline']==previous['images'],'recorded rollback images differ from rehearsal')
         require(self.topology()==self.config['topology'],'runtime topology differs from baseline')
         require(current['config_sha256']==previous['config_sha256']==fingerprint(self.config['public_config']),
@@ -294,7 +310,12 @@ class Runtime:
         require(all((backup_dir/name).stat().st_size>0 for name in ('database.dump','files.tar.gz')),'empty backup')
         (backup_dir/'metadata.json').write_bytes(canonical({'deployment_id':attempt,'baseline':release,
             'migrations':self.before,'created':int(time.time())}))
-        for path in backup_dir.iterdir(): path.chmod(0o600)
+        for path in backup_dir.iterdir():
+            path.chmod(0o600)
+            with path.open('rb') as backup_file: os.fsync(backup_file.fileno())
+        directory=os.open(backup_dir,os.O_DIRECTORY)
+        try: os.fsync(directory)
+        finally: os.close(directory)
     def start_server(self,m):
         self.selected=m
         self.compose('up','-d','--no-build','--no-deps','--pull','never','--wait','--wait-timeout','180','server',release=m)
@@ -313,7 +334,7 @@ class Runtime:
               '--config',self.config['smoke_config']]
         if m.get('bootstrap'): args.append('--legacy-baseline')
         else: args.extend(['--sha',m['sha']])
-        smoke_config=json.loads(Path(self.config['smoke_config']).read_text())
+        smoke_config=self.smoke_credentials()
         require(smoke_config['public_config']==self.config['public_config'],'smoke public config differs from release')
         smoke_config['images']=m['images']
         smoke_config['containers']={service:self.container(service) for service in SERVICES}

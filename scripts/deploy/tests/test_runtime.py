@@ -39,3 +39,20 @@ class ScopedTokenTest(unittest.TestCase):
             self.assertEqual(github.credentials(),'test-token-two')
             config['token_expires_at']=int(time.time())-1
             with self.assertRaises(Rejected):github.credentials()
+
+
+class SmokeCredentialTest(unittest.TestCase):
+    def test_absent_dedicated_credentials_rejected_before_docker_or_network(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/'smoke.json';path.write_text('{}')
+            rt=runtime.Runtime({'docker_config':'/tmp/test-only','smoke_config':str(path),'public_config':{}},None)
+            with patch.object(runtime,'command') as external:
+                with self.assertRaises(Rejected):rt.smoke_credentials()
+                external.assert_not_called()
+
+class PostgresPolicyTest(unittest.TestCase):
+    def test_topology_seals_existing_postgres_image(self):
+        rt=runtime.Runtime({'docker_config':'/tmp/test-only'},None)
+        rt.inspect=lambda service:dict(mounts=[],networks={},ports={},image='sha256:'+'a'*64)
+        self.assertEqual(rt.topology()['postgres']['image'],'sha256:'+'a'*64)
