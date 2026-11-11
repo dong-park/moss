@@ -15,6 +15,7 @@ import { parseHandwriting } from "@/state/cardContent";
 import { MEMO_CONTENT_WIDTH } from "./_shared/memoLayout";
 import styles from "./_shared/memoMobile.module.css";
 import { memoTint } from "../memoVariety";
+import { useVisualViewport } from "../useVisualViewport";
 import { useCompactControls } from "../useCompactControls";
 import { runEditFlush } from "@/state/editFlush";
 import { createMemoHistory, bindMemoNavigation } from "./memoHistory";
@@ -66,19 +67,7 @@ export function MemoExpandDialog() {
   const t = useT();
   const compact = useCompactControls();
   const returnFocus = useRef<HTMLElement | null>(null);
-  const [viewport, setViewport] = useState<{ height: number; top: number } | null>(null);
-  useEffect(() => {
-    const visual = window.visualViewport;
-    if (!visual) return;
-    const update = () => setViewport({ height: visual.height, top: visual.offsetTop });
-    update();
-    visual.addEventListener("resize", update);
-    visual.addEventListener("scroll", update);
-    return () => {
-      visual.removeEventListener("resize", update);
-      visual.removeEventListener("scroll", update);
-    };
-  }, []);
+  const viewport = useVisualViewport();
   const expandedCardId = useWorkspace((s) => s.expandedCardId);
   const requestedMode = useWorkspace((s) => s.expandedCardMode);
   const setExpandedCard = useWorkspace((s) => s.setExpandedCard);

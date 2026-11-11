@@ -85,7 +85,7 @@
     },
     "memoFront": {
       "badge": {
-          "todo": "할 일 {total}개 중 {done}개 완료",
+        "todo": "할 일 {total}개 중 {done}개 완료",
         "audio": "녹음 {count}개",
         "link": "링크 {count}개",
         "file": "파일 {count}개"
@@ -297,6 +297,29 @@
       "upload": "배경 이미지 올리기…",
       "replace": "배경 이미지 바꾸기…",
       "clear": "배경 이미지 지우기"
+    },
+    "mobile": {
+      "actions": "선택한 카드 도구",
+      "linkEmpty": "주소를 추가하려면 수정하세요",
+      "open": "열기",
+      "editLink": "주소 수정",
+      "edit": "편집",
+      "connect": "연결",
+      "connectHint": "연결할 카드를 누르세요",
+      "resize": "크기",
+      "clear": "선택 해제",
+      "cancel": "취소",
+      "done": "완료",
+      "stopResize": "조절 종료",
+      "url": "링크 주소",
+      "linkDialog": "링크 주소 수정",
+      "invalid": "http, https, mailto 주소를 입력해 주세요",
+      "conflict": "다른 곳에서 주소가 바뀌었어요. 닫고 다시 열어 확인해 주세요",
+      "width": "폭",
+      "height": "높이",
+      "smaller": "줄이기",
+      "larger": "늘리기",
+      "invalidSize": "0보다 큰 크기를 입력해 주세요"
     }
   },
   "capture": {

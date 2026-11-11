@@ -1,6 +1,7 @@
 "use client";
 
 import { canvasControlInsets } from "@/design/canvasControls";
+import { memoFace } from "./memoFace";
 import { create } from "zustand";
 import type { AINoteRef } from "./aiGate";
 import { useStorage } from "./storage";
@@ -3358,8 +3359,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         if (c.id !== id) return c;
         const w = clamp(next.width, CARD_MIN_WIDTH, CARD_MAX_WIDTH);
         const clamped = clamp(next.height, CARD_MIN_HEIGHT, CARD_MAX_HEIGHT);
-        // 메모(text)는 정사각형 아이덴티티 — 어떤 경로로 리사이즈돼도 height = width.
-        const h = c.kind === "text" ? w : clamped;
+        // 종이 메모만 정사각형이다. 링크·할 일 앞면은 폭만 바꾸고 실측 높이를 유지한다.
+        const h = c.kind === "text"
+          ? (memoFace(c.content).t === "paper" ? w : c.height)
+          : clamped;
         updated = {
           ...c,
           width: w,

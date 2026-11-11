@@ -1,0 +1,307 @@
+{
+  "url": "https://moss.dongpark.dev/b/ea411894-4ad6-4a7c-9225-7b195b49587a",
+  "viewport": {
+    "w": 411,
+    "h": 752,
+    "dpr": 3.5,
+    "vh": 358.8571472167969
+  },
+  "active": {
+    "tag": "INPUT",
+    "label": "링크"
+  },
+  "world": "translate(0px, 0px) scale(1)",
+  "cards": [
+    {
+      "id": "c-mwbvnlnn-1",
+      "face": "todo",
+      "box": {
+        "x": 319.42913818359375,
+        "y": 136.15155029296875,
+        "w": 461.1417541503906,
+        "h": 79.69691467285156
+      },
+      "style": "left: 320px; top: 140px; width: 460px; z-index: 10; outline: none; outline-offset: 2px; border-radius: 8px; transform: rotate(0.96deg); transition: transform 170ms cubic-bezier(0.22, 0.9, 0.3, 1.25), box-shadow 170ms ease-out; overflow: visible;",
+      "resize": 0
+    },
+    {
+      "id": "c-mwbvnlns-2",
+      "box": {
+        "x": 318.79754638671875,
+        "y": 498.79754638671875,
+        "w": 132.40493774414062,
+        "h": 132.40496826171875
+      },
+      "style": "left: 320px; top: 500px; width: 130px; height: 130px; z-index: 10; outline: none; outline-offset: 2px; border-radius: 8px; transform: rotate(1.07deg); transition: transform 170ms cubic-bezier(0.22, 0.9, 0.3, 1.25), box-shadow 170ms ease-out; display: flex; flex-direction: column; overflow: hidden;",
+      "resize": 0
+    },
+    {
+      "id": "c-mwbvnlnw-3",
+      "box": {
+        "x": 379.0745849609375,
+        "y": 619.0745849609375,
+        "w": 281.85089111328125,
+        "h": 281.85089111328125
+      },
+      "style": "left: 380px; top: 620px; width: 280px; height: 280px; z-index: 10; outline: none; outline-offset: 2px; border-radius: 8px; transform: rotate(-0.38deg); transition: transform 170ms cubic-bezier(0.22, 0.9, 0.3, 1.25), box-shadow 170ms ease-out; display: flex; flex-direction: column; overflow: hidden;",
+      "resize": 0
+    },
+    {
+      "id": "c-mwbvqyt1-4",
+      "box": {
+        "x": 375.1947937011719,
+        "y": 368.7885437011719,
+        "w": 242.4586181640625,
+        "h": 242.4586181640625
+      },
+      "style": "left: 376.427px; top: 370.021px; width: 240px; height: 240px; z-index: 10; outline: none; outline-offset: 2px; border-radius: 8px; transform: rotate(0.59deg); transition: transform 170ms cubic-bezier(0.22, 0.9, 0.3, 1.25), box-shadow 170ms ease-out; display: flex; flex-direction: column; overflow: hidden;",
+      "resize": 0
+    },
+    {
+      "id": "c-mwc63fky-1",
+      "face": "linkEmpty",
+      "box": {
+        "x": 79.27603149414062,
+        "y": 357.1817626953125,
+        "w": 241.44796752929688,
+        "h": 69.92222595214844
+      },
+      "style": "left: 80px; top: 360px; width: 240px; z-index: 10; outline: none; outline-offset: 2px; border-radius: 8px; transform: rotate(1.35deg); transition: transform 170ms cubic-bezier(0.22, 0.9, 0.3, 1.25), box-shadow 170ms ease-out; overflow: visible;",
+      "resize": 0
+    }
+  ],
+  "controls": [
+    {
+      "tag": "BUTTON",
+      "role": null,
+      "label": "공유",
+      "text": "",
+      "box": {
+        "x": 227.66964721679688,
+        "y": 11.250000953674316,
+        "w": 34,
+        "h": 34
+      }
+    },
+    {
+      "tag": "BUTTON",
+      "role": "tab",
+      "label": null,
+      "text": "캔버스",
+      "box": {
+        "x": 271.0446472167969,
+        "y": 17,
+        "w": 51.66071701049805,
+        "h": 22.500001907348633
+      }
+    },
+    {
+      "tag": "BUTTON",
+      "role": "tab",
+      "label": null,
+      "text": "표",
+      "box": {
+        "x": 324.58038330078125,
+        "y": 17,
+        "w": 32.22321701049805,
+        "h": 22.500001907348633
+      }
+    },
+    {
+      "tag": "BUTTON",
+      "role": null,
+      "label": "계정",
+      "text": "박",
+      "box": {
+        "x": 366.1785888671875,
+        "y": 11.250000953674316,
+        "w": 34,
+        "h": 34
+      }
+    },
+    {
+      "tag": "INPUT",
+      "role": null,
+      "label": "제목",
+      "text": "",
+      "readonly": true,
+      "box": {
+        "x": 334.105712890625,
+        "y": 148.38442993164062,
+        "w": 432.2660827636719,
+        "h": 26.73516082763672
+      }
+    },
+    {
+      "tag": "BUTTON",
+      "role": null,
+      "label": "완료 표시",
+      "text": "",
+      "box": {
+        "x": 333.7413330078125,
+        "y": 177.6303253173828,
+        "w": 12.199358940124512,
+        "h": 12.199376106262207
+      }
+    },
+    {
+      "tag": "INPUT",
+      "role": null,
+      "label": "할 일 항목",
+      "text": "",
+      "readonly": true,
+      "box": {
+        "x": 352.67584228515625,
+        "y": 174.19918823242188,
+        "w": 413.26873779296875,
+        "h": 26.416818618774414
+      }
+    },
+    {
+      "tag": "BUTTON",
+      "role": null,
+      "label": "펼쳐서 편집",
+      "text": "",
+      "box": {
+        "x": 402.56915283203125,
+        "y": 504.08282470703125,
+        "w": 44.813968658447266,
+        "h": 44.814002990722656
+      }
+    },
+    {
+      "tag": "INPUT",
+      "role": null,
+      "label": "링크",
+      "text": "",
+      "readonly": false,
+      "box": {
+        "x": 93.55486297607422,
+        "y": 390.2882080078125,
+        "w": 212.40057373046875,
+        "h": 24.489259719848633
+      }
+    },
+    {
+      "tag": "BUTTON",
+      "role": null,
+      "label": "축소",
+      "text": "−",
+      "box": {
+        "x": 155.92857360839844,
+        "y": 620.8214721679688,
+        "w": 44.000003814697266,
+        "h": 44.000003814697266
+      }
+    },
+    {
+      "tag": "BUTTON",
+      "role": null,
+      "label": "100%로 맞추기",
+      "text": "100%",
+      "box": {
+        "x": 201.80357360839844,
+        "y": 620.8214721679688,
+        "w": 44.000003814697266,
+        "h": 44.000003814697266
+      }
+    },
+    {
+      "tag": "BUTTON",
+      "role": null,
+      "label": "확대",
+      "text": "+",
+      "box": {
+        "x": 247.6785888671875,
+        "y": 620.8214721679688,
+        "w": 44.000003814697266,
+        "h": 44.000003814697266
+      }
+    },
+    {
+      "tag": "BUTTON",
+      "role": null,
+      "label": "전체 보기",
+      "text": "⛶",
+      "box": {
+        "x": 293.5535888671875,
+        "y": 620.8214721679688,
+        "w": 44.000003814697266,
+        "h": 44.000003814697266
+      }
+    },
+    {
+      "tag": "BUTTON",
+      "role": null,
+      "label": "원점 복귀",
+      "text": "▦",
+      "box": {
+        "x": 349.8035888671875,
+        "y": 620.8214721679688,
+        "w": 44.000003814697266,
+        "h": 44.000003814697266
+      }
+    },
+    {
+      "tag": "BUTTON",
+      "role": null,
+      "label": "메모",
+      "text": "",
+      "box": {
+        "x": 88.21428680419922,
+        "y": 682.5714721679688,
+        "w": 44.000003814697266,
+        "h": 44.000003814697266
+      }
+    },
+    {
+      "tag": "BUTTON",
+      "role": null,
+      "label": "할 일",
+      "text": "",
+      "box": {
+        "x": 135.96429443359375,
+        "y": 682.5714721679688,
+        "w": 44.000003814697266,
+        "h": 44.000003814697266
+      }
+    },
+    {
+      "tag": "BUTTON",
+      "role": null,
+      "label": "사진",
+      "text": "",
+      "box": {
+        "x": 183.71429443359375,
+        "y": 682.5714721679688,
+        "w": 44.000003814697266,
+        "h": 44.000003814697266
+      }
+    },
+    {
+      "tag": "BUTTON",
+      "role": null,
+      "label": "더 보기",
+      "text": "⋯",
+      "box": {
+        "x": 231.46429443359375,
+        "y": 682.5714721679688,
+        "w": 44.000003814697266,
+        "h": 44.000003814697266
+      }
+    },
+    {
+      "tag": "BUTTON",
+      "role": null,
+      "label": "휴지통",
+      "text": "",
+      "box": {
+        "x": 279.21429443359375,
+        "y": 682.5714721679688,
+        "w": 44.000003814697266,
+        "h": 44.000003814697266
+      }
+    }
+  ],
+  "connections": 4
+}

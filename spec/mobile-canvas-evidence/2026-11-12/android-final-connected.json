@@ -1,0 +1,22 @@
+{
+  "active": "BUTTON",
+  "viewport": 752.5714111328125,
+  "world": "translate(0px, 0px) scale(1)",
+  "lines": 1,
+  "actions": "주소 수정연결크기선택 해제",
+  "handles": [],
+  "cards": [
+    {
+      "id": "c-mwcaiiys-1",
+      "width": "240px",
+      "selected": "rgba(79, 124, 243, 0.45) solid 2px",
+      "face": "linkEmpty"
+    },
+    {
+      "id": "c-mwcaiiz0-2",
+      "width": "240px",
+      "selected": "none",
+      "face": "link"
+    }
+  ]
+}

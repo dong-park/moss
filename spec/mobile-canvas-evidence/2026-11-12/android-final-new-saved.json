@@ -1,0 +1,28 @@
+{
+  "active": "BODY",
+  "viewport": 752.5714111328125,
+  "world": "translate(0px, 0px) scale(1)",
+  "lines": 2,
+  "actions": "열기주소 수정연결크기선택 해제",
+  "handles": [],
+  "cards": [
+    {
+      "id": "c-mwcaiiys-1",
+      "width": "287.7px",
+      "selected": "none",
+      "face": "linkEmpty"
+    },
+    {
+      "id": "c-mwcaiiz0-2",
+      "width": "240px",
+      "selected": "none",
+      "face": "link"
+    },
+    {
+      "id": "c-mwcavi8d-4",
+      "width": "240px",
+      "selected": "rgba(79, 124, 243, 0.45) solid 2px",
+      "face": "link"
+    }
+  ]
+}

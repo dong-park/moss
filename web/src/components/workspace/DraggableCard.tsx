@@ -1,6 +1,8 @@
 "use client";
 
 import { touchCardDrags, type TouchDrag } from "./touchCanvas";
+import { useTouchControls } from "./useTouchControls";
+import { useMobileCanvas } from "./mobileCanvas";
 
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { animate } from "motion/react";
@@ -153,6 +155,8 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
    * 100+ 카드에서 lag spike의 근본 원인.
    */
   const selected = useWorkspace((s) => s.selectedIds.includes(card.id));
+  const touchControls = useTouchControls();
+  const mobileOperation = useMobileCanvas((s) => s.operation);
   const editing = useWorkspace((s) => s.editingId === card.id);
   /**
    * 리사이즈 핸들 노출 조건 — 자기 카드가 유일하게 선택된 경우.
@@ -1039,6 +1043,7 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
     // spec/card-faces.md: 할 일 앞면은 카드에서 편집, 링크 앞면은 링크로 이동 — 메모 창을 열지 않는다.
     if (card.kind === "text") {
       const face = memoFace(card.content);
+      if (touchControls && (face.t === "link" || face.t === "linkEmpty")) { selectOne(card.id); return; }
       if (face.t === "todo") {
         setEditing(card.id);
         return;
@@ -1241,8 +1246,8 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
           <LockIcon size={12} />
         </button>
       )}
-      {isOnlySelected && !editing && (
-        <ResizeHandles card={card} measuredHeight={measuredHeight} />
+      {isOnlySelected && !editing && !penMode && (!touchControls || (mobileOperation.kind === "resize" && mobileOperation.cardId === card.id)) && (
+        <ResizeHandles card={card} measuredHeight={measuredHeight} mobile={touchControls} />
       )}
     </div>
   );

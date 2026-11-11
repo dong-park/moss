@@ -668,6 +668,7 @@ export function Canvas() {
     <div
       ref={canvasRef}
       data-canvas-root="true"
+      data-space-pan={spaceDown || undefined}
       onMouseDownCapture={onMouseDownCapture}
       onMouseDown={onMouseDown}
       onMouseMove={onCanvasMouseMove}

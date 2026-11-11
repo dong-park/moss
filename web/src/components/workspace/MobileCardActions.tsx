@@ -3,6 +3,7 @@
 import { useEffect, useRef, type RefObject } from "react";
 import { useWorkspace } from "@/state/workspace";
 import { useT } from "@/i18n/Provider";
+import { linkUrl, useMobileCanvas } from "./mobileCanvas";
 import { useCompactControls } from "./useCompactControls";
 import { touchCardDrags, type TouchDrag } from "./touchCanvas";
 import styles from "./canvasControls.module.css";
@@ -13,7 +14,8 @@ export function MobileCardActions({ canvasRef }: { canvasRef: RefObject<HTMLDivE
   const t = useT();
   const card = useWorkspace((s) => s.selectedIds.length === 1 ? s.cards.find((c) => c.id === s.selectedIds[0]) : undefined);
   const viewport = useWorkspace((s) => s.viewport);
-  const hidden = useWorkspace((s) => !!s.expandedCardId || !!s.editingId || s.penMode);
+  const busy = useMobileCanvas((s) => s.operation.kind !== "idle");
+  const hidden = useWorkspace((s) => !!s.expandedCardId || !!s.editingId || s.penMode) || busy;
   const drag = useRef<TouchDrag | undefined>(undefined);
   const pointerId = useRef<number | null>(null);
   useEffect(() => () => { drag.current?.cancel(); drag.current = undefined; pointerId.current = null; }, [card?.id, hidden, compact]);
@@ -28,7 +30,7 @@ export function MobileCardActions({ canvasRef }: { canvasRef: RefObject<HTMLDivE
   return (
     <div role="toolbar" aria-label={t("workspace.memoEditor.cardActions")} className={styles.cardActions}
       style={{ left, top }} onMouseDown={(event) => event.stopPropagation()}>
-      {(card.kind === "text" || card.kind === "textbox") && (
+      {((card.kind === "text" && linkUrl(card) === null) || card.kind === "textbox") && (
         <button type="button" onClick={edit}>{t("workspace.memoEditor.edit")}</button>
       )}
       <button type="button" aria-label={t("workspace.memoEditor.moveHint")} style={{ touchAction: "none" }}

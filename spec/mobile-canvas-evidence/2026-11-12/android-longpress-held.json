@@ -1,0 +1,175 @@
+{
+  "url": "http://localhost:3309/mobile-interaction-qa",
+  "viewport": {
+    "w": 411,
+    "h": 752,
+    "dpr": 3.5,
+    "vh": 752.5714111328125
+  },
+  "active": {
+    "tag": "BODY",
+    "label": null
+  },
+  "world": "translate(0px, 0px) scale(1)",
+  "cards": [
+    {
+      "id": "c-mwcaiiys-1",
+      "face": "linkEmpty",
+      "box": {
+        "x": 39.98352813720703,
+        "y": 139.9246826171875,
+        "w": 287.7293701171875,
+        "h": 63.150638580322266
+      },
+      "style": "left: 40px; top: 140px; width: 287.7px; z-index: 10; outline: none; outline-offset: 2px; border-radius: 8px; transform: rotate(0.03deg); transition: transform 170ms cubic-bezier(0.22, 0.9, 0.3, 1.25), box-shadow 170ms ease-out; overflow: visible;",
+      "resize": 0
+    },
+    {
+      "id": "c-mwcaiiz0-2",
+      "face": "link",
+      "box": {
+        "x": 129.40512084960938,
+        "y": 408.2196044921875,
+        "w": 242.5399932861328,
+        "h": 69.34065246582031
+      },
+      "style": "left: 130px; top: 410px; width: 240px; z-index: 20; outline: rgba(79, 124, 243, 0.45) solid 2px; outline-offset: 2px; border-radius: 8px; transform: translate(var(--px, 0px), var(--py, 0px)) rotate(var(--tilt, 0deg)) scale(var(--lift-scale, 1)) translate(calc(-1 * var(--px, 0px)), calc(-1 * var(--py, 0px))) rotate(0.65deg); transition: box-shadow 170ms ease-out; overflow: visible; --px: -90.00001525878906px; --py: 22.071475982666016px; --tilt: -0.009504190318792844deg; --lift-scale: 1.00754229611165; will-change: transform;",
+      "resize": 0
+    },
+    {
+      "id": "c-mwcavi8d-4",
+      "face": "linkEmpty",
+      "box": {
+        "x": 79.75096893310547,
+        "y": 479.0376281738281,
+        "w": 240.49806213378906,
+        "h": 64.9248046875
+      },
+      "style": "left: 80px; top: 480px; width: 240px; z-index: 10; outline: none; outline-offset: 2px; border-radius: 8px; transform: rotate(-0.46deg); transition: transform 170ms cubic-bezier(0.22, 0.9, 0.3, 1.25), box-shadow 170ms ease-out; overflow: visible;",
+      "resize": 0
+    }
+  ],
+  "controls": [
+    {
+      "tag": "BUTTON",
+      "role": null,
+      "label": "이 메모는 AI를 거치지 않게 하기",
+      "text": "",
+      "box": {
+        "x": 356.6639709472656,
+        "y": 403.1976623535156,
+        "w": 22.921701431274414,
+        "h": 22.921701431274414
+      }
+    },
+    {
+      "tag": "BUTTON",
+      "role": null,
+      "label": "축소",
+      "text": "−",
+      "box": {
+        "x": 155.92857360839844,
+        "y": 620.8214721679688,
+        "w": 44.000003814697266,
+        "h": 44.000003814697266
+      }
+    },
+    {
+      "tag": "BUTTON",
+      "role": null,
+      "label": "100%로 맞추기",
+      "text": "100%",
+      "box": {
+        "x": 201.80357360839844,
+        "y": 620.8214721679688,
+        "w": 44.000003814697266,
+        "h": 44.000003814697266
+      }
+    },
+    {
+      "tag": "BUTTON",
+      "role": null,
+      "label": "확대",
+      "text": "+",
+      "box": {
+        "x": 247.6785888671875,
+        "y": 620.8214721679688,
+        "w": 44.000003814697266,
+        "h": 44.000003814697266
+      }
+    },
+    {
+      "tag": "BUTTON",
+      "role": null,
+      "label": "전체 보기",
+      "text": "⛶",
+      "box": {
+        "x": 293.5535888671875,
+        "y": 620.8214721679688,
+        "w": 44.000003814697266,
+        "h": 44.000003814697266
+      }
+    },
+    {
+      "tag": "BUTTON",
+      "role": null,
+      "label": "원점 복귀",
+      "text": "▦",
+      "box": {
+        "x": 349.8035888671875,
+        "y": 620.8214721679688,
+        "w": 44.000003814697266,
+        "h": 44.000003814697266
+      }
+    },
+    {
+      "tag": "BUTTON",
+      "role": null,
+      "label": null,
+      "text": "주소 수정",
+      "box": {
+        "x": 115.50000762939453,
+        "y": 676.5714721679688,
+        "w": 62.21428680419922,
+        "h": 48.000003814697266
+      }
+    },
+    {
+      "tag": "BUTTON",
+      "role": null,
+      "label": null,
+      "text": "연결",
+      "box": {
+        "x": 181.71429443359375,
+        "y": 676.5714721679688,
+        "w": 48.000003814697266,
+        "h": 48.000003814697266
+      }
+    },
+    {
+      "tag": "BUTTON",
+      "role": null,
+      "label": null,
+      "text": "크기",
+      "box": {
+        "x": 233.71429443359375,
+        "y": 676.5714721679688,
+        "w": 48.000003814697266,
+        "h": 48.000003814697266
+      }
+    },
+    {
+      "tag": "BUTTON",
+      "role": null,
+      "label": null,
+      "text": "선택 해제",
+      "box": {
+        "x": 285.71429443359375,
+        "y": 676.5714721679688,
+        "w": 62.21428680419922,
+        "h": 48.000003814697266
+      }
+    }
+  ],
+  "connections": 0
+}

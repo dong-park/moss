@@ -8,7 +8,7 @@ import { runAsUserAction, useWorkspace } from "@/state/workspace";
  * 미리보기 제목은 비동기로 채우되, 그사이 사용자가 내용을 고쳤으면 덮어쓰지 않는다.
  */
 /** 도크 링크 버튼이 만드는 빈 링크 카드의 본문 — 주소를 넣기 전 자리표시. 앞면이 주소 입력칸을 그린다. */
-export const EMPTY_LINK_CONTENT = "<!-- moss-link-empty -->";
+export { EMPTY_LINK_CONTENT } from "@/state/linkContent";
 
 export function createLinkMemo(
   raw: string,
