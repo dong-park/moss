@@ -121,7 +121,7 @@ export function ResizeHandles({ card, measuredHeight, mobile = false }: {
       key={dir}
       data-resize-handle={dir}
       onPointerDown={(e) => {
-        if (e.button !== 0) return;
+        if (e.button !== 0 || (e.pointerType === "mouse" && e.currentTarget.closest("[data-canvas-root]")?.getAttribute("data-space-pan") === "true")) return;
         e.preventDefault();
         e.stopPropagation();
         suppressMouseUntil.current = Date.now() + 800;

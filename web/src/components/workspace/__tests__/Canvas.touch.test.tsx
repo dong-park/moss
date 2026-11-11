@@ -278,3 +278,18 @@ it("a resize handle used as the second finger cannot start resize or leave a pan
   expect(useWorkspace.getState().viewport).toEqual({ x: 0, y: 0, scale: 1 });
   pointer(window, "pointerup", 1, 160, 150);
 });
+it("Space + pointer drag on a resize grip pans without resizing or starting an undo action", async()=>{
+ const b=await bootBoard();const id=addMemo(100,100);await readyCheck(b);
+ useWorkspace.setState({selectedIds:[id],editingId:null,canvasHasFitted:true,viewport:{x:0,y:0,scale:1}});
+ useMobileCanvas.getState().resize(id);
+ const {container}=mount();
+ fireEvent.keyDown(window,{code:"Space",key:" "});
+ const el=container.querySelector('[data-resize-handle="se"]')!;
+ const e=new MouseEvent("pointerdown",{bubbles:true,cancelable:true,button:0,clientX:200,clientY:200});
+ Object.defineProperties(e,{pointerId:{value:44},pointerType:{value:"mouse"}});fireEvent(el,e);
+ fireEvent.mouseDown(el,{button:0,clientX:200,clientY:200});
+ const move=new MouseEvent("pointermove",{bubbles:true,clientX:248,clientY:224});Object.defineProperty(move,"pointerId",{value:44});fireEvent(window,move);
+ fireEvent.mouseMove(window,{clientX:248,clientY:224});fireEvent.mouseUp(window);fireEvent.keyUp(window,{code:"Space",key:" "});
+ expect(card(id).width).toBe(240);expect(useWorkspace.getState().viewport).toEqual({x:48,y:24,scale:1});
+ expectGroupClosed();expect(um().undoStack).toHaveLength(0);
+});

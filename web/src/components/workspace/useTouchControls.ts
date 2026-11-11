@@ -1,12 +1,13 @@
 "use client";
 import { useSyncExternalStore } from "react";
+import { useMobileCanvas } from "./mobileCanvas";
 import { useCompactControls } from "./useCompactControls";
 let lastTouch = false;
 const subscribe = (listener: () => void) => {
   const query = window.matchMedia?.("(pointer: coarse)");
   const pointer = (event: PointerEvent) => {
     if (event.pointerType === "touch") lastTouch = true;
-    else if (event.pointerType === "mouse" && !(event.target as Element)?.closest?.("[data-mobile-card-controls], [data-mobile-link-editor], [data-resize-handle]")) lastTouch = false;
+    else if (event.pointerType === "mouse" && useMobileCanvas.getState().operation.kind === "idle" && !(event.target as Element)?.closest?.("[data-mobile-card-controls], [data-mobile-link-editor], [data-resize-handle]")) lastTouch = false;
     listener();
   };
   query?.addEventListener("change", listener);

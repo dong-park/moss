@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { I18nProvider } from "@/i18n/Provider";
 import { Dock, magnifiedSize } from "@/components/workspace/Dock";
 import { useWorkspace } from "@/state/workspace";
 import { useStorage } from "@/state/storage";
+import { useMobileCanvas } from "../mobileCanvas";
 import { resetDB } from "@/state/db/schema";
 
 /**
@@ -106,6 +107,8 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+  cleanup();
+  useMobileCanvas.getState().close();
   vi.restoreAllMocks();
   await resetDB();
   useStorage.setState({ initialized: false, settings: null, quota: null });
@@ -496,7 +499,15 @@ describe("compact dock", () => {
     await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
     expect(useWorkspace.getState().cards).toHaveLength(1);
     expect(useWorkspace.getState().cards[0].kind).toBe("text");
-    expect(useWorkspace.getState().editingId).toBe(useWorkspace.getState().cards[0].id);
+    const id = useWorkspace.getState().cards[0].id;
+    expect(useWorkspace.getState().editingId).toBeNull();
+    expect(useWorkspace.getState().selectedIds).toEqual([id]);
+    expect(useMobileCanvas.getState().operation).toMatchObject({kind:"link",cardId:id});
+    expect(screen.getByRole("dialog", {name:"링크 주소 수정"})).toBeTruthy();
+    expect(document.activeElement).toBe(screen.getByRole("textbox", {name:"링크 주소"}));
+    fireEvent.click(screen.getByRole("button", {name:"취소"}));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(useWorkspace.getState().cards).toHaveLength(1);
   });
 
   it.each([["메모판", "frame"], ["텍스트", "textbox"], ["파일함", "board"]])("More creates %s", async (label, kind) => {

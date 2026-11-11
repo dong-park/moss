@@ -10,7 +10,13 @@ export function mobileHistoryKey(operation: MobileOperation): string | null {
 export function useMobileHistory(key: string | null) {
   useEffect(() => {
     if (!key) return;
-    if (window.history.state?.mossCanvasOperation !== key) window.history.pushState({ ...window.history.state, mossCanvasOperation: key }, "", window.location.href);
+    const url = window.location.href;
+    if (window.history.state?.mossCanvasOperation !== key) {
+      const next = { ...window.history.state, mossCanvasOperation: key };
+      // A mode switch replaces the operation entry rather than stacking another Back stop.
+      if (window.history.state?.mossCanvasOperation) window.history.replaceState(next, "", url);
+      else window.history.pushState(next, "", url);
+    }
     const back = () => {
       if (window.history.state?.mossCanvasOperation !== key) useMobileCanvas.getState().close();
     };
@@ -19,7 +25,7 @@ export function useMobileHistory(key: string | null) {
       window.removeEventListener("popstate", back);
       queueMicrotask(() => {
         // Do not pop during Strict Mode's setup/cleanup probe or a new operation.
-        if (mobileHistoryKey(useMobileCanvas.getState().operation) === null && window.history.state?.mossCanvasOperation === key) window.history.back();
+        if (mobileHistoryKey(useMobileCanvas.getState().operation) === null && window.history.state?.mossCanvasOperation === key && window.location.href === url) window.history.back();
       });
     };
   }, [key]);
