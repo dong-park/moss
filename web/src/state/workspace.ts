@@ -516,6 +516,7 @@ interface WorkspaceState {
    * inline 편집(editingId)과 상호배타 — 모달 진입 시 editingId를 닫는다.
    */
   expandedCardId: string | null;
+  expandedCardMode: "read" | "edit" | null;
   /**
    * FEAT-connectors: 현재 보드 카드에 닿은 active 연결선. 보드 로드 시
    * `storage.loadConnections(cardIds)`로 채운다.
@@ -787,7 +788,7 @@ interface WorkspaceState {
   clearSelection: () => void;
   setEditing: (id: string | null) => void;
   /** FEAT-memo-expand: 펼치기 모달을 연다(id) / 닫는다(null). */
-  setExpandedCard: (id: string | null) => void;
+  setExpandedCard: (id: string | null, mode?: "read" | "edit") => void;
 
   /* ─────────── FEAT-connectors: 카드 연결선 ─────────── */
   /** 연결선 새로 만들기. 같은 방향 중복이면 이미 있는 id를 반환하고 그 선을 선택. */
@@ -2662,6 +2663,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   selectedIds: [],
   editingId: null,
   expandedCardId: null,
+  expandedCardMode: null,
   connections: [],
   selectedConnectionId: null,
   hoveredCardId: null,
@@ -2784,6 +2786,21 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       if (!known) return;
     }
 
+    // Keep the source editor live while the destination loads. Then flush and
+    // close it before changing the active document, including input typed during
+    // the asynchronous load. Once closed it cannot write into a departing board.
+    try {
+      await getOrOpenBoardDoc(id).whenLoaded;
+    } catch (error) {
+      // This preload precedes activateBoardDoc, so it owns the same failed-load
+      // cleanup. Keeping a rejected handle cached would make every retry fail.
+      discardBoardDocByKey(docKeyForBoard(id));
+      throw error;
+    }
+    if (seq !== boardLoadSeq) return;
+    runEditFlush();
+    set({ editingId: null, expandedCardId: null, expandedCardMode: null });
+
     // 1) 현재 보드의 viewport 기억
     const prevViewport = get().viewport;
     const viewportByBoard = { ...get().viewportByBoard, [current]: prevViewport };
@@ -2832,6 +2849,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       selectedConnectionId: null,
       editingId: null,
       expandedCardId: null,
+      expandedCardMode: null,
       currentBoardId: id,
       lastNonSystemBoardId: lastNonSystem,
       viewport: restored,
@@ -3880,8 +3898,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   clearSelection: () => set({ selectedIds: [], selectedConnectionId: null }),
   setEditing: (id) => set({ editingId: id }),
   // FEAT-memo-expand: 모달 진입 시 inline 편집을 닫아 같은 카드 이중 에디터를 막는다.
-  setExpandedCard: (id) => {
-    set(id ? { expandedCardId: id, editingId: null } : { expandedCardId: null });
+  setExpandedCard: (id, mode) => {
+    set(id ? { expandedCardId: id, expandedCardMode: mode ?? null, editingId: null } : { expandedCardId: null, expandedCardMode: null });
     // 표에서 행을 열어 보드가 바뀌었던 경우, 메모창을 닫으면 진입 시점 보드로
     // 복원한다(D1). 캔버스 뷰에서는 no-op(tableReturnBoardId 없음).
     if (!id && get().view === "table") void get().restoreTableReturn();

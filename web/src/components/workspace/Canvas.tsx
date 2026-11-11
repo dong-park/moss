@@ -13,6 +13,7 @@ import { useToasts } from "@/state/notifications";
 import { useT } from "@/i18n/Provider";
 import { useTouchCanvas } from "./touchCanvas";
 import { DraggableCard } from "./DraggableCard";
+import { MobileCardActions } from "./MobileCardActions";
 import {
   DragGhostLayer,
   RemoteCursorsLayer,
@@ -753,6 +754,7 @@ export function Canvas() {
       <TrashPanel />
 
       <ZoomBar />
+      <MobileCardActions canvasRef={canvasRef} />
     </div>
   );
 }

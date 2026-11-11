@@ -1,0 +1,19 @@
+{
+  "web/src/components/workspace/Canvas.tsx": "3ebb0c60d396237a8065f8c99ecf95b18d586052405632b0eb13eb1ebde9fdbe",
+  "web/src/components/workspace/Dock.tsx": "b6a3efe8ac1f76b9e9dfb4e8611ddc66ee58f7595d8d6a01dcb0ed5e0db8e443",
+  "web/src/components/workspace/MobileCardActions.tsx": "cb534e4889037bb217f1496d4ca966bf576abb0f64c957b4d5aaf2ca0b0ed621",
+  "web/src/components/workspace/WorkspaceShell.tsx": "159d1d123f4e81a1cdce370e9a2bebffafa023ddc7823770f312d2061e90a99b",
+  "web/src/components/workspace/__tests__/Canvas.touch.test.tsx": "2faca144d81297d22a95cdb43383e3fdbfe24c6f7898121bfc47cc763022f6f8",
+  "web/src/components/workspace/canvasControls.module.css": "85990634ded3e6e44a51752ead34ffc6c90de679b2eaed59db32c254d765a2a9",
+  "web/src/components/workspace/cards/MemoExpandDialog.tsx": "2c8901e249bfd43f6475819acf89ed39243821b0e5dc4befe01841e3fc7199ea",
+  "web/src/components/workspace/cards/__tests__/MemoMobileFlow.test.tsx": "e4f88809d51dd8366c5d39256e174b5b79ac7a059c1765ccf3a5b349de7677ae",
+  "web/src/components/workspace/cards/__tests__/MemoPendingEdit.test.tsx": "ea9d14c6b9d4362723c447bec30162e862cb2b6858ffd9690327d6760d5806ee",
+  "web/src/components/workspace/cards/__tests__/memoHistory.test.ts": "2c277003e109e0ca9f4a27e6397ebf449fcd0a27dfbddb127a6f0e4da8ee2bf9",
+  "web/src/components/workspace/cards/_shared/MarkdownEditor.tsx": "e5e747b3e96b3a4d194ae8ebeceadd0b6fbbbafc2bac2e3c1600511229fef891",
+  "web/src/components/workspace/cards/_shared/MemoExpandTitleSlot.tsx": "b22487362488e9121d3e83904955e71ef9fadb6ddc7881824a205e5b73143a02",
+  "web/src/components/workspace/cards/_shared/MemoTitleRow.tsx": "8e2d381aa309dd91bf784504b9e05933747a49f88514894640f7e818bf0bb0de",
+  "web/src/components/workspace/cards/_shared/memoMobile.module.css": "fea580acdf25d788da5116e31c84bbff3e7cbc9541faf5440f328a4119d41482",
+  "web/src/components/workspace/cards/memoHistory.ts": "345eed87d1a55efa5dccc819fcb5a44e1da01a211f6ead815a93f4355967e274",
+  "web/src/i18n/messages/ko.json": "c39dad492737df4316c5cd508d3d2ad7f0e8b38a15be30870e33b74715cf6e8c",
+  "web/src/state/workspace.ts": "e6c6d7f32975089bfda3533fcc7911b7e43e9df06c59d12a97c15c93a0c26f74"
+}

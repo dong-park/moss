@@ -31,6 +31,7 @@ import {
   type BoardAccess,
 } from "@/state/boardAccess";
 import { BoardAccessCard } from "./BoardAccessCard";
+import { navigateAfterMemoClose } from "./cards/memoHistory";
 
 /** `/b/<id>` 경로에서 보드 id를 뽑는다. `/`거나 그 밖의 경로면 undefined. */
 export function parseBoardId(pathname: string | null | undefined): string | undefined {
@@ -69,7 +70,7 @@ export function RouteBoardSync({ boardId }: { boardId: string }) {
       if (typeof window === "undefined") return;
       const target = `/b/${id}`;
       if (window.location.pathname === target) return;
-      window.history.pushState(null, "", target);
+      navigateAfterMemoClose(() => window.history.pushState(null, "", target));
     });
     return () => setBoardNavigator(null);
   }, []);
