@@ -63,3 +63,10 @@ it("mouse input can finish an explicit mobile connection mode on hybrid devices"
   expect(useWorkspace.getState().connections).toHaveLength(1);
   expect(useMobileCanvas.getState().operation.kind).toBe("idle");
 });
+it("keeps numeric resize controls above the mobile keyboard", () => {
+  const viewport=Object.assign(new EventTarget(), {height:300,offsetTop:0});
+  vi.stubGlobal("visualViewport",viewport);
+  mount(); fireEvent.click(screen.getByRole("button",{name:"크기"}));
+  const toolbar=screen.getByRole("toolbar",{name:"선택한 카드 도구"});
+  expect(toolbar.style.bottom).toContain(`${window.innerHeight-300+20}px`);
+});

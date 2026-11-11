@@ -5,6 +5,7 @@ import { useWorkspace } from "@/state/workspace";
 import { useT } from "@/i18n/Provider";
 import { layout } from "@/design/tokens";
 import { linkUrl, reconcileMobileOperation, useMobileCanvas } from "./mobileCanvas";
+import { useVisualViewport } from "./useVisualViewport";
 import { MobileLinkEditor } from "./MobileLinkEditor";
 import { MobileResizeControls } from "./MobileResizeControls";
 import { resizeCardDimensions } from "./cardSizing";
@@ -14,6 +15,8 @@ import { mobileHistoryKey, useMobileHistory } from "./useMobileHistory";
 
 export function MobileCardControls() {
   const t = useT();
+  const viewport = useVisualViewport();
+  const keyboardInset = viewport ? Math.max(0, window.innerHeight - viewport.top - viewport.height) : 0;
   const card = useWorkspace((s) => s.selectedIds.length === 1 ? s.cards.find((c) => c.id === s.selectedIds[0]) : undefined);
   const operation = useMobileCanvas((s) => s.operation);
   const close = useMobileCanvas((s) => s.close);
@@ -35,7 +38,7 @@ export function MobileCardControls() {
   const url = linkUrl(card);
   return <>
     <div className={styles.actions} data-mobile-card-controls data-canvas-control="dock" role="toolbar" aria-label={t("workspace.mobile.actions")}
-      style={{ bottom: `calc(${layout.dock.bottomMargin}px + env(safe-area-inset-bottom, 0px))` }}>
+      style={{ bottom: `calc(${layout.dock.bottomMargin + keyboardInset}px + env(safe-area-inset-bottom, 0px))` }}>
       {operation.kind === "connect" ? <>
         <p role="status" className={styles.hint}>{t("workspace.mobile.connectHint")}</p>
         <button type="button" onClick={close}>{t("workspace.mobile.cancel")}</button>
