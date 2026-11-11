@@ -5,7 +5,6 @@ import { useWorkspace } from "@/state/workspace";
 import { useT } from "@/i18n/Provider";
 import { layout } from "@/design/tokens";
 import { linkUrl, reconcileMobileOperation, useMobileCanvas } from "./mobileCanvas";
-import { useCompactControls } from "./useCompactControls";
 import { useVisualViewport } from "./useVisualViewport";
 import { MobileLinkEditor } from "./MobileLinkEditor";
 import { MobileResizeControls } from "./MobileResizeControls";
@@ -14,9 +13,8 @@ import { isConnectableCard } from "./connectors/geometry";
 import styles from "./mobileCanvas.module.css";
 import { mobileHistoryKey, useMobileHistory } from "./useMobileHistory";
 
-export function MobileCardControls() {
+export function MobileCardControls({ compact }: { compact: boolean }) {
   const t = useT();
-  const compact = useCompactControls();
   const viewport = useVisualViewport();
   const keyboardInset = viewport ? Math.max(0, window.innerHeight - viewport.top - viewport.height) : 0;
   const card = useWorkspace((s) => s.selectedIds.length === 1 ? s.cards.find((c) => c.id === s.selectedIds[0]) : undefined);
