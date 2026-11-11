@@ -18,6 +18,7 @@
 
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type CSSProperties,
@@ -53,6 +54,7 @@ import "prosemirror-view/style/prosemirror.css";
 export type MarkdownEditorProps = {
   value: string;
   editable: boolean;
+  autoFocus?: boolean;
   onChange: (markdown: string) => void;
   /** blur 시 새 포커스 대상(relatedTarget)을 넘긴다 — 카드 스코프 blur 가드용(AC-3). */
   onBlur?: (relatedTarget: EventTarget | null) => void;
@@ -73,7 +75,7 @@ function useIsClient() {
   );
 }
 
-export function MilkdownInner({ value, editable, onChange, onBlur, expanded, cardId }: MarkdownEditorProps) {
+export function MilkdownInner({ value, editable, onChange, onBlur, expanded, cardId, autoFocus = true }: MarkdownEditorProps) {
   // 콜백은 ref로 고정해 에디터 재생성 없이 최신 핸들러를 부른다.
   // ref 갱신은 render가 아닌 effect에서 (react-hooks/refs).
   const onChangeRef = useRef(onChange);
@@ -132,7 +134,7 @@ export function MilkdownInner({ value, editable, onChange, onBlur, expanded, car
           l.mounted((mctx) => {
             const view = mctx.get(editorViewCtx);
             lastDocRef.current = view.state.doc;
-            if (editable) view.focus();
+            if (editable && autoFocus) view.focus();
           });
         })
         .config(nord)
@@ -167,9 +169,9 @@ export function MilkdownInner({ value, editable, onChange, onBlur, expanded, car
 
   // cmd-z-undo n4: 편집 묶음을 닫기 직전 스토어가 부른다. 리스너의 0.2초 디바운스에 남은
   // 본문을 지금 내보낸다 — 창을 닫으면 편집기가 destroy돼 그 글이 버려지기 때문이다.
-  useEffect(() => {
-    if (!editable) return;
-    return registerEditFlush(() => {
+  const flushRef = useRef<(() => void) | null>(null);
+  useLayoutEffect(() => {
+    flushRef.current = editable ? () => {
       const editor = get();
       if (!editor) return;
       let markdown: string | undefined;
@@ -182,7 +184,14 @@ export function MilkdownInner({ value, editable, onChange, onBlur, expanded, car
         lastDocRef.current = doc;
       });
       if (markdown !== undefined) emitRef.current(markdown);
-    });
+    } : null;
+  });
+  // Layout cleanup runs before Milkdown's passive cleanup destroys its view.
+  // Normal close/board transitions also flush before replacing store data.
+  useLayoutEffect(() => () => flushRef.current?.(), []);
+  useEffect(() => {
+    if (!editable) return;
+    return registerEditFlush(() => flushRef.current?.());
   }, [editable, get]);
 
   return (
@@ -234,12 +243,16 @@ export function ExpandedMarkdownEditor({
   overlay,
   titleSlot,
   canonical = true,
+  editable = true,
+  autoFocus = true,
 }: {
   value: string;
   onChange: (markdown: string) => void;
   overlay?: ReactNode;
   /** Ink or an active drawing tool requires the original 720px line wrapping. */
   canonical?: boolean;
+  editable?: boolean;
+  autoFocus?: boolean;
   /** FEAT-memo-title: 본문 컬럼 위에 둘 제목 줄(스크롤 영역 안). */
   titleSlot?: ReactNode;
 }) {
@@ -295,7 +308,7 @@ export function ExpandedMarkdownEditor({
         <div data-memo-body-column className={`moss-md relative text-[13px] ${styles.body}`}
           style={{ width: MEMO_CONTENT_WIDTH, padding: "6px 9px" }}>
           {isClient
-            ? <MilkdownInner value={value} editable expanded onChange={onChange} />
+            ? <MilkdownInner value={value} editable={editable} autoFocus={autoFocus} expanded onChange={onChange} />
             : <div className="whitespace-pre-wrap">{value}</div>}
           {overlay}
         </div>

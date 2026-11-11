@@ -1,0 +1,13 @@
+$ vitest run src/components/workspace/cards/__tests__/MemoPendingEdit.test.tsx src/components/workspace/cards/__tests__/MemoMobileFlow.test.tsx src/components/workspace/cards/__tests__/memoHistory.test.ts
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - ESM syntax in a file loaded as CommonJS (vitest.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v4.1.12 /Users/donghwan/.goat/desktop/worktrees/moss/goat-d66ffd45-76d620d348009219/web
+
+
+ Test Files  3 passed (3)
+      Tests  13 passed (13)
+   Start at  18:57:44
+   Duration  3.97s (transform 878ms, setup 956ms, import 1.20s, tests 2.86s, environment 1.27s)
+

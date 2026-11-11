@@ -152,6 +152,7 @@ export function Dock({
   const createSubcanvasAtViewportCenter = useWorkspace((s) => s.createSubcanvasAtViewportCenter);
   const addPhotoAt = useWorkspace((s) => s.addPhotoAt);
   const setEditing = useWorkspace((s) => s.setEditing);
+  const setExpandedCard = useWorkspace((s) => s.setExpandedCard);
   const setContent = useWorkspace((s) => s.setContent);
   /** 링크 주소 입력칸 — 열렸으면 놓을 자리(없으면 화면 가운데). */
   /** 사진 파일 창을 연 뒤 고른 사진을 놓을 자리(없으면 화면 가운데). */
@@ -411,7 +412,8 @@ export function Dock({
         return;
       }
 
-      addCardAt(toolId as ToolId, wx, wy);
+      const id = addCardAt(toolId as ToolId, wx, wy);
+      if (compact && toolId === "text") setExpandedCard(id, "edit");
       // 임시 숨김(2026-09-22 사용자 결정): 시스템 보드에 메모를 놓을 때 뜨던
       // "이 메모는 무소속이에요 / 새 프로젝트" 토스트. 되돌리려면 주석을 푼다.
       // const newCardId = addCardAt(toolId, wx, wy);
@@ -431,7 +433,7 @@ export function Dock({
       // }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- createDockOnly는 스토어 액션·ref만 쓴다
-    [addCardAt, addFrameAt, createSubcanvas, touchControls],
+    [addCardAt, addFrameAt, createSubcanvas, touchControls, compact, setExpandedCard],
   );
 
   /**
@@ -447,7 +449,8 @@ export function Dock({
         return;
       }
       if (toolId === "text") {
-        addCardAtViewportCenter("text");
+        const id = addCardAtViewportCenter("text");
+        if (compact) setExpandedCard(id, "edit");
         return;
       }
       // FEAT-text-tool: 클릭/Enter로도 화면 가운데에 텍스트 생성(§8 접근성).
@@ -464,7 +467,7 @@ export function Dock({
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- createDockOnly는 스토어 액션·ref만 쓴다
-    [addCardAtViewportCenter, addFrameAtViewportCenter, createSubcanvasAtViewportCenter, touchControls],
+    [addCardAtViewportCenter, addFrameAtViewportCenter, createSubcanvasAtViewportCenter, touchControls, compact, setExpandedCard],
   );
 
   const LABELS: Record<string, string> = {

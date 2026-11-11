@@ -13,7 +13,7 @@ beforeEach(() => {
   vi.stubGlobal("matchMedia", vi.fn((query: string) => ({ matches: false, media: query, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
   vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false })));
   useMobileCanvas.getState().close();
-  useWorkspace.setState({ cards: [source, { ...source, id: "b", x: 400 }], currentBoardId: "mobile-ui", connections: [], selectedIds: ["a"], penMode: false, editingId: null, expandedCardId: null, canvasHasFitted: true, view: "canvas", viewport: { x: 0, y: 0, scale: 1 } });
+  useWorkspace.setState({ cards: [source, { ...source, id: "b", x: 400 }], currentBoardId: "mobile-ui", connections: [], selectedIds: ["a"], penMode: false, editingId: null, expandedCardId: null, expandedCardMode: null, canvasHasFitted: true, view: "canvas", viewport: { x: 0, y: 0, scale: 1 } });
 });
 function mount(){return render(<I18nProvider locale="ko"><Canvas /><Dock /></I18nProvider>);}
 function pointer(el: Element | Window,type:string,id:number,x:number,y:number,pointerType="touch"){const e=new MouseEvent(type,{bubbles:true,cancelable:true,clientX:x,clientY:y,button:0});Object.defineProperties(e,{pointerId:{value:id},pointerType:{value:pointerType}});fireEvent(el,e);}
@@ -76,4 +76,20 @@ it("numeric input reflects the clamped width even when the card is already at it
   const input=screen.getByRole("spinbutton",{name:"폭"}) as HTMLInputElement;
   fireEvent.change(input,{target:{value:"99999"}});fireEvent.blur(input);
   expect(Number(input.value)).toBe(useWorkspace.getState().cards.find(c=>c.id==="a")!.width);
+});
+
+it("link actions keep URL editing as the only edit entry while retaining explicit movement",()=>{
+ mount();expect(screen.queryByRole("button",{name:"편집"})).toBeNull();
+ expect(screen.getByRole("button",{name:"주소 수정"})).toBeTruthy();
+ expect(screen.getByRole("button",{name:"끌어서 이동"})).toBeTruthy();
+});
+it.each(["연결","크기","주소 수정"])("hides the floating move action during %s",name=>{
+ mount();fireEvent.click(screen.getByRole("button",{name}));
+ expect(screen.queryByRole("button",{name:"끌어서 이동"})).toBeNull();
+});
+it("main memo edit remains singular and enters the explicit edit mode",()=>{
+ useWorkspace.setState(s=>({cards:s.cards.map(c=>c.id==="a"?{...c,content:"memo"}:c)}));
+ mount();expect(screen.getAllByRole("button",{name:"편집"})).toHaveLength(1);
+ fireEvent.click(screen.getByRole("button",{name:"편집"}));
+ expect(useWorkspace.getState()).toMatchObject({expandedCardId:"a",expandedCardMode:"edit",editingId:null});
 });

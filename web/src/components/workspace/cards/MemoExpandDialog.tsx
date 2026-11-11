@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { MilkdownProvider } from "@milkdown/react";
 import { useT } from "@/i18n/Provider";
@@ -16,6 +16,10 @@ import { MEMO_CONTENT_WIDTH } from "./_shared/memoLayout";
 import styles from "./_shared/memoMobile.module.css";
 import { memoTint } from "../memoVariety";
 import { useVisualViewport } from "../useVisualViewport";
+import { useCompactControls } from "../useCompactControls";
+import { runEditFlush } from "@/state/editFlush";
+import { createMemoHistory, bindMemoNavigation } from "./memoHistory";
+import { compactControls } from "@/design/canvasControls";
 
 /* ─────────────────────────────────────────────────────────────
  * FEAT-memo-expand — 메모(text) 카드 펼치기 창.
@@ -61,13 +65,14 @@ export function paperPadding(isPaper: boolean): string {
 
 export function MemoExpandDialog() {
   const t = useT();
+  const compact = useCompactControls();
   const returnFocus = useRef<HTMLElement | null>(null);
   const viewport = useVisualViewport();
   const expandedCardId = useWorkspace((s) => s.expandedCardId);
+  const requestedMode = useWorkspace((s) => s.expandedCardMode);
   const setExpandedCard = useWorkspace((s) => s.setExpandedCard);
   const setContent = useWorkspace((s) => s.setContent);
   const setTitle = useWorkspace((s) => s.setTitle);
-  const commitTitle = useWorkspace((s) => s.commitTitle);
   const setOverlay = useWorkspace((s) => s.setOverlay);
   const penWidth = useWorkspace((s) => s.penWidth);
   // expandedCardId가 가리키는 카드만 좁혀 구독 — 다른 카드 변경에 리렌더되지 않게.
@@ -86,23 +91,48 @@ export function MemoExpandDialog() {
   // 바뀌어도 종이가 갑자기 다른 색이 되지 않게.
   // id는 있는데 카드가 사라진 경우(삭제 등) — store 정리가 처리하지만 방어적으로 닫힘(open=false).
   const open = expandedCardId !== null && card !== null;
-  const [paper, setPaper] = useState<{ id: string; isPaper: boolean; tint: string } | null>(null);
+  const [paper, setPaper] = useState<{ id: string; isPaper: boolean; tint: string; mode: "read" | "edit" } | null>(null);
   if (open && card && paper?.id !== card.id) {
     setPaper({
       id: card.id,
       isPaper: memoFace(card.content).t === "paper",
       tint: memoTint(card.id, card.color),
+      // Keep the entry intent through rotation/resizing; switching layout must
+      // not replace a live editor or unexpectedly open the keyboard.
+      mode: compactControls(window.innerWidth, window.innerHeight) ? "read" : "edit",
     });
   } else if (!open && paper) {
     setPaper(null);
   }
+  const editable = (requestedMode ?? paper?.mode) === "edit";
 
-  const close = () => {
-    // FEAT-memo-title-front-edit AC-7: 창을 닫을 때 제목 앞뒤 공백을 확정한다.
-    if (card) commitTitle(card.id);
-    setDrawing(false); // 다음에 열 때 텍스트 모드로 시작.
-    setExpandedCard(null);
-  };
+  const [history] = useState(() => createMemoHistory({
+    read: () => {
+      const state = useWorkspace.getState();
+      return { cardId: state.expandedCardId, boardId: state.currentBoardId,
+        enabled: compactControls(window.innerWidth, window.innerHeight),
+        exists: (id) => state.cards.some((card) => card.id === id) };
+    },
+    open: (id) => useWorkspace.getState().setExpandedCard(id, "read"),
+    close: (restoreBoard) => {
+      setDrawing(false);
+      if (restoreBoard) useWorkspace.getState().setExpandedCard(null);
+      else useWorkspace.setState({ expandedCardId: null, expandedCardMode: null });
+    },
+    flush: () => {
+      runEditFlush();
+      const state = useWorkspace.getState();
+      if (state.expandedCardId) state.commitTitle(state.expandedCardId);
+    },
+  }));
+  const boardId = useWorkspace((s) => s.currentBoardId);
+  useEffect(() => {
+    const disconnect = history.connect();
+    const unbind = bindMemoNavigation(history.navigate);
+    return () => { disconnect(); unbind(); };
+  }, [history]);
+  useEffect(() => { history.sync(); }, [history, open, expandedCardId, boardId, compact]);
+  const close = () => history.close();
 
   // 같은 도구를 다시 누르면 그리기 모드 해제(텍스트 편집으로 복귀), 아니면 그 도구로 켠다.
   const selectTool = (next: DrawingTool) => {
@@ -134,8 +164,15 @@ export function MemoExpandDialog() {
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-[var(--z-overlay)] bg-black/40" />
         <Dialog.Content
+          data-memo-short-viewport={compact && viewport !== null && viewport.height < 260}
           className={`fixed left-1/2 top-1/2 z-[var(--z-modal)] flex -translate-x-1/2 -translate-y-1/2 flex-col focus:outline-none ${styles.dialog}`}
-          onOpenAutoFocus={() => { returnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; }}
+          onOpenAutoFocus={(event) => {
+            returnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+            if (compact) {
+              event.preventDefault();
+              if (!editable) (event.currentTarget as HTMLElement).focus({ preventScroll: true });
+            }
+          }}
           onCloseAutoFocus={(event) => {
             if (returnFocus.current?.isConnected) {
               event.preventDefault();
@@ -157,6 +194,17 @@ export function MemoExpandDialog() {
           <Dialog.Title className="sr-only">
             {card?.title?.trim() || t("workspace.memoEditor.fallbackTitle")}
           </Dialog.Title>
+          {(compact || !editable) && (
+            <div className={styles.mobileHeader}>
+              <button type="button" onClick={close}>{t("workspace.memoEditor.backToBoard")}</button>
+              {editable ? (
+                <button type="button" className={styles.primaryAction} onClick={close}>{t("workspace.memoEditor.done")}</button>
+              ) : (
+                <button type="button" className={styles.primaryAction}
+                  onClick={() => card && setExpandedCard(card.id, "edit")}>{t("workspace.memoEditor.edit")}</button>
+              )}
+            </div>
+          )}
           {isPaper && (
             <div
               aria-hidden="true"
@@ -174,7 +222,7 @@ export function MemoExpandDialog() {
           )}
           {/* 펜·지우개·✕: 종이 박스 밖 오른쪽 아래(버블과 자리를 나눈다). Content의 자식이라
            * Radix의 body pointer-events:none 영향을 받지 않고 눌린다. */}
-          <div
+          {editable && <div
             data-memo-paper-tools
             className={`absolute top-full right-0 mt-2 flex items-center gap-1 ${styles.tools}`}
           >
@@ -196,13 +244,13 @@ export function MemoExpandDialog() {
             >
               ⌫
             </button>
-            <Dialog.Close
+            {!compact && <Dialog.Close
               className="flex h-7 w-7 cursor-pointer items-center justify-center rounded bg-white/90 text-text-soft transition-colors hover:bg-white hover:text-text"
               aria-label={t("workspace.memoEditor.close")}
             >
               ✕
-            </Dialog.Close>
-          </div>
+            </Dialog.Close>}
+          </div>}
 
           {/* 제목 슬롯이 useInstance()로 본문 에디터와 같은 Milkdown 인스턴스를
            * 잡아야 하므로 Provider를 이 레벨에서 한 번만 제공한다. */}
@@ -210,6 +258,8 @@ export function MemoExpandDialog() {
             {card && (
               <ExpandedMarkdownEditor
                 key={card.id}
+                editable={editable}
+                autoFocus={!compact}
                 canonical={drawing || parseHandwriting(card.overlay ?? "").paths.length > 0}
                 value={card.content}
                 onChange={(md) => setContent(card.id, md)}
@@ -219,6 +269,8 @@ export function MemoExpandDialog() {
                 // pointer-events:none → 클릭이 편집으로 통과.
                 titleSlot={
                   <MemoExpandTitleSlot
+                    editable={editable}
+                    autoFocus={compact && editable}
                     title={card.title ?? ""}
                     onCommit={(title) => setTitle(card.id, title)}
                   />
@@ -227,7 +279,7 @@ export function MemoExpandDialog() {
                   <DrawingLayer
                     coordinateWidth={MEMO_CONTENT_WIDTH}
                     value={card.overlay ?? ""}
-                    active={drawing}
+                    active={editable && drawing}
                     penWidth={penWidth}
                     tool={tool}
                     onChange={(json) => setOverlay(card.id, json)}

@@ -24,7 +24,7 @@ beforeEach(() => {
   useMobileCanvas.getState().close();
   useWorkspace.setState({ cards: [], connections: [], canvasHasFitted: true, currentBoardId: "touch-test", penMode: false, viewport: { x: 0, y: 0, scale: 1 } });
 });
-afterEach(async () => { vi.restoreAllMocks(); await teardown(); });
+afterEach(async () => { vi.restoreAllMocks(); vi.unstubAllGlobals(); await teardown(); });
 it("pans empty canvas, pinches around the measured centroid and rebases after lifting a finger", () => {
   const { root } = mount();
   pointer(root, "pointerdown", 1, 100, 100);
@@ -292,4 +292,37 @@ it.each(["mouse", "pen"])("Space + %s drag on a resize grip pans without resizin
  fireEvent.mouseMove(window,{clientX:248,clientY:224});fireEvent.mouseUp(window);fireEvent.keyUp(window,{code:"Space",key:" "});
  expect(card(id).width).toBe(240);expect(useWorkspace.getState().viewport).toEqual({x:48,y:24,scale:1});
  expectGroupClosed();expect(um().undoStack).toHaveLength(0);
+});
+
+it("offers touch editing for an existing todo without relying on synthetic double-click", () => {
+  vi.stubGlobal("innerWidth", 390);
+  useWorkspace.setState({ cards: [{ id: "todo", kind: "text", x: 20, y: 20, width: 240, content: "- [ ] first item" }], editingId: null, expandedCardId: null, selectedIds: [] });
+  const { container } = mount();
+  const el = container.querySelector('[data-card-id="todo"]')!;
+  pointer(el, "pointerdown", 1, 50, 50);
+  pointer(window, "pointerup", 1, 50, 50);
+  const toolbar = container.querySelector('[role="toolbar"][aria-label="선택한 카드 조작"]')!;
+  expect(toolbar).toBeTruthy();
+  fireEvent.click(toolbar.querySelector("button")!);
+  expect(useWorkspace.getState()).toMatchObject({ expandedCardId: "todo", expandedCardMode: "edit", editingId: null });
+});
+
+it("the visible move handle drags only the selected note immediately and keeps undo", async () => {
+  vi.stubGlobal("innerWidth", 390);
+  const b = await bootBoard();
+  const id = addMemo(100, 100);
+  await readyCheck(b);
+  useWorkspace.setState({ selectedIds: [id], editingId: null, expandedCardId: null, canvasHasFitted: true, viewport: { x: 0, y: 0, scale: 0.5 } });
+  const { container } = mount();
+  const handle = container.querySelector('[aria-label="끌어서 이동"]')!;
+  expect(handle).toBeTruthy();
+  pointer(handle, "pointerdown", 1, 100, 100);
+  pointer(handle, "pointermove", 1, 125, 110);
+  pointer(handle, "pointerup", 1, 125, 110);
+  expect(note(id)).toMatchObject({ x: 150, y: 120 });
+  expect(useWorkspace.getState().viewport).toEqual({ x: 0, y: 0, scale: 0.5 });
+  expectGroupClosed();
+  expect(um().undoStack).toHaveLength(1);
+  pressUndo();
+  expect(note(id)).toMatchObject({ x: 100, y: 100 });
 });
