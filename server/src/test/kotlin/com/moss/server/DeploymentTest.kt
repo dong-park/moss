@@ -57,6 +57,31 @@ class DeploymentTest {
     }
 
     @Test
+    fun `unversioned manual build is ready only without any revision`() = testApplication {
+        var revision: String? = null
+        var fail = false
+        val source = object : DataSource by TestDb.dataSource {
+            override fun getConnection() = if (fail) throw SQLException("offline") else TestDb.dataSource.connection
+        }
+        application {
+            install(ContentNegotiation) { json() }
+            routing { deploymentRoutes(source, secret, buildSha = { null }) { revision } }
+        }
+        suspend fun probe() = client.get("/internal/deployment") { header("X-Moss-Internal", secret) }
+        val response = probe()
+        assertEquals(HttpStatusCode.OK, response.status)
+        val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+        assertEquals("unversioned", body["status"]!!.jsonPrimitive.content)
+        assertTrue(body["sha"] == null || body["sha"] is kotlinx.serialization.json.JsonNull)
+        revision = sha
+        assertEquals(HttpStatusCode.ServiceUnavailable, probe().status)
+        revision = ""
+        assertEquals(HttpStatusCode.OK, probe().status)
+        fail = true
+        assertEquals(HttpStatusCode.ServiceUnavailable, probe().status)
+    }
+
+    @Test
     fun `missing internal secret cannot authorize readiness`() = testApplication {
         application {
             install(ContentNegotiation) { json() }

@@ -88,6 +88,22 @@ describe("internal close endpoint", () => {
     ready = false;
     expect((await probe()).status).toBe(503);
   });
+  test("unversioned manual build is ready only without any revision and with a live DB", async () => {
+    const probe = () => fetch(`${base}/deployment`, { headers: { [INTERNAL_SECRET_HEADER]: TEST_INTERNAL_SECRET } });
+    sha = undefined;
+    built = undefined;
+    const response = await probe();
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ status: "unversioned" });
+    sha = "a".repeat(40);
+    expect((await probe()).status).toBe(503);
+    sha = undefined;
+    dbFails = true;
+    expect((await probe()).status).toBe(503);
+    dbFails = false;
+    ready = false;
+    expect((await probe()).status).toBe(503);
+  });
 
   test("POST /internal/close/{boardId} revokes the board", async () => {
     closed = 3;

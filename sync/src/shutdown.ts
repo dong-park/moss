@@ -27,8 +27,9 @@ export function installShutdownHandlers(deps: {
     } catch {
       failed = true;
     }
-    const sha = deps.sha();
-    if (typeof sha !== "string" || sha.length !== 40 || !/^[0-9a-fA-F]{40}$/.test(sha)) failed = true;
+    // An unversioned manual build reports sha null; the host requires its exact release SHA anyway.
+    const sha = deps.sha() || undefined;
+    if (sha !== undefined && (sha.length !== 40 || !/^[0-9a-fA-F]{40}$/.test(sha))) failed = true;
     // Do not include database errors, board IDs, tokens or other user data.
     const event = failed ? "moss_sync_shutdown_failed" : "moss_sync_shutdown_complete";
     console.log(JSON.stringify({ event, sha: sha ?? null }));

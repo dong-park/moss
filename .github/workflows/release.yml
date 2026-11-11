@@ -131,7 +131,10 @@ jobs:
           pattern: image-*-${{ github.run_attempt }}
           path: images
       - name: Assemble exact candidate and successful baseline
+        # First release only: waits (bounded, 15 min) for the operator's bootstrap baseline
+        # registration after these candidate images created the repository-linked packages.
         env:
+          BASELINE_WAIT_SECONDS: "900"
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           API_URL: ${{ vars.NEXT_PUBLIC_MOSS_API_URL }}
           SYNC_URL: ${{ vars.NEXT_PUBLIC_MOSS_SYNC_URL }}
@@ -139,8 +142,9 @@ jobs:
           TERMS_VERSION: ${{ vars.NEXT_PUBLIC_MOSS_TERMS_VERSION }}
         run: python3 scripts/deploy/publish.py inputs
       - name: Run authenticated actual-image compatibility and recovery rehearsal
+        # The host-side harness imports only Node built-ins and its own files; client packages
+        # come from inside the exact candidate/baseline web image, so no workspace install runs here.
         run: |
-          bun install --cwd sync --frozen-lockfile
           bun run deploy/rehearsal/pull.mjs --input rehearsal-input.json
           bun run deploy/rehearsal/run.ts --input rehearsal-input.json --output evidence.json
       - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4

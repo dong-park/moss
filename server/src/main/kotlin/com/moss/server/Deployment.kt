@@ -33,8 +33,11 @@ fun Route.deploymentRoutes(
             call.respond(HttpStatusCode.Unauthorized)
             return@get
         }
-        val sha = releaseSha()
-        val validSha = sha != null && sha.length == 40 && sha.matches(Regex("[0-9a-fA-F]{40}")) && sha == buildSha()
+        val sha = releaseSha()?.takeIf { it.isNotEmpty() }
+        val built = buildSha()?.takeIf { it.isNotEmpty() }
+        // Manual/local builds without any revision are explicitly unversioned, never a release identity.
+        val unversioned = sha == null && built == null
+        val validSha = unversioned || (sha != null && sha.length == 40 && sha.matches(Regex("[0-9a-fA-F]{40}")) && sha == built)
         val ready = validSha && withContext(Dispatchers.IO) {
             try {
                 val flyway = Flyway.configure().dataSource(dataSource).load()
@@ -54,7 +57,7 @@ fun Route.deploymentRoutes(
                 false
             }
         }
-        if (ready) call.respond(HttpStatusCode.OK, DeploymentResponse("ready", sha))
+        if (ready) call.respond(HttpStatusCode.OK, if (unversioned) DeploymentResponse("unversioned") else DeploymentResponse("ready", sha))
         else call.respond(HttpStatusCode.ServiceUnavailable, DeploymentResponse("unavailable"))
     }
 }

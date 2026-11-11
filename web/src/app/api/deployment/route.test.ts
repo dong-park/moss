@@ -27,4 +27,12 @@ describe("deployment readiness", () => {
   it("requires a valid compiled build revision", async () => {
     expect((await get("", SHA)).status).toBe(503);
   });
+  it("reports an explicit unversioned manual build only without any release revision", async () => {
+    const response = await get("", "");
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toContain("no-store");
+    expect(await response.json()).toEqual({ status: "unversioned" });
+    // A runtime revision cannot turn an unversioned build into a release.
+    expect(await (await get("", SHA)).json()).toEqual({ status: "unavailable" });
+  });
 });

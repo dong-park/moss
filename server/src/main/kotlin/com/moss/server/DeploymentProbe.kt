@@ -15,9 +15,10 @@ object DeploymentProbe {
     @JvmStatic
     fun main(args: Array<String>) {
         val healthy = runCatching {
-            val sha = System.getenv("RELEASE_SHA") ?: return@runCatching false
+            // Without RELEASE_SHA only an explicitly unversioned (manual) build may be healthy.
+            val sha = System.getenv("RELEASE_SHA")?.takeIf { it.isNotEmpty() }
             val secret = System.getenv("SYNC_INTERNAL_SECRET") ?: return@runCatching false
-            if (sha.length != 40 || !sha.matches(Regex("[0-9a-fA-F]{40}")) || secret.isBlank()) return@runCatching false
+            if (secret.isBlank() || (sha != null && (sha.length != 40 || !sha.matches(Regex("[0-9a-fA-F]{40}"))))) return@runCatching false
             val port = System.getenv("PORT") ?: "8080"
             val client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build()
             val request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:$port/internal/deployment"))
@@ -25,8 +26,9 @@ object DeploymentProbe {
                 .header(SyncCloseClient.INTERNAL_SECRET_HEADER, secret).GET().build()
             val response = client.send(request, HttpResponse.BodyHandlers.ofString())
             val body = Json.parseToJsonElement(response.body()).jsonObject
-            response.statusCode() == 200 && body["status"]?.jsonPrimitive?.content == "ready" &&
-                body["sha"]?.jsonPrimitive?.content == sha
+            val status = body["status"]?.jsonPrimitive?.content
+            response.statusCode() == 200 && if (sha == null) status == "unversioned" else
+                status == "ready" && body["sha"]?.jsonPrimitive?.content == sha
         }.getOrDefault(false)
         exitProcess(if (healthy) 0 else 1)
     }

@@ -6,6 +6,47 @@ import { join } from "node:path";
 import * as Y from "yjs";
 import { signBoardToken, waitFor } from "./helpers.ts";
 
+test("SIGTERM of an unversioned manual build persists and exits 0 with a null-revision marker", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "moss-shutdown-"));
+  const env: Record<string, string | undefined> = { ...process.env, STATE_PATH: join(dir, "state"), CLOSED_PATH: join(dir, "closed"), FAIL_STORE: "0" };
+  delete env.RELEASE_SHA;
+  const child = Bun.spawn([process.execPath, "run", "test/fixtures/shutdown.ts"], {
+    cwd: import.meta.dir + "/..", env, stdout: "pipe", stderr: "pipe",
+  });
+  const reader = child.stdout.getReader();
+  const line = new TextDecoder().decode((await reader.read()).value);
+  const { port } = JSON.parse(line.trim()) as { port: number };
+  const board = "b-shutdown-unversioned";
+  const token = await signBoardToken({ userId: crypto.randomUUID(), boardId: board });
+  const doc = new Y.Doc();
+  const websocket = new HocuspocusProviderWebsocket({ url: `ws://127.0.0.1:${port}`, WebSocketPolyfill: WebSocket });
+  const provider = new HocuspocusProvider({ document: doc, name: board, token, websocketProvider: websocket });
+  provider.attach();
+  try {
+    await waitFor(() => provider.isSynced);
+    doc.getMap("proof").set("dirty", "unversioned");
+    await waitFor(() => provider.unsyncedChanges === 0);
+    process.kill(child.pid, "SIGTERM");
+    const exit = await child.exited;
+    let output = line;
+    for (;;) {
+      const next = await reader.read();
+      if (next.done) break;
+      output += new TextDecoder().decode(next.value);
+    }
+    expect(exit).toBe(0);
+    expect(output).toContain(JSON.stringify({ event: "moss_sync_shutdown_complete", sha: null }));
+    const restored = new Y.Doc();
+    Y.applyUpdate(restored, await readFile(join(dir, "state")));
+    expect(restored.getMap("proof").get("dirty")).toBe("unversioned");
+    restored.destroy();
+  } finally {
+    provider.destroy(); websocket.destroy(); doc.destroy();
+    if (child.exitCode === null) { child.kill("SIGKILL"); await child.exited; }
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 for (const fail of [false, true]) {
   test(`SIGTERM ${fail ? "fails nonzero without success marker on store failure" : "persists dirty state before exit 0 and completion marker"}`, async () => {
     const dir = await mkdtemp(join(tmpdir(), "moss-shutdown-"));

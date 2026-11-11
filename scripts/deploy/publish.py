@@ -25,20 +25,36 @@ def public_config():
     fingerprint(value); return value
 
 
-def baseline():
-    # Explicit bootstrap registrations have task=bootstrap and source sha is null in their payload.
+def find_baseline():
+    """Newest successful production deploy/bootstrap/rollback payload, or None when none exists."""
     for page in range(1,101):
         deployments=api(f'/deployments?environment=production&per_page=100&page={page}')
         for deployment in deployments:
             if deployment['task'] not in ('deploy','bootstrap','rollback'): continue
             statuses=api(f"/deployments/{deployment['id']}/statuses?per_page=1")
             if statuses and statuses[0]['state']=='success':
-                payload=deployment['payload']; image_set(payload['images'])
+                payload=deployment['payload']
+                require(isinstance(payload,dict),'invalid baseline payload'); image_set(payload.get('images'))
                 payload.pop('rollback_proof',None)
                 require(payload.get('environment','production')=='production','wrong baseline environment')
                 return payload
         if len(deployments)<100: break
-    raise RuntimeError('No successful baseline; complete explicit bootstrap registration first')
+    return None
+
+
+def baseline(wait_seconds=0,clock=time.monotonic,sleep=time.sleep):
+    """Only when NO successful baseline exists yet (first release) wait a bounded time for the
+    operator's bootstrap registration. An existing but invalid/mismatched baseline fails at once;
+    no baseline is ever invented."""
+    require(type(wait_seconds) is int and 0<=wait_seconds<=900,'baseline wait must be 0..900 seconds')
+    deadline=clock()+wait_seconds
+    while True:
+        found=find_baseline()
+        if found is not None: return found
+        if clock()>=deadline:
+            raise RuntimeError('No successful baseline; complete explicit bootstrap registration first')
+        print('Waiting for the operator bootstrap baseline registration (bounded)',flush=True)
+        sleep(min(30,max(1,deadline-clock())))
 
 
 def inputs():
@@ -47,7 +63,7 @@ def inputs():
         value=json.loads(file.read_text()); service=value['service']
         require(service not in images,'duplicate image artifact'); images[service]=value['image']
     image_set(images)
-    previous=baseline(); config=public_config()
+    previous=baseline(int(os.environ.get('BASELINE_WAIT_SECONDS','0'))); config=public_config()
     require(previous['config_sha256']==fingerprint(config),'baseline config drift requires operator reconciliation')
     Path('rehearsal-input.json').write_bytes(canonical({'sha':os.environ['GITHUB_SHA'],'images':images,
         'baseline':previous['images'],'baseline_sha':previous.get('sha'),

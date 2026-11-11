@@ -79,9 +79,12 @@ export async function startInternalServer(deps: InternalServerDeps): Promise<Int
     if (deploymentProbe) {
       response.setHeader("Cache-Control", "no-store");
       response.setHeader("Content-Type", "application/json");
-      const sha = deps.deployment?.sha();
-      let ready = typeof sha === "string" && sha.length === 40 && /^[0-9a-fA-F]{40}$/.test(sha) &&
-        sha === deps.deployment?.buildSha() && deps.deployment?.ready() === true && server.listening;
+      const sha = deps.deployment?.sha() || undefined;
+      const built = deps.deployment?.buildSha() || undefined;
+      // Manual/local builds without any revision are explicitly unversioned, never a release identity.
+      const unversioned = sha === undefined && built === undefined;
+      let ready = (unversioned || (typeof sha === "string" && sha.length === 40 && /^[0-9a-fA-F]{40}$/.test(sha) &&
+        sha === built)) && deps.deployment?.ready() === true && server.listening;
       if (ready) {
         try {
           await deps.deployment!.checkDatabase();
@@ -91,7 +94,7 @@ export async function startInternalServer(deps: InternalServerDeps): Promise<Int
         }
       }
       response.writeHead(ready ? 200 : 503);
-      response.end(JSON.stringify(ready ? { status: "ready", sha } : { status: "unavailable" }));
+      response.end(JSON.stringify(!ready ? { status: "unavailable" } : unversioned ? { status: "unversioned" } : { status: "ready", sha }));
       return;
     }
     const match = CLOSE_PATH.exec(url.pathname);

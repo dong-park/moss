@@ -62,13 +62,22 @@ export interface SyncServer {
   destroy(): Promise<void>;
 }
 
+interface DirtyDocument {
+  revision: number;
+  document?: Y.Doc;
+  retained?: Uint8Array;
+}
+
 export function createSyncServer(deps: SyncServerDeps): SyncServer {
   const { config } = deps;
   let draining = false;
   let destroyed: Promise<void> | undefined;
-  // Keep failed snapshots even after Hocuspocus unloads a document. Its database
-  // hook absorbs asynchronous errors, so unload alone is not persistence proof.
-  const dirty = new Map<string, Uint8Array>();
+  // Unpersisted changes per board. onChange only bumps a revision and keeps the live
+  // document reference (O(1) per update); the full state is encoded only when it is
+  // stored, when a still-dirty document unloads, or at shutdown. Failed snapshots are
+  // retained after unload because the database hook absorbs asynchronous errors, so
+  // unload alone is not persistence proof.
+  const dirty = new Map<string, DirtyDocument>();
   const requests = new Set<Promise<unknown>>();
   const limits = documentLimits(config.maxDocumentBytes);
   const guardedStore = createGuardedStore(deps.store, {
@@ -141,7 +150,20 @@ export function createSyncServer(deps: SyncServerDeps): SyncServer {
         guardedStore.remember(documentName, Y.encodeStateAsUpdate(document));
       },
       async onChange({ documentName, document }) {
-        dirty.set(documentName, Y.encodeStateAsUpdate(document));
+        const entry = dirty.get(documentName);
+        if (entry === undefined) dirty.set(documentName, { revision: 1, document });
+        else {
+          entry.revision += 1;
+          entry.document = document;
+        }
+      },
+      // Still dirty at unload (its store failed): encode once so shutdown can retry it.
+      async beforeUnloadDocument({ documentName, document }) {
+        const entry = dirty.get(documentName);
+        if (entry?.document === document) {
+          entry.retained = snapshot(entry);
+          entry.document = undefined;
+        }
       },
       async afterUnloadDocument({ documentName }) {
         guardedStore.forget(documentName);
@@ -168,9 +190,18 @@ export function createSyncServer(deps: SyncServerDeps): SyncServer {
     { maxPayload: limits.frameBytes },
   );
 
+  /** Full state of a dirty board, including bytes retained from an unloaded failed store. */
+  function snapshot(entry: DirtyDocument, live?: Uint8Array): Uint8Array {
+    const current = live ?? (entry.document === undefined ? undefined : Y.encodeStateAsUpdate(entry.document));
+    if (current === undefined) return entry.retained!;
+    return entry.retained === undefined ? current : Y.mergeUpdates([entry.retained, current]);
+  }
+
   async function persist(name: string, state: Uint8Array): Promise<void> {
-    dirty.set(name, state);
-    const outcome = await guardedStore.store(name, state);
+    const entry = dirty.get(name);
+    const revision = entry?.revision;
+    const retained = entry?.retained;
+    const outcome = await guardedStore.store(name, entry === undefined ? state : snapshot(entry, state));
     if (!outcome.stored && outcome.reason === "too_large") {
       closeWithCode(name, BOARD_TOO_LARGE_CODE, "board too large");
     }
@@ -179,7 +210,8 @@ export function createSyncServer(deps: SyncServerDeps): SyncServer {
     }
     // A revoked board intentionally has no persisted document. An unchanged
     // snapshot is already durable. Don't erase a newer change arriving mid-store.
-    if (dirty.get(name) === state) dirty.delete(name);
+    const now = dirty.get(name);
+    if (now !== undefined && now.revision === revision && now.retained === retained) dirty.delete(name);
   }
 
   /** Closes a board's document connections with a raw socket close code. */
@@ -249,7 +281,7 @@ export function createSyncServer(deps: SyncServerDeps): SyncServer {
         await server.destroy();
         // destroy waits for Hocuspocus debounce/unload work. Explicit retries
         // prove durability even if a previous hook swallowed a store failure.
-        const results = await Promise.allSettled([...dirty].map(([name, state]) => persist(name, state)));
+        const results = await Promise.allSettled([...dirty].map(([name, entry]) => persist(name, snapshot(entry))));
         const failures = results.filter((result) => result.status === "rejected");
         if (failures.length > 0 || dirty.size > 0) {
           throw new Error(`shutdown persistence failed for ${failures.length || dirty.size} document(s)`);

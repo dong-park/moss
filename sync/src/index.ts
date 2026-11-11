@@ -10,11 +10,12 @@ import { readTools } from "./mcpReadTools.ts";
 import { writeTools } from "./mcpWriteTools.ts";
 import { createPostgresBoardExists, createPostgresMembership } from "./membership.ts";
 import { createSyncServer } from "./server.ts";
+import { checkDatabase } from "./readiness.ts";
 import { installShutdownHandlers } from "./shutdown.ts";
 
 async function main(): Promise<void> {
   const config = loadConfig();
-  const pool = new Pool({ ...toPgConnection(config), max: 5, connectionTimeoutMillis: 3000, query_timeout: 5000 });
+  const pool = new Pool({ ...toPgConnection(config), max: 5 });
   let accepting = true;
 
   // [P1] Ktor's Flyway migration owns `documents`; wait for it instead of
@@ -51,7 +52,8 @@ async function main(): Promise<void> {
       sha: () => process.env.RELEASE_SHA,
       buildSha: readBuildSha,
       ready: () => accepting && sync.server.httpServer.listening,
-      checkDatabase: async () => { await pool.query("SELECT 1 FROM documents LIMIT 1"); },
+      // Bounded for the readiness probe only; business queries keep the pool's defaults.
+      checkDatabase: () => checkDatabase(pool, 3000),
     },
     revokeBoard: sync.revokeBoard,
     kickMember: sync.kickMember,
