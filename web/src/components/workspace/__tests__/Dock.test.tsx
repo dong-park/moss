@@ -2,10 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { I18nProvider } from "@/i18n/Provider";
 import { Dock, magnifiedSize } from "@/components/workspace/Dock";
-import { useWorkspace } from "@/state/workspace";
+import { __resetBoardDocsForTest, useWorkspace } from "@/state/workspace";
 import { useStorage } from "@/state/storage";
 import { useMobileCanvas } from "../mobileCanvas";
-import { resetDB } from "@/state/db/schema";
+import { getDB, resetDB } from "@/state/db/schema";
+import { connectionMirrorSettled, flushAll, isPersistInFlight, persistSettled } from "@/state/cardPersist";
 
 /**
  * FEAT-sticky-redesign n8: 독(Dock) — spec AC-1~AC-5 + Enter 생성(§8 접근성).
@@ -106,11 +107,21 @@ beforeEach(() => {
   });
 });
 
+async function resetDockDatabase() {
+  // Card creation starts writes synchronously but does not await their completion.
+  // Finish those writes and detach document observers before closing their DB.
+  await flushAll();
+  await persistSettled(useWorkspace.getState().cards.map((card) => card.id));
+  await __resetBoardDocsForTest();
+  await connectionMirrorSettled();
+  await resetDB();
+}
+
 afterEach(async () => {
   cleanup();
   useMobileCanvas.getState().close();
   vi.restoreAllMocks();
-  await resetDB();
+  await resetDockDatabase();
   useStorage.setState({ initialized: false, settings: null, quota: null });
   useWorkspace.setState({
     cards: [],
@@ -127,6 +138,42 @@ afterEach(async () => {
   if (originalStorage) {
     Object.defineProperty(navigator, "storage", originalStorage);
   }
+});
+
+it("database teardown waits for a pending Dock note save", async () => {
+  const originalWidth = window.innerWidth;
+  await useStorage.getState().init();
+  await useWorkspace.getState().loadFromStorage();
+  const db = getDB();
+  const close = vi.spyOn(db, "close");
+  const saveNote = useStorage.getState().saveNote;
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  vi.spyOn(useStorage.getState(), "saveNote").mockImplementation(async (patch) => {
+    await gate;
+    return saveNote(patch);
+  });
+  window.innerWidth = 1280;
+  renderDock();
+  fireEvent.click(screen.getByRole("button", { name: "메모" }));
+  const id = useWorkspace.getState().selectedIds[0];
+  expect(id).toBeTruthy();
+  expect(isPersistInFlight(id)).toBe(true);
+  cleanup();
+  const resetting = resetDockDatabase();
+  try {
+    // Yield one task while the controlled save is still pending.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(close).not.toHaveBeenCalled();
+  } finally {
+    release();
+    await persistSettled([id]);
+    await resetting;
+    window.innerWidth = originalWidth;
+  }
+  // Dexie's delete also closes the handle; every close must follow the save.
+  expect(close).toHaveBeenCalled();
+  expect(isPersistInFlight(id)).toBe(false);
 });
 
 describe("AC-1: 독 버튼 (펜·시그널스 임시 숨김 + 휴지통)", () => {
