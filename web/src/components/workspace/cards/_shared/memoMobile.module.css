@@ -1,7 +1,10 @@
 .surface { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; }
 .scaleToggle { display: none; }
+.mobileHeader { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-shrink: 0; padding-bottom: 8px; border-bottom: 1px solid var(--color-border); margin-bottom: 8px; }
+.mobileHeader button { min-width: 60px; min-height: 44px; padding: 0 12px; border-radius: 10px; font-size: 16px; font-weight: 600; cursor: pointer; }
+.primaryAction { background: var(--color-active-bg); color: var(--color-active-fg); }
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (max-width: 1023px) and (max-height: 500px) {
   .dialog {
     width: calc(100vw - 16px) !important;
     height: calc(var(--memo-viewport-height, 100dvh) - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 16px) !important;
@@ -30,4 +33,14 @@
   .surface[data-memo-layout="canonical"] .body { zoom: var(--memo-fit-scale, 1); }
   .surface[data-memo-full-size="true"] .body { zoom: 1; }
   .scaleToggle { display: block; align-self: flex-end; flex-shrink: 0; font-size: 14px; cursor: pointer; }
+  /* A landscape keyboard can leave only ~110px. Reserve a side action so
+     the header/tools cannot consume the editor's entire scroll viewport. */
+  .dialog[data-memo-short-viewport="true"] { padding: 8px !important; }
+  .dialog[data-memo-short-viewport="true"] .mobileHeader {
+    position: absolute; right: 8px; top: 8px; border: 0; margin: 0; padding: 0;
+  }
+  .dialog[data-memo-short-viewport="true"] .mobileHeader > button:first-child,
+  .dialog[data-memo-short-viewport="true"] .tools,
+  .dialog[data-memo-short-viewport="true"] .scaleToggle { display: none; }
+  .dialog[data-memo-short-viewport="true"] .surface { padding-right: 72px; }
 }

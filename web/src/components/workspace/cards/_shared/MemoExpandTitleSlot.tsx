@@ -11,8 +11,12 @@ import { MemoTitleRow } from "./MemoTitleRow";
 export function MemoExpandTitleSlot({
   title,
   onCommit,
+  editable = true,
+  autoFocus = false,
 }: {
   title: string;
+  editable?: boolean;
+  autoFocus?: boolean;
   onCommit: (title: string) => void;
 }) {
   const [, getEditor] = useInstance();
@@ -32,7 +36,8 @@ export function MemoExpandTitleSlot({
 
   return (
     <MemoTitleRow
-      editable
+      editable={editable}
+      autoFocus={autoFocus}
       title={title}
       onCommit={onCommit}
       onEnter={focusBodyStart}

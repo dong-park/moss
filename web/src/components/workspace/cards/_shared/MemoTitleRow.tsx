@@ -27,6 +27,7 @@ export function MemoTitleRow({
   variant = "column",
   placeholder,
   inputRef,
+  autoFocus,
   onCommit,
   onEnter,
   onArrowDown,
@@ -34,6 +35,7 @@ export function MemoTitleRow({
 }: {
   title: string;
   editable?: boolean;
+  autoFocus?: boolean;
   /**
    * `column`은 창에서 쓰는 720px 고정 컬럼 왼쪽 정렬이다.
    * `center`는 앞면 메모지용 — 카드 폭에 맞춰 가운데 정렬한다(2026-09-22 사용자 결정).
@@ -91,7 +93,7 @@ export function MemoTitleRow({
     return (
       <div
         className={[
-          "moss-md select-none overflow-hidden whitespace-nowrap text-ellipsis text-[15px] font-bold",
+          `moss-md select-none overflow-hidden whitespace-nowrap text-ellipsis text-[15px] font-bold ${styles.title}`,
           title ? "text-text" : "text-text-faint",
         ].join(" ")}
         style={style}
@@ -104,6 +106,7 @@ export function MemoTitleRow({
   return (
     <input
       ref={inputRef}
+      autoFocus={autoFocus}
       type="text"
       data-memo-title-input
       className={[

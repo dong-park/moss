@@ -29,6 +29,12 @@
       "fallbackTitle": "메모",
       "close": "닫기",
       "expand": "펼쳐서 편집",
+      "edit": "편집",
+      "done": "완료",
+      "backToBoard": "보드로",
+      "move": "이동",
+      "moveHint": "끌어서 이동",
+      "cardActions": "선택한 카드 조작",
       "pen": "펜으로 그리기",
       "eraser": "지우개",
       "toolbar": {
