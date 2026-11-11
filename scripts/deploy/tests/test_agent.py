@@ -72,6 +72,12 @@ class AgentTest(unittest.TestCase):
         self.assertNotIn('stop',self.rt.calls)
         self.assertEqual(self.store.read()['attempts']['42']['outcome'],'failure')
 
+    def test_crash_in_prepare_reports_actual_baseline(self):
+        state=self.store.read();state['active']={'id':42,'phase':'prepare','manifest':self.m};self.store.save(state)
+        agent.recover(self.store,self.rt)
+        self.assertEqual(self.store.read()['reports'][0]['sha'],self.old['sha'])
+        self.assertEqual(self.rt.calls,[])
+
     def test_lock_excludes_manual_and_timer(self):
         with self.store.lock():
             with self.assertRaises(BlockingIOError):

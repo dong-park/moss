@@ -64,7 +64,7 @@ def recover(store,runtime):
             halt(runtime)
             finish(store,active['id'],'error',None)
         else:
-            finish(store,active['id'],'failure',active['manifest']['sha'])
+            finish(store,active['id'],'failure',state['current'].get('sha'))
 
 
 def apply(store,runtime,ident,manifest):
