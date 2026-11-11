@@ -1,4 +1,4 @@
-.dock[data-compact="true"] > button[data-dock-id] {
+.dock[data-compact="true"] > button {
   min-width: 44px;
   min-height: 44px;
 }
