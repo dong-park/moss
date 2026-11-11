@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { I18nProvider } from "@/i18n/Provider";
 import { MAX_SCALE, MIN_SCALE, useWorkspace } from "@/state/workspace";
@@ -50,4 +50,37 @@ describe("ZoomBar — 줌 한계", () => {
     fireEvent.click(btn("축소"));
     expect(useWorkspace.getState().viewport.scale).toBe(MIN_SCALE);
   });
+});
+
+
+it("overview reserves measured safe-area controls relative to the canvas", () => {
+  const root = document.createElement("div");
+  root.dataset.canvasRoot = "true";
+  root.getBoundingClientRect = () => ({ width: 390, height: 700, bottom: 750 }) as DOMRect;
+  document.body.appendChild(root);
+  const fit = vi.spyOn(useWorkspace.getState(), "fitAllCards");
+  const { container } = wrap();
+  const zoom = container.querySelector('[data-canvas-control="zoom"]')!;
+  vi.spyOn(zoom, "getBoundingClientRect").mockReturnValue({ top: 565, bottom: 617 } as DOMRect);
+  try {
+    fireEvent.click(btn("전체 보기"));
+    expect(fit).toHaveBeenCalledWith({ width: 390, height: 700,
+      insets: { top: 64, left: 24, right: 24, bottom: 197 } });
+  } finally {
+    fit.mockRestore();
+    root.remove();
+  }
+});
+
+it("overview zoom increases gradually below the normal minimum", () => {
+  useWorkspace.setState({ viewport: { x: 20, y: 30, scale: 0.02 } });
+  wrap();
+  fireEvent.click(btn("확대"));
+  expect(useWorkspace.getState().viewport.scale).toBeCloseTo(0.024);
+});
+
+it("wheel zoom out preserves a below-minimum overview instead of jumping in", () => {
+  useWorkspace.setState({ viewport: { x: 20, y: 30, scale: 0.02 } });
+  useWorkspace.getState().zoomAt(0.9, 100, 100);
+  expect(useWorkspace.getState().viewport).toEqual({ x: 20, y: 30, scale: 0.02 });
 });

@@ -11,6 +11,7 @@ import {
 } from "@/state/workspace";
 import { useToasts } from "@/state/notifications";
 import { useT } from "@/i18n/Provider";
+import { useTouchCanvas } from "./touchCanvas";
 import { DraggableCard } from "./DraggableCard";
 import {
   DragGhostLayer,
@@ -92,6 +93,7 @@ export function Canvas() {
 
   const cards = useWorkspace((s) => s.cards);
   const currentBoardId = useWorkspace((s) => s.currentBoardId);
+  useTouchCanvas(canvasRef, currentBoardId);
   const boardTransitioning = useWorkspace((s) => s.boardTransitioning);
   const viewport = useWorkspace((s) => s.viewport);
   const selectedIds = useWorkspace((s) => s.selectedIds);
@@ -672,7 +674,7 @@ export function Canvas() {
       onDrop={onCanvasDrop}
       className={`relative h-full overflow-hidden bg-bg ${cursorClass}`}
       // FEAT-markdown-memo-pen: 펜 모드면 전역 커서를 펜으로(inline이 class를 덮음).
-      style={penMode ? { cursor: PEN_CURSOR } : undefined}
+      style={{ touchAction: "none", ...(penMode ? { cursor: PEN_CURSOR } : {}) }}
     >
       {/* world layer — viewport transform 적용. 사용자 카드는 항상 렌더한다.
           FEAT-boards AC-4: 보드 전환 시 200ms ease-out fade. */}

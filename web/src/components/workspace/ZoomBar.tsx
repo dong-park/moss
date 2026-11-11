@@ -3,18 +3,27 @@
 import { useWorkspace, MIN_SCALE, MAX_SCALE } from "@/state/workspace";
 import { useT } from "@/i18n/Provider";
 
+import { canvasControlInsets, zoomBottom } from "@/design/canvasControls";
+import { useCompactControls } from "./useCompactControls";
+import styles from "./canvasControls.module.css";
+
 const ZOOM_STEP = 1.2;
 
 export function ZoomBar() {
   const t = useT();
+  const compact = useCompactControls();
   const scale = useWorkspace((s) => s.viewport.scale);
   const setScale = useWorkspace((s) => s.setScale);
+  const fitAllCards = useWorkspace((s) => s.fitAllCards);
   const resetViewport = useWorkspace((s) => s.resetViewport);
 
   return (
     <div
-      className="pointer-events-auto absolute bottom-5 right-5 z-[var(--z-panel)] flex items-center gap-0.5 rounded-md px-1.5 py-1"
+      data-canvas-control="zoom"
+      data-compact={compact}
+      className={`${styles.zoom} pointer-events-auto absolute right-5 z-[var(--z-panel)] flex items-center gap-0.5 rounded-md px-1.5 py-1`}
       style={{
+        bottom: `calc(${compact ? zoomBottom : 20}px + env(safe-area-inset-bottom, 0px))`,
         background: "var(--gradient-paper)",
         boxShadow: "var(--shadow-card)",
       }}
@@ -29,6 +38,7 @@ export function ZoomBar() {
       <button
         onClick={() => setScale(1)}
         title={t("workspace.zoom.fit")}
+        aria-label={t("workspace.zoom.fit")}
         className="min-w-[3.2rem] cursor-pointer rounded px-1.5 py-0.5 text-center text-[11px] text-text-muted hover:bg-[color:var(--color-hover)]"
       >
         {Math.round(scale * 100)}%
@@ -39,6 +49,16 @@ export function ZoomBar() {
         onClick={() => setScale(scale * ZOOM_STEP)}
       >
         +
+      </IconButton>
+      <IconButton label={t("workspace.zoom.all")} onClick={() => {
+        const root = document.querySelector('[data-canvas-root="true"]');
+        if (!root) return;
+        const rect = root.getBoundingClientRect();
+        const controls = Array.from(document.querySelectorAll('[data-canvas-control]'), el => el.getBoundingClientRect());
+        fitAllCards({ width: rect.width, height: rect.height,
+          insets: canvasControlInsets(rect.width, rect.height, rect, controls) });
+      }}>
+        ⛶
       </IconButton>
       <div className="mx-1 h-4 w-px bg-border" />
       <IconButton label={t("workspace.zoom.reset")} onClick={resetViewport}>

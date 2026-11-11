@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import styles from "./memoTable.module.css";
 import { useT } from "@/i18n/Provider";
 import {
   useMemoTable,
@@ -19,6 +20,8 @@ function toggleIn(list: string[], id: string): string[] {
 
 export function MemoTableToolbar() {
   const t = useT();
+  const sort = useMemoTable((s) => s.sort);
+  const setSort = useMemoTable((s) => s.setSort);
   const notes = useMemoTable((s) => s.notes);
   const boards = useMemoTable((s) => s.boards);
   const boardFilter = useMemoTable((s) => s.boardFilter);
@@ -55,9 +58,9 @@ export function MemoTableToolbar() {
   ];
   const selectedBoards = boardFilter === "all" ? null : boardFilter;
 
-  // pr-28: 우상단 고정 ViewToggle과 겹치지 않도록 오른쪽 여백을 비운다.
+
   return (
-    <div className="flex flex-wrap items-center gap-2 border-b border-border py-2 pl-3 pr-28">
+    <div className={`${styles.toolbar} flex flex-wrap items-center gap-2 border-b border-border p-3`}>
       <input
         type="search"
         value={queryInput}
@@ -66,6 +69,18 @@ export function MemoTableToolbar() {
         aria-label={t("workspace.table.search.placeholder")}
         className="w-56 rounded-md border border-border bg-bg px-2.5 py-1 text-xs text-text outline-none focus:border-accent-blue"
       />
+
+      <select className={styles.mobileSort} aria-label={t("workspace.table.sort")}
+        value={`${sort.key}:${sort.dir}`} onChange={(e) => {
+          const [key, dir] = e.target.value.split(":") as [typeof sort.key, typeof sort.dir];
+          setSort(key);
+          if (useMemoTable.getState().sort.dir !== dir) setSort(key);
+        }}>
+        {(["title", "createdAt", "updatedAt"] as const).flatMap(key =>
+          (["asc", "desc"] as const).map(dir => <option key={`${key}:${dir}`} value={`${key}:${dir}`}>
+            {t(`workspace.table.column.${key}`)} {dir === "asc" ? "↑" : "↓"}
+          </option>))}
+      </select>
 
       {/* 보드 필터 — "모든 보드" 또는 다중 선택 + 하위 함 포함 */}
       <details className="relative" data-testid="table-board-filter">

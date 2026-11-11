@@ -15,7 +15,8 @@ import type { HandwritingPoint } from "@/state/cardContent";
  *  - 점/지우개 근접 판정(pathsIntersect)·좌표 변환(toLocal)의 유일 정의처.
  * 비책임(호출측 소유): penWidth/tool 상태, undo/redo/clear, 키보드, 렌더.
  *
- * 좌표계: 컬럼이 1:1(CSS scale 없음)이므로 SVG 기준 상대 픽셀이 곧 저장 좌표다.
+ * Default coordinates are local pixels. A scaled canonical memo supplies its
+ * coordinateWidth so both axes map back to the unchanged stored geometry.
  *
  * A1: finishStroke는 onPathsChange를 setDraft 업데이터 "밖"(이벤트 핸들러 본문)에서
  *     호출한다 — render 단계 cross-component setState("Cannot update a component
@@ -64,6 +65,7 @@ export function useDrawing({
   tool,
   onPathsChange,
   svgRef,
+  coordinateWidth,
 }: {
   paths: HandwritingPoint[][];
   /** 그리기 활성. false면 포인터 무시(호출측이 pointer-events로 통과 처리). */
@@ -75,6 +77,7 @@ export function useDrawing({
    * 렌더 중 ref 접근으로 오인하므로(react-hooks/refs), 소유권을 호출부에 둔다.
    */
   svgRef: RefObject<SVGSVGElement | null>;
+  coordinateWidth?: number;
 }): UseDrawing {
   const [draft, setDraft] = useState<HandwritingPoint[]>([]);
   const drawingRef = useRef(false);
@@ -82,9 +85,10 @@ export function useDrawing({
   const toLocal = (clientX: number, clientY: number): HandwritingPoint => {
     const rect = svgRef.current?.getBoundingClientRect();
     if (!rect) return { x: 0, y: 0 };
+    const scale = coordinateWidth && rect.width > 0 ? rect.width / coordinateWidth : 1;
     return {
-      x: +(clientX - rect.left).toFixed(1),
-      y: +(clientY - rect.top).toFixed(1),
+      x: +((clientX - rect.left) / scale).toFixed(1),
+      y: +((clientY - rect.top) / scale).toFixed(1),
     };
   };
 

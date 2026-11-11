@@ -9,6 +9,10 @@
  * 모달은 전체를 다 보여준다("펼치면 항상 최대"). 화면 크기에 의존하면 줄바꿈이
  * 달라져 펜이 어긋나므로 반드시 상수여야 한다(펼친 창 스크롤 영역 744px = 컬럼 720px + 스크롤바 여유 24px 기준).
  * ───────────────────────────────────────────────────────────── */
+// Mobile dialog policy: ink-free notes may reflow; ink-bearing notes and active
+// drawing retain this exact logical width and scale text + SVG together to fit.
+// A reversible 100% view permits intentional horizontal scrolling for editing.
+// Never persist the visual scale or migrate existing points when resizing.
 export const MEMO_CONTENT_WIDTH = 720;
 
 /* ─────────────────────────────────────────────────────────────

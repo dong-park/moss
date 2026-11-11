@@ -93,3 +93,12 @@ describe("BubbleMenuHost", () => {
     }
   });
 });
+
+it("keeps the full toolbar inside the visual viewport near the mobile title", () => {
+  const height = vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(32);
+  try {
+    render(<BubbleMenuHost />);
+    act(() => refreshBubble(area(20, 500), viewAt({ left: 40, top: 20, bottom: 36 })));
+    expect(parseFloat(bubble()!.style.top) - 32).toBeGreaterThanOrEqual(8);
+  } finally { height.mockRestore(); }
+});

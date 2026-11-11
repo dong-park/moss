@@ -14,6 +14,8 @@
  * 좌표계: 부모 컬럼(고정 폭 [[MEMO_CONTENT_WIDTH]])을 가득 채우는 1:1 픽셀 좌표.
  * 카드와 모달이 같은 고정 폭 컬럼 위에 이 레이어를 1:1로 얹으므로, stroke가 카드↔
  * 모달 어디서 그려져도 동일 좌표공간에 저장되고 같은 글자 위에 정렬된다(viewBox 없음).
+ * Mobile may scale the whole column; coordinateWidth maps input back to these
+ * canonical pixels without changing text wrapping or the serialized paths.
  * ───────────────────────────────────────────────────────────── */
 
 import { useMemo, useRef } from "react";
@@ -30,6 +32,8 @@ export type DrawingLayerProps = {
   onChange: (json: string) => void;
   /** stroke 색 (CSS 변수). 기본 본문색. */
   stroke?: string;
+  /** Canonical width when the entire body is visually scaled (no reflow). */
+  coordinateWidth?: number;
 };
 
 export function DrawingLayer({
@@ -38,6 +42,7 @@ export function DrawingLayer({
   penWidth,
   tool,
   onChange,
+  coordinateWidth,
   stroke = "var(--color-text)",
 }: DrawingLayerProps) {
   const data = useMemo(() => parseHandwriting(value), [value]);
@@ -48,6 +53,7 @@ export function DrawingLayer({
     tool,
     onPathsChange: (paths) => onChange(serializeHandwriting({ paths })),
     svgRef,
+    coordinateWidth,
   });
 
   const cursor = active ? (tool === "eraser" ? "cell" : "crosshair") : "default";

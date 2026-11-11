@@ -19,6 +19,8 @@
 import {
   useEffect,
   useRef,
+  useState,
+  type CSSProperties,
   useSyncExternalStore,
   type ReactNode,
 } from "react";
@@ -36,6 +38,7 @@ import { Milkdown, MilkdownProvider, useEditor } from "@milkdown/react";
 import { TextSelection } from "@milkdown/prose/state";
 import type { Node as ProseNode } from "@milkdown/prose/model";
 
+import styles from "./memoMobile.module.css";
 import { MEMO_CONTENT_WIDTH } from "./memoLayout";
 import { editorPlugins, refreshBubble, setBubbleScrollEl } from "./editor/extensions";
 import { markdownPlaceholder } from "./markdownPlaceholder";
@@ -115,9 +118,14 @@ export function MilkdownInner({ value, editable, onChange, onBlur, expanded, car
             },
           }));
           const l = ctx.get(listenerCtx);
-          l.markdownUpdated((lctx, markdown) => {
-            lastDocRef.current = lctx.get(editorViewCtx).state.doc;
-            emitRef.current(markdown);
+          // The listener's debounce survives editor destruction. Serialize only
+          // while its view is alive; closing already flushes the final document.
+          let destroyed = false;
+          l.destroy(() => { destroyed = true; });
+          l.updated((lctx, doc) => {
+            if (destroyed) return;
+            lastDocRef.current = doc;
+            emitRef.current(lctx.get(serializerCtx)(doc));
           });
           // FEAT-card-entry-mode: 편집 진입(editable) 시 mount 직후 포커스 —
           // 더블클릭→첫 키스트로크 손실 방지. 제목 줄은 포커스를 뺏지 않는다(AC-2).
@@ -213,8 +221,9 @@ export default function MarkdownEditor(props: MarkdownEditorProps) {
  * 고정 폭 (펜 좌표): 본문을 고정 폭([[MEMO_CONTENT_WIDTH]]) 컬럼, 13px, padding 6/9로
  * 잡는다. 저장된 펜 선(card.overlay)이 이 컬럼 좌표라서, 폭·글꼴이 바뀌면 줄바꿈이 달라져
  * 기존 선이 다른 글자 위로 간다. 카드 앞면은 제목만 보이고 본문·펜은 이 창에서만 보인다.
- * 창이 컬럼보다 좁으면 본문이 가로 스크롤된다. 스크롤 영역은 컬럼 720px + 스크롤바 여유
- * 24px = 744px이다. (과거 CSS scale + viewBox 방식은 reflow로 펜이 어긋나 제거.)
+ * Desktop keeps the canonical column. Mobile reflows only ink-free notes; ink
+ * and drawing mode scale the entire canonical body, without changing wrapping.
+ * Explicit 100% view enables intentional horizontal scrolling for detail work.
  *
  * overlay: 펜 그리기 레이어. 고정 폭 컬럼(relative) 안에 있어 absolute inset-0이
  * 컬럼을 1:1로 덮는다 — 저장된 선과 같은 좌표공간.
@@ -224,15 +233,31 @@ export function ExpandedMarkdownEditor({
   onChange,
   overlay,
   titleSlot,
+  canonical = true,
 }: {
   value: string;
   onChange: (markdown: string) => void;
   overlay?: ReactNode;
+  /** Ink or an active drawing tool requires the original 720px line wrapping. */
+  canonical?: boolean;
   /** FEAT-memo-title: 본문 컬럼 위에 둘 제목 줄(스크롤 영역 안). */
   titleSlot?: ReactNode;
 }) {
   const isClient = useIsClient();
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [fitScale, setFitScale] = useState(1);
+  const [fullSize, setFullSize] = useState(false);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry.contentRect.width > 0) {
+        setFitScale(Math.min(1, entry.contentRect.width / MEMO_CONTENT_WIDTH));
+      }
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [isClient]);
   // 버블이 선택이 바뀔 때도 이 스크롤 영역의 보이는 범위로 위치를 정하게 등록한다.
   // 창 크기가 바뀌면 글자 좌표가 달라지므로 버블 위치도 다시 계산한다.
   useEffect(() => {
@@ -247,46 +272,34 @@ export function ExpandedMarkdownEditor({
     };
   }, [isClient]);
 
-  if (!isClient) {
-    // SSR/jsdom 폴백 — 원문 마크다운만 표시(ProseMirror 미생성).
-    return (
-      <div className="min-h-0 flex-1 overflow-auto">
-        {titleSlot}
-        <div
-          data-memo-body-column
-          className="moss-md relative whitespace-pre-wrap text-[13px] leading-6 text-text"
-          style={{ width: MEMO_CONTENT_WIDTH, padding: "6px 9px" }}
-        >
-          {value}
-          {overlay}
-        </div>
-      </div>
-    );
-  }
-  // FEAT-sticky-redesign n4: MilkdownProvider는 호출자(MemoExpandDialog)가
-  // Dialog.Content 전체(펜 슬롯 + 이 본문)를 감싸며 한 번만 제공한다 —
-  // 제목 슬롯이 useInstance()로 같은 에디터 인스턴스를 잡아야 하기 때문.
+  // The same DOM/editor survives policy and viewport changes: selection, pending
+  // saves and ProseMirror history must survive switching the pen or fit view.
   return (
-    <>
-      <div
-        ref={scrollRef}
-        className="min-h-0 flex-1 overflow-auto"
+    <div
+      data-memo-layout={canonical ? "canonical" : "reflow"}
+      data-memo-full-size={fullSize}
+      className={styles.surface}
+      style={{ "--memo-fit-scale": fitScale } as CSSProperties}
+    >
+      {canonical && (
+        <button type="button" className={styles.scaleToggle}
+          aria-pressed={fullSize} onClick={() => setFullSize(!fullSize)}>
+          {fullSize ? `${Math.round(fitScale * 100)}%` : "100%"}
+        </button>
+      )}
+      <div ref={scrollRef} className={`min-h-0 flex-1 overflow-auto ${styles.scroll}`}
         style={{ maxWidth: MEMO_CONTENT_WIDTH + 24, padding: 0 }}
-        onScroll={() => {
-          if (scrollRef.current) refreshBubble(scrollRef.current);
-        }}
-      >
+        onScroll={() => { if (scrollRef.current) refreshBubble(scrollRef.current); }}>
+        {/* Title is outside the scaled geometry so its touch target stays usable. */}
         {titleSlot}
-        {/* 고정 폭 + padding 6/9 + text-[13px]. 저장된 펜 선 좌표가 여기에 걸려 있다. */}
-        <div
-          data-memo-body-column
-          className="moss-md relative text-[13px]"
-          style={{ width: MEMO_CONTENT_WIDTH, padding: "6px 9px" }}
-        >
-          <MilkdownInner value={value} editable expanded onChange={onChange} />
+        <div data-memo-body-column className={`moss-md relative text-[13px] ${styles.body}`}
+          style={{ width: MEMO_CONTENT_WIDTH, padding: "6px 9px" }}>
+          {isClient
+            ? <MilkdownInner value={value} editable expanded onChange={onChange} />
+            : <div className="whitespace-pre-wrap">{value}</div>}
           {overlay}
         </div>
       </div>
-    </>
+    </div>
   );
 }

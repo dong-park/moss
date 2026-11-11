@@ -121,7 +121,8 @@
       "in": "확대",
       "out": "축소",
       "reset": "원점 복귀",
-      "fit": "100%로 맞추기"
+      "fit": "100%로 맞추기",
+      "all": "전체 보기"
     },
     "canvas": {
       "virtualization": {
@@ -205,6 +206,7 @@
       "deletedBoard": "삭제된 보드"
     },
     "dock": {
+      "more": "더 보기",
       "label": "독"
     },
     "table": {
@@ -259,8 +261,10 @@
         "message": "{count}개를 휴지통으로 보냈어요",
         "undo": "되돌리기"
       },
+      "sort": "정렬",
       "action": {
-        "viewOnCanvas": "캔버스에서 보기"
+        "viewOnCanvas": "캔버스에서 보기",
+        "detailsFor": "상세 정보: {title}"
       },
       "untitled": "제목 없음"
     },

@@ -14,6 +14,7 @@
  * 만들 수 있게 한다 — placeholder는 편집 가능할 때만 보인다(AC-1·AC-3).
  * ───────────────────────────────────────────────────────────── */
 
+import styles from "./memoMobile.module.css";
 import { t } from "@/i18n";
 import {
   MEMO_CONTENT_WIDTH,
@@ -107,7 +108,7 @@ export function MemoTitleRow({
       data-memo-title-input
       className={[
         "moss-md w-full border-none bg-transparent font-bold text-text outline-none placeholder:text-text-faint",
-        centered ? "" : "text-[15px]",
+        centered ? "" : `text-[15px] ${styles.title}`,
         // 앞면은 포커스 링을 끈다 — globals.css의 `*:focus-visible` 라임 outline이
         // 카드 폭을 꽉 채운 줄 위아래로 초록 선 두 개로 보인다(좌우는 카드가 자름).
         // 깜빡이는 커서가 이미 "여기 치면 된다"를 말한다(2026-09-22 사용자 결정).

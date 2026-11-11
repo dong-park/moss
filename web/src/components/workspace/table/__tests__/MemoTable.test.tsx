@@ -212,3 +212,104 @@ describe("ViewToggle — 캔버스 ↔ 표(AC-1)", () => {
     expect(useWorkspace.getState().view).toBe("canvas");
   });
 });
+
+describe("phase5 — compact table", () => {
+  beforeEach(() => {
+    vi.stubGlobal("innerWidth", 390);
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  async function seed(count = 1) {
+    await useStorage.getState().init();
+    for (let i = 0; i < count; i++) {
+      await useStorage.getState().saveNote({
+        id: `mobile-${i}`, boardId: null, title: `Title ${i}`,
+        content: `Preview ${i}`, createdAt: i + 1, updatedAt: i + 1,
+      });
+    }
+    renderTable();
+    await waitFor(() => expect(screen.getAllByTestId("memo-table-row").length).toBeGreaterThan(0));
+  }
+
+  it.each([360, 390, 430])("%ipx uses compact preview rows and 96px virtualization geometry", async (width) => {
+    vi.stubGlobal("innerWidth", width);
+    await seed(3);
+    const grid = screen.getByRole("grid");
+    expect(Number.parseFloat((grid.firstElementChild as HTMLElement).style.minWidth)).toBe(0);
+    const rows = screen.getAllByTestId("memo-table-row");
+    expect(rows[0].style.height).toBe("96px");
+    expect(rows[1].style.top).toBe("96px");
+    expect(screen.getByText("Preview 0")).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "정렬" })).toBeTruthy();
+  });
+
+  it("selection and its keyboard activation never open or edit; preview explicitly opens", async () => {
+    await seed();
+    const originalOpen = useMemoTable.getState().openMemo;
+    const open = vi.spyOn(useMemoTable.getState(), "openMemo").mockResolvedValue();
+    act(() => useMemoTable.setState({ openMemo: open }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Title 0" }));
+    fireEvent.keyDown(screen.getByRole("checkbox", { name: "Title 0" }), { key: "Enter" });
+    expect(useMemoTable.getState().selectedIds.has("mobile-0")).toBe(true);
+    expect(open).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText("메모 제목")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Title 0 Preview 0" }));
+    expect(open).toHaveBeenCalledWith("mobile-0");
+    open.mockRestore();
+    act(() => useMemoTable.setState({ openMemo: originalOpen }));
+  });
+
+  it("details expose metadata and touch canvas action without changing row height", async () => {
+    await seed();
+    const originalCanvas = useWorkspace.getState().openCardOnCanvas;
+    const canvas = vi.spyOn(useWorkspace.getState(), "openCardOnCanvas").mockResolvedValue();
+    act(() => useWorkspace.setState({ openCardOnCanvas: canvas }));
+    fireEvent.click(screen.getByRole("button", { name: "상세 정보: Title 0" }));
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.textContent).toContain("만든 날");
+    expect(dialog.textContent).toContain("고친 날");
+    expect(screen.getByTestId("memo-table-row").style.height).toBe("96px");
+    fireEvent.click(screen.getByRole("button", { name: "캔버스에서 보기" }));
+    expect(canvas).toHaveBeenCalledWith("mobile-0");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    canvas.mockRestore();
+    act(() => useWorkspace.setState({ openCardOnCanvas: originalCanvas }));
+  });
+
+  it("compact sort, search, filter, range selection and batch trash retain the store flow", async () => {
+    await seed(3);
+    fireEvent.change(screen.getByRole("combobox", { name: "정렬" }), { target: { value: "title:asc" } });
+    expect(useMemoTable.getState().sort).toEqual({ key: "title", dir: "asc" });
+    fireEvent.click(screen.getByRole("checkbox", { name: "Title 0" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Title 2" }), { shiftKey: true });
+    expect(useMemoTable.getState().selectedIds.size).toBe(3);
+    fireEvent.click(screen.getByRole("button", { name: "선택 해제" }));
+    expect(useMemoTable.getState().selectedIds.size).toBe(0);
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "Preview 1" } });
+    await waitFor(() => expect(screen.getAllByTestId("memo-table-row")).toHaveLength(1));
+    fireEvent.change(screen.getByRole("combobox", { name: "첨부" }), { target: { value: "has" } });
+    await waitFor(() => expect(screen.queryAllByTestId("memo-table-row")).toHaveLength(0));
+    fireEvent.change(screen.getByRole("combobox", { name: "첨부" }), { target: { value: "all" } });
+    await screen.findByText("Title 1");
+    fireEvent.click(screen.getByRole("checkbox", { name: "Title 1" }));
+    fireEvent.click(screen.getByRole("button", { name: "휴지통으로" }));
+    await waitFor(() => expect(screen.queryAllByTestId("memo-table-row")).toHaveLength(0));
+  });
+
+  it("mobile windowing and keyboard scroll use compact height; resize keeps rows reachable", async () => {
+    const client = vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(192);
+    await seed(40);
+    const grid = screen.getByRole("grid");
+    expect(screen.getAllByTestId("memo-table-row")).toHaveLength(18);
+    fireEvent.keyDown(grid, { key: "ArrowDown" });
+    fireEvent.keyDown(grid, { key: "ArrowDown" });
+    fireEvent.keyDown(grid, { key: "ArrowDown" });
+    expect(grid.scrollTop).toBe(96);
+    fireEvent.scroll(grid, { target: { scrollTop: 1920 } });
+    expect(screen.getAllByTestId("memo-table-row")[0].style.top).toBe("1152px");
+    act(() => { window.innerWidth = 1280; window.dispatchEvent(new Event("resize")); });
+    expect(screen.getAllByTestId("memo-table-row").length).toBeGreaterThan(0);
+    expect(screen.getAllByTestId("memo-table-row")[0].style.height).toBe("36px");
+    client.mockRestore();
+  });
+});

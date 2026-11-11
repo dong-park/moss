@@ -1,5 +1,6 @@
 "use client";
 
+import { canvasControlInsets } from "@/design/canvasControls";
 import { create } from "zustand";
 import type { AINoteRef } from "./aiGate";
 import { useStorage } from "./storage";
@@ -996,6 +997,7 @@ interface WorkspaceState {
     viewportSize?: { width: number; height: number },
   ) => void;
   /** 메모(text)들이 화면에 꽉 차도록 viewport scale·위치를 맞춘다(새로고침 직후 포커싱용). */
+  fitAllCards: (size: { width: number; height: number; insets?: { top: number; right: number; bottom: number; left: number } }) => void;
   fitToCards: (viewportSize?: { width: number; height: number }) => void;
 }
 
@@ -4448,7 +4450,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   zoomAt: (factor, screenX, screenY) =>
     set((s) => {
-      const next = clamp(s.viewport.scale * factor, MIN_SCALE, MAX_SCALE);
+      const next = clamp(s.viewport.scale * factor, Math.min(s.viewport.scale, MIN_SCALE), MAX_SCALE);
       if (next === s.viewport.scale) return s;
       const ratio = next / s.viewport.scale;
       const x = screenX * (1 - ratio) + s.viewport.x * ratio;
@@ -4458,7 +4460,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   setScale: (scale) =>
     set((s) => ({
-      viewport: { ...s.viewport, scale: clamp(scale, MIN_SCALE, MAX_SCALE) },
+      viewport: { ...s.viewport, scale: clamp(scale, Math.min(s.viewport.scale, MIN_SCALE), MAX_SCALE) },
     })),
 
   resetViewport: () => set({ viewport: { x: 0, y: 0, scale: 1 } }),
@@ -4791,6 +4793,28 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       },
       selectedIds: [id],
     });
+  },
+
+  // Explicit overview may zoom below MIN_SCALE; automatic fitting stays unchanged.
+  fitAllCards: ({ width, height, insets = canvasControlInsets(width, height) }) => {
+    const w = width - insets.left - insets.right;
+    const h = height - insets.top - insets.bottom;
+    if (w <= 0 || h <= 0) return;
+    const cards = get().cards;
+    if (!cards.length) { set({ canvasHasFitted: true, viewport: { x: 0, y: 0, scale: 1 } }); return; }
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const c of cards) {
+      minX = Math.min(minX, c.x);
+      minY = Math.min(minY, c.y);
+      maxX = Math.max(maxX, c.x + c.width);
+      maxY = Math.max(maxY, c.y + (c.height ?? (c.kind === "text" || c.kind === "board" ? c.width : 160)));
+    }
+    const scale = Math.min(1, w / Math.max(1, maxX - minX), h / Math.max(1, maxY - minY));
+    set({ canvasHasFitted: true, viewport: {
+      scale,
+      x: insets.left + w / 2 - (minX + maxX) / 2 * scale,
+      y: insets.top + h / 2 - (minY + maxY) / 2 * scale,
+    } });
   },
 
   fitToCards: (viewportSize) => {

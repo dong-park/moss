@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { I18nProvider } from "@/i18n/Provider";
 import { useWorkspace, type Card } from "@/state/workspace";
@@ -38,11 +38,13 @@ vi.mock("@/components/workspace/cards/_shared/MarkdownEditor", () => ({
     onChange: (md: string) => void;
     overlay?: ReactNode;
     titleSlot?: ReactNode;
+    canonical?: boolean;
     contentWidth?: number;
     contentHeight?: number;
   }) => (
     <div
       data-testid="expanded-editor-wrap"
+      data-memo-policy={props.canonical ? "canonical" : "reflow"}
       data-content-width={props.contentWidth}
       data-content-height={props.contentHeight}
     >
@@ -348,4 +350,55 @@ describe("memo-paper-expand · 종이 창", () => {
       expectClosedTrimmed();
     });
   });
+});
+
+
+describe("mobile memo viewport and focus", () => {
+  it("tracks visual viewport keyboard resize and removes listeners on unmount", () => {
+    const visual = new EventTarget() as EventTarget & { height: number; offsetTop: number };
+    visual.height = 700;
+    visual.offsetTop = 0;
+    const remove = vi.spyOn(visual, 'removeEventListener');
+    vi.stubGlobal('visualViewport', visual);
+    seed([textCard()]);
+    useWorkspace.getState().setExpandedCard('c1');
+    const { unmount } = wrap(<MemoExpandDialog />);
+    const dialog = screen.getByRole('dialog');
+    expect(dialog.style.getPropertyValue('--memo-viewport-height')).toBe('700px');
+    act(() => { visual.height = 350; visual.offsetTop = 40; visual.dispatchEvent(new Event('resize')); });
+    expect(dialog.style.getPropertyValue('--memo-viewport-height')).toBe('350px');
+    expect(dialog.style.getPropertyValue('--memo-viewport-top')).toBe('40px');
+    unmount();
+    expect(remove).toHaveBeenCalledWith('resize', expect.any(Function));
+    expect(remove).toHaveBeenCalledWith('scroll', expect.any(Function));
+    vi.unstubAllGlobals();
+  });
+
+  it("returns focus to the opener after Escape", async () => {
+    seed([textCard()]);
+    function Harness() { return <><button onClick={() => useWorkspace.getState().setExpandedCard('c1')}>open memo</button><MemoExpandDialog /></>; }
+    wrap(<Harness />);
+    const opener = screen.getByRole('button', { name: 'open memo' });
+    opener.focus();
+    fireEvent.click(opener);
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    await waitFor(() => expect(document.activeElement).toBe(opener));
+  });
+});
+
+it("reflows an ink-free memo, switches before drawing, and preserves existing ink geometry", () => {
+  seed([textCard()]);
+  useWorkspace.getState().setExpandedCard('c1');
+  wrap(<MemoExpandDialog />);
+  const layout = screen.getByTestId('expanded-editor-wrap');
+  expect(layout.getAttribute('data-memo-policy')).toBe('reflow');
+  fireEvent.click(screen.getByLabelText('펜으로 그리기'));
+  expect(layout.getAttribute('data-memo-policy')).toBe('canonical');
+  fireEvent.click(screen.getByLabelText('펜으로 그리기'));
+  expect(layout.getAttribute('data-memo-policy')).toBe('reflow');
+  const overlay = JSON.stringify({paths: [[{x: 700, y: 123}, {x: 710, y: 124}]]});
+  act(() => useWorkspace.getState().setOverlay('c1', overlay));
+  expect(layout.getAttribute('data-memo-policy')).toBe('canonical');
+  expect(document.querySelector('polyline')?.getAttribute('points')).toBe('700,123 710,124');
+  expect(useWorkspace.getState().cards[0].overlay).toBe(overlay);
 });

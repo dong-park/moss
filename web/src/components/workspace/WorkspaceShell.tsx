@@ -183,14 +183,16 @@ export function WorkspaceShell() {
         {boardId ? (
           <>
             <RouteBoardSync boardId={boardId} />
-            {isCanvas ? <Canvas /> : <MemoTable />}
-            {/* FEAT-collab-auth n7: 우상단 오프라인 표시 + 공유 아이콘.
-                FEAT-memo-table-view AC-1: 캔버스 ↔ 표 토글도 같은 줄에 둔다. */}
-            <div className="fixed top-3 right-3 z-[var(--z-panel)] flex items-center gap-2">
-              <OfflineBadge />
-              <ShareControlMount />
-              <ViewToggle />
-              <AccountMenu />
+            <div className={isCanvas ? "contents" : "flex min-h-0 flex-col"}>
+              <div data-testid="workspace-controls" className={isCanvas
+                ? "fixed top-3 right-3 z-[var(--z-panel)] flex items-center gap-2"
+                : "flex shrink-0 flex-wrap items-center justify-end gap-2 border-b border-border p-3 [&_button]:min-h-11 [&_button]:min-w-11"}>
+                <OfflineBadge />
+                <ShareControlMount />
+                <ViewToggle />
+                <AccountMenu />
+              </div>
+              {isCanvas ? <Canvas /> : <MemoTable />}
             </div>
             <CollabSession />
             <UploadChoiceDialog />

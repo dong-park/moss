@@ -1,6 +1,9 @@
 "use client";
 
 import Image from "next/image";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import { useCompactControls } from "./useCompactControls";
+import styles from "./canvasControls.module.css";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   motion,
@@ -156,6 +159,9 @@ export function Dock({
   // const togglePenMode = useWorkspace((s) => s.togglePenMode);
   // const pushToast = useToasts((s) => s.push);
 
+  const compact = useCompactControls();
+  const [moreOpen, setMoreOpen] = useState(false);
+  const createdFromMenu = useRef(false);
   const dockRef = useRef<HTMLDivElement>(null);
   const [canvasWidth, setCanvasWidth] = useState(FALLBACK_VIEWPORT_WIDTH);
   const [reducedMotion, setReducedMotion] = useState(false);
@@ -208,6 +214,7 @@ export function Dock({
       // 레이아웃이 바뀌면 캐시한 버튼 중심은 무효 — 다음 move에서 다시 잰다.
       centersValidRef.current = false;
       setCanvasWidth(window.innerWidth);
+      setMoreOpen(false);
     };
     // 하이드레이션 첫 렌더는 서버와 같은 폴백을 쓴다 — 실측값은 여기(커밋 후)에서 반영.
     onResize();
@@ -247,7 +254,7 @@ export function Dock({
   const effectiveCanvasWidth = signalsOpen ? canvasWidth - SIGNALS_PANEL_WIDTH : canvasWidth;
   // §4: 캔버스가 좁으면(<360px) hover 추적 자체를 끈다(이름표도 없음).
   // 동작 줄이기(prefers-reduced-motion)는 hover는 추적하되 크기 확대만 끈다(이름표는 유지).
-  const hoverTrackingEnabled = effectiveCanvasWidth >= MIN_MAGNIFY_CANVAS_WIDTH;
+  const hoverTrackingEnabled = !compact && effectiveCanvasWidth >= MIN_MAGNIFY_CANVAS_WIDTH;
   const sizingEnabled = hoverTrackingEnabled && !reducedMotion;
 
   /**
@@ -480,6 +487,8 @@ export function Dock({
   return (
     <motion.div
       ref={dockRef}
+      data-canvas-control="dock"
+      data-compact={compact}
       role="toolbar"
       aria-label={t("workspace.dock.label")}
       onMouseEnter={() => {
@@ -492,10 +501,11 @@ export function Dock({
         mouseX.set(Infinity);
         centersValidRef.current = false;
       }}
-      className="fixed z-[var(--z-panel)] flex items-center gap-1 rounded-[22px] px-3"
+      className={`${styles.dock} fixed z-[var(--z-panel)] flex items-center gap-1 rounded-[22px] px-3`}
       style={{
-        left: dockLeft,
-        bottom: layout.dock.bottomMargin,
+        left: compact ? "50%" : dockLeft,
+        translate: compact ? "-50% 0" : undefined,
+        bottom: `calc(${layout.dock.bottomMargin}px + env(safe-area-inset-bottom, 0px))`,
         height: layout.dock.height,
         // macOS 독 오마주 — 반투명 유리.
         background: "linear-gradient(rgba(255,255,255,0.86), rgba(255,255,255,0.7))",
@@ -506,7 +516,7 @@ export function Dock({
         x: shiftX,
       }}
     >
-      {DOCK_ITEMS.filter((item) => item.draggable).map((item) => (
+      {DOCK_ITEMS.filter((item) => item.draggable && (!compact || ["text", "todo", "photo"].includes(item.toolId))).map((item) => (
         <DockButton
           key={item.toolId}
           item={item}
@@ -527,6 +537,37 @@ export function Dock({
           onClick={() => createAtCenter(item.toolId)}
         />
       ))}
+
+      {compact && (
+        <DropdownMenu.Root open={moreOpen} onOpenChange={setMoreOpen} modal={false}>
+          <DropdownMenu.Trigger asChild>
+            <button type="button" aria-label={t("workspace.dock.more")}
+              className="flex h-11 w-11 items-center justify-center rounded-lg text-2xl focus-visible:outline-2 focus-visible:outline-accent-blue">
+              ⋯
+            </button>
+          </DropdownMenu.Trigger>
+          <DropdownMenu.Portal>
+            <DropdownMenu.Content side="top" align="center" sideOffset={12} collisionPadding={12}
+              aria-label={t("workspace.dock.more")}
+              onCloseAutoFocus={(event) => {
+                // A created card owns focus; Escape/outside dismissal returns to More.
+                if (createdFromMenu.current) event.preventDefault();
+                createdFromMenu.current = false;
+              }}
+              className={styles.moreMenu}>
+              {/* Extra tools create at viewport center; primary tools retain drag/drop. */}
+              {DOCK_ITEMS.filter(item => item.draggable && !["text", "todo", "photo"].includes(item.toolId)).map(item => (
+                <DropdownMenu.Item key={item.toolId}
+                  className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg px-3 outline-none data-[highlighted]:bg-[color:var(--color-hover)]"
+                  onSelect={() => { createdFromMenu.current = true; createAtCenter(item.toolId); }}>
+                  <Image src={item.icon} alt="" width={32} height={32} unoptimized draggable={false} />
+                  {LABELS[item.labelKey]}
+                </DropdownMenu.Item>
+              ))}
+            </DropdownMenu.Content>
+          </DropdownMenu.Portal>
+        </DropdownMenu.Root>
+      )}
 
       {/* FEAT-trash: 독 맨 끝 휴지통 — 클릭하면 패널, 메모가 있으면 점 배지. */}
       <DockButton
@@ -698,7 +739,7 @@ function DockButton({
       aria-label={label}
       aria-pressed={pressed}
       className={[
-        "group relative flex flex-col items-center justify-center outline-none",
+        "group relative flex flex-col items-center justify-center outline-none focus-visible:rounded-lg focus-visible:outline-2 focus-visible:outline-accent-blue",
         // FEAT-trash-drag: 드롭 대상 강조 — 연두 배경(브레드크럼 드롭 강조와 같은 색).
         dropTarget ? "rounded-full bg-accent-lime/30" : "",
       ].join(" ")}

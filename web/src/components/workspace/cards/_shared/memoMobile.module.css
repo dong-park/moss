@@ -1,0 +1,33 @@
+.surface { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; }
+.scaleToggle { display: none; }
+
+@media (max-width: 767px) {
+  .dialog {
+    width: calc(100vw - 16px) !important;
+    height: calc(var(--memo-viewport-height, 100dvh) - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 16px) !important;
+    max-height: calc(var(--memo-viewport-height, 100dvh) - 16px);
+    top: calc(var(--memo-viewport-top, 0px) + env(safe-area-inset-top) + 8px) !important;
+    transform: translateX(-50%) !important;
+    translate: none;
+    padding: 12px 12px max(12px, env(safe-area-inset-bottom)) !important;
+  }
+  .tools {
+    position: static;
+    order: 2;
+    flex-shrink: 0;
+    justify-content: flex-end;
+    margin-top: 8px;
+  }
+  .tools button, .scaleToggle { min-width: 44px; min-height: 44px; }
+  .title { width: 100% !important; min-width: 0; height: 44px !important; font-size: 16px !important; }
+  .scroll { overscroll-behavior: contain; scroll-padding-block: 16px; }
+  .body { min-height: 96px; }
+  .surface[data-memo-layout="reflow"] .body { width: 100% !important; overflow-wrap: anywhere; }
+  .surface[data-memo-layout="reflow"] .body :global(.ProseMirror),
+  .surface[data-memo-layout="reflow"] .body :global(.ProseMirror p),
+  .surface[data-memo-layout="reflow"] .body :global(.ProseMirror li) { font-size: 16px; }
+  .surface[data-memo-layout="reflow"] .body pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .surface[data-memo-layout="canonical"] .body { zoom: var(--memo-fit-scale, 1); }
+  .surface[data-memo-full-size="true"] .body { zoom: 1; }
+  .scaleToggle { display: block; align-self: flex-end; flex-shrink: 0; font-size: 14px; cursor: pointer; }
+}

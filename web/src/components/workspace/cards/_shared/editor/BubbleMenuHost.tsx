@@ -34,16 +34,33 @@ export function BubbleMenuHost() {
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const half = el.offsetWidth / 2;
-    const screenMin = 8 + half;
-    const screenMax = Math.max(screenMin, window.innerWidth - 8 - half);
-    let min = Math.max(screenMin, state.minLeft + half);
-    let max = Math.min(screenMax, state.maxLeft - half);
-    if (max < min) {
-      min = screenMin;
-      max = screenMax;
-    }
-    el.style.left = `${Math.min(Math.max(state.left, min), max)}px`;
+    const position = () => {
+      const half = el.offsetWidth / 2;
+      const screenMin = 8 + half;
+      const screenMax = Math.max(screenMin, window.innerWidth - 8 - half);
+      let min = Math.max(screenMin, state.minLeft + half);
+      let max = Math.min(screenMax, state.maxLeft - half);
+      if (max < min) {
+        min = screenMin;
+        max = screenMax;
+      }
+      el.style.left = `${Math.min(Math.max(state.left, min), max)}px`;
+      const visual = window.visualViewport;
+      const top = visual?.offsetTop ?? 0;
+      const bottom = top + (visual?.height ?? window.innerHeight);
+      // Mobile dialogs reach the top edge; the title can leave no room above it.
+      el.style.top = `${Math.max(top + 8 + el.offsetHeight,
+        Math.min(state.top - 6, bottom - 8))}px`;
+    };
+    position();
+    window.addEventListener("resize", position);
+    window.visualViewport?.addEventListener("resize", position);
+    window.visualViewport?.addEventListener("scroll", position);
+    return () => {
+      window.removeEventListener("resize", position);
+      window.visualViewport?.removeEventListener("resize", position);
+      window.visualViewport?.removeEventListener("scroll", position);
+    };
   });
 
   if (!state.open || !state.view || bubbleMenuItems.length === 0) return null;

@@ -1,5 +1,7 @@
 "use client";
 
+import { touchCardDrags, type TouchDrag } from "./touchCanvas";
+
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { animate } from "motion/react";
 import * as ContextMenu from "@radix-ui/react-context-menu";
@@ -13,6 +15,7 @@ import {
 } from "@/state/workspace";
 import { CardContent } from "./cards/CardContent";
 import { memoFace } from "./cards/text/face";
+import controlStyles from "./canvasControls.module.css";
 import { isExpandable } from "./cards/_shared/expandable";
 import { ResizeHandles } from "./ResizeHandles";
 import { storePhoto } from "./canvasCapture";
@@ -200,11 +203,14 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
   // 닫는다. 휴지통·함 흡수·내보내기 드롭은 그 동작이 끝난 뒤(flyInto의 done) 닫는다.
   const dragGroupRef = useRef<UndoGroupToken | null>(null);
   const flyGroupsRef = useRef(new Set<UndoGroupToken>());
+  const touchDragRef = useRef<TouchDrag | undefined>(undefined);
   const dragListenersRef = useRef<(() => void) | null>(null);
   useEffect(() => {
     const flyGroups = flyGroupsRef.current;
     return () => {
       // 언마운트 정리: 리스너를 떼고 아직 안 닫힌 묶음을 닫는다.
+      touchDragRef.current?.cancel();
+      touchDragRef.current = undefined;
       dragListenersRef.current?.();
       dragListenersRef.current = null;
       endUndoGroup(dragGroupRef.current);
@@ -326,7 +332,17 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
     multi: boolean;
   } | null>(null);
 
-  const onMouseDown = (e: React.MouseEvent) => {
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    touchCardDrags.set(el, (point) => (touchDragRef.current = onMouseDown({
+      ...point, button: 0, target: el, shiftKey: false, metaKey: false, ctrlKey: false,
+      stopPropagation: () => {},
+    })));
+    return () => { touchCardDrags.delete(el); };
+  });
+
+  const onMouseDown = (e: Pick<React.MouseEvent, "clientX" | "clientY" | "button" | "target" | "shiftKey" | "metaKey" | "ctrlKey" | "stopPropagation">): TouchDrag | undefined => {
     if (penMode) return; // 펜 모드: 드래그 대신 그리기 (DrawingLayer가 포인터 처리)
     // 제목 입력 위에서 누르면 글자 선택·커서 이동이라 끌지 않는다. 앞면 본문은
     // 읽기 전용이므로 편집 중이어도 종이 아무 데나 잡아 카드를 끌 수 있다.
@@ -650,7 +666,7 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
       }
     };
 
-    const onMove = (ev: MouseEvent) => {
+    const onMove = (ev: { clientX: number; clientY: number }) => {
       const d = dragRef.current;
       if (!d) return;
       const dx = ev.clientX - d.startX;
@@ -845,7 +861,15 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
       playSnap(el, deg);
     };
 
-    const onUp = () => {
+    const onUp = (cancelled = false) => {
+      touchDragRef.current = undefined;
+      // Interruption retains the current position as one undoable move, but never
+      // executes a destructive trash/subcanvas/breadcrumb drop.
+      if (cancelled) {
+        hoveredTrash = false;
+        hoveredCrumbId = null;
+        hoveredFunnelId = null;
+      }
       const d = dragRef.current;
       dragRef.current = null;
       dragListenersRef.current = null;
@@ -861,7 +885,7 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
         wobbleRaf = 0;
       }
       window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
+      window.removeEventListener("mouseup", onMouseUp);
 
       // 다중선택 중 클릭만 했다면 단일 선택으로 환원 (Figma 스타일). lift 없었음.
       if (d && !d.moved && d.multi) {
@@ -991,14 +1015,16 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
       endUndoGroup(group);
     };
 
+    const onMouseUp = () => onUp();
     window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+    window.addEventListener("mouseup", onMouseUp);
     dragListenersRef.current = () => {
       window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
+      window.removeEventListener("mouseup", onMouseUp);
       if (tiltRaf) cancelAnimationFrame(tiltRaf);
       if (wobbleRaf) cancelAnimationFrame(wobbleRaf);
     };
+    return { move: onMove, end: () => onUp(), cancel: () => onUp(true) };
   };
 
   const onDoubleClick = (e: React.MouseEvent) => {
@@ -1179,7 +1205,7 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
           }}
           aria-label={t("workspace.memoEditor.expand")}
           data-card-expand
-          className="absolute right-1 top-1 z-[31] flex h-6 w-6 cursor-pointer items-center justify-center rounded-md border border-border bg-bg text-text-soft opacity-0 shadow-card transition-opacity hover:text-text focus-visible:opacity-100 group-hover:opacity-100"
+          className={`${controlStyles.cardExpand} absolute right-1 top-1 z-[31] flex h-6 w-6 cursor-pointer items-center justify-center rounded-md border border-border bg-bg text-text-soft opacity-0 shadow-card transition-opacity hover:text-text focus-visible:opacity-100 group-hover:opacity-100`}
         >
           <ExpandIcon size={13} />
         </button>

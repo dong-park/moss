@@ -1,0 +1,35 @@
+.dock[data-compact="true"] > button[data-dock-id] {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.zoom[data-compact="true"] {
+  right: max(12px, env(safe-area-inset-right, 0px));
+}
+
+.zoom[data-compact="true"] button {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.moreMenu {
+  z-index: var(--z-modal);
+  width: min(240px, calc(100vw - 24px));
+  max-height: min(var(--radix-dropdown-menu-content-available-height), calc(100dvh - 24px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  background: var(--gradient-paper);
+  box-shadow: var(--shadow-card);
+}
+
+/* Touch has no hover; keep the explicit editor entry visible and tappable. */
+@media (hover: none), (pointer: coarse) {
+  .cardExpand {
+    opacity: 1;
+    min-width: 44px;
+    min-height: 44px;
+  }
+}

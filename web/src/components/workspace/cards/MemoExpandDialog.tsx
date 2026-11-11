@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { MilkdownProvider } from "@milkdown/react";
 import { useT } from "@/i18n/Provider";
@@ -11,6 +11,9 @@ import { MemoExpandTitleSlot } from "./_shared/MemoExpandTitleSlot"; // FEAT-mem
 import { PhotoLightbox } from "./photo/PhotoLightbox"; // FEAT-photo-card
 import { MEMO_PAPER } from "./text/Content";
 import { memoFace } from "./text/face";
+import { parseHandwriting } from "@/state/cardContent";
+import { MEMO_CONTENT_WIDTH } from "./_shared/memoLayout";
+import styles from "./_shared/memoMobile.module.css";
 import { memoTint } from "../memoVariety";
 
 /* ─────────────────────────────────────────────────────────────
@@ -57,6 +60,20 @@ export function paperPadding(isPaper: boolean): string {
 
 export function MemoExpandDialog() {
   const t = useT();
+  const returnFocus = useRef<HTMLElement | null>(null);
+  const [viewport, setViewport] = useState<{ height: number; top: number } | null>(null);
+  useEffect(() => {
+    const visual = window.visualViewport;
+    if (!visual) return;
+    const update = () => setViewport({ height: visual.height, top: visual.offsetTop });
+    update();
+    visual.addEventListener("resize", update);
+    visual.addEventListener("scroll", update);
+    return () => {
+      visual.removeEventListener("resize", update);
+      visual.removeEventListener("scroll", update);
+    };
+  }, []);
   const expandedCardId = useWorkspace((s) => s.expandedCardId);
   const setExpandedCard = useWorkspace((s) => s.setExpandedCard);
   const setContent = useWorkspace((s) => s.setContent);
@@ -128,7 +145,14 @@ export function MemoExpandDialog() {
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-[var(--z-overlay)] bg-black/40" />
         <Dialog.Content
-          className="fixed left-1/2 top-1/2 z-[var(--z-modal)] flex -translate-x-1/2 -translate-y-1/2 flex-col focus:outline-none"
+          className={`fixed left-1/2 top-1/2 z-[var(--z-modal)] flex -translate-x-1/2 -translate-y-1/2 flex-col focus:outline-none ${styles.dialog}`}
+          onOpenAutoFocus={() => { returnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; }}
+          onCloseAutoFocus={(event) => {
+            if (returnFocus.current?.isConnected) {
+              event.preventDefault();
+              returnFocus.current.focus({ preventScroll: true });
+            }
+          }}
           style={{
             width: "min(792px, 94vw)",
             height: PAPER_H,
@@ -136,7 +160,8 @@ export function MemoExpandDialog() {
             borderRadius: 6,
             background: isPaper ? MEMO_PAPER : "var(--color-card-base)",
             isolation: "isolate",
-          }}
+            ...(viewport ? { "--memo-viewport-height": `${viewport.height}px`, "--memo-viewport-top": `${viewport.top}px` } : {}),
+          } as CSSProperties}
           aria-describedby={undefined}
         >
           {/* 보이는 제목은 없다(머리 막대 제거). 스크린리더용 이름만 둔다. */}
@@ -162,7 +187,7 @@ export function MemoExpandDialog() {
            * Radix의 body pointer-events:none 영향을 받지 않고 눌린다. */}
           <div
             data-memo-paper-tools
-            className="absolute top-full right-0 mt-2 flex items-center gap-1"
+            className={`absolute top-full right-0 mt-2 flex items-center gap-1 ${styles.tools}`}
           >
             <button
               type="button"
@@ -196,6 +221,7 @@ export function MemoExpandDialog() {
             {card && (
               <ExpandedMarkdownEditor
                 key={card.id}
+                canonical={drawing || parseHandwriting(card.overlay ?? "").paths.length > 0}
                 value={card.content}
                 onChange={(md) => setContent(card.id, md)}
                 // FEAT-memo-title: 본문 위 제목 줄 — 스크롤 영역 안, 창에서만 편집(D1).
@@ -210,6 +236,7 @@ export function MemoExpandDialog() {
                 }
                 overlay={
                   <DrawingLayer
+                    coordinateWidth={MEMO_CONTENT_WIDTH}
                     value={card.overlay ?? ""}
                     active={drawing}
                     penWidth={penWidth}

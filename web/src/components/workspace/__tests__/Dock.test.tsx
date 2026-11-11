@@ -471,3 +471,87 @@ describe("접근성: Enter로 화면 가운데에 생성", () => {
     expect(frame).toBeDefined();
   });
 });
+
+describe("compact dock", () => {
+  const originalWidth = window.innerWidth;
+  afterEach(() => { window.innerWidth = originalWidth; });
+
+  it.each([360, 390, 430, 767])("keeps primary tools and trash reachable at %ipx", (width) => {
+    window.innerWidth = width;
+    renderDock();
+    expect(screen.getAllByRole("button").map(b => b.getAttribute("aria-label")))
+      .toEqual(["메모", "할 일", "사진", "더 보기", "휴지통"]);
+    expect(screen.queryByLabelText("펜")).toBeNull();
+    expect(screen.queryByLabelText("시그널스")).toBeNull();
+  });
+
+  it("opens by keyboard, creates a link memo, and closes", async () => {
+    window.innerWidth = 390;
+    renderDock();
+    const more = screen.getByRole("button", { name: "더 보기" });
+    fireEvent.keyDown(more, { key: "ArrowDown" });
+    const link = await screen.findByRole("menuitem", { name: "링크" });
+    expect(screen.getAllByRole("menuitem").map(b => b.textContent)).toEqual(["메모판", "링크", "텍스트", "파일함"]);
+    fireEvent.click(link);
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    expect(useWorkspace.getState().cards).toHaveLength(1);
+    expect(useWorkspace.getState().cards[0].kind).toBe("text");
+    expect(useWorkspace.getState().editingId).toBe(useWorkspace.getState().cards[0].id);
+  });
+
+  it.each([["메모판", "frame"], ["텍스트", "textbox"], ["파일함", "board"]])("More creates %s", async (label, kind) => {
+    window.innerWidth = 390;
+    await useStorage.getState().init();
+    await useWorkspace.getState().loadFromStorage();
+    renderDock();
+    fireEvent.keyDown(screen.getByRole("button", { name: "더 보기" }), { key: "ArrowDown" });
+    fireEvent.click(await screen.findByRole("menuitem", { name: label }));
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    expect(useWorkspace.getState().cards.some(c => c.kind === kind)).toBe(true);
+  });
+
+  it("compact primary memo still supports drag/drop and suppresses the trailing click", async () => {
+    window.innerWidth = 360;
+    await useStorage.getState().init();
+    await useWorkspace.getState().loadFromStorage();
+    const canvas = mountCanvasStub();
+    vi.spyOn(document, "elementFromPoint").mockReturnValue(canvas);
+    renderDock();
+    const before = useWorkspace.getState().cards.length;
+    const memo = screen.getByLabelText("메모");
+    fireEvent.mouseDown(memo, { clientX: 100, clientY: 700, button: 0 });
+    fireEvent.mouseMove(document, { clientX: 100, clientY: 600 });
+    expect(useWorkspace.getState().dockDrag?.toolId).toBe("text");
+    fireEvent.mouseUp(document, { clientX: 300, clientY: 400 });
+    fireEvent.click(memo);
+    expect(useWorkspace.getState().dockDrag).toBeNull();
+    expect(useWorkspace.getState().cards).toHaveLength(before + 1);
+  });
+
+  it("outside pointer and resize dismiss the extra tools", async () => {
+    window.innerWidth = 390;
+    renderDock();
+    const more = screen.getByRole("button", { name: "더 보기" });
+    fireEvent.keyDown(more, { key: "ArrowDown" });
+    await screen.findByRole("menu");
+    fireEvent.pointerDown(document.body, { pointerType: "mouse", button: 0 });
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    fireEvent.keyDown(more, { key: "ArrowDown" });
+    await screen.findByRole("menu");
+    window.innerWidth = 1280;
+    fireEvent(window, new Event("resize"));
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    expect(screen.getByRole("button", { name: "메모판" })).toBeTruthy();
+  });
+
+  it("Escape dismisses and restores focus", async () => {
+    window.innerWidth = 360;
+    renderDock();
+    const more = screen.getByRole("button", { name: "더 보기" });
+    fireEvent.keyDown(more, { key: "ArrowDown" });
+    const menu = await screen.findByRole("menu");
+    fireEvent.keyDown(menu, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(more));
+  });
+});
