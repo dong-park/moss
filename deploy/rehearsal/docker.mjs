@@ -67,3 +67,32 @@ export async function migrationValidationFailed(name) {
     return /checksum|validate.*fail|migration.*fail/i.test(result.stdout+'\n'+result.stderr);
   } catch { throw new Error('unable to classify isolated migration failure'); }
 }
+
+/**
+ * Removes every container, volume and network still owned by one rehearsal run, then proves none
+ * remain. `compose down --volumes` only removes volumes used by the final rendered model, so a
+ * volume used earlier in the run (e.g. the original attachments after switching to the restored
+ * set) would otherwise be left behind while cleanup reported success.
+ */
+export async function removeOwned(runId, run = docker) {
+  if (!/^moss-rehearsal-[0-9a-f-]{36}$/.test(runId)) throw new Error('invalid rehearsal run id');
+  const filters = [`label=com.moss.rehearsal=${runId}`, `label=com.docker.compose.project=${runId}`];
+  const list = async (kind) => {
+    const ids = new Set();
+    for (const filter of filters) {
+      const args = kind === 'container' ? ['ps', '-aq', '--filter', filter] : [kind, 'ls', '-q', '--filter', filter];
+      for (const id of (await run(args)).split('\n').map(s => s.trim()).filter(Boolean)) ids.add(id);
+    }
+    return [...ids];
+  };
+  const removed = {};
+  for (const [kind, remove] of [['container', ['rm', '-f', '-v']], ['volume', ['volume', 'rm']], ['network', ['network', 'rm']]]) {
+    const ids = await list(kind);
+    if (ids.length) await run([...remove, ...ids]);
+    removed[kind] = ids.length;
+  }
+  for (const kind of ['container', 'volume', 'network']) {
+    if ((await list(kind)).length) throw new Error(`owned rehearsal ${kind} remains after cleanup`);
+  }
+  return removed;
+}

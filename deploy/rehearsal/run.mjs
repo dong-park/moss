@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { checkedFetch, cli, Evidence, fingerprint, rehearsalInput, sha256 } from './core.mjs';
 import { imageAssets } from './assets.mjs';
-import { docker, containerIdentity, imageIdentity, rpcWorker, migrationValidationFailed } from './docker.mjs';
+import { docker, containerIdentity, imageIdentity, rpcWorker, migrationValidationFailed, removeOwned } from './docker.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const checks = ['normal_auth', 'two_clients', 'graceful_persistence', 'reconnect', 'offline_edits', 'backup_restore', 'previous_new_previous', 'old_client', 'failed_rollout', 'migration_failure'];
@@ -134,7 +134,10 @@ export async function run(argv) {
   const account = { api: 'http://server:8080', sync: 'ws://sync:1234', board, email: `rehearsal-${randomUUID()}@example.com`, password: randomBytes(24).toString('hex'), terms };
   async function client(kind, signup = false) {
     if (worker) { await worker.call('close'); await worker.end(); worker = undefined; }
-    worker = rpcWorker('docker', ['run', '--rm', '-i', '--pull=never', '--label', `com.moss.rehearsal=${runId}`, '--name', `${runId}-client-${randomBytes(3).toString('hex')}`, '--network', `${runId}_default`, '--read-only', '--tmpfs', '/tmp:rw,nosuid,size=32m', '--mount', `type=bind,src=${here},dst=/harness,readonly`, '--entrypoint', 'bun', identities[kind].web.id, '/harness/client-worker.mjs']);
+    worker = rpcWorker('docker', ['run', '--rm', '-i', '--pull=never', '--label', `com.moss.rehearsal=${runId}`, '--name', `${runId}-client-${randomBytes(3).toString('hex')}`, '--network', `${runId}_default`, '--read-only', '--tmpfs', '/tmp:rw,nosuid,size=32m',
+      // Recreated services can get new addresses; a cached DNS answer would pin the old client to a dead IP.
+      '--env', 'BUN_CONFIG_DNS_TIME_TO_LIVE_SECONDS=0',
+      '--mount', `type=bind,src=${here},dst=/harness,readonly`, '--entrypoint', 'bun', identities[kind].web.id, '/harness/client-worker.mjs']);
     return worker.call('init', { ...account, signup });
   }
   const values = {};
@@ -266,7 +269,7 @@ export async function run(argv) {
       if (worker) { await worker.call('close'); await worker.end(); }
       workerClosed = true;
     } finally {
-      try { if (created) await e.phase('cleanup', async () => { await dc('down', '--volumes', '--remove-orphans', '--timeout', '15'); return { ownProjectRemoved: true }; }); }
+      try { if (created) await e.phase('cleanup', async () => { await dc('down', '--volumes', '--remove-orphans', '--timeout', '15'); return { ownProjectRemoved: true, leftoversRemoved: await removeOwned(runId) }; }); }
       catch (error) { e.data.status = 'failed'; throw error; }
       finally {
         if (operationsComplete && workerClosed && e.data.phases.find(p => p.name === 'cleanup')?.status === 'passed') e.finish([...checks, 'forced_shutdown_rejected', 'cleanup']);
