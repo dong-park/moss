@@ -1,0 +1,24 @@
+{
+  "repository": "dong-park/moss",
+  "project": "moss",
+  "install_dir": "/opt/moss-deploy",
+  "state_dir": "/var/lib/moss-deploy",
+  "backup_dir": "/var/backups/moss-deploy",
+  "app_env": "/etc/moss-deploy/app.env",
+  "bootstrap_file": "/etc/moss-deploy/bootstrap.json",
+  "app_private_key": "/etc/moss-deploy/github-app.pem",
+  "smoke_config": "/etc/moss-deploy/smoke.json",
+  "docker_config": "/etc/moss-deploy/docker",
+  "app_id": null,
+  "installation_id": null,
+  "minimum_free_bytes": 10737418240,
+  "file_volume": "moss_filedata",
+  "bootstrap_migrations_sha256": null,
+  "public_config": {
+    "api_url": null,
+    "sync_url": null,
+    "google_client_id": null,
+    "terms_version": null
+  },
+  "topology": null
+}

@@ -1,0 +1,12 @@
+[Unit]
+Description=Check for verified Moss releases once a minute
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=1min
+RandomizedDelaySec=5s
+Persistent=true
+Unit=moss-deploy.service
+
+[Install]
+WantedBy=timers.target

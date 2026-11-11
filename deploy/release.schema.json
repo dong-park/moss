@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dong-park/moss/deploy/release.schema.json",
+  "title": "Moss release v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "runtime_contract",
+    "repository",
+    "environment",
+    "platform",
+    "sha",
+    "config_sha256",
+    "evidence_sha256",
+    "run_id",
+    "run_attempt",
+    "images",
+    "baseline"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "runtime_contract": {
+      "const": 1
+    },
+    "repository": {
+      "const": "dong-park/moss"
+    },
+    "environment": {
+      "const": "production"
+    },
+    "platform": {
+      "const": "linux/amd64"
+    },
+    "sha": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "config_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "evidence_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "run_id": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "run_attempt": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "images": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "web",
+        "server",
+        "sync"
+      ],
+      "properties": {
+        "web": {
+          "type": "string",
+          "pattern": "^ghcr\\.io/dong-park/moss-web@sha256:[0-9a-f]{64}$"
+        },
+        "server": {
+          "type": "string",
+          "pattern": "^ghcr\\.io/dong-park/moss-server@sha256:[0-9a-f]{64}$"
+        },
+        "sync": {
+          "type": "string",
+          "pattern": "^ghcr\\.io/dong-park/moss-sync@sha256:[0-9a-f]{64}$"
+        }
+      }
+    },
+    "baseline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "web",
+        "server",
+        "sync"
+      ],
+      "properties": {
+        "web": {
+          "type": "string",
+          "pattern": "^ghcr\\.io/dong-park/moss-web@sha256:[0-9a-f]{64}$"
+        },
+        "server": {
+          "type": "string",
+          "pattern": "^ghcr\\.io/dong-park/moss-server@sha256:[0-9a-f]{64}$"
+        },
+        "sync": {
+          "type": "string",
+          "pattern": "^ghcr\\.io/dong-park/moss-sync@sha256:[0-9a-f]{64}$"
+        }
+      }
+    }
+  }
+}
