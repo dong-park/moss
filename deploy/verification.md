@@ -120,6 +120,44 @@ GitHub run 43093597941, job 130776655335 (`web-checks`): all 220 files / 2,010 t
 | MCP | `bun run typecheck`; `bun run test` | exit 0; 43 passed, 1 existing platform skip |
 | Workflows / Python / shell / systemd | actionlint 1.7.12; `py_compile`; `sh -n`; `systemd-analyze verify` | each exit 0 |
 
+## Review-fix round 2 — final independent C4 review of `ca81044` (REQUEST CHANGES 2 × P2, 2 × P3, P4)
+
+Commit `2305c9364ed4d13d3e9b61fc1e24ec8fb5bca593` on top of `ca81044` (plus this report commit), pushed fast-forward. It changes only host-side deploy tooling, tests, the runbook and the plan's trailing blank line: `git diff ca81044 HEAD -- web server sync mcp shared deploy/compose.runtime.yml docker-compose*.yml` is empty, so the application/Docker sources rehearsed at `d574342` are unchanged and no image rebuild or new full-image rehearsal was required. The previous round's real-image evidence still applies to those images.
+
+| ID | Resolution | RED on `ca81044` code | GREEN |
+|---|---|---|---|
+| R2-F1 P2 | `Runtime.prepare` accepts the live history only if it is **exactly** the signed evidence baseline or **exactly** the signed candidate history. Automatic rollback and `control.py rollback-previous` re-read the post-rollback history after the restored set passes smoke, require it to be a rehearsed history of the rolled-back release, and store its digest in the same atomic commit; otherwise `error`, writers stopped, paused. A failed/timed-out candidate server start remains unknown schema with no previous restart. | Real `agent.apply` + real `Runtime.prepare`/`migration_compatible` (Flyway simulated): after N+1 smoke failure and rollback, retry and fix-forward ended `'failure' != 'success'` (`live migration baseline differs from rehearsal`); recorded digest was the stale H_N; an unrehearsed post-rollback history was reported `('failure','serving')`. | `test_round2.MigrationRecoveryTest` 9 tests: retry and same-set fix-forward succeed; digest = post-rollback history; prefix, subset, checksum drift (new and old rows), failed row, reordered, unrehearsed later migration and unreadable metadata all Rejected; fix-forward adding V13 rejected in prepare (documented limit); operator rollback records post-rollback digest, then resume + fix-forward succeeds |
+| R2-F2 P2 | `Store.lock` raises `Busy` (a `BlockingIOError` subclass, so the existing lock test is unchanged) only for contention on the deploy lock. `agent.run`: `poll` → 0; every other command prints `moss-deploy busy … nothing was changed. Retry shortly.` and exits 75. `control.run` likewise 75. Other `BlockingIOError`s fail closed (exit 1). | No `run()`; the old `__main__` mapped any `BlockingIOError` to exit 0 (reviewer: `pause` exit 0, journal `paused=False`). | Real second process holds `flock(state/lock)`: pause/resume/status/reconcile/bootstrap/dry-run and control retry/rollback-previous all exit 75 with the busy text and byte-identical journal; poll exits 0 silently; unrelated `BlockingIOError` → exit 1, class only |
+| R2-F3 P3 | `release.diagnose()`: `{code:'rejected', reason}` for code-authored `Rejected` texts matching a plain-character allow-list (else `unprintable rejection`), otherwise `{code:'error', class}` from a fixed class allow-list (else `Exception`). Attempts and outbox entries store `failure` with `phase`, nested `rollback`/`recovery`; recovery after a crash stores `code:'interrupted'`. Operator stderr prints `failed closed: <safe reason>`. | `KeyError: 'failure'`; stderr only `moss-deploy failed closed; inspect protected state…`. | Safe reason + phase durable in attempt and outbox; a child exception carrying a token, token path and e-mail is journaled as `RuntimeError` only, with none of those strings in `state.json`; unsafe rejection text replaced; operator `status`/`dry-run`/control print `operator files must be root owned…` |
+| R2-F4 P3 | `compose(..., timeout=)`; `start_server` dispatches `--wait-timeout 660` with a 750 s subprocess deadline (`COMPOSE_GRACE_SECONDS=90`), clients 120 s / 210 s, other compose calls stay at 600 s. | Patched `subprocess.run` saw `600` for `start_server` (`600 not greater than 660`). | Unit test on the actually dispatched `subprocess.run` timeout; real-image probe recorded server 750/660 and sync/web 210/120 |
+| P4 | Plan's extra blank line removed (`git diff --check origin/main...HEAD` exit 0 after commit). Postgres executor test probes `docker version --format {{.Server.Version}}`. `audit.py` accepts npm `info` as non-blocking; unknown/malformed levels still fail. Healthcheck JVM measured and deferred (below). | Old `audit.clean_report` raised `Rejected('invalid or unknown advisory')` for `info`. Old availability check treated an unreachable daemon as available. | `AuditSeverityLevelsTest` 2/2 (info+high still blocks; `INFO`, `informational`, `none`, empty, null, numeric still Rejected); optional mode with unreachable daemon or missing binary: `OK (skipped=5)`; required mode: `FAILED (errors=1)` for both |
+
+### Real executor probe (round 2)
+
+Real `runtime.Runtime` with the rebuilt `d574342` candidate and legacy baseline images, an owned project `mossrt2077c3055`, renamed volumes/network, random loopback ports and a temp install dir (script `rt/round2.py`, output `rt/round2.log`, session scratchpad, not in Git/CI); exit 0, zero leftovers:
+
+- Candidate server + clients started and ready (18.1 s); real `metadata()` read 11 rows; live = baseline accepted, observed = baseline.
+- With the evidence candidate = baseline + a simulated V13, real Flyway rows in Postgres 18: V13 with drifted checksum → refused; V13 `success=false` → refused and `metadata()` Rejected; exact V13 → accepted with the exact candidate history observed; an extra unrehearsed V14 → refused.
+- Supported rollback shape: strict stop, then the **legacy** images started on the database still carrying V13 (Flyway ignores applied future migrations); all three running, server `/health` 200, post-rollback history compatible and its digest equals the post-rollback history.
+- Dispatched compose deadlines: server 750 s with `--wait-timeout 660`; sync/web 210 s with 120.
+
+### Healthcheck JVM residual (P4, deferred)
+
+Owned networkless container from the `d574342` server image, `docker exec java … DeploymentProbe` (no server listening, so this times only JVM start/probe), 6 samples after one warm-up: default median **0.733 s**, lightweight flags (`-XX:TieredStopAtLevel=1 -XX:+UseSerialGC -XX:-UsePerfData -Xshare:auto -XX:CICompilerCount=1`) median **0.691 s**; `docker exec` overhead 0.053 s. The 6 % gain does not justify an image change plus full re-rehearsal in this slice; the residual (≈0.7 s every 10 s, plus a Flyway validate per probe in the server) is documented in the runbook. The container was created and removed in separate calls.
+
+### Fresh checks this round
+
+| Check | Command | Result |
+|---|---|---|
+| Deployer Python incl. real Postgres 18 | `MOSS_DEPLOY_DOCKER_TESTS=required python3 -W error::ResourceWarning -m unittest discover -s scripts/deploy/tests` | 94 passed, 0 failures/skips |
+| New focused tests | `python3 -m unittest discover -s scripts/deploy/tests -p test_round2.py` | 19 passed (on `ca81044` code: 5 failures, 21 errors) |
+| Rehearsal harness | `node --test deploy/rehearsal/*.test.mjs` (Node 24.22.3) | 20 passed |
+| Static | `py_compile scripts/deploy/*.py`; `sh -n scripts/deploy/install.sh`; actionlint 1.7.12; `git diff --check origin/main...HEAD` | each exit 0 |
+| Not re-run (no source changes in their trees since `ca81044`, all passed there and in the independent review) | web/sync/server/MCP suites, web build, image builds, full-image rehearsal | existing web 8 and MCP 1 platform skips unchanged |
+| Production | read-only `docker inspect` | web `bd2fd993a680`, server `79e91c1f6ede`, sync `02ac39a06752`, postgres `38b9ffe2d4c1`, original start times, 0 restarts; checkout `/home/dongpark/moss` HEAD `e351374`; nothing written |
+
+NOT RUN in this lane: exact-head GitHub Actions (outage backlog; parent owns CI), real GHCR/attestation, installed root agent, production smoke/rollout.
+
 ## Remaining gates and operator inputs
 
 NOT RUN: exact-head GitHub Actions/OWASP NVD audit for this round (runs for `d574342` were still queued when this lane finished; parent owns CI); real GHCR publication/attestation verification; installed root agent against GitHub production requests; independent C4 review; browser old-tab/version-skew/IndexedDB/OPFS checks; production dedicated-account smoke; first production deployment/rollback and downtime measurement. Existing web 8 and MCP 1 platform skips are listed above.
@@ -131,7 +169,7 @@ NOT RUN: exact-head GitHub Actions/OWASP NVD audit for this round (runs for `d57
 
 ## Changed files
 
-All files changed relative to `origin/main` (`4b617ad`) on this branch, including this round and parent `2d97856`:
+All files changed relative to `origin/main` (`4b617ad`) on this branch, including both review-fix rounds and parent `2d97856`:
 
 - `.github/workflows/audit.yml`
 - `.github/workflows/ci.yml`
@@ -179,6 +217,7 @@ All files changed relative to `origin/main` (`4b617ad`) on this branch, includin
 - `scripts/deploy/tests/test_operator.py`
 - `scripts/deploy/tests/test_publish.py`
 - `scripts/deploy/tests/test_recovery_paths.py`
+- `scripts/deploy/tests/test_round2.py`
 - `scripts/deploy/tests/test_runtime.py`
 - `scripts/deploy/tests/test_runtime_postgres.py`
 - `server/.dockerignore`
