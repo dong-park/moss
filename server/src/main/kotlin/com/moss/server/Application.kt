@@ -117,6 +117,7 @@ fun Application.mossModule(
 
     routing {
         get("/health") { call.respond(HttpStatusCode.OK, HealthResponse("ok")) }
+        deploymentRoutes(dataSource, config.syncInternalSecret)
         authRoutes(server)
         boardRoutes(server)
         mcpFileRoutes(server)
