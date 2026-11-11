@@ -3,6 +3,9 @@
 import Image from "next/image";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useCompactControls } from "./useCompactControls";
+import { useTouchControls } from "./useTouchControls";
+import { useMobileCanvas, linkUrl } from "./mobileCanvas";
+import { MobileCardControls } from "./MobileCardControls";
 import styles from "./canvasControls.module.css";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -160,6 +163,10 @@ export function Dock({
   // const pushToast = useToasts((s) => s.push);
 
   const compact = useCompactControls();
+  const touchControls = useTouchControls();
+  const selected = useWorkspace((s) => s.selectedIds.length === 1 ? s.cards.find((c) => c.id === s.selectedIds[0]) : undefined);
+  const controlsBlocked = useWorkspace((s) => s.penMode || !!s.expandedCardId || (!!s.editingId && (!selected || linkUrl(selected) === null)));
+  useEffect(() => { if (!touchControls) useMobileCanvas.getState().close(); }, [touchControls]);
   const [moreOpen, setMoreOpen] = useState(false);
   const createdFromMenu = useRef(false);
   const dockRef = useRef<HTMLDivElement>(null);
@@ -352,7 +359,8 @@ export function Dock({
           // 빈 링크 카드 — 카드 안 입력칸에 주소를 넣는다(LinkInputFace가 포커스).
           const id = at ? addCardAt("text", at.x, at.y) : addCardAtViewportCenter("text");
           setContent(id, EMPTY_LINK_CONTENT);
-          setEditing(id);
+          if (touchControls) useMobileCanvas.getState().editLink(id);
+          else setEditing(id);
         },
         { creates: true },
       );
@@ -423,7 +431,7 @@ export function Dock({
       // }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- createDockOnly는 스토어 액션·ref만 쓴다
-    [addCardAt, addFrameAt, createSubcanvas],
+    [addCardAt, addFrameAt, createSubcanvas, touchControls],
   );
 
   /**
@@ -456,7 +464,7 @@ export function Dock({
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- createDockOnly는 스토어 액션·ref만 쓴다
-    [addCardAtViewportCenter, addFrameAtViewportCenter, createSubcanvasAtViewportCenter],
+    [addCardAtViewportCenter, addFrameAtViewportCenter, createSubcanvasAtViewportCenter, touchControls],
   );
 
   const LABELS: Record<string, string> = {
@@ -476,6 +484,8 @@ export function Dock({
    * 2단계 리뷰 P1-1: layout.dock.width(고정 토큰) 대신 dockWidth(실측)로 계산 —
    * 버튼 슬롯이 평상시 iconBase(40px)이고 hover로만 커지므로 실제 폭은 토큰의
    * 근사치일 뿐이다. */
+  if (touchControls && selected && !controlsBlocked) return <MobileCardControls />;
+
   let centerX = effectiveCanvasWidth / 2;
   const rightEdge = effectiveCanvasWidth - RIGHT_TOOLBAR_RESERVED;
   if (centerX + dockWidth / 2 > rightEdge) {

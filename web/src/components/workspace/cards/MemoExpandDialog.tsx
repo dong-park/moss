@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useRef, useState, type CSSProperties } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { MilkdownProvider } from "@milkdown/react";
 import { useT } from "@/i18n/Provider";
@@ -15,6 +15,7 @@ import { parseHandwriting } from "@/state/cardContent";
 import { MEMO_CONTENT_WIDTH } from "./_shared/memoLayout";
 import styles from "./_shared/memoMobile.module.css";
 import { memoTint } from "../memoVariety";
+import { useVisualViewport } from "../useVisualViewport";
 
 /* ─────────────────────────────────────────────────────────────
  * FEAT-memo-expand — 메모(text) 카드 펼치기 창.
@@ -61,19 +62,7 @@ export function paperPadding(isPaper: boolean): string {
 export function MemoExpandDialog() {
   const t = useT();
   const returnFocus = useRef<HTMLElement | null>(null);
-  const [viewport, setViewport] = useState<{ height: number; top: number } | null>(null);
-  useEffect(() => {
-    const visual = window.visualViewport;
-    if (!visual) return;
-    const update = () => setViewport({ height: visual.height, top: visual.offsetTop });
-    update();
-    visual.addEventListener("resize", update);
-    visual.addEventListener("scroll", update);
-    return () => {
-      visual.removeEventListener("resize", update);
-      visual.removeEventListener("scroll", update);
-    };
-  }, []);
+  const viewport = useVisualViewport();
   const expandedCardId = useWorkspace((s) => s.expandedCardId);
   const setExpandedCard = useWorkspace((s) => s.setExpandedCard);
   const setContent = useWorkspace((s) => s.setContent);

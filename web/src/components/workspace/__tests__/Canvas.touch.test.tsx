@@ -1,6 +1,7 @@
 import { act, fireEvent, render } from "@testing-library/react";
 import { beforeEach, afterEach, expect, it, vi } from "vitest";
 import { Canvas } from "../Canvas";
+import { useMobileCanvas } from "../mobileCanvas";
 import { I18nProvider } from "@/i18n/Provider";
 import { useWorkspace } from "@/state/workspace";
 import { addMemo, bootBoard, card, expectGroupClosed, note, pressUndo, readyCheck, setupNavigatorStorage, teardown, um } from "./undoTestKit";
@@ -20,6 +21,7 @@ function mount() {
 }
 beforeEach(() => {
   setupNavigatorStorage();
+  useMobileCanvas.getState().close();
   useWorkspace.setState({ cards: [], connections: [], canvasHasFitted: true, currentBoardId: "touch-test", penMode: false, viewport: { x: 0, y: 0, scale: 1 } });
 });
 afterEach(async () => { vi.restoreAllMocks(); await teardown(); });
@@ -191,4 +193,88 @@ it("fit all uses the square memo bounds when height is absent", () => {
   const v = useWorkspace.getState().viewport;
   expect(v.scale).toBeCloseTo(540 / 800);
   expect(800 * v.scale + v.y).toBeCloseTo(604);
+});
+
+it.each([0.25, 0.5, 1])("native touch on SE resize owns the gesture at scale %s, without moving card or world", async (scale) => {
+  const b = await bootBoard();
+  const id = addMemo(100, 100);
+  await readyCheck(b);
+  useWorkspace.setState({ selectedIds: [id], editingId: null, canvasHasFitted: true, viewport: { x: 0, y: 0, scale } });
+  useMobileCanvas.getState().resize(id);
+  const { container } = mount();
+  const el = container.querySelector(`[data-card-id="${id}"] [data-resize-handle="se"]`)!;
+  expect(el).not.toBeNull();
+  const w = card(id).width;
+  pointer(el, "pointerdown", 1, 200, 200);
+  pointer(window, "pointermove", 1, 248, 224);
+  pointer(window, "pointerup", 1, 248, 224);
+  expect(card(id)).toMatchObject({ width: w + 48 / scale, height: w + 48 / scale, x: 100, y: 100 });
+  expect(useWorkspace.getState().viewport).toEqual({ x: 0, y: 0, scale });
+  expectGroupClosed();
+  expect(um().undoStack).toHaveLength(1);
+  pressUndo();
+  expect(note(id)).toMatchObject({ width: w, x: 100, y: 100 });
+});
+
+it.each(["second finger", "pointercancel", "lostpointercapture", "unmount"])("%s ends resize ownership and never converts the remaining gesture to pan", async (reason) => {
+  const b = await bootBoard();
+  const id = addMemo(100, 100);
+  await readyCheck(b);
+  useWorkspace.setState({ selectedIds: [id], editingId: null, canvasHasFitted: true, viewport: { x: 0, y: 0, scale: 0.5 } });
+  useMobileCanvas.getState().resize(id);
+  const { container, root, unmount } = mount();
+  const el = container.querySelector(`[data-card-id="${id}"] [data-resize-handle="se"]`)!;
+  const captured = new Set<number>();
+  el.setPointerCapture = vi.fn((id) => { captured.add(id); });
+  el.hasPointerCapture = (id) => captured.has(id);
+  el.releasePointerCapture = vi.fn((id) => { captured.delete(id); });
+  root.setPointerCapture = vi.fn();
+  pointer(el, "pointerdown", 11, 200, 200);
+  expect(el.setPointerCapture).toHaveBeenCalledWith(11);
+  expect(root.setPointerCapture).not.toHaveBeenCalled();
+  pointer(window, "pointermove", 11, 220, 210);
+  const resized = card(id).width;
+  expect(resized).toBe(280);
+  if (reason === "second finger") pointer(root, "pointerdown", 12, 300, 200);
+  else if (reason === "unmount") unmount();
+  else pointer(window, reason, 11, 220, 210);
+  expect(el.releasePointerCapture).toHaveBeenCalledWith(11);
+  expectGroupClosed();
+  expect(um().undoStack).toHaveLength(1);
+  // Capture loss from cancellation must not count as a physical lift of finger 11.
+  pointer(el, "lostpointercapture", 11, 220, 210);
+  pointer(window, "pointermove", 11, 260, 230);
+  if (reason === "second finger") {
+    pointer(window, "pointermove", 12, 340, 230);
+    pointer(window, "pointerup", 12, 340, 230);
+    pointer(window, "pointermove", 11, 280, 240);
+  }
+  expect(card(id).width).toBe(resized);
+  expect(useWorkspace.getState().viewport).toEqual({ x: 0, y: 0, scale: 0.5 });
+  pointer(window, "pointerup", 11, 280, 240);
+  if (reason !== "unmount") {
+    pointer(root, "pointerdown", 13, 100, 100);
+    pointer(window, "pointermove", 13, 110, 105);
+    pointer(window, "pointerup", 13, 110, 105);
+    expect(useWorkspace.getState().viewport).toEqual({ x: 10, y: 5, scale: 0.5 });
+  }
+  pressUndo();
+  expect(note(id)?.width).toBe(240);
+});
+
+it("a resize handle used as the second finger cannot start resize or leave a pan active", () => {
+  useWorkspace.setState({ cards: [{ id: "a", kind: "text", x: 100, y: 100, width: 240, content: "" }], selectedIds: ["a"], editingId: null });
+  useMobileCanvas.getState().resize("a");
+  const { container, root } = mount();
+  const el = container.querySelector('[data-resize-handle="se"]')!;
+  pointer(root, "pointerdown", 1, 100, 100);
+  pointer(el, "pointerdown", 2, 200, 200);
+  pointer(window, "pointermove", 1, 130, 120);
+  pointer(window, "pointermove", 2, 240, 240);
+  expect(card("a").width).toBe(240);
+  expect(useWorkspace.getState().viewport).toEqual({ x: 0, y: 0, scale: 1 });
+  pointer(window, "pointerup", 2, 240, 240);
+  pointer(window, "pointermove", 1, 160, 150);
+  expect(useWorkspace.getState().viewport).toEqual({ x: 0, y: 0, scale: 1 });
+  pointer(window, "pointerup", 1, 160, 150);
 });

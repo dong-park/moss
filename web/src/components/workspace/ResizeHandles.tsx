@@ -1,21 +1,12 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import {
-  CARD_MAX_HEIGHT,
-  CARD_MAX_WIDTH,
-  CARD_MIN_HEIGHT,
-  CARD_MIN_WIDTH,
-  FRAME_MIN_HEIGHT,
-  aspectForKind,
-  clampFrameWidth,
-  useWorkspace,
-  type Card,
-} from "@/state/workspace";
-import { memoFace } from "./cards/text/face";
-import { beginUndoGroup, endUndoGroup, type UndoGroupToken } from "@/state/ydoc/undo";
+import { useWorkspace, type Card } from "@/state/workspace";
+import { beginUndoGroup, endUndoGroup } from "@/state/ydoc/undo";
+import { applyCardResize, finishCardResize, isAutoHeightCard, resizeFromHandle, type ResizeDirection } from "./cardSizing";
+import { ownResizePointer } from "./resizeSession";
 
-type HandleDir = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
+type HandleDir = ResizeDirection;
 
 // 보이는 점(dot)은 그대로 8×8 유지, 잡히는 hit zone만 키운다.
 // 코너는 20×20 사각형, 사이드는 edge 전체 길이 × 16px 두께.
@@ -47,222 +38,104 @@ const HANDLES: {
     hitStyle: { top: 0, bottom: 0, left: -EDGE_OFFSET, width: EDGE_HIT_THICKNESS, zIndex: 30 } },
 ];
 
-const clamp = (n: number, lo: number, hi: number) =>
-  Math.max(lo, Math.min(hi, n));
-
-export function ResizeHandles({
-  card,
-  measuredHeight,
-}: {
+export function ResizeHandles({ card, measuredHeight, mobile = false }: {
   card: Card;
-  /** card.height가 없을 때 fallback으로 쓸 실측 높이 (DOM offsetHeight). */
+  /** Fallback when no stored height is available. */
   measuredHeight: number;
+  /** Parent opts in only while mobile resize mode is active. */
+  mobile?: boolean;
 }) {
-  const resizeCard = useWorkspace((s) => s.resizeCard);
-  const resizeFrame = useWorkspace((s) => s.resizeFrame);
-  const resolveMembership = useWorkspace((s) => s.resolveMembership);
-  const setTextWidth = useWorkspace((s) => s.setTextWidth);
-  const moveCard = useWorkspace((s) => s.moveCard);
-  const isFrame = card.kind === "frame";
-  // FEAT-text-tool §2: textbox는 좌우(e/w) 핸들만 — 끌면 고정 폭 전환(AC-4),
-  // 높이는 항상 내용에 맞춘다(핸들 대상 아님).
-  const isTextbox = card.kind === "textbox";
-  const visibleHandles = isTextbox
-    ? HANDLES.filter((h) => h.dir === "e" || h.dir === "w")
-    : HANDLES;
+  const scale = useWorkspace((s) => s.viewport.scale);
+  const autoHeight = isAutoHeightCard(card);
+  const visibleHandles = mobile
+    ? HANDLES.filter((h) => h.dir === (autoHeight ? "e" : "se"))
+    : autoHeight ? HANDLES.filter((h) => h.dir === "e" || h.dir === "w") : HANDLES;
+  const finishRef = useRef<(() => void) | null>(null);
+  const suppressMouseUntil = useRef(0);
+  useEffect(() => () => { finishRef.current?.(); }, []);
 
-  const dragRef = useRef<{
-    dir: HandleDir;
-    startX: number;
-    startY: number;
-    originW: number;
-    originH: number;
-    originCardX: number;
-    originCardY: number;
-    cleanup: () => void;
-  } | null>(null);
-  // cmd-z-undo n4: 크기 조절 1회 = 기록 1단계. 누를 때 열고 마지막 쓰기 뒤에 닫는다.
-  // 끝은 cleanup() 안에 두지 않는다 — 언마운트 정리도 cleanup()을 부르기 때문이다.
-  const groupRef = useRef<UndoGroupToken | null>(null);
-  const endGroup = () => {
-    const token = groupRef.current;
-    groupRef.current = null;
-    endUndoGroup(token);
-  };
-
-  // 드래그 도중 컴포넌트 unmount되면 window 리스너 누수 — 안전한 cleanup.
-  // cmd-z-undo n4: 언마운트 정리는 아직 안 닫힌 묶음 토큰만 닫는다.
-  useEffect(() => {
-    return () => {
-      dragRef.current?.cleanup();
-      dragRef.current = null;
-      const token = groupRef.current;
-      groupRef.current = null;
-      endUndoGroup(token);
+  const start = (dir: HandleDir, clientX: number, clientY: number, pointer?: { id: number; owner: HTMLElement }) => {
+    finishRef.current?.();
+    const origin = useWorkspace.getState().cards.find((c) => c.id === card.id) ?? card;
+    const token = beginUndoGroup();
+    let changed = false;
+    let finished = false;
+    let releaseOwnership: (() => void) | undefined;
+    const move = (e: MouseEvent | PointerEvent) => {
+      if (pointer && (e as PointerEvent).pointerId !== pointer.id) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const zoom = useWorkspace.getState().viewport.scale;
+      if (!Number.isFinite(zoom) || zoom <= 0) return;
+      changed = applyCardResize(card.id, resizeFromHandle(origin, measuredHeight, dir, (e.clientX - clientX) / zoom, (e.clientY - clientY) / zoom)) || changed;
     };
-  }, []);
-
-  const onHandleMouseDown = (dir: HandleDir) => (e: React.MouseEvent) => {
-    if (e.button !== 0) return;
-    e.stopPropagation();
-    e.preventDefault();
-    endGroup();
-    groupRef.current = beginUndoGroup();
-
-    // FEAT-text-tool: textbox 좌우 핸들 — 고정 폭 전환. 높이는 손대지 않는다(내용 높이).
-    if (isTextbox) {
-      const onMove = (ev: MouseEvent) => {
-        const d = dragRef.current;
-        if (!d) return;
-        const scale = useWorkspace.getState().viewport.scale;
-        const dx = (ev.clientX - d.startX) / scale;
-        const raw = d.dir === "e" ? d.originW + dx : d.originW - dx;
-        const w = clamp(raw, CARD_MIN_WIDTH, CARD_MAX_WIDTH);
-        setTextWidth(card.id, w);
-        // 왼쪽 핸들은 오른쪽 가장자리를 고정 — x를 함께 민다.
-        if (d.dir === "w") {
-          moveCard(card.id, d.originCardX + (d.originW - w), d.originCardY);
-        }
-      };
-      const cleanup = () => {
-        window.removeEventListener("mousemove", onMove);
-        window.removeEventListener("mouseup", onUp);
-      };
-      const onUp = () => {
-        dragRef.current = null;
-        cleanup();
-        endGroup();
-      };
-      dragRef.current = {
-        dir,
-        startX: e.clientX,
-        startY: e.clientY,
-        originW: card.width,
-        originH: 0,
-        originCardX: card.x,
-        originCardY: card.y,
-        cleanup,
-      };
-      window.addEventListener("mousemove", onMove);
-      window.addEventListener("mouseup", onUp);
-      return;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      finishRef.current = null;
+      window.removeEventListener(pointer ? "pointermove" : "mousemove", move);
+      window.removeEventListener(pointer ? "pointerup" : "mouseup", up);
+      window.removeEventListener("pointercancel", up);
+      window.removeEventListener("lostpointercapture", up);
+      window.removeEventListener("pointerdown", secondPointer);
+      releaseOwnership?.();
+      if (pointer) {
+        suppressMouseUntil.current = Date.now() + 800;
+        if (pointer.owner.hasPointerCapture?.(pointer.id)) pointer.owner.releasePointerCapture(pointer.id);
+      }
+      try { if (changed) finishCardResize(card.id); }
+      finally { endUndoGroup(token); }
+    };
+    const up = (e: MouseEvent | PointerEvent) => {
+      if (pointer && (e as PointerEvent).pointerId !== pointer.id) return;
+      e.stopPropagation();
+      finish();
+    };
+    // Canvas capture arbitration handles a second finger first. Standalone handles also clean up.
+    const secondPointer = (e: PointerEvent) => {
+      if (pointer && e.pointerType === "touch" && e.pointerId !== pointer.id) finish();
+    };
+    finishRef.current = finish;
+    window.addEventListener(pointer ? "pointermove" : "mousemove", move, { passive: false });
+    window.addEventListener(pointer ? "pointerup" : "mouseup", up);
+    if (pointer) {
+      releaseOwnership = ownResizePointer(pointer.id, pointer.owner, finish);
+      window.addEventListener("pointercancel", up);
+      window.addEventListener("lostpointercapture", up);
+      window.addEventListener("pointerdown", secondPointer);
+      pointer.owner.setPointerCapture?.(pointer.id);
     }
-
-    // 메모(text)는 정사각 — 시작 높이는 실측이 아니라 폭. 그 외는 명시 높이/실측.
-    const startH =
-      card.kind === "text" && memoFace(card.content).t === "paper"
-        ? card.width
-        : (card.height ?? measuredHeight);
-
-    // FEAT-photo-card: 사진은 저장된 width÷height를 비율로 쓴다(사진마다 다름).
-    const ratio =
-      card.kind === "photo" && card.height
-        ? card.width / card.height
-        : aspectForKind(card.kind);
-    // 비율 유지 조건에서 width의 유효 범위 — 두 축 min/max 모두를 만족시키도록 좁힌다.
-    const minW = Math.max(CARD_MIN_WIDTH, CARD_MIN_HEIGHT * ratio);
-    const maxW = Math.min(CARD_MAX_WIDTH, CARD_MAX_HEIGHT * ratio);
-
-    const onMove = (ev: MouseEvent) => {
-      const d = dragRef.current;
-      if (!d) return;
-      const scale = useWorkspace.getState().viewport.scale;
-      const dx = (ev.clientX - d.startX) / scale;
-      const dy = (ev.clientY - d.startY) / scale;
-
-      // FEAT-sticky-redesign: 메모판은 종이 카드가 아니라 자유 사각형 — 가로/세로
-      // 비율을 강제하지 않고 각 축을 독립적으로 늘리거나 줄인다.
-      if (isFrame) {
-        let w = d.originW;
-        let h = d.originH;
-        if (d.dir.includes("e")) w = d.originW + dx;
-        if (d.dir.includes("w")) w = d.originW - dx;
-        if (d.dir.includes("s")) h = d.originH + dy;
-        if (d.dir.includes("n")) h = d.originH - dy;
-        // 핸들을 잡는 순간의 시작 폭이 상한 기준이 되어 튀지 않는다.
-        w = clampFrameWidth(d.originW, w);
-        h = clamp(h, FRAME_MIN_HEIGHT, CARD_MAX_HEIGHT);
-        let x = d.originCardX;
-        let y = d.originCardY;
-        if (d.dir.includes("w")) x = d.originCardX + (d.originW - w);
-        if (d.dir.includes("n")) y = d.originCardY + (d.originH - h);
-        resizeFrame(card.id, { width: w, height: h, x, y, baseWidth: d.originW });
-        return;
-      }
-
-      // 핸들 방향에 따라 한 축 변화량을 width로 환산. 비율은 강제(왜곡/잘림 방지).
-      // - e/w/corner: dx로 width 직접 결정
-      // - n/s: dy로 height 결정 → width = height * ratio
-      let w: number;
-      if (d.dir === "n" || d.dir === "s") {
-        const hCandidate = d.dir === "s" ? d.originH + dy : d.originH - dy;
-        w = hCandidate * ratio;
-      } else {
-        w = d.dir.includes("e") ? d.originW + dx : d.originW - dx;
-      }
-
-      w = clamp(w, minW, maxW);
-      const h = w / ratio;
-
-      // 좌/상 핸들은 카드 위치(x/y) 보정 — 반대편 가장자리를 고정한다.
-      let x = d.originCardX;
-      let y = d.originCardY;
-      if (d.dir.includes("w")) x = d.originCardX + (d.originW - w);
-      if (d.dir.includes("n")) y = d.originCardY + (d.originH - h);
-
-      resizeCard(card.id, { width: w, height: h, x, y });
-    };
-
-    const cleanup = () => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-    };
-    const onUp = () => {
-      dragRef.current = null;
-      cleanup();
-      // FEAT-sticky-redesign §4: 판 크기 조정이 끝난 시점에만 전체 멤버십 재판정.
-      if (isFrame) {
-        const ids = useWorkspace
-          .getState()
-          .cards.filter((c) => c.kind !== "frame")
-          .map((c) => c.id);
-        resolveMembership(ids);
-      }
-      // 판 크기 조절은 resolveMembership 뒤에 닫는다.
-      endGroup();
-    };
-
-    dragRef.current = {
-      dir,
-      startX: e.clientX,
-      startY: e.clientY,
-      originW: card.width,
-      originH: startH,
-      originCardX: card.x,
-      originCardY: card.y,
-      cleanup,
-    };
-
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
   };
 
-  return (
-    <>
-      {visibleHandles.map(({ dir, cursor, hitStyle }) => (
-        <span
-          key={dir}
-          data-resize-handle={dir}
-          onMouseDown={onHandleMouseDown(dir)}
-          className="absolute"
-          style={{ ...hitStyle, cursor }}
-        >
-          <span
-            aria-hidden
-            className="absolute left-1/2 top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-sm border border-border bg-bg shadow-card"
-          />
-        </span>
-      ))}
-    </>
-  );
+  return <>{visibleHandles.map(({ dir, cursor, hitStyle }) => {
+    const hit = 48 / (Number.isFinite(scale) && scale > 0 ? scale : 1);
+    const mobileStyle: React.CSSProperties = {
+      right: -hit / 2, width: hit, height: hit, zIndex: 31,
+      ...(dir === "e" ? { top: "50%", marginTop: -hit / 2 } : { bottom: -hit / 2 }),
+    };
+    return <span
+      key={dir}
+      data-resize-handle={dir}
+      onPointerDown={(e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+        suppressMouseUntil.current = Date.now() + 800;
+        start(dir, e.clientX, e.clientY, { id: e.pointerId, owner: e.currentTarget });
+      }}
+      onMouseDown={(e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+        if (finishRef.current || Date.now() < suppressMouseUntil.current) return;
+        start(dir, e.clientX, e.clientY);
+      }}
+      onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+      onDoubleClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+      className="absolute"
+      style={{ ...(mobile ? mobileStyle : hitStyle), cursor, touchAction: "none" }}
+    >
+      <span aria-hidden className="absolute left-1/2 top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-sm border border-border bg-bg shadow-card" />
+    </span>;
+  })}</>;
 }
