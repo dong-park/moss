@@ -11,6 +11,8 @@ FROM eclipse-temurin:17-jre
 WORKDIR /app
 COPY --from=build /app/build/install/moss-server/ ./
 EXPOSE 8080
-HEALTHCHECK --interval=10s --timeout=8s --start-period=40s --retries=3 \
+# Flyway runs before Ktor binds. Probes failing inside the start period do not count, so a slow
+# migration is not marked unhealthy before the deployer's 660s start budget (runtime.SERVER_START_SECONDS).
+HEALTHCHECK --interval=10s --timeout=8s --start-period=600s --retries=3 \
   CMD ["java", "-cp", "lib/*", "com.moss.server.DeploymentProbe"]
 CMD ["./bin/moss-server"]

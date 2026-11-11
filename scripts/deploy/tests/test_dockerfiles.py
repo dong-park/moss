@@ -50,3 +50,17 @@ class BuildIdentityGuardTest(unittest.TestCase):
 
 
 if __name__ == '__main__': unittest.main()
+
+
+class ServerStartBudgetTest(unittest.TestCase):
+    def test_server_health_allows_slow_flyway_within_runtime_budget(self):
+        # Failed probes inside --start-period do not count, so a slow Flyway run is not marked
+        # unhealthy (which would abort `compose --wait`) before the runtime's own start budget.
+        import sys
+        sys.path.insert(0, str(ROOT / 'scripts/deploy'))
+        import runtime
+        line = next(l for l in (ROOT / 'server/Dockerfile').read_text().splitlines() if l.startswith('HEALTHCHECK'))
+        option = lambda name: int(re.search(rf'--{name}=(\d+)s?\b', line).group(1))
+        unhealthy_after = option('start-period') + option('interval') * option('retries')
+        self.assertGreaterEqual(option('start-period'), 600)
+        self.assertLessEqual(unhealthy_after, runtime.SERVER_START_SECONDS)
