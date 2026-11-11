@@ -109,6 +109,10 @@ export function ResizeHandles({ card, measuredHeight, mobile = false }: {
 
   return <>{visibleHandles.map(({ dir, cursor, hitStyle }) => {
     const hit = 48 / (Number.isFinite(scale) && scale > 0 ? scale : 1);
+    // Width-only grips sit below short cards, clear of center connection ports.
+    const desktopStyle: React.CSSProperties = autoHeight
+      ? { ...(dir === "e" ? { right: -CORNER_OFFSET } : { left: -CORNER_OFFSET }), bottom: -24, width: CORNER_HIT, height: CORNER_HIT, zIndex: 31 }
+      : hitStyle;
     const mobileStyle: React.CSSProperties = {
       right: -hit / 2, width: hit, height: hit, zIndex: 31,
       ...(dir === "e" ? { top: "50%", marginTop: -hit / 2 } : { bottom: -hit / 2 }),
@@ -133,7 +137,7 @@ export function ResizeHandles({ card, measuredHeight, mobile = false }: {
       onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
       onDoubleClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
       className="absolute"
-      style={{ ...(mobile ? mobileStyle : hitStyle), cursor, touchAction: "none" }}
+      style={{ ...(mobile ? mobileStyle : desktopStyle), cursor, touchAction: "none" }}
     >
       <span aria-hidden className="absolute left-1/2 top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-sm border border-border bg-bg shadow-card" />
     </span>;

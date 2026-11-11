@@ -112,3 +112,11 @@ it("photo NW touch resize anchors its opposite edges and original aspect", async
   pressUndo();
   expect(note(id)).toMatchObject({ width: start.width, height: start.height, x: 100, y: 100 });
 });
+it("desktop auto-height width grips sit below the center connection ports", () => {
+  const c:Card={id:"a",kind:"textbox",x:0,y:0,width:240,content:"one line"};
+  const {container}=render(<ResizeHandles card={c} measuredHeight={28}/>);
+  const handle=container.querySelector<HTMLElement>('[data-resize-handle="e"]')!;
+  expect(handle.style.top).toBe("");
+  expect(handle.style.bottom).toBe("-24px");
+  expect(handle.style.height).toBe("20px");
+});
