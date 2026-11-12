@@ -92,6 +92,72 @@ describe("sync server", () => {
     return handle;
   }
 
+  test("shutdown flushes an edited connected document before resolving", async () => {
+    const a = await connected(USER_A);
+    await waitFor(() => a.provider.isSynced);
+    a.doc.getMap("meta").set("shutdown", "saved");
+    await waitFor(() => sync.server.hocuspocus.documents.get(BOARD)?.getMap("meta").get("shutdown") === "saved");
+    await sync.destroy();
+    const state = await store.fetch(BOARD);
+    expect(state).not.toBeNull();
+    const restored = new Y.Doc();
+    Y.applyUpdate(restored, state!);
+    expect(restored.getMap("meta").get("shutdown")).toBe("saved");
+    restored.destroy();
+  });
+
+  test("shutdown rejects when dirty persistence fails", async () => {
+    const a = await connected(USER_A);
+    await waitFor(() => a.provider.isSynced);
+    store.store = async () => { throw new Error("disk unavailable"); };
+    a.doc.getMap("meta").set("shutdown", "unsaved");
+    await waitFor(() => sync.server.hocuspocus.documents.get(BOARD)?.getMap("meta").get("shutdown") === "unsaved");
+    await expect(sync.destroy()).rejects.toThrow();
+    // Teardown may await the same rejected, idempotent drain.
+    sync.destroy = async () => {};
+  });
+
+  test("draining rejects new work and waits for an in-flight store", async () => {
+    let started = false;
+    let release!: () => void;
+    const barrier = new Promise<void>((resolve) => { release = resolve; });
+    const original = store.store.bind(store);
+    store.store = async (name, state) => {
+      started = true;
+      await barrier;
+      await original(name, state);
+    };
+    const a = await connected(USER_A);
+    await waitFor(() => a.provider.isSynced);
+    a.doc.getMap("proof").set("draining", "durable");
+    await waitFor(() => started);
+    let finished = false;
+    const drain = sync.destroy().then(() => { finished = true; });
+    try {
+      await waitFor(() => !sync.server.httpServer.listening);
+      expect(finished).toBe(false);
+      await expect(fetch(url.replace("ws:", "http:"))).rejects.toThrow();
+    } finally {
+      release();
+      await drain;
+    }
+    expect(finished).toBe(true);
+    expect(store.has(BOARD)).toBe(true);
+  });
+
+  test("shutdown fails closed when the board existence query fails", async () => {
+    const a = await connected(USER_A);
+    await waitFor(() => a.provider.isSynced);
+    // The authenticated client is already connected; only the store policy query fails.
+    sync.server.hocuspocus.configuration.debounce = 60000;
+    sync.server.hocuspocus.configuration.maxDebounce = 60000;
+    aliveBoards.has = () => { throw new Error("database unavailable"); };
+    a.doc.getMap("proof").set("db-check", "unsaved");
+    await waitFor(() => sync.server.hocuspocus.documents.get(BOARD)?.getMap("proof").get("db-check") === "unsaved");
+    await expect(sync.destroy()).rejects.toThrow("shutdown persistence failed");
+    sync.destroy = async () => {};
+  });
+
   test("two clients with valid board tokens converge on the same value", async () => {
     const a = await connected(USER_A);
     const b = await connected(USER_B);

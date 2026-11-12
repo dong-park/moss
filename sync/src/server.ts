@@ -62,8 +62,23 @@ export interface SyncServer {
   destroy(): Promise<void>;
 }
 
+interface DirtyDocument {
+  revision: number;
+  document?: Y.Doc;
+  retained?: Uint8Array;
+}
+
 export function createSyncServer(deps: SyncServerDeps): SyncServer {
   const { config } = deps;
+  let draining = false;
+  let destroyed: Promise<void> | undefined;
+  // Unpersisted changes per board. onChange only bumps a revision and keeps the live
+  // document reference (O(1) per update); the full state is encoded only when it is
+  // stored, when a still-dirty document unloads, or at shutdown. Failed snapshots are
+  // retained after unload because the database hook absorbs asynchronous errors, so
+  // unload alone is not persistence proof.
+  const dirty = new Map<string, DirtyDocument>();
+  const requests = new Set<Promise<unknown>>();
   const limits = documentLimits(config.maxDocumentBytes);
   const guardedStore = createGuardedStore(deps.store, {
     maxBytes: limits.storeBytes,
@@ -78,16 +93,37 @@ export function createSyncServer(deps: SyncServerDeps): SyncServer {
     {
       port: config.port,
       quiet: true,
+      stopOnSignals: false,
       debounce: config.debounceMs,
       maxDebounce: config.maxDebounceMs,
       // Hocuspocus 3.4.4 persists on unload either way, so keeping documents
       // resident buys no cache hit and only accumulates memory. Store then
       // unload; a reconnect re-fetches from Postgres.
       unloadImmediately: true,
-      async onRequest({ instance, request, response }) {
-        // A rejection without an error tells Hocuspocus the response is already sent.
-        if (mcpEndpoint !== undefined && (await mcpEndpoint.handle(instance, request, response))) {
+      async onUpgrade({ socket }) {
+        if (draining) {
+          socket.end("HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n");
           return Promise.reject();
+        }
+      },
+      async onConnect() {
+        if (draining) throw new Error("sync is shutting down");
+      },
+      async onRequest({ instance, request, response }) {
+        if (draining) {
+          response.writeHead(503, { Connection: "close" });
+          response.end();
+          return Promise.reject();
+        }
+        // A rejection without an error tells Hocuspocus the response is already sent.
+        if (mcpEndpoint !== undefined) {
+          const handling = mcpEndpoint.handle(instance, request, response);
+          requests.add(handling);
+          try {
+            if (await handling) return Promise.reject();
+          } finally {
+            requests.delete(handling);
+          }
         }
       },
       async onAuthenticate({ token, documentName }) {
@@ -98,6 +134,7 @@ export function createSyncServer(deps: SyncServerDeps): SyncServer {
         if (!(await deps.isMember(claims.boardId, claims.userId))) {
           throw new Error("not a member of this board");
         }
+        if (draining) throw new Error("sync is shutting down");
         return { userId: claims.userId, boardId: claims.boardId };
       },
       async connected({ instance, documentName, connection }) {
@@ -112,23 +149,33 @@ export function createSyncServer(deps: SyncServerDeps): SyncServer {
       async afterLoadDocument({ documentName, document }) {
         guardedStore.remember(documentName, Y.encodeStateAsUpdate(document));
       },
+      async onChange({ documentName, document }) {
+        const entry = dirty.get(documentName);
+        if (entry === undefined) dirty.set(documentName, { revision: 1, document });
+        else {
+          entry.revision += 1;
+          entry.document = document;
+        }
+      },
+      // Still dirty at unload (its store failed): encode once so shutdown can retry it.
+      async beforeUnloadDocument({ documentName, document }) {
+        const entry = dirty.get(documentName);
+        if (entry?.document === document) {
+          entry.retained = snapshot(entry);
+          entry.document = undefined;
+        }
+      },
       async afterUnloadDocument({ documentName }) {
         guardedStore.forget(documentName);
       },
       extensions: [
         new Database({
           fetch: ({ documentName }) => guardedStore.fetch(documentName),
-          // Absorb every store failure: a debounced store rejection here would
-          // otherwise be an unhandled rejection that terminates the process. An
-          // over-limit snapshot is dropped by the guarded store and answered by
-          // closing the board's connections with BOARD_TOO_LARGE_CODE so the
-          // client can show "보드가 너무 커요" (spec §7).
+          // The debounce hook cannot reject safely. Retain a failed state for
+          // an explicit, awaited retry at shutdown instead of claiming success.
           store: async ({ documentName, state }) => {
             try {
-              const outcome = await guardedStore.store(documentName, state);
-              if (!outcome.stored && outcome.reason === "too_large") {
-                closeWithCode(documentName, BOARD_TOO_LARGE_CODE, "board too large");
-              }
+              await persist(documentName, state);
             } catch (error) {
               console.warn(
                 `snapshot store failed for board ${documentName}:`,
@@ -142,6 +189,30 @@ export function createSyncServer(deps: SyncServerDeps): SyncServer {
     // Frame cap = document limit + headroom for protocol framing (spec §7).
     { maxPayload: limits.frameBytes },
   );
+
+  /** Full state of a dirty board, including bytes retained from an unloaded failed store. */
+  function snapshot(entry: DirtyDocument, live?: Uint8Array): Uint8Array {
+    const current = live ?? (entry.document === undefined ? undefined : Y.encodeStateAsUpdate(entry.document));
+    if (current === undefined) return entry.retained!;
+    return entry.retained === undefined ? current : Y.mergeUpdates([entry.retained, current]);
+  }
+
+  async function persist(name: string, state: Uint8Array): Promise<void> {
+    const entry = dirty.get(name);
+    const revision = entry?.revision;
+    const retained = entry?.retained;
+    const outcome = await guardedStore.store(name, entry === undefined ? state : snapshot(entry, state));
+    if (!outcome.stored && outcome.reason === "too_large") {
+      closeWithCode(name, BOARD_TOO_LARGE_CODE, "board too large");
+    }
+    if (!outcome.stored && outcome.reason === "check_failed") {
+      throw new Error(`snapshot not persisted: ${outcome.reason}`);
+    }
+    // A revoked board intentionally has no persisted document. An unchanged
+    // snapshot is already durable. Don't erase a newer change arriving mid-store.
+    const now = dirty.get(name);
+    if (now !== undefined && now.revision === revision && now.retained === retained) dirty.delete(name);
+  }
 
   /** Closes a board's document connections with a raw socket close code. */
   function closeWithCode(boardId: string, code: number, reason: string): number {
@@ -187,6 +258,7 @@ export function createSyncServer(deps: SyncServerDeps): SyncServer {
       try {
         closed = closeConnections(boardId);
         await guardedStore.delete(boardId);
+        dirty.delete(boardId);
       } catch (error) {
         // The snapshot delete is best-effort; never leave clients connected.
         if (closed === 0) closed = closeConnections(boardId);
@@ -199,8 +271,23 @@ export function createSyncServer(deps: SyncServerDeps): SyncServer {
       if (normalized === "") return 0;
       return closeConnections(boardId, normalized);
     },
-    destroy: async () => {
-      await server.destroy();
+    destroy: () => {
+      if (destroyed !== undefined) return destroyed;
+      draining = true;
+      destroyed = (async () => {
+        // Finish already accepted MCP requests, then freeze WebSocket input.
+        await Promise.allSettled([...requests]);
+        for (const socket of server.webSocketServer.clients) socket.terminate();
+        await server.destroy();
+        // destroy waits for Hocuspocus debounce/unload work. Explicit retries
+        // prove durability even if a previous hook swallowed a store failure.
+        const results = await Promise.allSettled([...dirty].map(([name, entry]) => persist(name, snapshot(entry))));
+        const failures = results.filter((result) => result.status === "rejected");
+        if (failures.length > 0 || dirty.size > 0) {
+          throw new Error(`shutdown persistence failed for ${failures.length || dirty.size} document(s)`);
+        }
+      })();
+      return destroyed;
     },
   };
 }

@@ -1,4 +1,5 @@
 import { Pool } from "pg";
+import { readBuildSha } from "./buildSha.ts";
 import { loadConfig, toPgConnection } from "./config.ts";
 import { ensureDocumentsTable, PostgresDocumentStore } from "./documentStore.ts";
 import { startInternalServer } from "./internalServer.ts";
@@ -9,10 +10,13 @@ import { readTools } from "./mcpReadTools.ts";
 import { writeTools } from "./mcpWriteTools.ts";
 import { createPostgresBoardExists, createPostgresMembership } from "./membership.ts";
 import { createSyncServer } from "./server.ts";
+import { checkDatabase } from "./readiness.ts";
+import { installShutdownHandlers } from "./shutdown.ts";
 
 async function main(): Promise<void> {
   const config = loadConfig();
   const pool = new Pool({ ...toPgConnection(config), max: 5 });
+  let accepting = true;
 
   // [P1] Ktor's Flyway migration owns `documents`; wait for it instead of
   // binding the socket and losing edits to "relation does not exist".
@@ -44,20 +48,26 @@ async function main(): Promise<void> {
     port: config.internalPort,
     host: config.internalHost,
     secret: config.internalSecret,
+    deployment: {
+      sha: () => process.env.RELEASE_SHA,
+      buildSha: readBuildSha,
+      ready: () => accepting && sync.server.httpServer.listening,
+      // Bounded for the readiness probe only; business queries keep the pool's defaults.
+      checkDatabase: () => checkDatabase(pool, 3000),
+    },
     revokeBoard: sync.revokeBoard,
     kickMember: sync.kickMember,
   });
 
   console.log(`moss sync listening on ws://0.0.0.0:${port} (internal control :${internal.port})`);
 
-  const shutdown = async () => {
-    await internal.close();
-    await sync.destroy();
-    await pool.end();
-    process.exit(0);
-  };
-  process.on("SIGINT", () => void shutdown());
-  process.on("SIGTERM", () => void shutdown());
+  installShutdownHandlers({
+    sha: readBuildSha,
+    stopAccepting: () => { accepting = false; },
+    closeControl: () => internal.close(),
+    destroySync: () => sync.destroy(),
+    closeDatabase: () => pool.end(),
+  });
 }
 
 try {

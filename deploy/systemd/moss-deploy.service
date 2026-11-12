@@ -1,0 +1,19 @@
+[Unit]
+Description=Moss verified image pull deployer
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+UMask=0077
+ExecStart=/usr/bin/python3 /opt/moss-deploy/scripts/deploy/agent.py --config /etc/moss-deploy/config.json poll
+TimeoutStartSec=45min
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=read-only
+ProtectSystem=strict
+ReadWritePaths=/var/lib/moss-deploy /var/backups/moss-deploy /run/docker.sock
+# Docker socket access is administrator authority; systemd hardening is not a Docker sandbox.
