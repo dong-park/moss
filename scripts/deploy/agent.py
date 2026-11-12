@@ -4,6 +4,7 @@ import argparse
 import contextlib
 import fcntl
 import json
+import re
 import os
 from pathlib import Path
 import sys
@@ -66,7 +67,7 @@ def stopped(runtime):
     return {'state':'stopped' if halt(runtime) else 'unverified','release':None}
 
 
-def finish(store,ident,outcome,*,running,rollback='not_attempted',requested=None,commit=None,failure=None):
+def finish(store,ident,outcome,*,running,rollback='not_attempted',requested=None,commit=None,failure=None,proof=None):
     """Commit the terminal attempt, any new current/previous release, its outbox report and the
     cleared active marker in ONE atomic journal write. A crash leaves either the old or new state."""
     require(rollback in ROLLBACK_RESULTS and running.get('state') in RUNNING_STATES,'invalid terminal record')
@@ -82,10 +83,39 @@ def finish(store,ident,outcome,*,running,rollback='not_attempted',requested=None
         'running':{'state':running['state'],'release':running.get('release')},'rollback':rollback}
     if failure is not None:  # data-free diagnose() record plus phase; visible in status and the local outbox
         state['attempts'][str(ident)]['failure']=failure; report['failure']=failure
+    if proof is not None:  # see proven_history(); only reconcile may use it, after live verification
+        state['attempts'][str(ident)]['proven_history']=proof
     state['reports'].append(report)
     state['active']=None
     if outcome == 'error': state['paused']=True
     store.save(state)
+
+
+PROOF_PHASES=('clients','smoke','rollback')
+PROOF_KEYS={'sha256','kind','requested','evidence_sha256','baseline_images'}
+
+
+def proven_history(runtime,manifest,current):
+    """Proof that the candidate server became ready on EXACTLY a signed rehearsed history of `manifest`,
+    bound to that request, its verified evidence digest and the current baseline images. None when the
+    runtime did not observe an exact rehearsed history (never derived from payload claims)."""
+    observed=getattr(runtime,'observed_migrations',None); evidence=getattr(runtime,'evidence',None)
+    if not observed or not isinstance(evidence,dict): return None
+    migrations=evidence.get('migrations') or {}
+    kind='candidate' if observed==migrations.get('candidate') else 'baseline' if observed==migrations.get('baseline') else None
+    if kind is None: return None
+    return {'sha256':digest(observed),'kind':kind,'requested':manifest['sha'],
+            'evidence_sha256':manifest['evidence_sha256'],'baseline_images':current['images']}
+
+
+def proof_for(state,attempt):
+    """The attempt's proof, only if it is well formed and still bound to this attempt and the CURRENT baseline."""
+    proof=attempt.get('proven_history')
+    if not (isinstance(proof,dict) and set(proof)==PROOF_KEYS and proof['kind'] in ('candidate','baseline')
+            and isinstance(proof['sha256'],str) and re.fullmatch(r'[0-9a-f]{64}',proof['sha256'])
+            and proof['requested']==attempt.get('requested') and proof['baseline_images']==state['current']['images']
+            and (attempt.get('failure') or {}).get('phase') in PROOF_PHASES): return None
+    return proof
 
 
 def recover(store,runtime):
@@ -94,8 +124,10 @@ def recover(store,runtime):
         # A crash can occur between a Docker side effect and its journal write. Never infer DB safety.
         requested=active.get('requested',(active.get('manifest') or {}).get('sha'))
         failure={'phase':active['phase'],'code':'interrupted'}
+        # A crash before the candidate proof (prepare..server) never carries one: that schema stays unknown.
+        proof=active.get('proven_history') if active['phase'] in PROOF_PHASES else None
         if active['phase'] != 'prepare':
-            finish(store,active['id'],'error',running=stopped(runtime),requested=requested,failure=failure,
+            finish(store,active['id'],'error',running=stopped(runtime),requested=requested,failure=failure,proof=proof,
                    rollback='failed' if active['phase']=='rollback' else 'not_attempted')
         else:
             finish(store,active['id'],'failure',running=serving(state['current']),requested=requested,failure=failure)
@@ -111,13 +143,15 @@ def apply(store,runtime,ident,manifest):
     state['active']={'id':ident,'manifest':manifest,'requested':requested,'phase':'prepare',
                      'phases':{'prepare':time.time()}}; store.save(state)
     phase='prepare'
-    def journal(next_phase):
+    def journal(next_phase,proven=None):
         nonlocal phase
         phase=next_phase; value=store.read(); value['active']['phase']=phase
+        if proven is not None: value['active']['proven_history']=proven  # same atomic write as the phase change
         value['active']['phases'][phase]=time.time(); store.save(value)
-    failure=None
+    failure=None; proof=None
     def end(outcome,running,rollback='not_attempted',commit=None):
-        finish(store,ident,outcome,running=running,rollback=rollback,requested=requested,failure=failure,commit=commit)
+        finish(store,ident,outcome,running=running,rollback=rollback,requested=requested,failure=failure,commit=commit,
+               proof=proof if outcome=='error' else None)
     try:
         runtime.prepare(manifest,current)
         if runtime.main_sha() != manifest['sha']:
@@ -127,7 +161,9 @@ def apply(store,runtime,ident,manifest):
         journal('backup'); runtime.backup(ident)
         journal('server'); runtime.start_server(manifest)
         require(runtime.migration_compatible(manifest),'unknown or incompatible migration state')
-        journal('clients'); runtime.start_clients(manifest)
+        # Durable BEFORE clients/smoke/rollback: a later crash or failed rollback keeps what was proven.
+        proof=proven_history(runtime,manifest,current)
+        journal('clients',proof); runtime.start_clients(manifest)
         journal('smoke'); runtime.smoke(manifest)
     except Exception as error:
         # Child-process details may contain credentials/personal data: only a data-free record is kept.
@@ -143,6 +179,7 @@ def apply(store,runtime,ident,manifest):
         if not halt(runtime):
             failure['recovery']='writer stop unverified'; end('error',{'state':'unverified','release':None}); return
         if phase != 'backup' and not runtime.migration_compatible(manifest):
+            proof=None  # contradicted: the live history moved after the proof
             failure['recovery']='migration history not rehearsed'; end('error',{'state':'stopped','release':None}); return
         journal('rollback')
         try:
@@ -151,7 +188,8 @@ def apply(store,runtime,ident,manifest):
             runtime.smoke(current)
             # Record the ACTUAL post-rollback history (candidate migrations stay applied); it must still be
             # exactly a rehearsed history of this release, or nothing proven is serving.
-            require(runtime.migration_compatible(manifest),'post-rollback migration history not rehearsed')
+            if not runtime.migration_compatible(manifest):
+                proof=None; raise Rejected('post-rollback migration history not rehearsed')
             observed=getattr(runtime,'observed_migrations',None)
         except Exception as rollback_error:
             failure['rollback']=dict(diagnose(rollback_error),phase='rollback')
@@ -223,13 +261,17 @@ def reconcile(store,runtime,ident):
     require(state.get('paused') and not state.get('active'),'reconcile only while paused and idle')
     require(attempt is not None and attempt['outcome']=='error' and not attempt.get('reconciled'),
             'no unreconciled error attempt')
-    expected=state.get('current_migrations_sha256')
-    require(expected is not None,'no recorded migration history for the current release; manual review required')
+    expected=state.get('current_migrations_sha256'); proof=proof_for(state,attempt)
+    accepted={value for value in (expected,proof and proof['sha256']) if value}
+    require(accepted,'no recorded migration history for the current release; manual review required')
     observed=runtime.observe(state['current'])
-    require(observed['migrations_sha256']==expected,
+    require(observed['migrations_sha256'] in accepted,
             'live migration history differs from the last verified release; follow manual DB recovery')
+    basis='current' if observed['migrations_sha256']==expected else 'attempt proof'
     attempt['reconciled']={'time':int(time.time()),'running':serving(state['current']),
-                           'migrations_sha256':observed['migrations_sha256']}
+                           'migrations_sha256':observed['migrations_sha256'],'basis':basis}
+    # The verified live history becomes the current release's recorded history (same atomic write).
+    state['current_migrations_sha256']=observed['migrations_sha256']
     store.save(state)
 
 
