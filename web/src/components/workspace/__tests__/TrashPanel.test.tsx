@@ -77,7 +77,7 @@ describe("FEAT-trash · TrashPanel", () => {
     await useStorage.getState().trashNote("n1");
 
     renderPanel();
-    const restoreBtn = await screen.findByLabelText("복구");
+    const restoreBtn = await screen.findByLabelText("복구: 복구할 메모");
     fireEvent.click(restoreBtn);
 
     await waitFor(() =>
@@ -88,19 +88,46 @@ describe("FEAT-trash · TrashPanel", () => {
     ).toEqual(["n1"]);
   });
 
-  it("개별 영구 삭제는 확인 없이 행을 지운다 (AC-9)", async () => {
+  it("개별 영구 삭제는 이름과 개수를 확인하고 취소하면 보존한다", async () => {
     await useStorage.getState().saveNote({ id: "n1", content: "버릴 메모" });
     await useStorage.getState().trashNote("n1");
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
-
     renderPanel();
-    fireEvent.click(await screen.findByLabelText("영구 삭제"));
-
-    await waitFor(() =>
-      expect(screen.getByText("휴지통이 비어 있어요")).toBeTruthy(),
-    );
-    expect(confirmSpy).not.toHaveBeenCalled();
+    const button = await screen.findByLabelText("영구 삭제: 버릴 메모");
+    fireEvent.click(button);
+    expect(confirmSpy).toHaveBeenCalledWith(expect.stringMatching(/버릴 메모.*1개/));
+    expect(await useStorage.getState().listTrash()).toHaveLength(1);
+    confirmSpy.mockReturnValue(true);
+    fireEvent.click(button);
+    await waitFor(() => expect(screen.getByText("휴지통이 비어 있어요")).toBeTruthy());
     expect(await useStorage.getState().listTrash()).toHaveLength(0);
+  });
+
+  it("영구 삭제 실패를 표시하고 행을 유지하며 재시도할 수 있다", async () => {
+    await useStorage.getState().saveNote({ id: "n1", content: "보존할 메모" });
+    await useStorage.getState().trashNote("n1");
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const purge = vi.spyOn(useStorage.getState(), "purgeTrash").mockRejectedValueOnce(new Error("disk failure"));
+    renderPanel();
+    fireEvent.click(await screen.findByLabelText("영구 삭제: 보존할 메모"));
+    expect((await screen.findByRole("alert")).textContent).toContain("다시 시도");
+    expect(await useStorage.getState().listTrash()).toHaveLength(1);
+    fireEvent.click(screen.getByLabelText("영구 삭제: 보존할 메모"));
+    await waitFor(() => expect(screen.getByText("휴지통이 비어 있어요")).toBeTruthy());
+    expect(purge).toHaveBeenCalledTimes(2);
+  });
+
+  it("복구 실패는 성공으로 표시하지 않고 대상과 재시도 안내를 남긴다", async () => {
+    await useStorage.getState().saveNote({ id: "n1", content: "복구 대상" });
+    await useStorage.getState().trashNote("n1");
+    const restore = vi.spyOn(useWorkspace.getState(), "restoreFromTrash").mockRejectedValueOnce(new Error("disk failure"));
+    renderPanel();
+    fireEvent.click(await screen.findByLabelText("복구: 복구 대상"));
+    expect((await screen.findByRole("alert")).textContent).toContain("복구");
+    expect(await useStorage.getState().listTrash()).toHaveLength(1);
+    fireEvent.click(screen.getByLabelText("복구: 복구 대상"));
+    await waitFor(() => expect(screen.getByText("휴지통이 비어 있어요")).toBeTruthy());
+    expect(restore).toHaveBeenCalledTimes(2);
   });
 
   it("비우기는 confirm 후 전체를 지우고, 취소하면 아무 일도 없다 (AC-10)", async () => {
@@ -113,7 +140,7 @@ describe("FEAT-trash · TrashPanel", () => {
     renderPanel();
     await screen.findByText("a"); // 목록 로드 완료 대기
     fireEvent.click(screen.getByText("비우기"));
-    expect(confirmSpy).toHaveBeenCalledWith("메모 2개를 영구 삭제할까요?");
+    expect(confirmSpy).toHaveBeenCalledWith(expect.stringMatching(/2개[\s\S]*a[\s\S]*b|2개[\s\S]*b[\s\S]*a/));
     expect(await useStorage.getState().listTrash()).toHaveLength(2);
 
     confirmSpy.mockReturnValue(true);
@@ -122,6 +149,32 @@ describe("FEAT-trash · TrashPanel", () => {
       expect(screen.getByText("휴지통이 비어 있어요")).toBeTruthy(),
     );
     expect(await useStorage.getState().listTrash()).toHaveLength(0);
+  });
+
+  it("비우기 확인 뒤 새로 들어온 메모는 삭제하지 않는다", async () => {
+    await useStorage.getState().saveNote({ id: "old", content: "확인 대상" });
+    await useStorage.getState().trashNote("old");
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const original = useStorage.getState().purgeTrash;
+    vi.spyOn(useStorage.getState(), "purgeTrash").mockImplementationOnce(async (ids) => {
+      await useStorage.getState().saveNote({ id: "new", content: "새 대상" });
+      await useStorage.getState().trashNote("new");
+      await original(ids);
+    });
+    renderPanel();
+    await screen.findByText("확인 대상");
+    fireEvent.click(screen.getByText("비우기"));
+    expect(await screen.findByText("새 대상")).toBeTruthy();
+    expect((await useStorage.getState().listTrash()).map(e => e.id)).toEqual(["new"]);
+  });
+
+  it("목록 오류는 빈 휴지통으로 위장하지 않고 다시 불러오기로 복구한다", async () => {
+    vi.spyOn(useStorage.getState(), "listTrash").mockRejectedValueOnce(new Error("offline"));
+    renderPanel();
+    expect((await screen.findByRole("alert")).textContent).toContain("불러오지 못했어요");
+    expect(screen.queryByText("휴지통이 비어 있어요")).toBeNull();
+    fireEvent.click(screen.getByText("목록 다시 불러오기"));
+    expect(await screen.findByText("휴지통이 비어 있어요")).toBeTruthy();
   });
 
   it("Esc를 누르면 닫힌다 (AC-4)", async () => {

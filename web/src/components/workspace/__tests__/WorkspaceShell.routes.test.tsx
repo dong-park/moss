@@ -35,7 +35,15 @@ vi.mock("next/navigation", () => ({
   usePathname: () => pathnameRef.value,
 }));
 
+const boardTransitions: Promise<void>[] = [];
+const switchBoard = useWorkspace.getState().setCurrentBoard;
 beforeEach(async () => {
+  boardTransitions.length = 0;
+  vi.spyOn(useWorkspace.getState(), "setCurrentBoard").mockImplementation((...args) => {
+    const pending = switchBoard(...args);
+    boardTransitions.push(pending);
+    return pending;
+  });
   push.mockClear();
   replace.mockClear();
   pathnameRef.value = "/";
@@ -57,7 +65,12 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  // Route effects intentionally launch transitions without awaiting them. Wait
+  // for the complete operation, not just its early currentBoardId state change,
+  // before closing the database underneath its final lastOpenedAt write.
+  await Promise.all(boardTransitions);
   vi.restoreAllMocks();
+  useWorkspace.setState({ setCurrentBoard: switchBoard });
   resetAuthStore();
   __resetBoardNavigatorForTest();
   await resetDB();

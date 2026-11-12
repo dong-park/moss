@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { render, screen, cleanup } from "@testing-library/react";
+import { I18nProvider } from "@/i18n/Provider";
 import { WorkspaceShell } from "../WorkspaceShell";
 import { useWorkspace, SYSTEM_BOARD_ID } from "@/state/workspace";
 vi.mock("next/navigation", () => ({ usePathname: () => "/b/00000000-0000-0000-0000-000000000000" }));
@@ -30,7 +31,7 @@ vi.mock("@/components/workspace/BoardAccessCard", () => ({ BoardAccessCard: () =
 afterEach(() => { cleanup(); useWorkspace.setState({ view: "canvas" }); });
 it("table toolbar follows an in-flow Workspace control row, with no fixed overlay", () => {
   useWorkspace.setState({ view: "table", bootstrapComplete: false, currentBoardId: SYSTEM_BOARD_ID });
-  render(<WorkspaceShell />);
+  render(<I18nProvider locale="ko"><WorkspaceShell /></I18nProvider>);
   const controls = screen.getByTestId("view-toggle").parentElement!;
   const table = screen.getByTestId("table-content");
   expect(controls.className).not.toContain("fixed");
@@ -40,6 +41,6 @@ it("table toolbar follows an in-flow Workspace control row, with no fixed overla
 });
 it("canvas retains its floating Workspace controls", () => {
   useWorkspace.setState({ view: "canvas", bootstrapComplete: false });
-  render(<WorkspaceShell />);
+  render(<I18nProvider locale="ko"><WorkspaceShell /></I18nProvider>);
   expect(screen.getByTestId("view-toggle").parentElement!.className).toContain("fixed");
 });

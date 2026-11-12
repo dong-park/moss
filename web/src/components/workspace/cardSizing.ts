@@ -38,6 +38,17 @@ function dimensions(card: Card, next: Resize): Dimensions | undefined {
   return { width, height: width / ratio };
 }
 
+/** Read limits from the same calculation used by handles and numeric controls. */
+export function cardWidthLimits(card: Card): { min: number; max: number } | undefined {
+  const min = dimensions(card, { width: 1 });
+  const max = dimensions(card, { width: Number.MAX_SAFE_INTEGER });
+  return min && max ? { min: Math.ceil(min.width), max: Math.floor(max.width) } : undefined;
+}
+
+export function frameHasAspect(card: Card): boolean {
+  return card.kind === "frame" && !!card.attachmentRef && !!normalizeFrameBg(readFrameContent(card.content).bg);
+}
+
 /** Apply inside an existing drag group or runAsUserAction; never opens a drag group. */
 export function applyCardResize(id: string, next: Resize): boolean {
   const state = useWorkspace.getState();

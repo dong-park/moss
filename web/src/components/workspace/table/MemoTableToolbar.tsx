@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import styles from "./memoTable.module.css";
 import { useT } from "@/i18n/Provider";
 import {
@@ -18,7 +18,7 @@ function toggleIn(list: string[], id: string): string[] {
   return list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
 }
 
-export function MemoTableToolbar() {
+export function MemoTableToolbar({ resultCount }: { resultCount: number }) {
   const t = useT();
   const sort = useMemoTable((s) => s.sort);
   const setSort = useMemoTable((s) => s.setSort);
@@ -35,13 +35,9 @@ export function MemoTableToolbar() {
   const setHasAttachment = useMemoTable((s) => s.setHasAttachment);
   const setQuery = useMemoTable((s) => s.setQuery);
 
-  // 검색은 150ms 디바운스 — 키 입력마다 파생을 다시 돌리지 않는다(P1-6).
-  const [queryInput, setQueryInput] = useState(query);
-  useEffect(() => {
-    if (queryInput === query) return;
-    const id = window.setTimeout(() => setQuery(queryInput), 150);
-    return () => window.clearTimeout(id);
-  }, [queryInput, query, setQuery]);
+  const queryInput = useMemoTable((s) => s.queryInput);
+  const setQueryInput = useMemoTable((s) => s.setQueryInput);
+  const resetFilters = useMemoTable((s) => s.resetFilters);
 
   const frames = useMemo(() => {
     const names = frameNameMap(notes);
@@ -58,6 +54,21 @@ export function MemoTableToolbar() {
   ];
   const selectedBoards = boardFilter === "all" ? null : boardFilter;
 
+  const chips: { key: string; label: string; remove: () => void }[] = [];
+  if (query) chips.push({ key: "query", label: t("reviewTable.queryChip", { query }), remove: () => setQuery("") });
+  for (const key of selectedBoards ?? []) {
+    const name = boardOptions.find(b => b.key === key)?.label ?? t("workspace.boardPicker.unnamed");
+    chips.push({ key: `board-${key}`, label: t("reviewTable.boardChip", { name }), remove: () => {
+      const next = (selectedBoards ?? []).filter(id => id !== key);
+      setBoardFilter(next.length ? next : "all");
+    } });
+  }
+  if (!includeSubboards && selectedBoards) chips.push({ key: "subboards", label: t("reviewTable.subboardsOff"), remove: () => setIncludeSubboards(true) });
+  for (const id of frameFilter ?? []) chips.push({ key: `frame-${id}`, label: t("reviewTable.frameChip", { name: frames.find(f => f.id === id)?.name ?? t("workspace.table.filter.frame") }), remove: () => {
+    const next = (frameFilter ?? []).filter(key => key !== id);
+    setFrameFilter(next.length ? next : null);
+  } });
+  if (hasAttachment !== null) chips.push({ key: "attachment", label: `${t("workspace.table.filter.attachment")} ${t(hasAttachment ? "workspace.table.filter.attachmentHas" : "workspace.table.filter.attachmentNone")}`, remove: () => setHasAttachment(null) });
 
   return (
     <div className={`${styles.toolbar} flex flex-wrap items-center gap-2 border-b border-border p-3`}>
@@ -167,11 +178,10 @@ export function MemoTableToolbar() {
                 <input
                   type="checkbox"
                   checked={frameFilter?.includes(f.id) ?? false}
-                  onChange={() =>
-                    setFrameFilter(
-                      toggleIn(frameFilter ?? [], f.id),
-                    )
-                  }
+                  onChange={() => {
+                    const next = toggleIn(frameFilter ?? [], f.id);
+                    setFrameFilter(next.length ? next : null);
+                  }}
                 />
                 <span className="truncate">{f.name}</span>
               </label>
@@ -203,6 +213,14 @@ export function MemoTableToolbar() {
           {t("workspace.table.filter.attachmentNone")}
         </option>
       </select>
+      <div className={styles.filterSummary}>
+        <span role="status" aria-live="polite">{t("reviewTable.results", { count: resultCount })}</span>
+        {chips.map(chip => <button key={chip.key} type="button" className={styles.filterChip}
+          aria-label={t("reviewTable.removeFilter", { label: chip.label })} onClick={chip.remove}>
+          <span>{chip.label}</span><span aria-hidden>×</span>
+        </button>)}
+        <button type="button" onClick={resetFilters} className={styles.resetFilters}>{t("reviewTable.reset")}</button>
+      </div>
     </div>
   );
 }

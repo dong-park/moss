@@ -167,3 +167,49 @@ describe("FEAT-photo-card — 사진 캡션 검색", () => {
     expect(hits).toHaveLength(0);
   });
 });
+
+
+describe("review table — semantic canvas search", () => {
+  it("hides only the reserved whole-body empty-link value", () => {
+    expect(plainText("<!-- moss-link-empty -->")).toBe("");
+    expect(searchMemos([card("empty", "<!-- moss-link-empty -->")], "moss-link-empty")).toEqual([]);
+    for (const body of ["`<!-- moss-link-empty -->`", "```html\n<!-- moss-link-empty -->\n```", "user <!-- moss-link-empty --> text"]) {
+      expect(plainText(body)).toContain("moss-link-empty");
+      expect(searchMemos([card("code", body)], "moss-link-empty")).toHaveLength(1);
+    }
+  });
+
+  it("finds empty memo, todo and link by the labels users see", () => {
+    const cards = [card("memo", ""), card("todo", "- [ ] "), card("link", "<!-- moss-link-empty -->")];
+    for (const [query, id] of [["빈 메모", "memo"], ["할 일을 추가하세요", "todo"], ["주소를 입력하세요", "link"], ["빈 링크", "link"]]) {
+      expect(searchMemos(cards, query).map(r => r.id)).toEqual([id]);
+    }
+  });
+
+  it("searches uppercase stored titles and a link URL hidden behind its label", () => {
+    expect(searchMemos([{...card("title", ""), title: "HELLO"}], "hello")).toHaveLength(1);
+    expect(searchMemos([card("url", '[Site](https://example.com/path "moss-link")')], "example.com")).toHaveLength(1);
+  });
+});
+
+
+describe("review table — cached semantics invalidate with metadata", () => {
+  it("recomputes empty labels after title, overlay, body and kind edits", () => {
+    const note = card("changing", "");
+    expect(searchMemos([note], "빈 메모")).toHaveLength(1);
+    note.title = "Named";
+    expect(searchMemos([note], "빈 메모")).toHaveLength(0);
+    expect(searchMemos([note], "named")).toHaveLength(1);
+    note.title = undefined;
+    note.overlay = JSON.stringify({paths:[[{x:1,y:2}]]});
+    expect(searchMemos([note], "빈 메모")).toHaveLength(0);
+    note.overlay = undefined;
+    note.content = "<!-- moss-link-empty -->";
+    expect(searchMemos([note], "빈 링크")).toHaveLength(1);
+    note.kind = "textbox";
+    expect(searchMemos([note], "moss-link-empty")).toHaveLength(1);
+  });
+  it("preserves a user's marker inside a todo item", () => {
+    expect(searchMemos([card("todo-code", "- [ ] <!-- moss-link-empty -->")], "moss-link-empty")).toHaveLength(1);
+  });
+});

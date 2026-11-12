@@ -1,0 +1,26 @@
+{
+  "before": {
+    "canvasScrollLeft": 136,
+    "canvasOverflow": "hidden",
+    "documentScrollLeft": 0
+  },
+  "after": {
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "canvasScroll": {
+      "left": 0,
+      "top": 0
+    },
+    "canvasOverflow": "clip",
+    "text": {
+      "length": 600,
+      "clientWidth": 452,
+      "scrollWidth": 452,
+      "wrap": "anywhere"
+    },
+    "documentOverflow": false
+  },
+  "scope": "Chromium local temporary QA route, actual Canvas/Dock/Yjs/IndexedDB, authentication not tested; before/after observed during implementation, not full platform acceptance"
+}

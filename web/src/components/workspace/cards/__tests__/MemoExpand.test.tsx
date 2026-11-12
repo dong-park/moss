@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import type { ReactNode } from "react";
 import { I18nProvider } from "@/i18n/Provider";
 import { useWorkspace, type Card } from "@/state/workspace";
+import { EMPTY_LINK_CONTENT } from "@/state/linkContent";
 import { DraggableCard } from "@/components/workspace/DraggableCard";
 import {
   MemoExpandDialog,
@@ -152,6 +153,18 @@ describe("FEAT-memo-expand · 더블클릭 확대", () => {
 });
 
 describe("FEAT-memo-expand · 모달", () => {
+  it("empty link marker never reaches the editor and an empty callback preserves the link", () => {
+    const card = textCard({ content: EMPTY_LINK_CONTENT });
+    seed([card]);
+    useWorkspace.setState({ expandedCardId: card.id });
+    wrap(<MemoExpandDialog />);
+    const editor = screen.getByTestId("expanded-editor") as HTMLTextAreaElement;
+    expect(editor.value).toBe("");
+    fireEvent.change(editor, { target: { value: " " } });
+    expect(useWorkspace.getState().cards[0].content).toBe(EMPTY_LINK_CONTENT);
+    fireEvent.change(editor, { target: { value: "새 내용" } });
+    expect(useWorkspace.getState().cards[0].content).toBe("새 내용");
+  });
   it("expandedCardId가 있으면 모달이 열리고 카드 내용을 보여준다", () => {
     seed([textCard({ content: "# 제목" })]);
     useWorkspace.getState().setExpandedCard("c1");

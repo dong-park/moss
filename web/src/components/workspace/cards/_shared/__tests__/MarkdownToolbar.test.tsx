@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { render } from "@testing-library/react";
+import { IMAGE_ACCEPT } from "@/state/attachmentLimits";
 import { I18nProvider } from "@/i18n/Provider";
 import { MarkdownToolbar } from "@/components/workspace/cards/_shared/MarkdownToolbar";
 
@@ -22,7 +23,7 @@ describe("MarkdownToolbar", () => {
     expect(container.querySelector('[data-toolbar-btn="link"]')).not.toBeNull();
     expect(container.querySelector('[data-toolbar-btn="image"]')).not.toBeNull();
     // 이미지 버튼은 숨은 파일 입력을 트리거한다.
-    expect(container.querySelector('input[type="file"][accept="image/*"]')).not.toBeNull();
+    expect(container.querySelector(`input[type="file"][accept="${IMAGE_ACCEPT}"]`)).not.toBeNull();
   });
 
   it("기존 서식 버튼(굵게/H1)도 유지된다", () => {

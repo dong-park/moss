@@ -14,6 +14,7 @@ import { useT } from "@/i18n/Provider";
 import { useTouchCanvas } from "./touchCanvas";
 import { DraggableCard } from "./DraggableCard";
 import { MobileCardActions } from "./MobileCardActions";
+import { CardPrivacyControl } from "./CardPrivacyControl";
 import {
   DragGhostLayer,
   RemoteCursorsLayer,
@@ -674,7 +675,7 @@ export function Canvas() {
       onMouseMove={onCanvasMouseMove}
       onDragOver={onCanvasDragOver}
       onDrop={onCanvasDrop}
-      className={`relative h-full overflow-hidden bg-bg ${cursorClass}`}
+      className={`relative h-full overflow-clip bg-bg ${cursorClass}`}
       // FEAT-markdown-memo-pen: 펜 모드면 전역 커서를 펜으로(inline이 class를 덮음).
       style={{ touchAction: "none", ...(penMode ? { cursor: PEN_CURSOR } : {}) }}
     >
@@ -705,8 +706,10 @@ export function Canvas() {
         <RemoteCursorsLayer />
       </div>
 
+      <CardPrivacyControl />
+
       {/* 빈 안내 — 시스템 보드 + 카드가 한 장도 없을 때만. 작업물이 있으면 안내가 가리지 않는다. */}
-      {currentBoardId === SYSTEM_BOARD_ID && cards.length === 0 && (
+      {cards.length === 0 && (
         <div
           className="pointer-events-none absolute inset-0 transition-opacity duration-200 ease-out"
           style={{ opacity: boardTransitioning ? 0 : 1 }}

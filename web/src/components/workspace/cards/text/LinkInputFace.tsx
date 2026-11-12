@@ -38,7 +38,7 @@ export function LinkInputFace({ cardId, editing, onCommitEdit }: { cardId: strin
           <span className="fav" style={{ background: "#c9c5bc" }} />
           {t("workspace.tool.link")}
         </small>
-        <form
+        <form noValidate
           onSubmit={(e) => {
             e.preventDefault();
             if (value.trim() === "") return;
@@ -50,6 +50,9 @@ export function LinkInputFace({ cardId, editing, onCommitEdit }: { cardId: strin
             ref={inputRef}
             data-link-input
             type="url"
+            inputMode="url"
+            autoCapitalize="none"
+            autoCorrect="off"
             value={value}
             placeholder={t("workspace.tool.linkPlaceholder")}
             aria-label={t("workspace.tool.link")}
@@ -59,6 +62,7 @@ export function LinkInputFace({ cardId, editing, onCommitEdit }: { cardId: strin
               setInvalid(false);
             }}
             onKeyDown={(e) => {
+              if (e.key === "Enter" && e.nativeEvent.isComposing) e.preventDefault();
               if (e.key === "Escape") e.currentTarget.blur();
             }}
             onBlur={() => {

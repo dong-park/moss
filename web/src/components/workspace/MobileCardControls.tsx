@@ -45,6 +45,7 @@ export function MobileCardControls({ compact }: { compact: boolean }) {
       </> : operation.kind === "resize" ? <>
         <MobileResizeControls card={card} apply={next => resizeCardDimensions(card.id, next)} close={close} />
       </> : <>
+        {card.kind === "board" && card.boardRef && <button type="button" onClick={() => { close(); void useWorkspace.getState().enterSubcanvas(card.id); }}>{t("workspace.mobile.open")}</button>}
         {url !== null ? <>
           {url && <a href={url} target="_blank" rel="noopener noreferrer">{t("workspace.mobile.open")}</a>}
           <button type="button" onClick={() => useMobileCanvas.getState().editLink(card.id)}>{t("workspace.mobile.editLink")}</button>

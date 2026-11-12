@@ -33,12 +33,14 @@ import {
 } from "@/state/ydoc/model";
 import { LOCAL_ORIGIN, UNTRACKED_ORIGIN, type WriteOrigin } from "@/state/ydoc/origin";
 import {
+  cancelPersist,
   connectionMirrorSettled,
   flushAll,
   persistSettled,
   trackConnectionMirrorWrite,
   trackPersist,
 } from "@/state/cardPersist";
+import { beginSave } from "./saveFeedback";
 import { liveFileRefs } from "@/state/undoFiles";
 import {
   SYSTEM_BOARD_ID,
@@ -187,6 +189,12 @@ async function putDeletedBoardIds(db: MossDB, ids: string[]): Promise<Settings> 
   await db.settings.put(next);
   return next;
 }
+
+// Serialize a note's mirror transactions, retaining failed fields until a newer
+// snapshot/patch actually commits. Retrying a partial patch must not drop an
+// earlier failed content edit. The source Y.Doc has its own save channel.
+const mirrorQueue = new Map<string, Promise<unknown>>();
+const failedMirrorPatch = new Map<string, Partial<Note> & { id: string }>();
 
 function mergeNote(
   prev: Note | undefined,
@@ -342,11 +350,34 @@ export const useStorage = create<StorageState>((set, get) => ({
     //   다른 탭이 휴지통에 넣은 뒤 끝난 이 탭의 늦은 쓰기가 미러 행을 되살리지 않게 한다.
     //   살리기·다시 나타남·휴지통 빼기는 휴지통 행을 먼저 지우고 미러를 쓴다.
     // - 읽기와 쓰기를 한 트랜잭션에 둔다. 뒤에 연 휴지통 트랜잭션이 그 사이에 끼지 못한다.
-    const write = db.transaction("rw", [db.notes, db.trash], async () => {
-      const prev = await db.notes.get(patch.id);
-      const next = mergeNote(prev, patch);
-      if (!(await db.trash.get(patch.id))) await db.notes.put(next);
-      return next;
+    const reserved = patch.boardId !== undefined
+      ? beginSave(patch.boardId, `mirror:${patch.id}`, () => get().saveNote(patch)) : null;
+    const previous = mirrorQueue.get(patch.id) ?? Promise.resolve();
+    const write = previous.catch(() => undefined).then(async () => {
+      const current = { ...failedMirrorPatch.get(patch.id), ...patch };
+      const boardId = current.boardId !== undefined ? current.boardId : (await db.notes.get(patch.id))?.boardId ?? null;
+      const ticket = reserved ?? beginSave(boardId, `mirror:${patch.id}`, () => get().saveNote(patch));
+      try {
+        const result = await db.transaction("rw", [db.notes, db.trash], async () => {
+          const prev = await db.notes.get(current.id);
+          const next = mergeNote(prev, current);
+          if (!(await db.trash.get(current.id))) await db.notes.put(next);
+          return next;
+        });
+        failedMirrorPatch.delete(patch.id);
+        ticket.success();
+        return result;
+      } catch (error) {
+        failedMirrorPatch.set(patch.id, current);
+        ticket.failure();
+        throw error;
+      }
+    });
+    mirrorQueue.set(patch.id, write);
+    void write.then(() => {
+      if (mirrorQueue.get(patch.id) === write) mirrorQueue.delete(patch.id);
+    }, () => {
+      if (mirrorQueue.get(patch.id) === write) mirrorQueue.delete(patch.id);
     });
     // 빈번한 saveNote 후마다 quota 호출은 비싸므로 호출자가 refreshQuota를 명시적으로 부른다.
     // n23 P1-5: 정규화된 Note를 돌려준다 — 호출자(브리지)가 Dexie read-back 없이
@@ -360,14 +391,45 @@ export const useStorage = create<StorageState>((set, get) => ({
     const prev = await db.notes.get(id);
     if (!prev) return; // 없는 노트는 새로 만들지 않는다(P1-2).
     const next = title || undefined;
-    if ((prev.title ?? "") === (next ?? "")) return; // 무변경 — updatedAt 무갱신.
-    const updatedAt = Date.now();
-    await db.notes.update(id, { title: next, updatedAt });
-    // 원본은 보드 문서다. 제목·updatedAt 두 키만 바꿔 미러의 낡은 본문으로 덮지 않는다.
-    await writeToBoardDoc(prev.boardId ?? null, (doc) => {
-      updateNoteField(doc, id, "title", next, origin);
-      updateNoteField(doc, id, "updatedAt", updatedAt, origin);
+    // A retained failed body mirror edit must still be flushed here even when the
+    // title itself is unchanged — a title-only success must never mark the shared
+    // mirror:<id> resource saved while an earlier body edit is still unwritten.
+    if ((prev.title ?? "") === (next ?? "") && !failedMirrorPatch.has(id)) return; // 무변경 — updatedAt 무갱신.
+    // Share the serialized mirror channel with saveNote. Commit the title
+    // together with any retained failed fields in one transaction, so success on
+    // mirror:<id> reflects what was actually written and never covers a lost body.
+    const previous = mirrorQueue.get(id) ?? Promise.resolve();
+    const write = previous.catch(() => undefined).then(async () => {
+      const failed = failedMirrorPatch.get(id);
+      const boardId = failed?.boardId !== undefined ? failed.boardId : prev.boardId;
+      // Retry re-reads the latest retained failed fields, so the body recovery
+      // path is preserved and never replaced by a stale title-only retry.
+      const ticket = beginSave(boardId ?? null, `mirror:${id}`, () => get().updateNoteTitle(id, title, opts));
+      try {
+        const updatedAt = Date.now();
+        await db.transaction("rw", [db.notes, db.trash], async () => {
+          if (await db.trash.get(id)) return; // 휴지통이 이긴다 — 되살리지 않는다.
+          const row = await db.notes.get(id);
+          if (!row) return; // update(not upsert) 가드 유지.
+          await db.notes.put({ ...row, ...failed, title: next, updatedAt });
+        });
+        // 제목은 원본(Y.Doc)에도 쓴다. 실패했던 본문은 이미 원본에 있으므로(미러 쓰기만
+        // 실패) 미러 행에만 되살린다 — 원본을 더 오래된 값으로 덮어쓰지 않는다.
+        await writeToBoardDoc(boardId ?? null, (doc) => {
+          updateNoteField(doc, id, "title", next, origin);
+          updateNoteField(doc, id, "updatedAt", updatedAt, origin);
+        });
+        failedMirrorPatch.delete(id);
+        ticket.success();
+      } catch (error) { ticket.failure(); throw error; }
     });
+    mirrorQueue.set(id, write);
+    void write.then(() => {
+      if (mirrorQueue.get(id) === write) mirrorQueue.delete(id);
+    }, () => {
+      if (mirrorQueue.get(id) === write) mirrorQueue.delete(id);
+    });
+    await write;
   },
 
   removeNote: async (id) => {
@@ -382,6 +444,10 @@ export const useStorage = create<StorageState>((set, get) => ({
     const db = getDB();
     // cmd-z-undo 웨이브 4 리뷰(W4-5): 이미 시작된 미러 쓰기가 끝난 뒤 지운다 — 늦은 put이 행을 되살린다.
     await persistSettled(ids);
+    // 권위 있는 삭제 경계에서 미러 재시도·예약 쓰기를 모두 취소한다. 호출자(브리지)가
+    // 비활성 보드 삭제 시 cancelPersist를 거치지 않으므로, 남은 재시도가 영구 삭제된
+    // 행을 retryBoardSave에서 되살리지 못하게 여기서 끊는다.
+    for (const id of ids) { failedMirrorPatch.delete(id); cancelPersist(id); }
     await connectionMirrorSettled();
     // 원본 문서에서 먼저 지운다. 보드를 모르면 미러 행의 boardId로 찾는다.
     const byBoard = new Map<string | null, string[]>();
@@ -425,6 +491,8 @@ export const useStorage = create<StorageState>((set, get) => ({
     // cmd-z-undo 웨이브 4 리뷰(W4-5): 이미 시작된 미러 쓰기가 끝난 뒤 옮긴다. cancelPersist는
     // 타이머만 지워서, 늦은 put이 휴지통에 넣은 메모·연결선의 미러 행을 되살린다.
     await persistSettled(ids);
+    // 권위 있는 삭제 경계에서 미러 재시도·예약 쓰기를 모두 취소한다(위 hardDeleteNotes와 동일 이유).
+    for (const id of ids) { failedMirrorPatch.delete(id); cancelPersist(id); }
     await connectionMirrorSettled();
     const db = getDB();
     // 읽기까지 한 트랜잭션 안에서 — 연달아 지운 두 메모가 같은 연결선을 서로 놓치지 않게.

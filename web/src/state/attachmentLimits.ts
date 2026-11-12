@@ -16,10 +16,15 @@ export const MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024;
 export const MAX_DROP_FILES = 20;
 
 /** 인라인 삽입을 허용하는 이미지 MIME. 그 외는 경고 후 무시. */
-export const SUPPORTED_IMAGE_TYPES = new Set([
-  "image/png",
-  "image/jpeg",
-  "image/gif",
-  "image/webp",
-  "image/svg+xml",
-]);
+export const IMAGE_FORMATS = {
+  "image/png": "PNG",
+  "image/jpeg": "JPEG",
+  "image/gif": "GIF",
+  "image/webp": "WebP",
+  "image/svg+xml": "SVG",
+};
+export const SUPPORTED_IMAGE_TYPES = new Set(Object.keys(IMAGE_FORMATS));
+export const IMAGE_FORMAT_LABELS = Object.values(IMAGE_FORMATS).join(" · ");
+
+/** File pickers use the same supported image types as validation. */
+export const IMAGE_ACCEPT = [...SUPPORTED_IMAGE_TYPES].join(",");

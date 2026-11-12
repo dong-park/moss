@@ -999,7 +999,7 @@ interface WorkspaceState {
     viewportSize?: { width: number; height: number },
   ) => void;
   /** 메모(text)들이 화면에 꽉 차도록 viewport scale·위치를 맞춘다(새로고침 직후 포커싱용). */
-  fitAllCards: (size: { width: number; height: number; insets?: { top: number; right: number; bottom: number; left: number } }) => void;
+  fitAllCards: (size: { width: number; height: number; insets?: { top: number; right: number; bottom: number; left: number }; contentOnly?: boolean }) => void;
   fitToCards: (viewportSize?: { width: number; height: number }) => void;
 }
 
@@ -1551,9 +1551,24 @@ function persistCardDebounced(
   opts?: { doc?: boolean },
 ) {
   if (opts?.doc !== false) writeCardToDoc(card, boardId);
+  if (untrackedOwnFields) {
+    const doc = isActiveBoard(boardId) ? getActiveBoardDoc()?.doc : undefined;
+    // Measured dimensions are derived cache metadata. Keep them usable for
+    // offscreen connectors/membership without stamping a read as a user edit.
+    schedulePersist(`measured:${card.id}`, async () => {
+      if (!useStorage.getState().initialized) return;
+      await persistSettled([card.id]);
+      const current = doc ? readNote(doc, card.id) : undefined;
+      if (!current) return;
+      const fields = { width: current.width, height: current.height, frameId: current.frameId };
+      const db = getDB();
+      await db.transaction("rw", db.notes, () => db.notes.update(card.id, fields));
+    }, boardId);
+    return;
+  }
   schedulePersist(card.id, async () => {
     await persistCardDexie(card, boardId);
-  });
+  }, boardId);
 }
 
 /* ─────────── FEAT-collab-auth n3: Y.Doc 쓰기·반영 ───────────
@@ -2154,7 +2169,7 @@ function bindActiveDocReflection(doc: Y.Doc, storageBoardId: string | null): voi
       schedulePersist(card.id, async () => {
         await persistCardDexie(card, storageBoardId);
         notifyNoteChanges();
-      });
+      }, storageBoardId);
     }
     if (dirty) useWorkspace.setState({ cards: nextCards });
     if (appeared.length > 0) {
@@ -3478,7 +3493,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         )
         .catch((err) => console.warn("[moss] 메모판 이동 저장 실패", err));
     };
-    for (const id of groupIds) schedulePersist(id, persistGroup);
+    for (const id of groupIds) schedulePersist(id, persistGroup, boardId);
     // n3 D4: 좌표는 드롭 시점(commitMove)에만 문서에 쓴다 — 드래그 중 쓰기 없음.
   },
 
@@ -3661,7 +3676,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     let updated: Card | undefined;
     set((s) => ({
       cards: s.cards.map((c) => {
-        if (c.id !== id) return c;
+        if (c.id !== id || c.content === content) return c;
         updated = { ...c, content };
         return updated;
       }),
@@ -3678,7 +3693,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     let updated: Card | undefined;
     set((s) => ({
       cards: s.cards.map((c) => {
-        if (c.id !== id) return c;
+        if (c.id !== id || (c.title ?? "") === normalized) return c;
         updated = { ...c, title: normalized || undefined };
         return updated;
       }),
@@ -3697,7 +3712,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     let updated: Card | undefined;
     set((s) => ({
       cards: s.cards.map((c) => {
-        if (c.id !== id) return c;
+        if (c.id !== id || (c.title ?? "") === normalized) return c;
         updated = { ...c, title: normalized || undefined };
         return updated;
       }),
@@ -4817,11 +4832,13 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   // Explicit overview may zoom below MIN_SCALE; automatic fitting stays unchanged.
-  fitAllCards: ({ width, height, insets = canvasControlInsets(width, height) }) => {
+  fitAllCards: ({ width, height, insets = canvasControlInsets(width, height), contentOnly = false }) => {
     const w = width - insets.left - insets.right;
     const h = height - insets.top - insets.bottom;
     if (w <= 0 || h <= 0) return;
-    const cards = get().cards;
+    const allCards = get().cards;
+    const content = contentOnly ? allCards.filter(c => c.kind !== "frame") : allCards;
+    const cards = content.length ? content : allCards;
     if (!cards.length) { set({ canvasHasFitted: true, viewport: { x: 0, y: 0, scale: 1 } }); return; }
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const c of cards) {

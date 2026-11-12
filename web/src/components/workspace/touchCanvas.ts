@@ -8,7 +8,7 @@ type Point = { clientX: number; clientY: number };
 export type TouchDrag = { move: (point: Point) => void; end: () => void; cancel: () => void };
 // DOM registration keeps touch on the same drag/drop implementation as mouse input.
 export const touchCardDrags = new WeakMap<HTMLElement, (point: Point) => TouchDrag | undefined>();
-const INTERACTIVE = "input, textarea, button, a, select, [contenteditable='true'], [data-textbox-toolbar]";
+const INTERACTIVE = "input, textarea, button, a, select, [contenteditable='true'], [data-textbox-toolbar], [data-canvas-control]";
 
 export function useTouchCanvas(ref: RefObject<HTMLDivElement | null>, boardId: string) {
   useEffect(() => {

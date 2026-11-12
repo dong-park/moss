@@ -4,11 +4,12 @@ import { create } from "zustand";
 import type { Board, Note } from "./db/schema";
 import { useStorage } from "./storage";
 import { countBlocks, type BlockCounts } from "./blocks";
-import { plainTextRaw, searchMemos } from "./memoSearch";
+import { plainTextRaw, searchMemoEntries } from "./memoSearch";
+import { presentMemo, type MemoPresentation } from "./memoPresentation";
 import { normalizeTitle, normalizeTitleTyping } from "./memoTitle";
 import { useWorkspace, SYSTEM_BOARD_ID } from "./workspace";
 import { subscribeNoteChanges } from "./db/liveSync";
-import { cancelPersist } from "./cardPersist";
+import { cancelPersist, flushAll, persistSettled } from "./cardPersist";
 import { UNTRACKED_ORIGIN } from "./ydoc/origin";
 import { useToasts } from "./notifications";
 import { t } from "@/i18n";
@@ -46,12 +47,12 @@ export interface MemoFilters {
   query: string;
 }
 
-export interface MemoRow {
+export interface MemoRow extends Omit<MemoPresentation, "preview" | "searchText"> {
   id: string;
   title: string;
   /** 본문 평문 1줄(대소문자 보존, 최대 [[PREVIEW_LIMIT]]자). */
   preview: string;
-  /** 검색 전용 본문 평문(전체 길이 — 미리보기 잘림에 영향받지 않게). */
+  /** Full authored + semantic text; independent of preview truncation. */
   searchText: string;
   /** storage 기준 boardId(null=시스템 보드). */
   boardId: string | null;
@@ -200,7 +201,16 @@ function decodeFrameName(content: string): string {
   }
 }
 
-/** 노트 목록 → 표 행(파생). 대상은 kind==="text"만 — 텍스트·함·메모판 제외(spec §2). */
+/** Table membership: memo faces and captioned photos; retain empty text cards. */
+export function isTableNote(note: Note): boolean {
+  return note.kind === "text" || (note.kind === "photo" && !!note.content.trim());
+}
+
+/** Eligible selection IDs, shared with the destructive action and its displayed count. */
+export function tableTrashTargetIds(notes: Note[], selectedIds: Set<string>): string[] {
+  return notes.filter(n => isTableNote(n) && selectedIds.has(n.id)).map(n => n.id);
+}
+
 export function buildMemoRows(
   notes: Note[],
   boards: Board[],
@@ -212,17 +222,18 @@ export function buildMemoRows(
   for (const note of notes) {
     // FEAT-photo-card: 사진은 캡션(content)이 있을 때만 표에 오른다(성공 기준 11).
     // 캡션 없는 사진은 content가 비어 제외한다.
-    if (note.kind === "photo" && !note.content.trim()) continue;
-    if (note.kind !== "text" && note.kind !== "photo") continue;
+    if (!isTableNote(note)) continue;
     // plainTextRaw를 한 번만 파싱해 preview·searchText에 함께 쓴다(P1-6).
     // 사진의 content는 캡션 평문이라 마크다운 환원이 필요 없다.
     const raw = note.kind === "photo" ? note.content : plainTextRaw(note.content);
+    const presentation = presentMemo(note, raw);
     rows.push({
+      ...presentation,
       id: note.id,
       color: note.color,
       title: note.title ?? "",
-      preview: previewFromRaw(raw),
-      searchText: raw,
+      preview: previewFromRaw(presentation.preview),
+      searchText: presentation.searchText,
       boardId: note.boardId,
       boardPath: boardPathLabelFromMap(boardMap, note.boardId, systemLabel),
       frameId: note.frameId,
@@ -277,22 +288,13 @@ export function applyFilters(
 }
 
 /**
- * 검색 적용. 기존 [[searchMemos]]를 재사용한다(spec §2) — 매칭 카드 id 집합으로
- * 행을 거르고, 미리보기 매칭 위치를 계산해 AC-3 강조에 쓴다. query가 비면 원본 유지.
+ * Search the same visible semantic text as canvas search, without parsing it again.
+ * Highlight matching preview text; an empty query preserves every row.
  */
 export function applySearch(rows: MemoRow[], query: string): MemoRow[] {
   const q = query.trim();
   if (!q) return rows;
-  const asCards = rows.map((r) => ({
-    id: r.id,
-    kind: "text" as const,
-    x: 0,
-    y: 0,
-    width: 0,
-    content: r.searchText,
-    title: r.title || undefined,
-  }));
-  const matched = searchMemos(asCards, q).map((m) => m.id);
+  const matched = searchMemoEntries(rows, q).map((m) => m.id);
   const rank = new Map(matched.map((id, i) => [id, i]));
   const out: MemoRow[] = [];
   for (const r of rows) {
@@ -376,6 +378,8 @@ interface MemoTableStore {
   frameFilter: string[] | null;
   hasAttachment: boolean | null;
   query: string;
+  /** Immediate input value; query is committed after 150ms. */
+  queryInput: string;
   selectedIds: Set<string>;
   /**
    * 인라인 제목 편집 중인 노트와 편집 시작 시점의 원값(P1-1·P1-2). reload가
@@ -386,6 +390,7 @@ interface MemoTableStore {
 
   /** 표 진입 시 1회 로드 + 기본 보드 필터(현재 보드) 설정 + 변경 구독. */
   ensureLoaded: () => Promise<void>;
+  loadError: string | null;
   /** 모든 노트·보드를 다시 읽는다(AC-8 실시간 반영). */
   reload: () => Promise<void>;
   /** 노트 변경 알림 → 200ms 디바운스 후 reload(연속 변경 병합). */
@@ -399,6 +404,8 @@ interface MemoTableStore {
   setFrameFilter: (frames: string[] | null) => void;
   setHasAttachment: (v: boolean | null) => void;
   setQuery: (q: string) => void;
+  setQueryInput: (q: string) => void;
+  resetFilters: () => void;
 
   toggleSelected: (id: string) => void;
   setSelectedIds: (ids: Set<string>) => void;
@@ -419,17 +426,36 @@ interface MemoTableStore {
   openMemo: (id: string) => Promise<void>;
 }
 
+let queryTimer: ReturnType<typeof setTimeout> | null = null;
+function cancelQueryTimer(): void {
+  if (queryTimer !== null) clearTimeout(queryTimer);
+  queryTimer = null;
+}
+
 let noteUnsub: (() => void) | null = null;
 let reloadTimer: ReturnType<typeof setTimeout> | null = null;
+let loadEpoch = 0;
 
 /** 표 liveSync 반영 디바운스 — 연속 변경을 한 번의 재조회로 병합(P1-5). */
 export const RELOAD_DEBOUNCE_MS = 200;
+
+async function readTableProjection() {
+  const storage = useStorage.getState();
+  if (!storage.initialized) await storage.init();
+  // Same-tab mirror writes do not emit a liveSync notification. Finish the
+  // queued edit before reading, so a rapid canvas→table switch sees that edit.
+  await flushAll();
+  await persistSettled(useWorkspace.getState().cards.map(card => card.id));
+  const [notes, boards] = await Promise.all([storage.loadAllNotes(), storage.loadBoards()]);
+  return { notes, boards };
+}
 
 export const useMemoTable = create<MemoTableStore>((set, get) => ({
   notes: [],
   boards: [],
   loaded: false,
   loading: false,
+  loadError: null,
 
   sort: DEFAULT_SORT,
   boardFilter: [SYSTEM_BOARD_ID],
@@ -437,22 +463,26 @@ export const useMemoTable = create<MemoTableStore>((set, get) => ({
   frameFilter: null,
   hasAttachment: null,
   query: "",
+  queryInput: "",
   selectedIds: new Set<string>(),
   titleEdit: null,
 
   ensureLoaded: async () => {
     if (get().loading) return;
-    set({ loading: true });
+    const epoch = ++loadEpoch;
+    set({ loading: true, loadError: null });
     // 기본 보드 필터 = 현재 보드(spec §0). 표에 들어올 때마다(재마운트 포함) 현재
     // 보드 맥락으로 잡는다 — AC-1 "표가 뜨고 보드 필터가 X로 잡혀 있다".
     set({ boardFilter: [useWorkspace.getState().currentBoardId] });
-    const storage = useStorage.getState();
-    if (!storage.initialized) await storage.init();
-    const [notes, boards] = await Promise.all([
-      storage.loadAllNotes(),
-      storage.loadBoards(),
-    ]);
-    set({ notes, boards, loaded: true, loading: false });
+    try {
+      const { notes, boards } = await readTableProjection();
+      if (epoch !== loadEpoch) return;
+      set({ notes, boards, loaded: true, loading: false });
+    } catch {
+      if (epoch !== loadEpoch) return;
+      set({ loading: false, loadError: t("reviewTable.loadFailed") });
+      return;
+    }
     if (!noteUnsub) {
       // AC-8: 다른 탭(liveSync)의 실제 반영만 표에 알린다. 구독자는 디바운스로
       // reload하며, 수신 처리는 재조회를 기다리지 않는다(P1-5).
@@ -469,6 +499,9 @@ export const useMemoTable = create<MemoTableStore>((set, get) => ({
   },
 
   dispose: () => {
+    loadEpoch++;
+    cancelQueryTimer();
+    set({ queryInput: get().query, loading: false });
     if (reloadTimer !== null) {
       clearTimeout(reloadTimer);
       reloadTimer = null;
@@ -482,24 +515,27 @@ export const useMemoTable = create<MemoTableStore>((set, get) => ({
   reload: async () => {
     const storage = useStorage.getState();
     if (!storage.initialized) return;
-    const [notes, boards] = await Promise.all([
-      storage.loadAllNotes(),
-      storage.loadBoards(),
-    ]);
-    set((s) => {
-      const alive = new Set(notes.map((n) => n.id));
-      const selectedIds = new Set(
-        [...s.selectedIds].filter((id) => alive.has(id)),
-      );
-      // 편집 중인 제목은 DB값으로 덮지 않는다(P1-1) — 타이핑 입력 유실 방지.
-      const editingId = s.titleEdit?.id;
-      const existing = s.notes.find((n) => n.id === editingId);
-      const merged =
-        editingId && existing
-          ? notes.map((n) => (n.id === editingId ? existing : n))
-          : notes;
-      return { notes: merged, boards, loaded: true, selectedIds };
-    });
+    const epoch = ++loadEpoch;
+    set({ loading: true, loadError: null });
+    try {
+      const { notes, boards } = await readTableProjection();
+      if (epoch !== loadEpoch) return;
+      set((s) => {
+        const alive = new Set(notes.map((n) => n.id));
+        const selectedIds = new Set(
+          [...s.selectedIds].filter((id) => alive.has(id)),
+        );
+        // 편집 중인 제목은 DB값으로 덮지 않는다(P1-1) — 타이핑 입력 유실 방지.
+        const editingId = s.titleEdit?.id;
+        const existing = s.notes.find((n) => n.id === editingId);
+        const merged =
+          editingId && existing
+            ? notes.map((n) => (n.id === editingId ? existing : n))
+            : notes;
+        return { notes: merged, boards, loaded: true, selectedIds, loading: false };
+      });
+      if (!noteUnsub) noteUnsub = subscribeNoteChanges(() => get().scheduleReload());
+    } catch { if (epoch === loadEpoch) set({ loading: false, loadError: t("reviewTable.loadFailed") }); }
   },
 
   setSort: (key) =>
@@ -514,7 +550,22 @@ export const useMemoTable = create<MemoTableStore>((set, get) => ({
   setIncludeSubboards: (includeSubboards) => set({ includeSubboards }),
   setFrameFilter: (frameFilter) => set({ frameFilter }),
   setHasAttachment: (hasAttachment) => set({ hasAttachment }),
-  setQuery: (query) => set({ query }),
+  setQuery: (query) => {
+    cancelQueryTimer();
+    set({ query, queryInput: query });
+  },
+  setQueryInput: (queryInput) => {
+    cancelQueryTimer();
+    set({ queryInput });
+    queryTimer = setTimeout(() => {
+      queryTimer = null;
+      set({ query: queryInput });
+    }, 150);
+  },
+  resetFilters: () => {
+    cancelQueryTimer();
+    set({ ...defaultFilters(useWorkspace.getState().currentBoardId), queryInput: "" });
+  },
 
   toggleSelected: (id) =>
     set((s) => {
@@ -597,13 +648,7 @@ export const useMemoTable = create<MemoTableStore>((set, get) => ({
   },
 
   trashSelected: async () => {
-    // 표는 text 메모만 보여준다 — 함·메모판이 섞여 들어와도 안전하게 걸러낸다.
-    const targetIds = new Set(
-      get()
-        .notes.filter((n) => n.kind === "text")
-        .map((n) => n.id),
-    );
-    const ids = [...get().selectedIds].filter((id) => targetIds.has(id));
+    const ids = tableTrashTargetIds(get().notes, get().selectedIds);
     if (ids.length === 0) return;
     set({ selectedIds: new Set() });
     const storage = useStorage.getState();
@@ -663,6 +708,8 @@ export const useMemoTable = create<MemoTableStore>((set, get) => ({
 
 /** 테스트 격리 — 구독 플래그·상태 초기화. */
 export function __resetMemoTableForTest(): void {
+  loadEpoch++;
+  cancelQueryTimer();
   if (reloadTimer !== null) {
     clearTimeout(reloadTimer);
     reloadTimer = null;
@@ -676,12 +723,14 @@ export function __resetMemoTableForTest(): void {
     boards: [],
     loaded: false,
     loading: false,
+    loadError: null,
     sort: DEFAULT_SORT,
     boardFilter: [SYSTEM_BOARD_ID],
     includeSubboards: true,
     frameFilter: null,
     hasAttachment: null,
     query: "",
+    queryInput: "",
     selectedIds: new Set<string>(),
     titleEdit: null,
   });

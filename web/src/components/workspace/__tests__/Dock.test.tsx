@@ -541,7 +541,8 @@ describe("compact dock", () => {
     const more = screen.getByRole("button", { name: "더 보기" });
     fireEvent.keyDown(more, { key: "ArrowDown" });
     const link = await screen.findByRole("menuitem", { name: "링크" });
-    expect(screen.getAllByRole("menuitem").map(b => b.textContent)).toEqual(["메모판", "링크", "텍스트", "파일함"]);
+    expect(screen.getAllByRole("menuitem").map(b => b.getAttribute("aria-label"))).toEqual(["메모판", "링크", "텍스트", "파일함"]);
+    expect(link.textContent).toContain("주소와 페이지 미리보기");
     fireEvent.click(link);
     await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
     expect(useWorkspace.getState().cards).toHaveLength(1);

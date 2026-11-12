@@ -761,7 +761,7 @@ describe("T20 자동 측정·수정 시각·파일 매핑·보드 이름·보드
     const stamp0 = note(k)!.updatedAt;
     vi.advanceTimersByTime(1000);
     ws().setContent(k, card(k)!.content); // 바뀐 칸 없는 카드 쓰기
-    expect(note(k)!.updatedAt).toBeGreaterThan(stamp0);
+    expect(note(k)!.updatedAt).toBe(stamp0); // 무변경 콜백은 편집 시각을 바꾸지 않는다.
     await uploadAttachment(p, "opfs:a.png", new Blob([new Uint8Array([1])]), "a.png");
     expect(readDocFile(doc(), "opfs:a.png")).toBe("f-1");
     await ws().renameBoard(p, "새 이름");
