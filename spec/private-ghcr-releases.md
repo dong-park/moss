@@ -109,6 +109,16 @@ parse and `git diff --check` exit 0; no change under `web/ server/ sync/ mcp/ sh
 NOT RUN: real GitHub Actions run of the new workflow (GITHUB_TOKEN metadata read and write to the new packages),
 image builds and the full actual-image rehearsal (app sources unchanged; CI on the PR), host policy upgrade/bootstrap.
 
+## Registry preflight diagnostic
+
+`.github/workflows/registry-preflight.yml` runs only `publish.py registry` with the repository's ephemeral
+`GITHUB_TOKEN` (`contents: read`, `packages: read`; exact `github.sha` checkout, credentials not persisted, 3-minute
+job timeout) on pushes to `fix/private-ghcr-releases` and on manual dispatch. It answers the open question above
+(whether the repository installation token can read the private package metadata) before any `main` release, without
+registry login, image pull/build/push, attestation or production access. A failure reports one fixed `Rejected:`
+reason; if read scope proves insufficient, the protocol is decided from that evidence, never by broadening blindly.
+The release build's pre-push and post-push proofs are unchanged.
+
 ## Operator follow-ups (outside this lane)
 
 - The installed inactive `a020` root policy rejects `moss-deploy-*`; it must be upgraded to the approved source before

@@ -254,4 +254,23 @@ class WorkflowOrderingTest(unittest.TestCase):
             if not uses.startswith('./'): self.assertRegex(uses, r'@[0-9a-f]{40}$')
 
 
+
+class RegistryPreflightWorkflowTest(unittest.TestCase):
+    """The operator diagnostic is metadata-only: exact checkout, read scopes, the same proof, nothing else."""
+    def test_preflight_is_read_only_bounded_and_runs_only_the_proof(self):
+        text = (ROOT / '.github/workflows/registry-preflight.yml').read_text()
+        code = '\n'.join(l for l in text.splitlines() if not l.lstrip().startswith('#'))
+        self.assertIn('on:\n  push:\n    branches: [fix/private-ghcr-releases]\n  workflow_dispatch:\npermissions:\n', code)
+        self.assertNotRegex(code, r'pull_request|schedule|workflow_run|repository_dispatch')
+        self.assertIn('permissions:\n  contents: read\n  packages: read\nconcurrency:', code)
+        self.assertEqual(code.count('permissions:'), 1)
+        self.assertNotRegex(code, r'write|id-token|attest|docker|deployments|continue-on-error|\bif:')
+        self.assertIn('timeout-minutes: 3\n', code)
+        self.assertEqual(re.findall(r'uses: (\S+)', code), ['actions/checkout@11d5960a326750d5838078e36cf38b85af677262'])
+        self.assertIn('ref: ${{ github.sha }}\n          persist-credentials: false\n', code)
+        self.assertEqual(re.findall(r'run: (.+)', code), ['python3 scripts/deploy/publish.py registry'])
+        self.assertEqual(re.findall(r'secrets\.([A-Z_]+)', code), ['GITHUB_TOKEN'])
+        self.assertEqual(re.findall(r'^\s+([A-Z_]+):', code, re.M), ['GH_TOKEN'])
+
+
 if __name__ == '__main__': unittest.main()
