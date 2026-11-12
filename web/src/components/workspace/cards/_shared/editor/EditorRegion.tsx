@@ -123,12 +123,13 @@ export function EditorRegion({
   const isOwner = useIsLiveOwner();
   const penMode = useWorkspace((s) => s.penMode);
 
-  // 저장 안내(AC-4): 편집 이탈(editable true→false) = 커밋/영속 시점 → "저장됨".
+  // Leaving edit mode is not a durable storage acknowledgement. SaveFeedback
+  // announces transaction-backed status separately, including failures.
   // 한 번에 한 카드만 편집 가능하므로 owner가 아니어도 안내가 겹치지 않는다.
   const wasEditable = useRef(editable);
   useEffect(() => {
     if (wasEditable.current && !editable) {
-      announceEditor(t("workspace.memo.editor.saved"));
+      announceEditor(t("saveFeedback.editEnded"));
     }
     wasEditable.current = editable;
   }, [editable, t]);

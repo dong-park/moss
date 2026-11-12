@@ -6,7 +6,8 @@ import { CARD_MAX_WIDTH, useWorkspace, type Card } from "@/state/workspace";
 import { Dock } from "../Dock";
 import { Canvas } from "../Canvas";
 import { useMobileCanvas } from "../mobileCanvas";
-vi.mock("../useCompactControls", () => ({ useCompactControls: () => true }));
+// compact=true 모바일 레이아웃이므로 줌 바도 자기 행을 쓰는 stacked=true가 맞다.
+vi.mock("../useCompactControls", () => ({ useCompactControls: () => true, useStackedZoomControls: () => true }));
 vi.mock("@/components/workspace/cards/_shared/MarkdownEditor", () => ({ default: () => <div />, ExpandedMarkdownEditor: () => <div /> }));
 const source: Card = { id: "a", kind: "text", x: 0, y: 0, width: 240, content: serializeBlock({ type: "link", url: "https://example.com/a" })! };
 beforeEach(() => {

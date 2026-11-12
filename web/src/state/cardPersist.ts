@@ -8,12 +8,14 @@
  * beforeunload에서 호출해 디바운스 창 안의 마지막 편집 유실을 막는다.
  * ───────────────────────────────────────────────────────────── */
 
+import { beginSave, forgetSaveResource } from "./saveFeedback";
+
 type PersistRun = () => Promise<void>;
 
 const DEBOUNCE_MS = 300;
 const timers = new Map<
   string,
-  { handle: ReturnType<typeof setTimeout>; run: PersistRun }
+  { handle: ReturnType<typeof setTimeout>; run: PersistRun; cancel: () => void }
 >();
 
 /*
@@ -42,14 +44,26 @@ export function trackPersist<T>(id: string, p: Promise<T>): Promise<T> {
 }
 
 /** id별 영속을 300ms 디바운스로 예약. 같은 id 재예약 시 직전 것을 대체(최신 우선). */
-export function schedulePersist(id: string, run: PersistRun): void {
+export function schedulePersist(id: string, run: PersistRun, boardId?: string | null): void {
   const existing = timers.get(id);
-  if (existing) clearTimeout(existing.handle);
+  if (existing) { clearTimeout(existing.handle); existing.cancel(); }
+  const retry = async () => {
+    const retryTicket = boardId !== undefined ? beginSave(boardId, `mirror:${id}`, retry) : null;
+    try { await run(); retryTicket?.success(); }
+    catch (error) { retryTicket?.failure(); throw error; }
+  };
+  const ticket = boardId !== undefined ? beginSave(boardId, `mirror:${id}`, retry) : null;
+  const execute = async () => {
+    try { await run(); ticket?.success(); }
+    catch (error) { ticket?.failure(); throw error; }
+  };
   const handle = setTimeout(() => {
     timers.delete(id);
-    void run();
+    // Errors are retained for explicit retry; background autosave must not
+    // produce an unhandled rejection or discard the in-memory editor content.
+    void execute().catch(() => undefined);
   }, DEBOUNCE_MS);
-  timers.set(id, { handle, run });
+  timers.set(id, { handle, run: execute, cancel: () => ticket?.cancel() });
 }
 
 /** 대기 중인 id의 영속을 즉시 실행(디바운스 무시). 없으면 no-op. */
@@ -99,10 +113,15 @@ export function connectionMirrorSettled(): Promise<void> {
  * 이미 시작된 쓰기는 못 멈춘다 — 미러 행을 지우는 쪽이 persistSettled를 기다린다.
  */
 export function cancelPersist(id: string): void {
+  forgetSaveResource(`mirror:${id}`);
+  forgetSaveResource(`mirror:measured:${id}`);
+  const measured = timers.get(`measured:${id}`);
+  if (measured) { clearTimeout(measured.handle); timers.delete(`measured:${id}`); measured.cancel(); }
   const entry = timers.get(id);
   if (!entry) return;
   clearTimeout(entry.handle);
   timers.delete(id);
+  entry.cancel();
 }
 
 /** 대기 중인 모든 카드를 즉시 flush(언마운트/beforeunload). */

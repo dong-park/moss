@@ -13,6 +13,7 @@ import { memoTint } from "../../memoVariety"; // FEAT-memo-variety 색조
 import type { CardContentProps } from "../_shared/types";
 import { memoFace } from "./face";
 import { TodoFace } from "./TodoFace";
+import { LinkFace } from "./LinkFace";
 import { LinkInputFace } from "./LinkInputFace";
 
 // 종이 사진. 색조 층 mask도 같은 파일이어야 종이 바깥 투명부에 색이 안 칠해진다.
@@ -104,20 +105,9 @@ export function TextCardContent({ card, editing, onCommitEdit }: CardContentProp
     if (editing && face.t === "link") onCommitEdit();
   }, [editing, face.t, onCommitEdit]);
   if (face.t === "link") {
-    return (
-      <div className="moss-card-face" data-memo-face="link">
-        <div className="card face link">
-          <small>
-            <span className="fav" style={{ background: "#6a6c72" }}>
-              {face.site[0]?.toUpperCase()}
-            </span>
-            {face.site}
-          </small>
-          <p>{face.title}</p>
-        </div>
-      </div>
-    );
+    return <LinkFace cardId={card.id} face={face} />;
   }
+
   if (face.t === "linkEmpty") {
     return <LinkInputFace cardId={card.id} editing={editing} onCommitEdit={onCommitEdit} />;
   }

@@ -145,11 +145,16 @@ export function BoardCardContent({
       {/* 탭의 흰 라벨판에는 개수만. */}
       <span
         data-board-count
+        title={t("reviewCanvas.memoCount", { count })}
+        aria-label={t("reviewCanvas.memoCount", { count })}
         className="pointer-events-none absolute flex items-center justify-center overflow-hidden whitespace-nowrap font-semibold text-[#173a63]"
         style={{ left: "8%", top: "4.5%", width: "25%", height: "8%", fontSize: "clamp(8px, 4.5cqw, 10px)" }}
       >
         {countLabel}
       </span>
+      {count === 0 && !editing && <span data-board-empty-hint className="pointer-events-none absolute left-1/2 top-[90%] w-max max-w-[180%] -translate-x-1/2 text-center text-[11px] text-text-muted">
+        {t("reviewCanvas.folderEmpty")}
+      </span>}
       </div>
     </article>
   );

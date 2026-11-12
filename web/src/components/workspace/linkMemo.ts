@@ -1,3 +1,5 @@
+import { create } from "zustand";
+import { memoFace } from "@/state/memoFace";
 import { fetchLinkPreview, isUrlOnly } from "@/state/cardContent";
 import { serializeBlock } from "@/state/blocks";
 import { runAsUserAction, useWorkspace } from "@/state/workspace";
@@ -41,13 +43,44 @@ export function fillLinkMemo(id: string, raw: string): boolean {
   const block = serializeBlock({ type: "link", url });
   if (!block) return false;
   useWorkspace.getState().setContent(id, block);
-  void fetchLinkPreview(url).then((meta) => {
-    if (!meta) return;
-    const withTitle = serializeBlock({ type: "link", url, title: meta.title });
-    if (!withTitle) return;
-    const current = useWorkspace.getState().cards.find((c) => c.id === id)?.content;
-    if (current !== block) return;
-    useWorkspace.getState().setContent(id, withTitle);
-  });
+  requestPreview(id, url, block);
   return true;
+}
+
+// Session-only feedback, never part of the persisted card or a URL draft.
+type PreviewStatus = { url: string; status: "loading" | "failed" | "ready"; token: number };
+export const useLinkPreviewStatus = create<{ byCard: Record<string, PreviewStatus> }>(() => ({ byCard: {} }));
+let requestToken = 0;
+function requestPreview(id: string, url: string, originalContent: string) {
+  const token = ++requestToken;
+  const update = (status: PreviewStatus["status"]) => useLinkPreviewStatus.setState((s) => ({
+    byCard: { ...s.byCard, [id]: { url, status, token } },
+  }));
+  update("loading");
+  void fetchLinkPreview(url).catch(() => null).then((meta) => {
+    if (useLinkPreviewStatus.getState().byCard[id]?.token !== token) return;
+    const current = useWorkspace.getState().cards.find((c) => c.id === id)?.content;
+    if (current !== originalContent) {
+      useLinkPreviewStatus.setState((s) => {
+        const byCard = { ...s.byCard };
+        delete byCard[id];
+        return { byCard };
+      });
+      return;
+    }
+    if (!meta) { update("failed"); return; }
+    // Keep the existing title enrichment, guarded by content AND request order.
+    const hasTitle = originalContent !== serializeBlock({ type: "link", url });
+    const withTitle = !hasTitle && meta.title && serializeBlock({ type: "link", url, title: meta.title });
+    if (withTitle && withTitle !== originalContent) useWorkspace.getState().setContent(id, withTitle);
+    update("ready");
+  });
+}
+
+export function retryLinkPreview(id: string): void {
+  const card = useWorkspace.getState().cards.find((c) => c.id === id);
+  if (!card) return;
+  const face = memoFace(card.content);
+  if (face.t !== "link") return;
+  requestPreview(id, face.url, card.content);
 }

@@ -54,7 +54,8 @@ it("tap selects; long press drag uses the real membership and undo boundary", as
   pointer(el, "pointerdown", 1, 1000, 1000);
   pointer(window, "pointerup", 1, 1000, 1000);
   expect(useWorkspace.getState().selectedIds).toEqual([id]);
-  vi.useFakeTimers();
+  // Keep IndexedDB macrotasks real while controlling gesture/debounce time.
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
   pointer(el, "pointerdown", 1, 1000, 1000);
   act(() => vi.advanceTimersByTime(450));
   pointer(window, "pointermove", 1, 200, 200);
@@ -88,7 +89,8 @@ it.each(["second finger", "pointercancel", "lostpointercapture", "unmount"])("%s
   trash.dataset.dockId = "trash";
   document.body.appendChild(trash);
   document.elementsFromPoint = () => [trash];
-  vi.useFakeTimers();
+  // Keep IndexedDB macrotasks real while controlling gesture/debounce time.
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
   pointer(el, "pointerdown", 1, 100, 100);
   act(() => vi.advanceTimersByTime(450));
   pointer(window, "pointermove", 1, 150, 150);
@@ -115,7 +117,8 @@ it("moving before the hold deadline pans without dragging, and suppresses synthe
   useWorkspace.setState({ cards: [{ id: "a", kind: "text", x: 0, y: 0, width: 240, content: "" }] });
   const { root, container } = mount();
   const el = container.querySelector('[data-card-id="a"]')!;
-  vi.useFakeTimers();
+  // Keep IndexedDB macrotasks real while controlling gesture/debounce time.
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
   pointer(el, "pointerdown", 1, 100, 100);
   pointer(window, "pointermove", 1, 120, 110);
   act(() => vi.advanceTimersByTime(500));
@@ -133,7 +136,8 @@ it("a second finger or unmount clears a pending long press", () => {
   useWorkspace.setState({ cards: [{ id: "a", kind: "text", x: 0, y: 0, width: 240, content: "" }] });
   const { root, container, unmount } = mount();
   const el = container.querySelector('[data-card-id="a"]')!;
-  vi.useFakeTimers();
+  // Keep IndexedDB macrotasks real while controlling gesture/debounce time.
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
   pointer(el, "pointerdown", 1, 100, 100);
   pointer(el, "pointerdown", 2, 200, 100);
   act(() => vi.advanceTimersByTime(500));

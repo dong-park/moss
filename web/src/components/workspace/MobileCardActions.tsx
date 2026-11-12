@@ -25,7 +25,11 @@ export function MobileCardActions({ canvasRef }: { canvasRef: RefObject<HTMLDivE
   const top = Math.max(8, Math.min(window.innerHeight - 240, (card.y + (card.height ?? card.width)) * viewport.scale + viewport.y + 12));
   const edit = () => {
     if (card.kind === "text") useWorkspace.getState().setExpandedCard(card.id, "edit");
-    else useWorkspace.getState().setEditing(card.id);
+    else {
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (rect) useWorkspace.getState().panToCard(card.id, { width: rect.width, height: rect.height });
+      useWorkspace.getState().setEditing(card.id);
+    }
   };
   return (
     <div role="toolbar" aria-label={t("workspace.memoEditor.cardActions")} className={styles.cardActions}

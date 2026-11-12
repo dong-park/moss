@@ -51,7 +51,7 @@ export function SharePopover({
     <div
       role="dialog"
       aria-label={t("collab.share.title")}
-      className="absolute right-0 top-[calc(100%+8px)] z-[var(--z-panel)] w-[300px] rounded-2xl bg-white/85 p-[18px_18px_14px] shadow-[0_10px_30px_rgba(0,0,0,.10),0_0_0_.5px_rgba(0,0,0,.06)] backdrop-blur-[30px]"
+      className="absolute right-0 top-[calc(100%+8px)] z-[var(--z-panel)] max-h-[70dvh] overflow-y-auto max-w-[calc(100vw-16px)] w-[300px] rounded-2xl bg-white/85 p-[18px_18px_14px] shadow-[0_10px_30px_rgba(0,0,0,.10),0_0_0_.5px_rgba(0,0,0,.06)] backdrop-blur-[30px]"
     >
       {shared ? (
         <>
@@ -103,7 +103,7 @@ export function SharePopover({
           <h3 className="mb-0.5 text-[15px] font-semibold text-text">
             {t("collab.share.title")}
           </h3>
-          <p className="text-[12px] text-text-soft">{t("collab.share.sub")}</p>
+          <p className="text-[12px] text-text-soft">{t("reviewGuidance.share.scope")}</p>
           <button
             type="button"
             onClick={onStart}
@@ -115,6 +115,11 @@ export function SharePopover({
         </>
       )}
 
+      <div className="mt-3 space-y-2 text-[12px] text-text-soft">
+        {shared && <p>{t("reviewGuidance.share.scope")}</p>}
+        <p>{t("reviewGuidance.share.access")}</p>
+        <p>{t("reviewGuidance.share.unshare")}</p>
+      </div>
       {error ? (
         <p role="alert" className="mt-2 text-[12px] text-red-600">
           {error}

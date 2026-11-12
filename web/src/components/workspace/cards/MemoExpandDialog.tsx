@@ -19,6 +19,8 @@ import { useVisualViewport } from "../useVisualViewport";
 import { useCompactControls } from "../useCompactControls";
 import { runEditFlush } from "@/state/editFlush";
 import { createMemoHistory, bindMemoNavigation } from "./memoHistory";
+import { SaveFeedback } from "../SaveFeedback";
+import { EMPTY_LINK_CONTENT } from "@/state/linkContent";
 import { compactControls } from "@/design/canvasControls";
 
 /* ─────────────────────────────────────────────────────────────
@@ -205,6 +207,7 @@ export function MemoExpandDialog() {
               )}
             </div>
           )}
+          <div className="shrink-0 pb-2"><SaveFeedback explainClose /></div>
           {isPaper && (
             <div
               aria-hidden="true"
@@ -261,8 +264,13 @@ export function MemoExpandDialog() {
                 editable={editable}
                 autoFocus={!compact}
                 canonical={drawing || parseHandwriting(card.overlay ?? "").paths.length > 0}
-                value={card.content}
-                onChange={(md) => setContent(card.id, md)}
+                value={card.content === EMPTY_LINK_CONTENT ? "" : card.content}
+                onChange={(md) => {
+                  // Loading or closing an empty editor must preserve the link's
+                  // type; the internal whole-body marker is never editor text.
+                  if (card.content === EMPTY_LINK_CONTENT && !md.trim()) return;
+                  setContent(card.id, md);
+                }}
                 // FEAT-memo-title: 본문 위 제목 줄 — 스크롤 영역 안, 창에서만 편집(D1).
                 // Enter는 본문 맨 앞으로 포커스를 넘긴다(AC-7). 펜 overlay는 본문 컬럼
                 // (고정 폭) 안에 1:1로 얹힌다 — 저장된 선과 같은 좌표공간. drawing=false면

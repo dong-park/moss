@@ -32,7 +32,7 @@ import {
   type MemoColor,
 } from "./memoVariety"; // FEAT-memo-variety
 import { AIOptOutBadge } from "@/components/privacy/AIOptOutBadge";
-import { ExpandIcon, LockIcon } from "@/components/icons";
+import { ExpandIcon } from "@/components/icons";
 import { useT } from "@/i18n/Provider";
 import { nextTiltAngle } from "./dragTilt";
 import { beginUndoGroup, endUndoGroup, type UndoGroupToken } from "@/state/ydoc/undo";
@@ -124,7 +124,6 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
   const toggleSelect = useWorkspace((s) => s.toggleSelect);
   const setEditing = useWorkspace((s) => s.setEditing);
   const setExpandedCard = useWorkspace((s) => s.setExpandedCard);
-  const toggleAIOptOut = useWorkspace((s) => s.toggleAIOptOut);
   // FEAT-subcanvas: 함 카드 더블클릭 진입 + 드래그로 카드 넣기.
   const enterSubcanvas = useWorkspace((s) => s.enterSubcanvas);
   const moveCardToSubcanvas = useWorkspace((s) => s.moveCardToSubcanvas);
@@ -1216,35 +1215,11 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
         </button>
       )}
 
-      {/* FEAT-privacy: aiOptOut 표시 (우상단). 선택 시에는 토글 버튼으로 전환. */}
-      {card.aiOptOut && !selected && (
+      {/* Read-only badge; changing privacy lives in the named screen-space settings. */}
+      {card.aiOptOut && (
         <span className="pointer-events-none absolute -right-1 -top-1 rounded-full bg-bg p-0.5 shadow-card">
           <AIOptOutBadge size={12} />
         </span>
-      )}
-      {selected && !editing && (
-        <button
-          type="button"
-          onMouseDown={(e) => e.stopPropagation()}
-          onClick={(e) => {
-            e.stopPropagation();
-            toggleAIOptOut(card.id);
-          }}
-          aria-label={
-            card.aiOptOut
-              ? t("privacy.card.toggleDisable")
-              : t("privacy.card.toggleEnable")
-          }
-          aria-pressed={!!card.aiOptOut}
-          className={[
-            "absolute -right-2 -top-2 z-[32] flex h-6 w-6 cursor-pointer items-center justify-center rounded-full border border-border bg-bg shadow-card transition-colors",
-            card.aiOptOut
-              ? "text-text"
-              : "text-text-soft hover:text-text",
-          ].join(" ")}
-        >
-          <LockIcon size={12} />
-        </button>
       )}
       {isOnlySelected && !editing && !penMode && (!touchControls || (mobileOperation.kind === "resize" && mobileOperation.cardId === card.id)) && (
         <ResizeHandles card={card} measuredHeight={measuredHeight} mobile={touchControls} />

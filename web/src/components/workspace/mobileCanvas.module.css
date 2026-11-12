@@ -32,3 +32,5 @@
 .dimensions { display: flex; min-width: 0; gap: 8px; overflow-x: auto; touch-action: pan-x; }
 .dimension { display: flex; gap: 4px; align-items: center; flex-shrink: 0; }
 .dimension [role="alert"] { font-size: 12px; max-width: 100px; }
+.resizePanel { min-width: 0; }
+.resizeHint { font-size: 11px; line-height: 1.5; margin: 0 4px 4px; white-space: normal; max-width: 320px; }

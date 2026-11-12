@@ -87,6 +87,10 @@ export function TrashPanel() {
   // 바뀌고 아래 effect가 재조회한다.
   const trashCount = useWorkspace((s) => s.trashCount);
   const [entries, setEntries] = useState<TrashEntry[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
   const panelRef = useRef<HTMLDivElement | null>(null);
   // 본문 파싱은 목록이 바뀔 때만 — 렌더마다 1,000행을 다시 파싱하지 않게.
   // ponytail: 가상화 없음. 휴지통이 수천 건으로 늘면 useVirtualizedCards 패턴으로.
@@ -100,22 +104,28 @@ export function TrashPanel() {
     if (!storage.initialized) await storage.init();
     const list = await storage.listTrash();
     setEntries(list);
-    // 목록 길이가 곧 개수 — count 조회를 따로 하지 않는다.
+    setLoading(false);
     useWorkspace.setState({ trashCount: list.length });
   }, []);
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try { await reload(); }
+    catch { setLoading(false); setError(t("reviewGuidance.trash.loadFailed")); }
+  }, [reload, t]);
 
   useEffect(() => {
     // 패널이 열리는 외부 신호 → DB 재조회. effect 안 setState가 정당한 use case.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (open) void reload();
-  }, [open, reload]);
+    if (open) void load();
+  }, [open, load]);
 
   // FEAT-trash-drag: 열린 채 캔버스에서 드롭하면 trashCount만 바뀐다 — 목록과
   // 어긋날 때만 다시 읽는다. 패널 안 조작은 reload가 개수까지 맞춰 여기서 멈춘다.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (open && trashCount !== entries.length) void reload();
-  }, [open, trashCount, entries.length, reload]);
+    if (open && trashCount !== entries.length) void load();
+  }, [open, trashCount, entries.length, load]);
 
   // Esc·바깥 클릭으로 닫기(spec §7).
   useEffect(() => {
@@ -138,36 +148,47 @@ export function TrashPanel() {
 
   if (!open) return null;
 
-  const handleRestore = async (id: string) => {
-    await restoreFromTrash(id);
-    await reload();
+  const label = (id: string) => labels.get(id) || t("reviewGuidance.trash.untitled");
+  const perform = async (action: () => Promise<void>, failure: string) => {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setBusy(true);
+    setError(null);
+    try {
+      await action();
+      try { await reload(); panelRef.current?.focus(); }
+      catch { setError(t("reviewGuidance.trash.loadFailed")); }
+    } catch { setError(failure); }
+    finally { busyRef.current = false; setBusy(false); }
   };
-
+  const handleRestore = (id: string) => perform(
+    () => restoreFromTrash(id), t("reviewGuidance.trash.restoreFailed", { name: label(id) }),
+  );
   const handlePurge = async (id: string) => {
-    await useStorage.getState().purgeTrash([id]);
-    await reload();
+    if (busyRef.current || !window.confirm(t("reviewGuidance.trash.confirmPurge", { name: label(id) }))) return;
+    await perform(() => useStorage.getState().purgeTrash([id]), t("reviewGuidance.trash.purgeFailed"));
   };
-
   const handleEmpty = async () => {
-    if (entries.length === 0) return;
-    const ok = window.confirm(
-      t("workspace.trash.confirmEmpty", { count: entries.length }),
-    );
-    if (!ok) return;
-    // 확인한 N개만 지운다 — 패널을 연 뒤 새로 들어온 메모까지 지우지 않게.
-    await useStorage.getState().purgeTrash(entries.map((e) => e.id));
-    await reload();
+    if (busyRef.current || entries.length === 0) return;
+    // Snapshot before confirmation: only these named targets may be purged.
+    const targets = entries.map((e) => e.id);
+    if (!window.confirm(t("reviewGuidance.trash.confirmEmpty", {
+      count: targets.length, names: targets.map((id) => `• ${label(id)}`).join("\n"),
+    }))) return;
+    await perform(() => useStorage.getState().purgeTrash(targets), t("reviewGuidance.trash.purgeFailed"));
   };
 
   return (
     <div
       ref={panelRef}
+      tabIndex={-1}
       role="dialog"
       aria-label={t("workspace.trash.title")}
       className="absolute left-1/2 z-[var(--z-panel)] flex -translate-x-1/2 flex-col rounded-xl border border-border p-2"
       style={{
         bottom: DOCK_CLEARANCE_PX,
         width: PANEL_WIDTH,
+        maxWidth: "calc(100vw - 16px)",
         maxHeight: `${Math.round(window.innerHeight * PANEL_MAX_HEIGHT_RATIO)}px`,
         background: "var(--gradient-paper)",
         boxShadow: "var(--shadow-card)",
@@ -180,15 +201,21 @@ export function TrashPanel() {
         <button
           type="button"
           onClick={() => void handleEmpty()}
-          disabled={entries.length === 0}
+          disabled={busy || loading || entries.length === 0}
           className="cursor-pointer rounded-md px-2 py-0.5 text-xs text-text-muted transition-colors hover:bg-panel disabled:cursor-default disabled:opacity-40"
         >
           {t("workspace.trash.emptyAll")}
         </button>
+        <button type="button" aria-label={t("reviewGuidance.trash.close")} onClick={() => setTrashOpen(false)} className="rounded px-2 py-1 text-xs text-text-soft">{t("reviewGuidance.trash.close")}</button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        {entries.length === 0 ? (
+      <p className="px-2 pb-2 text-xs text-text-soft">{t("reviewGuidance.trash.restoreHint")}</p>
+      {error && <div className="px-2 pb-2 text-xs">
+        <p role="alert">{error}</p>
+        <button type="button" disabled={busy || loading} onClick={() => void load()}>{t("reviewGuidance.trash.retry")}</button>
+      </div>}
+      <div className="min-h-0 flex-1 overflow-y-auto" aria-busy={busy || loading}>
+        {loading ? <p role="status">{t("reviewGuidance.trash.loading")}</p> : entries.length === 0 && !error ? (
           <div className="px-2 py-6 text-center text-sm text-text-soft">
             {t("workspace.trash.empty")}
           </div>
@@ -200,7 +227,7 @@ export function TrashPanel() {
             >
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm text-text">
-                  {labels.get(entry.id) || "—"}
+                  {label(entry.id)}
                 </div>
                 <div className="truncate text-[11px] text-text-muted">
                   {isSystemBoardNote(entry.note)
@@ -212,7 +239,8 @@ export function TrashPanel() {
               </div>
               <button
                 type="button"
-                aria-label={t("workspace.trash.restore")}
+                disabled={busy}
+                aria-label={t("reviewGuidance.trash.restoreTarget", { name: label(entry.id) })}
                 title={t("workspace.trash.restore")}
                 onClick={() => void handleRestore(entry.id)}
                 className="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-full text-text-muted transition-colors hover:bg-bg hover:text-text"
@@ -221,7 +249,8 @@ export function TrashPanel() {
               </button>
               <button
                 type="button"
-                aria-label={t("workspace.trash.purge")}
+                disabled={busy}
+                aria-label={t("reviewGuidance.trash.purgeTarget", { name: label(entry.id) })}
                 title={t("workspace.trash.purge")}
                 onClick={() => void handlePurge(entry.id)}
                 className="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-full text-text-muted transition-colors hover:bg-bg hover:text-text"

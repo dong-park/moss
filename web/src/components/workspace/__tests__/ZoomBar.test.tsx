@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { I18nProvider } from "@/i18n/Provider";
 import { MAX_SCALE, MIN_SCALE, useWorkspace } from "@/state/workspace";
 import { ZoomBar } from "@/components/workspace/ZoomBar";
+import { zoomBottom } from "@/design/canvasControls";
 
 /**
  * FEAT-canvas-initial-view AC-4: 줌 바의 −는 최소 줌(PZ-2: 25%)에서, +는 110%에서 비활성화된다.
@@ -18,8 +19,31 @@ function wrap() {
 const btn = (name: string) =>
   screen.getByRole("button", { name }) as HTMLButtonElement;
 
+/**
+ * 컴포넌트가 넣은 inline style은 jsdom CSSOM을 한 번 거쳐 직렬화된다
+ * (env() 폴백이 `env(0px * , * …)`로 재배열됨). 같은 round-trip을 기대값에도 적용해
+ * 의도한 원문(오프셋 84/20 + 안전영역 폴백 전체)을 그대로 비교한다. 컴포넌트는 손대지 않는다.
+ */
+function asCssBottom(value: string): string {
+  const el = document.createElement("div");
+  el.style.bottom = value;
+  return el.style.bottom;
+}
+
 beforeEach(() => {
   useWorkspace.setState({ viewport: { x: 0, y: 0, scale: 1 } });
+});
+
+it("keeps the tablet zoom row above the full dock and restores desktop placement on resize", () => {
+  const original = window.innerWidth;
+  try {
+    window.innerWidth = 820;
+    const { container } = wrap();
+    const zoom = container.querySelector<HTMLElement>('[data-canvas-control="zoom"]')!;
+    expect(zoom.style.bottom).toBe(asCssBottom(`calc(${zoomBottom}px + env(safe-area-inset-bottom, 0px))`));
+    act(() => { window.innerWidth = 1280; window.dispatchEvent(new Event("resize")); });
+    expect(zoom.style.bottom).toBe(asCssBottom("calc(20px + env(safe-area-inset-bottom, 0px))"));
+  } finally { window.innerWidth = original; }
 });
 
 describe("ZoomBar — 줌 한계", () => {
@@ -59,6 +83,10 @@ it("overview reserves measured safe-area controls relative to the canvas", () =>
   root.getBoundingClientRect = () => ({ width: 390, height: 700, bottom: 750 }) as DOMRect;
   document.body.appendChild(root);
   const fit = vi.spyOn(useWorkspace.getState(), "fitAllCards");
+  const privacy = document.createElement("div");
+  privacy.dataset.canvasControl = "privacy";
+  privacy.getBoundingClientRect = () => ({ top: 64, bottom: 108 }) as DOMRect;
+  root.appendChild(privacy);
   const { container } = wrap();
   const zoom = container.querySelector('[data-canvas-control="zoom"]')!;
   vi.spyOn(zoom, "getBoundingClientRect").mockReturnValue({ top: 565, bottom: 617 } as DOMRect);

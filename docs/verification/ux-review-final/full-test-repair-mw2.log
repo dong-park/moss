@@ -1,0 +1,12 @@
+$ vitest run "--maxWorkers=2"
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - ESM syntax in a file loaded as CommonJS (vitest.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v4.1.12 /home/dongpark/.goat/worktrees/feat-ux-review-save-sta-2d11b7bb8811d3c8/review-ux-integration-r-94db46f22de1394d/web
+
+
+ Test Files  237 passed (237)
+      Tests  2078 passed | 8 skipped (2086)
+   Start at  02:28:59
+   Duration  276.00s (transform 5.74s, setup 54.49s, import 17.96s, tests 299.87s, environment 145.38s)

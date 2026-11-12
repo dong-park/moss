@@ -30,6 +30,7 @@ export function MobileLinkEditor({ operation }: { operation: Extract<MobileOpera
           onOpenAutoFocus={(e) => { e.preventDefault(); input.current?.focus(); }}
           onCloseAutoFocus={(e) => e.preventDefault()}>
           <Dialog.Title className={styles.title}>{t("workspace.mobile.linkDialog")}</Dialog.Title>
+          <p className="text-xs text-text-soft">{t("reviewGuidance.link.draft")}</p>
           <form noValidate onSubmit={(e) => { e.preventDefault(); commit(); }}>
             <label className={styles.field}>
               {t("workspace.mobile.url")}

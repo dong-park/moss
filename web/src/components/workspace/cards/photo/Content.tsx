@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useId, useRef, useState } from "react";
 import {
   CARD_MAX_HEIGHT,
   CARD_MIN_HEIGHT,
@@ -8,6 +8,8 @@ import {
   runAsUserAction,
   useWorkspace,
 } from "@/state/workspace";
+import { AttachmentInputGuidance } from "../../AttachmentInputGuidance";
+import { IMAGE_ACCEPT } from "@/state/attachmentLimits";
 import { storePhoto } from "../../canvasCapture";
 import { usePhotoUrl } from "./usePhotoUrl";
 import { useT } from "@/i18n/Provider";
@@ -119,7 +121,6 @@ export function PhotoCardContent({
   );
 }
 
-const PHOTO_ACCEPT = "image/png,image/jpeg,image/gif,image/webp,image/svg+xml";
 
 /**
  * 빈 사진 카드 (spec/card-faces.md) — 도크 사진 버튼이 만든다. 가운데 버튼을 누르면 파일 창이 뜨고,
@@ -129,41 +130,56 @@ const PHOTO_ACCEPT = "image/png,image/jpeg,image/gif,image/webp,image/svg+xml";
 function EmptyPhoto({ cardId, width }: { cardId: string; width: number }) {
   const t = useT();
   const fileRef = useRef<HTMLInputElement>(null);
+  const guidanceId = useId();
+  const [saving, setSaving] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const picking = useRef(false);
   const setAttachment = useWorkspace((s) => s.setAttachment);
   const resizeCard = useWorkspace((s) => s.resizeCard);
 
   const onPicked = async (file: File | undefined) => {
-    if (!file) return;
-    const photo = await storePhoto(file);
-    if (!photo) return; // 형식·크기 거부는 storePhoto가 토스트로 알린다.
-    // cmd-z-undo 웨이브 3: 사진 고르기 한 번 — 첨부와 비율 맞추기가 기록 1단계.
-    runAsUserAction(() => {
-      setAttachment(cardId, photo.ref, { mediaType: photo.mediaType });
-      if (photo.naturalW && photo.naturalH) {
-        const h = Math.min(CARD_MAX_HEIGHT, Math.max(CARD_MIN_HEIGHT, (width * photo.naturalH) / photo.naturalW));
-        resizeCard(cardId, { width, height: h });
-      }
-    });
+    if (!file || picking.current) return;
+    picking.current = true;
+    setSaving(true);
+    setFailed(false);
+    try {
+      const photo = await storePhoto(file);
+      if (!photo) { setFailed(true); return; } // 형식·크기 거부는 storePhoto가 토스트로 알린다.
+      // cmd-z-undo 웨이브 3: 사진 고르기 한 번 — 첨부와 비율 맞추기가 기록 1단계.
+      runAsUserAction(() => {
+        setAttachment(cardId, photo.ref, { mediaType: photo.mediaType });
+        if (photo.naturalW && photo.naturalH) {
+          const h = Math.min(CARD_MAX_HEIGHT, Math.max(CARD_MIN_HEIGHT, (width * photo.naturalH) / photo.naturalW));
+          resizeCard(cardId, { width, height: h });
+        }
+      });
+    } catch { setFailed(true); }
+    finally { picking.current = false; setSaving(false); }
   };
 
   return (
     <div
-      className="flex h-full w-full items-center justify-center rounded-[6px] border border-dashed border-border bg-panel"
+      className="flex h-full w-full flex-col gap-2 overflow-y-auto rounded-[6px] border border-dashed border-border bg-panel p-3 text-center"
       data-photo-root
       data-photo-empty
     >
       <button
         type="button"
+        aria-describedby={guidanceId}
+        disabled={saving}
         data-photo-pick
         onClick={() => fileRef.current?.click()}
         className="rounded-full border border-border bg-bg px-3 py-1.5 text-xs text-text-soft shadow-card hover:text-text"
       >
         {t("cards.photo.pick")}
       </button>
+      <AttachmentInputGuidance kind="photo" id={guidanceId} />
+      {saving && <p role="status" className="text-xs">{t("reviewGuidance.attachment.saving")}</p>}
+      {failed && <p role="alert" className="text-xs">{t("reviewGuidance.attachment.failed")}</p>}
       <input
         ref={fileRef}
         type="file"
-        accept={PHOTO_ACCEPT}
+        accept={IMAGE_ACCEPT}
         hidden
         onChange={(e) => {
           const file = e.target.files?.[0];

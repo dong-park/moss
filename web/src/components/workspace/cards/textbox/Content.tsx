@@ -10,7 +10,7 @@ import { useT } from "@/i18n/Provider";
 import { useAutoFocusOnEdit } from "../_shared/useAutoFocusOnEdit";
 import type { CardContentProps } from "../_shared/types";
 import { TextStyleToolbar } from "./TextStyleToolbar";
-import { TEXT_DEFAULT_COLOR } from "./style";
+import { TEXT_DEFAULT_COLOR, TEXTBOX_AUTO_MAX_WIDTH } from "./style";
 
 /* ─────────────────────────────────────────────────────────────
  * FEAT-text-tool — 캔버스 위 평문 텍스트(textbox).
@@ -54,7 +54,7 @@ export function TextboxCardContent({
       const span = measureRef.current;
       if (!span) return;
       const w = Math.ceil(span.offsetWidth) + TEXTBOX_PADDING_X * 2;
-      setTextMeasuredWidth(card.id, w);
+      setTextMeasuredWidth(card.id, Math.min(w, TEXTBOX_AUTO_MAX_WIDTH));
     };
     measure();
     let cancelled = false;
@@ -76,7 +76,7 @@ export function TextboxCardContent({
     if (!el) return;
     el.style.height = "auto";
     el.style.height = `${el.scrollHeight}px`;
-  }, [editing, card.content, sizePx, autoWidth]);
+  }, [editing, card.content, card.width, sizePx, autoWidth]);
 
   const commit = () => {
     if (card.content.trim() === "") {
@@ -92,8 +92,8 @@ export function TextboxCardContent({
     fontWeight: 600,
     letterSpacing: "-0.01em",
     color,
-    whiteSpace: autoWidth ? "pre" : "pre-wrap",
-    wordBreak: autoWidth ? "normal" : "break-word",
+    whiteSpace: "pre-wrap",
+    overflowWrap: "anywhere",
     fontFamily: "var(--font-sans)",
   };
 
@@ -134,7 +134,7 @@ export function TextboxCardContent({
           data-textbox-input
           aria-label={t("workspace.textbox.inputLabel")}
           value={card.content}
-          wrap={autoWidth ? "off" : "soft"}
+          wrap="soft"
           onChange={(e) => onChange(e.target.value)}
           onBlur={commit}
           onKeyDown={(e) => {

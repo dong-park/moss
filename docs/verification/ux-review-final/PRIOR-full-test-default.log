@@ -1,0 +1,359 @@
+$ vitest run
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - ESM syntax in a file loaded as CommonJS (vitest.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v4.1.12 /home/dongpark/.goat/worktrees/feat-ux-review-save-sta-2d11b7bb8811d3c8/review-ux-integration-r-94db46f22de1394d/web
+
+stderr | src/components/workspace/__tests__/undo.review3.test.tsx > 자동 측정은 자기 칸만 기록 밖으로 쓴다 > 글상자 왼쪽 핸들로 폭을 줄이면 cmd+z 1번에 폭과 x가 함께 돌아간다
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+
+stderr | src/components/workspace/__tests__/undo.review3.test.tsx > 자동 측정은 자기 칸만 기록 밖으로 쓴다 > 글상자 왼쪽 핸들로 폭을 줄이면 cmd+z 1번에 폭과 x가 함께 돌아간다
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+
+ ❯ src/components/workspace/__tests__/undo.review3.test.tsx (25 tests | 1 failed) 26346ms
+     × 글상자 왼쪽 핸들로 폭을 줄이면 cmd+z 1번에 폭과 x가 함께 돌아간다 63ms
+ ❯ src/components/auth/__tests__/InviteRoute.test.tsx (12 tests | 1 failed) 1790ms
+     × 로그인만으로는 수락하지 않는다 — 참여하기 1탭이 동의 지점 1041ms
+ ❯ src/components/workspace/__tests__/MobileCardControls.test.tsx (12 tests | 12 failed) 465ms
+   × selected mobile link offers explicit open/edit and selecting it leaves the keyboard closed 156ms
+   × touching the target in connection mode connects without selecting or opening it 31ms
+   × dragging while choosing a connection target pans without connecting 50ms
+   × connection target controls cannot activate through the compatibility click 27ms
+   × mouse input can finish an explicit mobile connection mode on hybrid devices 18ms
+   × keeps numeric resize controls above the mobile keyboard 26ms
+   × numeric input reflects the clamped width even when the card is already at its limit 35ms
+   × link actions keep URL editing as the only edit entry while retaining explicit movement 26ms
+   × hides the floating move action during 연결 21ms
+   × hides the floating move action during 크기 16ms
+   × hides the floating move action during 주소 수정 15ms
+   × main memo edit remains singular and enters the explicit edit mode 42ms
+ ❯ src/components/workspace/__tests__/ZoomBar.test.tsx (8 tests | 1 failed) 552ms
+   × keeps the tablet zoom row above the full dock and restores desktop placement on resize 139ms
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 15 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/components/auth/__tests__/InviteRoute.test.tsx > AC-5 · InviteRoute > 로그인만으로는 수락하지 않는다 — 참여하기 1탭이 동의 지점
+AssertionError: expected "vi.fn()" to be called at least once
+
+Ignored nodes: comments, script, style
+[36m<html>[39m
+  [36m<head />[39m
+  [36m<body>[39m
+    [36m<div>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"fixed inset-0 z-[var(--z-panel)] flex items-center justify-center bg-[var(--color-bg)]"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33maria-hidden[39m=[32m"true"[39m
+          [33mclass[39m=[32m"moss-float moss-card-face pointer-events-none absolute inset-0 overflow-hidden"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"stage"[39m
+            [33mstyle[39m=[32m"transform: translate(-50%,-50%) scale(0.8533333333333334);"[39m
+          [36m>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"card photo  far"[39m
+              [33mstyle[39m=[32m"width: 176px; z-index: 75; transform: translate(-43.43438825952393px,725.1320929883913px) rotate(-6.600399684084472deg) scale(0.7484313878549409);"[39m
+            [36m>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"ph"[39m
+                [33mstyle[39m=[32m"background: linear-gradient(170deg, rgb(223, 230, 220) 0 30%, rgb(169, 194, 182) 30% 55%, rgb(234, 220, 190) 55%, rgb(214, 192, 154));"[39m
+              [36m/>[39m
+              [36m<span>[39m
+                [0m제주 협재[0m
+              [36m</span>[39m
+            [36m</div>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"card check  "[39m
+              [33mstyle[39m=[32m"width: 188px; z-index: 96; transform: translate(1009.6296268481672px,188.73672602770978px) rotate(-4.766875789986067deg) scale(0.957318568405378);"[39m
+            [36m>[39m
+              [36m<b>[39m
+                [0m여행 짐[0m
+              [36m</b>[39m
+              [36m<ul>[39m
+                [36m<li[39m
+                  [33mclass[39m=[32m"on"[39m
+                [36m>[39m
+                  [0m여권[0m
+                [36m</li>[39m
+                [36m<li[39m
+                  [33mclass[39m=[32m"on"[39m
+                [36m>[39m
+                  [0m충전기[0m
+                [36m</li>[39m
+                [36m<li>[39m
+                  [0m우산[0m
+                [36m</li>[39m
+              [36m</ul>[39m
+            [36m</div>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"card link  "[39m
+              [33mstyle[39m=[32m"width: 196px; z-index: 88; transform: translate(1159.1915322160787px,613.7237533385281px) rotate(-8.62160275851327deg) scale(0.8754832944997974);"[39m
+            [36m>[39m
+              [36m<small>[39m
+                [36m<span[39m
+                  [33mclass[39m=[32m"fav"[39m
+                  [33mstyle[39m=[32m"background: rgb(95, 155, 106);"[39m
+                [36m>[39m
+                  [0mM[0m
+                [36m</span>[39m
+                [0mmap.naver.com[0m
+              [36m</small>[39m
+              [36m<p>[39m
+                [0m제주 맛집 지도[0m
+              [36m</p>[39m
+            [36m</div>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"card hand yellow "[39m
+              [33mstyle[39m=[32m"width: 168px; z-index: 78; transform: translate(166.92075240723076px,209.68290382938136px) rotate(-1.7219504298503deg) scale(0.783846828697178);"[39m
+            [36m>[39m
+              [36m<p>[39m
+                [0m렌터카 예약 잊지 말기[0m
+              [36m</p>[39m
+            [36m</div>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"card note  far"[39m
+              [33mstyle[39m=[32m"width: 170px; z-index: 77; transform: translate(900.9932491239185px,679.8465464195201px) rotate(-11.001993058638806deg) scale(0.7748661548527266);"[39m
+            [36m>[39m
+              [36m<p>[39m
+                [0m비행기 금요일 7:10 출발[0m
+              [36m</p>[39m
+            [36m</div>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"card photo  "[39m
+              [33mstyle[39m=[32m"width: 176px; z-index: 80; transform: translate(1128.5880238439147px,40.83748839658189px) rotate(-4.912961649311912deg) scale(0.8045313891137631);"[39m
+            [36m>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"ph"[39m
+                [33mstyle[39m=[32m"background: linear-gradient(170deg, rgb(242, 217, 168), rgb(217, 145, 79) 55%, rgb(139, 90, 60));"[39m
+              [36m/>[39m
+              [36m<span>[39m
+                [0m10월 산책 코스[0m
+              [36m</span>[39m
+            [36m</div>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"card photo  "[39m
+              [33mstyle[39m=[32m"width: 176px; z-index: 93; transform: translate(1126.1514719839363px,356.4797350414379px) rotate(6.148604361566072deg) scale(0.9267547109475148);"[39m
+            [36m>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"ph"[39m
+                [33mstyle[39m=[32m"background: radial-gradient(circle at 40% 40%, rgb(234, 208, 222), rgb(199, 157, 186) 45%, rgb(147, 166, 140) 80%);"[39m
+              [36m/>[39m
+              [36m<span>[39m
+                [0m베란다 수국[0m
+              [36m</span>[39m
+            [36m</div>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"card hand lime "[39m
+              [33mstyle[39m=[32m"width: 168px; z-index: 83; transform: translate(126.59899097346948px,626.2390498121167px) rotate(-7.369719974502978deg) scale(0.8308576486030862);"[39m
+            [36m>[39m
+              [36m<p>[39m
+                [0m아이디어는 산책할 때 온다[0m
+              [36m</p>[39m
+            [36m</div>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"card note purple far"[39m
+              [33mstyle[39m=[32m"width: 170px; z-index: 72; transform: translate(1253.1261510643596px,145.81109268645966px) rotate(2.8080452727074654deg) scale(0.720586183425312);"[39m
+            [36m>[39m
+              [36m<p>[39m
+                [0m좋아하는 단어: 윤슬[0m
+              [36m</p>[39m
+            [36m</div>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"card check  far"[39m
+              [33mstyle[39m=[32m"width: 188px; z-index: 66; transform: translate(-28.686030639303933px,188.24938205984296px) rotate(-11.0670540819484deg) scale(0.6606651438589511);"[39m
+            [36m>[39m
+              [36m<b>[39m
+                [0m이사 준비[0m
+              [36m</b>[39m
+              [36m<ul>[39m
+                [36m<li[39m
+                  [33mclass[39m=[32m"on"[39m
+                [36m>[39m
+                  [0m인터넷 이전 신청[0m
+                [36m</li>[39m
+                [36m<li>[39m
+                  [0m관리비 정산[0m
+                [36m</li>[39m
+                [36m<li>[39m
+                  [0m화분 옮기기[0m
+                [36m</li>[39m
+              [36m</ul>[39m
+            [36m</div>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"card note  "[39m
+              [33mstyle[39m=[32m"...
+ ❯ src/components/auth/__tests__/InviteRoute.test.tsx:112:53
+    110|
+    111|     await screen.findByTestId("google-slot");
+    112|     await waitFor(() => expect(google.renderButton).toHaveBeenCalled()…
+       |                                                     ^
+    113|     google.press("id-token");
+    114|     await waitFor(() => expect(api.googleLogin).toHaveBeenCalledWith("…
+ ❯ runWithExpensiveErrorDiagnosticsDisabled node_modules/@testing-library/dom/dist/config.js:47:12
+ ❯ checkCallback node_modules/@testing-library/dom/dist/wait-for.js:124:77
+ ❯ MutationObserver.checkRealTimersCallback node_modules/@testing-library/dom/dist/wait-for.js:118:16
+ ❯ MutationObserver.invokeTheCallbackFunction node_modules/jsdom/lib/generated/idl/MutationCallback.js:19:26
+ ❯ notifyMutationObservers node_modules/jsdom/lib/jsdom/living/helpers/mutation-observers.js:160:22
+ ❯ node_modules/jsdom/lib/jsdom/living/helpers/mutation-observers.js:133:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/15]⎯
+
+ FAIL  src/components/workspace/__tests__/MobileCardControls.test.tsx > selected mobile link offers explicit open/edit and selecting it leaves the keyboard closed
+ FAIL  src/components/workspace/__tests__/MobileCardControls.test.tsx > touching the target in connection mode connects without selecting or opening it
+ FAIL  src/components/workspace/__tests__/MobileCardControls.test.tsx > dragging while choosing a connection target pans without connecting
+ FAIL  src/components/workspace/__tests__/MobileCardControls.test.tsx > connection target controls cannot activate through the compatibility click
+ FAIL  src/components/workspace/__tests__/MobileCardControls.test.tsx > mouse input can finish an explicit mobile connection mode on hybrid devices
+ FAIL  src/components/workspace/__tests__/MobileCardControls.test.tsx > keeps numeric resize controls above the mobile keyboard
+ FAIL  src/components/workspace/__tests__/MobileCardControls.test.tsx > numeric input reflects the clamped width even when the card is already at its limit
+ FAIL  src/components/workspace/__tests__/MobileCardControls.test.tsx > link actions keep URL editing as the only edit entry while retaining explicit movement
+ FAIL  src/components/workspace/__tests__/MobileCardControls.test.tsx > hides the floating move action during 연결
+ FAIL  src/components/workspace/__tests__/MobileCardControls.test.tsx > hides the floating move action during 크기
+ FAIL  src/components/workspace/__tests__/MobileCardControls.test.tsx > hides the floating move action during 주소 수정
+ FAIL  src/components/workspace/__tests__/MobileCardControls.test.tsx > main memo edit remains singular and enters the explicit edit mode
+Error: [vitest] No "useStackedZoomControls" export is defined on the "../useCompactControls" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+vi.mock(import("../useCompactControls"), async (importOriginal) => {
+  const actual = await importOriginal()
+  return {
+    ...actual,
+    // your mocked methods
+  }
+})
+
+ ❯ ZoomBar src/components/workspace/ZoomBar.tsx:15:19
+     13|   const t = useT();
+     14|   const compact = useCompactControls();
+     15|   const stacked = useStackedZoomControls();
+       |                   ^
+     16|   const scale = useWorkspace((s) => s.viewport.scale);
+     17|   const setScale = useWorkspace((s) => s.setScale);
+ ❯ Object.react_stack_bottom_frame node_modules/react-dom/cjs/react-dom-client.development.js:25904:20
+ ❯ renderWithHooks node_modules/react-dom/cjs/react-dom-client.development.js:7662:22
+ ❯ updateFunctionComponent node_modules/react-dom/cjs/react-dom-client.development.js:10166:19
+ ❯ beginWork node_modules/react-dom/cjs/react-dom-client.development.js:11778:18
+ ❯ runWithFiberInDEV node_modules/react-dom/cjs/react-dom-client.development.js:874:13
+ ❯ performUnitOfWork node_modules/react-dom/cjs/react-dom-client.development.js:17641:22
+ ❯ workLoopSync node_modules/react-dom/cjs/react-dom-client.development.js:17469:41
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/15]⎯
+
+ FAIL  src/components/workspace/__tests__/ZoomBar.test.tsx > keeps the tablet zoom row above the full dock and restores desktop placement on resize
+AssertionError: expected 'calc(84px + env(0px * , * safe-area-i…' to be 'calc(84px + env(safe-area-inset-botto…' // Object.is equality
+
+Expected: "calc(84px + env(safe-area-inset-bottom, 0px))"
+Received: "calc(84px + env(0px * , * safe-area-inset-bottom))"
+
+ ❯ src/components/workspace/__tests__/ZoomBar.test.tsx:32:31
+     30|     const { container } = wrap();
+     31|     const zoom = container.querySelector<HTMLElement>('[data-canvas-co…
+     32|     expect(zoom.style.bottom).toBe(`calc(${zoomBottom}px + env(safe-ar…
+       |                               ^
+     33|     act(() => { window.innerWidth = 1280; window.dispatchEvent(new Eve…
+     34|     expect(zoom.style.bottom).toBe("calc(20px + env(safe-area-inset-bo…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/15]⎯
+
+ FAIL  src/components/workspace/__tests__/undo.review3.test.tsx > 자동 측정은 자기 칸만 기록 밖으로 쓴다 > 글상자 왼쪽 핸들로 폭을 줄이면 cmd+z 1번에 폭과 x가 함께 돌아간다
+Error: `Tooltip` must be used within `TooltipProvider`
+ ❯ useContext node_modules/@radix-ui/react-context/src/create-context.tsx:158:12
+ ❯ Tooltip node_modules/@radix-ui/react-tooltip/src/tooltip.tsx:165:26
+ ❯ Object.react_stack_bottom_frame node_modules/react-dom/cjs/react-dom-client.development.js:25904:20
+ ❯ renderWithHooks node_modules/react-dom/cjs/react-dom-client.development.js:7662:22
+ ❯ updateFunctionComponent node_modules/react-dom/cjs/react-dom-client.development.js:10166:19
+ ❯ beginWork node_modules/react-dom/cjs/react-dom-client.development.js:11778:18
+ ❯ runWithFiberInDEV node_modules/react-dom/cjs/react-dom-client.development.js:874:13
+ ❯ performUnitOfWork node_modules/react-dom/cjs/react-dom-client.development.js:17641:22
+ ❯ workLoopSync node_modules/react-dom/cjs/react-dom-client.development.js:17469:41
+ ❯ renderRootSync node_modules/react-dom/cjs/react-dom-client.development.js:17450:11
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/15]⎯
+
+
+ Test Files  4 failed | 233 passed (237)
+      Tests  15 failed | 2063 passed | 8 skipped (2086)
+   Start at  02:03:05
+   Duration  139.68s (transform 8.90s, setup 80.33s, import 27.34s, tests 320.02s, environment 215.25s)
+
+error: script "test" exited with code 1
+===TEST_EXIT=1===

@@ -15,6 +15,7 @@ import { useWorkspace } from "@/state/workspace";
 import { runEditFlush } from "@/state/editFlush";
 import { updateNoteField } from "@/state/ydoc/model";
 import { dispatchOp } from "@/state/bridge/mossBridge";
+import { Providers } from "@/components/providers";
 import MarkdownEditor from "@/components/workspace/cards/_shared/MarkdownEditor";
 import { MemoExpandDialog } from "@/components/workspace/cards/MemoExpandDialog";
 import { Dock } from "@/components/workspace/Dock";
@@ -296,9 +297,13 @@ describe("자동 측정은 자기 칸만 기록 밖으로 쓴다", () => {
       else delete (HTMLElement.prototype as unknown as { offsetHeight?: number }).offsetHeight;
     };
     useWorkspace.setState({ selectedIds: [g], editingId: null });
+    // DraggableCard가 AIOptOutBadge의 Radix Tooltip을 그리므로 TooltipProvider가 필요하다
+    // (canvasCapture.test의 Providers 래핑과 같은 처방). 제품 코드 변경 없음.
     const view = render(
       <I18nProvider locale="ko">
-        <Live id={g} />
+        <Providers>
+          <Live id={g} />
+        </Providers>
       </I18nProvider>,
     );
     await readyCheck(P);

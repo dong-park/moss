@@ -537,7 +537,8 @@ export function Dock({
           mouseX={mouseX}
           centers={centers}
           registerSize={registerSize}
-          showLabel={hoveredId === item.toolId}
+          showLabel={compact || hoveredId === item.toolId}
+          description={t(`reviewCanvas.descriptions.${item.toolId}`)}
           reducedMotion={reducedMotion}
           onDragStart={(screenX, screenY) =>
             setDockDrag({ toolId: previewToolOf(item.toolId), face: previewFaceOf(item.toolId), screenX, screenY })
@@ -571,10 +572,14 @@ export function Dock({
               {/* Extra tools create at viewport center; primary tools retain drag/drop. */}
               {DOCK_ITEMS.filter(item => item.draggable && !["text", "todo", "photo"].includes(item.toolId)).map(item => (
                 <DropdownMenu.Item key={item.toolId}
+                  aria-label={LABELS[item.labelKey]}
                   className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg px-3 outline-none data-[highlighted]:bg-[color:var(--color-hover)]"
                   onSelect={() => { createdFromMenu.current = true; createAtCenter(item.toolId); }}>
                   <Image src={item.icon} alt="" width={32} height={32} unoptimized draggable={false} />
-                  {LABELS[item.labelKey]}
+                  <span className="flex min-w-0 flex-col gap-0.5">
+                    <span>{LABELS[item.labelKey]}</span>
+                    <small className="text-[11px] leading-relaxed text-text-muted">{t(`reviewCanvas.descriptions.${item.toolId}`)}</small>
+                  </span>
                 </DropdownMenu.Item>
               ))}
             </DropdownMenu.Content>
@@ -636,6 +641,7 @@ function DockButton({
   centers,
   registerSize,
   showLabel,
+  description,
   reducedMotion,
   pressed,
   badge,
@@ -654,6 +660,7 @@ function DockButton({
   centers: MotionValue<Centers>;
   registerSize: (id: DockToolId, mv: MotionValue<number> | null) => void;
   showLabel: boolean;
+  description?: string;
   reducedMotion: boolean;
   pressed?: boolean;
   /** FEAT-trash: 점 배지 — 휴지통에 메모가 있을 때. */
@@ -667,6 +674,7 @@ function DockButton({
   onClick: () => void;
 }) {
   const draggedRef = useRef(false);
+  const [focused, setFocused] = useState(false);
   const id = item.toolId;
   // 목표 크기: 커서·중심 MotionValue에서 파생. 실제 크기: 스프링. 둘 다 React 렌더 밖에서 돈다.
   const target = useTransform(() => {
@@ -749,6 +757,9 @@ function DockButton({
       data-dock-id={item.toolId}
       onMouseDown={handleMouseDown}
       onClick={handleClick}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
+      title={description ? `${label} · ${description}` : label}
       aria-label={label}
       aria-pressed={pressed}
       className={[
@@ -799,8 +810,8 @@ function DockButton({
           style={{ background: "var(--color-accent-blue)" }}
         />
       )}
-      {showLabel && (
-        <span className="absolute -bottom-1 whitespace-nowrap text-[11px] leading-none text-text-muted">
+      {(showLabel || focused) && (
+        <span className="pointer-events-none absolute -top-6 whitespace-nowrap rounded bg-bg/95 px-1.5 py-1 text-[11px] leading-none text-text">
           {label}
         </span>
       )}

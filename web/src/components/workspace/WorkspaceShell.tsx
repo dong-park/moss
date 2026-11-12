@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
+import { SaveFeedback } from "./SaveFeedback";
 import { Canvas } from "@/components/workspace/Canvas";
 import { MemoTable } from "@/components/workspace/table/MemoTable";
 import { ViewToggle } from "@/components/workspace/table/ViewToggle";
@@ -177,7 +178,7 @@ export function WorkspaceShell() {
 
   return (
     // FEAT-sticky-redesign n8: 사이드바 DOM 제거 — 캔버스가 화면 왼쪽 끝부터 시작한다(AC-1).
-    <main className="grid h-screen w-screen grid-cols-1 grid-rows-1">
+    <main className="grid h-dvh w-screen grid-cols-1 grid-rows-1">
       {/* FEAT-onboarding-routes n2: 세션 복원은 게이트 밖에서 항상 돈다. */}
       <AuthBootstrap />
       <WorkspaceGate>
@@ -186,8 +187,9 @@ export function WorkspaceShell() {
             <RouteBoardSync boardId={boardId} />
             <div className={isCanvas ? "contents" : "flex min-h-0 flex-col"}>
               <div data-testid="workspace-controls" className={isCanvas
-                ? "fixed top-3 right-3 z-[var(--z-panel)] flex items-center gap-2"
+                ? "fixed top-3 right-3 z-[var(--z-panel)] flex max-w-[calc(100vw-24px)] flex-wrap items-center justify-end gap-2"
                 : "flex shrink-0 flex-wrap items-center justify-end gap-2 border-b border-border p-3 [&_button]:min-h-11 [&_button]:min-w-11"}>
+                <SaveFeedback />
                 <OfflineBadge />
                 <ShareControlMount />
                 <ViewToggle />

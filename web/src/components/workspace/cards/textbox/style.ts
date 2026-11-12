@@ -8,6 +8,9 @@
 /** textbox 기본 색 — 잉크 톤. */
 export const TEXT_DEFAULT_COLOR = "#334155";
 
+/** Automatic text labels wrap after this world-space width; viewport changes never resize the document. */
+export const TEXTBOX_AUTO_MAX_WIDTH = 480;
+
 export interface TextColorPreset {
   /** i18n 라벨 키 접미사 — workspace.textbox.color.<key>. */
   key: string;

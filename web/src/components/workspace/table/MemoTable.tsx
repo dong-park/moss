@@ -16,6 +16,7 @@ import {
   useMemoTable,
   buildMemoRows,
   deriveFromBase,
+  tableTrashTargetIds,
   type MemoRow,
   type MemoSortKey,
 } from "@/state/memoTable";
@@ -70,6 +71,8 @@ export function MemoTable() {
   }, []);
   const rowHeight = compact ? COMPACT_ROW_H : ROW_H;
   const notes = useMemoTable((s) => s.notes);
+  const loadError = useMemoTable((s) => s.loadError);
+  const loading = useMemoTable((s) => s.loading);
   const boards = useMemoTable((s) => s.boards);
   const sort = useMemoTable((s) => s.sort);
   const boardFilter = useMemoTable((s) => s.boardFilter);
@@ -123,6 +126,10 @@ export function MemoTable() {
     () => deriveFromBase(baseRows, boards, filters, sort),
     [baseRows, boards, filters, sort],
   );
+
+  const trashTargets = useMemo(() => tableTrashTargetIds(notes, selectedIds), [notes, selectedIds]);
+  const visibleIds = new Set(rows.map(row => row.id));
+  const hiddenSelectionCount = [...selectedIds].filter(id => !visibleIds.has(id)).length;
 
   /* ─ 가상화: 고정 행 높이 윈도. jsdom처럼 높이 0이면 전체 렌더(테스트 친화). ─ */
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -182,7 +189,7 @@ export function MemoTable() {
       const a = Math.min(lastIndexRef.current, index);
       const b = Math.max(lastIndexRef.current, index);
       const next = new Set(selectedIds);
-      for (let i = a; i <= b; i++) next.add(rows[i].id);
+      for (let i = a; i <= b && i < rows.length; i++) next.add(rows[i].id);
       setSelectedIds(next);
     } else {
       toggleSelected(rowId);
@@ -200,7 +207,7 @@ export function MemoTable() {
 
   useEffect(() => {
     lastIndexRef.current = null;
-  }, [sort]);
+  }, [sort, filters]);
 
   /* ─ 키보드 탐색(§8) ─ */
   const [focusIndex, setFocusIndex] = useState(-1);
@@ -243,16 +250,24 @@ export function MemoTable() {
   const emptySearch = isEmpty && query.trim() !== "";
 
   return (
-    <div className={`flex min-h-0 flex-1 flex-col bg-bg ${styles.table}`}>
-      <MemoTableToolbar />
+    <div className={`flex min-h-0 flex-1 flex-col bg-bg ${styles.table}`} aria-busy={loading}>
+      <MemoTableToolbar resultCount={rows.length} />
+      {loadError && <div className="flex flex-wrap items-center gap-3 border-b border-border p-3 text-xs">
+        <p role="alert">{loadError}</p>
+        <button type="button" disabled={loading} className="min-h-11 underline" onClick={() => void useMemoTable.getState().reload()}>{t("reviewTable.retry")}</button>
+      </div>}
 
       {selectedIds.size > 0 && (
         <div className={` ${styles.selection} flex flex-wrap items-center gap-3 border-b border-border bg-accent-lime/10 px-3 py-1.5 text-xs text-text`}>
           <span className="font-medium">
             {t("workspace.table.selection.count", { count: selectedIds.size })}
           </span>
+          <span>{t("reviewTable.selectionScope", { count: trashTargets.length, hidden: hiddenSelectionCount })}</span>
+          <span className="text-text-soft">{t("reviewTable.selectionPolicy")}</span>
           <button
             type="button"
+            disabled={trashTargets.length === 0}
+            title={t("reviewTable.trashCount", { count: trashTargets.length })}
             onClick={() => void trashSelected()}
             className="cursor-pointer rounded-md border border-border px-2 py-0.5 hover:bg-panel"
           >
@@ -330,20 +345,21 @@ export function MemoTable() {
                     <div role="gridcell">
                       <label className={styles.selectTarget}>
                         <input type="checkbox" checked={selected}
-                          aria-label={row.title || t("workspace.table.untitled")}
+                          aria-label={row.displayTitle}
                           onClick={(e) => handleToggle(index, row.id, e.shiftKey)}
                           onChange={() => {}} />
                       </label>
                     </div>
                     <div role="gridcell" className="min-w-0">
                       <button type="button" className={styles.openMemo}
-                        aria-label={`${row.title || t("workspace.table.untitled")} ${row.preview || "—"}`}
+                        aria-label={row.preview === row.displayTitle ? row.displayTitle : `${row.displayTitle} ${row.preview || "—"}`}
                         onClick={() => void openMemo(row.id)}>
                         <span className="flex min-w-0 items-center gap-2 font-medium">
                           <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: memoTint(row.id, row.color) }} aria-hidden />
-                          <span className="truncate">{row.title || t("workspace.table.untitled")}</span>
+                          <span className="truncate">{row.displayTitle}</span>
                         </span>
-                        <span className="block truncate text-xs text-text-soft"><Preview row={row} /></span>
+                        <span className="block truncate text-xs text-text-soft"><span className={styles.typeBadge}>{row.typeLabel}</span> {row.preview !== row.displayTitle && <Preview row={row} />}</span>
+                        <span className="block truncate text-xs text-text-muted">{row.boardPath}</span>
                       </button>
                     </div>
                     <div role="gridcell">
@@ -379,7 +395,7 @@ export function MemoTable() {
                         type="checkbox"
                         checked={selected}
                         aria-label={
-                          row.title || t("workspace.table.untitled")
+                          row.displayTitle
                         }
                         onClick={(e) => {
                           e.stopPropagation();
@@ -403,7 +419,7 @@ export function MemoTable() {
                     {/* 제목 — 인라인 편집 */}
                     <div
                       role="gridcell"
-                      className="flex items-center px-2"
+                      className="flex min-w-0 items-center px-2"
                       onClick={(e) => {
                         e.stopPropagation();
                         beginEdit(row);
@@ -433,12 +449,13 @@ export function MemoTable() {
                           className="w-full rounded border border-accent-blue bg-bg px-1 py-0.5 text-xs outline-none"
                         />
                       ) : row.title ? (
-                        <span className="truncate">{row.title}</span>
+                        <span className="truncate">{row.displayTitle}</span>
                       ) : (
                         <span className="truncate text-text-muted">
-                          {t("workspace.table.untitled")}
+                          {row.displayTitle}
                         </span>
                       )}
+                      {editingId !== row.id && <span className={styles.typeBadge}>{row.typeLabel}</span>}
                     </div>
 
                     {/* 본문 미리보기 */}
@@ -587,13 +604,14 @@ function MemoDetails({ row, onCanvas }: { row: MemoRow; onCanvas: () => void }) 
     <Dialog.Root open={open} onOpenChange={setOpen}>
       <Dialog.Trigger asChild>
         <button type="button" className={styles.detailsTrigger}
-          aria-label={t("workspace.table.action.detailsFor", { title: row.title || t("workspace.table.untitled") })}>⋯</button>
+          aria-label={t("workspace.table.action.detailsFor", { title: row.displayTitle })}>⋯</button>
       </Dialog.Trigger>
       <Dialog.Portal>
         <Dialog.Overlay className={styles.overlay} />
         <Dialog.Content className={styles.details} aria-describedby={undefined}>
-          <Dialog.Title className="break-words text-base font-medium">{row.title || t("workspace.table.untitled")}</Dialog.Title>
+          <Dialog.Title className="break-words text-base font-medium">{row.displayTitle}</Dialog.Title>
           <dl className={styles.metadata}>
+            <dt>{t("reviewTable.typeHeading")}</dt><dd>{row.typeLabel}</dd>
             <dt>{t("workspace.table.column.board")}</dt><dd>{row.boardPath}</dd>
             <dt>{t("workspace.table.column.frame")}</dt><dd>{row.frameName || "—"}</dd>
             <dt>{t("workspace.table.column.attachments")}</dt><dd>{BADGE_ORDER.map(b => `${b.icon} ${row.badgeCounts[b.key]}`).join(" · ")}</dd>

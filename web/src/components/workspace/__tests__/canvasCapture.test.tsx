@@ -1,6 +1,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { act, fireEvent, render } from "@testing-library/react";
 import { I18nProvider } from "@/i18n/Provider";
+import { Providers } from "@/components/providers";
 import { Canvas } from "@/components/workspace/Canvas";
 import { SYSTEM_BOARD_ID, useWorkspace, type Card } from "@/state/workspace";
 import { useToasts } from "@/state/notifications";
@@ -170,7 +171,7 @@ afterEach(() => {
 function mount() {
   return render(
     <I18nProvider locale="ko">
-      <Canvas />
+      <Providers><Canvas /></Providers>
     </I18nProvider>,
   );
 }
