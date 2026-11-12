@@ -158,6 +158,25 @@ Owned networkless container from the `d574342` server image, `docker exec java �
 
 NOT RUN in this lane: exact-head GitHub Actions (outage backlog; parent owns CI), real GHCR/attestation, installed root agent, production smoke/rollout.
 
+## Review-fix round 3 — final independent review of `1484f07` (APPROVE, P3-A required before timer activation)
+
+Fix commit `cd1404655351b6751ea4367294d47a1bc7a195a6` (plus this report). Only `scripts/deploy/agent.py`, a new test file, the runbook and this report changed; web/server/sync/MCP/Docker sources are byte-identical to `1484f07`, so no app/image rebuild or rehearsal was run (exact-head CI covers the unrelated suites).
+
+**P3-A.** After the candidate server is ready and `migration_compatible()` proved the live history exactly equals a signed rehearsed history, `proven_history()` builds `{sha256, kind: candidate|baseline, requested, evidence_sha256, baseline_images}` from the runtime's observed history and verified evidence (not payload claims). It is journaled in the same atomic write that enters `clients`. A failed automatic rollback (the restored set's start or smoke fails) and crash recovery in `clients`/`smoke`/`rollback` carry it into the `error` attempt. It is dropped when the pre-rollback or post-rollback check sees a different history. `reconcile` accepts `{current_migrations_sha256, the attempt's proof}` only if the proof is well formed, names this attempt's requested SHA, has a `clients`/`smoke`/`rollback` failure phase and is bound to the current release images. It keeps the unchanged `observe()` checks (approved topology, exact current image IDs, real `metadata()`, authenticated smoke), stores the verified digest as the current history in the same write, and leaves `paused`. No proof exists for a failed or timed-out candidate server start or a crash before the proof.
+
+| Check | Command / probe | Result |
+|---|---|---|
+| Reviewer scenario, unfixed code | `gap/crash_repro.py` pointed at this worktree before the fix | `reconcile refused: live migration history differs …` with live history = N1's rehearsed candidate |
+| New tests, unfixed code (RED) | `python3 -m unittest discover -s scripts/deploy/tests -p test_recovery_proof.py` on `1484f07` agent code | 5 errors (`KeyError: 'proven_history'`) |
+| New tests (GREEN) | same | 10 passed. Transient double smoke failure → `error`/`rollback=failed`, proof bound; restore current images → reconcile → `current_migrations_sha256` = H_N1, still paused → `resume` → retry succeeds. Crash in `clients` after the proof → `interrupted` with proof → reconcile succeeds. Still rejected: candidate images left running; checksum drift, later migration, prefix, reordered and unreadable live history; another attempt without proof; tampered `baseline_images`, `requested` or `kind`; failed candidate server start (no proof); crash in `server` (no proof); history moved after proof (proof dropped) |
+| Rejection text guard (P4) | `RejectionTextSourceGuardTest` (AST scan of `scripts/deploy/*.py`) | every `require`/`Rejected` reason is a literal, or a literal + `service`/`gate`; those names come only from `GATES`, `READINESS`/root config and `SERVICES`/`postgres` |
+| Hand-built pre-fix crash state | reviewer script after the fix (marker in `smoke` **without** proof) | still refused, as designed: the fixed agent always journals the proof before `clients` |
+| Full deployer suite incl. real Postgres 18 | `MOSS_DEPLOY_DOCKER_TESTS=required python3 -W error::ResourceWarning -m unittest discover -s scripts/deploy/tests` | 104 passed, 0 failures/skips |
+| Rehearsal harness | `node --test deploy/rehearsal/*.test.mjs` (Node 24.22.3) | 20 passed |
+| Static | `py_compile`; actionlint 1.7.12; `git diff --check origin/main...HEAD` | each exit 0 |
+
+Not repeated, as instructed: the long-sleep/never-returning dispatch probes (the reviewer measured 750.1 s / 210.1 s), image builds and the full rehearsal (sources unchanged), and full web/server/sync/MCP suites (exact-head CI). Documented residuals: healthcheck JVM cost, and `TimeoutStartSec=45min` not being derived from the per-step caps (a systemd kill is recovered as an interrupted `error`). Production was not touched in this round (no command against `/home/dongpark/moss` or its containers).
+
 ## Remaining gates and operator inputs
 
 NOT RUN: exact-head GitHub Actions/OWASP NVD audit for this round (runs for `d574342` were still queued when this lane finished; parent owns CI); real GHCR publication/attestation verification; installed root agent against GitHub production requests; independent C4 review; browser old-tab/version-skew/IndexedDB/OPFS checks; production dedicated-account smoke; first production deployment/rollback and downtime measurement. Existing web 8 and MCP 1 platform skips are listed above.
@@ -169,7 +188,7 @@ NOT RUN: exact-head GitHub Actions/OWASP NVD audit for this round (runs for `d57
 
 ## Changed files
 
-All files changed relative to `origin/main` (`4b617ad`) on this branch, including both review-fix rounds and parent `2d97856`:
+All files changed relative to `origin/main` (`4b617ad`) on this branch, including all review-fix rounds and parent `2d97856`:
 
 - `.github/workflows/audit.yml`
 - `.github/workflows/ci.yml`
@@ -217,6 +236,7 @@ All files changed relative to `origin/main` (`4b617ad`) on this branch, includin
 - `scripts/deploy/tests/test_operator.py`
 - `scripts/deploy/tests/test_publish.py`
 - `scripts/deploy/tests/test_recovery_paths.py`
+- `scripts/deploy/tests/test_recovery_proof.py`
 - `scripts/deploy/tests/test_round2.py`
 - `scripts/deploy/tests/test_runtime.py`
 - `scripts/deploy/tests/test_runtime_postgres.py`
