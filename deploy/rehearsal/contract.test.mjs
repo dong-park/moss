@@ -22,7 +22,7 @@ test('local registry option accepts only the exact loopback moss service reposit
 });
 test('input validates supplied config hash and never invents a legacy baseline SHA', async () => {
   const { rehearsalInput } = await import('./core.mjs');
-  const images = Object.fromEntries(['web', 'server', 'sync'].map(s => [s, `ghcr.io/example/moss-${s}@sha256:${'f'.repeat(64)}`]));
+  const images = Object.fromEntries(['web', 'server', 'sync'].map(s => [s, `ghcr.io/dong-park/moss-deploy-${s}@sha256:${'f'.repeat(64)}`]));
   const config = { api_url: 'https://api.example.com', sync_url: 'wss://sync.example.com', google_client_id: '', terms_version: '2026-11' };
   const value = { sha: 'a'.repeat(40), images, baseline: images, baseline_sha: null, legacy_baseline: true, public_config: config, config_sha256: sha256(canonical(config)) };
   assert.equal(rehearsalInput(value).baseline_sha, null);

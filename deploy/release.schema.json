@@ -67,15 +67,15 @@
       "properties": {
         "web": {
           "type": "string",
-          "pattern": "^ghcr\\.io/dong-park/moss-web@sha256:[0-9a-f]{64}$"
+          "pattern": "^ghcr\\.io/dong-park/moss-deploy-web@sha256:[0-9a-f]{64}$"
         },
         "server": {
           "type": "string",
-          "pattern": "^ghcr\\.io/dong-park/moss-server@sha256:[0-9a-f]{64}$"
+          "pattern": "^ghcr\\.io/dong-park/moss-deploy-server@sha256:[0-9a-f]{64}$"
         },
         "sync": {
           "type": "string",
-          "pattern": "^ghcr\\.io/dong-park/moss-sync@sha256:[0-9a-f]{64}$"
+          "pattern": "^ghcr\\.io/dong-park/moss-deploy-sync@sha256:[0-9a-f]{64}$"
         }
       }
     },
@@ -90,15 +90,15 @@
       "properties": {
         "web": {
           "type": "string",
-          "pattern": "^ghcr\\.io/dong-park/moss-web@sha256:[0-9a-f]{64}$"
+          "pattern": "^ghcr\\.io/dong-park/moss-deploy-web@sha256:[0-9a-f]{64}$"
         },
         "server": {
           "type": "string",
-          "pattern": "^ghcr\\.io/dong-park/moss-server@sha256:[0-9a-f]{64}$"
+          "pattern": "^ghcr\\.io/dong-park/moss-deploy-server@sha256:[0-9a-f]{64}$"
         },
         "sync": {
           "type": "string",
-          "pattern": "^ghcr\\.io/dong-park/moss-sync@sha256:[0-9a-f]{64}$"
+          "pattern": "^ghcr\\.io/dong-park/moss-deploy-sync@sha256:[0-9a-f]{64}$"
         }
       }
     }

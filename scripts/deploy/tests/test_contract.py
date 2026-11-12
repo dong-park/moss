@@ -14,8 +14,8 @@ def manifest():
         'version': 1, 'repository': 'dong-park/moss', 'environment': 'production',
         'sha': 'a' * 40, 'platform': 'linux/amd64', 'runtime_contract': 1,
         'config_sha256': 'b' * 64, 'run_id': 123, 'run_attempt': 1,
-        'images': {s: f'ghcr.io/dong-park/moss-{s}@sha256:' + 'c' * 64 for s in release.SERVICES},
-        'baseline': {s: f'ghcr.io/dong-park/moss-{s}@sha256:' + 'd' * 64 for s in release.SERVICES},
+        'images': {s: f'ghcr.io/dong-park/moss-deploy-{s}@sha256:' + 'c' * 64 for s in release.SERVICES},
+        'baseline': {s: f'ghcr.io/dong-park/moss-deploy-{s}@sha256:' + 'd' * 64 for s in release.SERVICES},
         'evidence_sha256': 'e' * 64,
     }
 
@@ -34,9 +34,12 @@ class ContractTest(unittest.TestCase):
                 with self.assertRaises(release.Rejected): release.validate(candidate)
         for service in release.SERVICES:
             for image in ['moss:latest', 'ghcr.io/evil/moss@sha256:'+'c'*64,
-                          f'ghcr.io/dong-park/moss-{service}@sha256:'+'c'*64+';id']:
-                candidate = manifest(); candidate['images'][service] = image
-                with self.assertRaises(release.Rejected): release.validate(candidate)
+                          f'ghcr.io/dong-park/moss-deploy-{service}@sha256:'+'c'*64+';id',
+                          # retired PUBLIC repositories are never accepted, as candidate or baseline
+                          f'ghcr.io/dong-park/moss-{service}@sha256:'+'c'*64]:
+                for field in ('images', 'baseline'):
+                    candidate = manifest(); candidate[field][service] = image
+                    with self.assertRaises(release.Rejected): release.validate(candidate)
 
     def test_no_missing_or_extra_images(self):
         for field in ('images', 'baseline'):

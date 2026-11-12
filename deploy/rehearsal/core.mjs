@@ -71,9 +71,12 @@ export function canonical(value) {
   if (value && typeof value === 'object') return `{${Object.keys(value).sort().map(k => `${JSON.stringify(k)}:${canonical(value[k])}`).join(',')}}`;
   return JSON.stringify(value).replace(/[\u007f-\uffff]/g, c => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
 }
+// The only GHCR repositories accepted (mirrors scripts/deploy/release.py IMAGE_REPOSITORIES). The retired public
+// ghcr.io/dong-park/moss-{web,server,sync} packages and every other namespace are rejected.
+export const IMAGE_REPOSITORIES = Object.freeze({ web: 'ghcr.io/dong-park/moss-deploy-web', server: 'ghcr.io/dong-park/moss-deploy-server', sync: 'ghcr.io/dong-park/moss-deploy-sync' });
 export function pinnedImages(value, { local = false } = {}) {
   for (const service of ['web', 'server', 'sync']) {
-    const pattern = local ? /^127\.0\.0\.1:[0-9]+\/moss-(?:web|server|sync)@sha256:[a-f0-9]{64}$/ : /^ghcr\.io\/[a-z0-9._/-]+@sha256:[a-f0-9]{64}$/;
+    const pattern = local ? /^127\.0\.0\.1:[0-9]+\/moss-(?:web|server|sync)@sha256:[a-f0-9]{64}$/ : new RegExp(`^${IMAGE_REPOSITORIES[service].replaceAll('.', '\\.')}@sha256:[a-f0-9]{64}$`);
     const port = local ? Number(value?.[service]?.split(':')[1]?.split('/')[0]) : null;
     if (!pattern.test(value?.[service]) || (local && (!value[service].includes(`/moss-${service}@`) || port < 1 || port > 65535))) throw new Error(`pinned ${local ? 'local registry' : 'GHCR'} ${service} image required`);
   }

@@ -32,7 +32,7 @@ PUBLIC = {'api_url': 'https://moss.test', 'sync_url': 'wss://sync.test', 'google
 CFG = release.fingerprint(PUBLIC)
 
 
-def images(tag): return {s: f'ghcr.io/dong-park/moss-{s}@sha256:' + tag * 64 for s in release.SERVICES}
+def images(tag): return {s: f'ghcr.io/dong-park/moss-deploy-{s}@sha256:' + tag * 64 for s in release.SERVICES}
 
 
 def manifest(sha, imgs, base):

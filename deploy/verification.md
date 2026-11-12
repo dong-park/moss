@@ -1,5 +1,7 @@
 # Implementation-lane verification — 2026-11-12
 
+> **Correction (2026-11-12, `fix/private-ghcr-releases`).** The sections below are a historical record of the `feat/deployment-automation` lane and are not rewritten. Their image references to `ghcr.io/dong-park/moss-{web,server,sync}` and the runbook assumption that the first workflow push creates *private* packages are superseded: those packages became public (GITHUB_TOKEN-created packages inherit the public repository's visibility) and are retired. The only accepted repositories are the pre-provisioned private `ghcr.io/dong-park/moss-deploy-{web,server,sync}`; see `spec/private-ghcr-releases.md` for the blocker, decision and this correction's verification.
+
 Scope: local implementation and isolated Docker validation in the GOAT worktree on dongpark. Base fetched and verified: `4b617ad3389287c51e6dafc19ce1216e1bf7b3df`. Delivery branch: `feat/deployment-automation`. Parent owns independent C4 review, PR/main integration, credentials and production activation. The historical plan remains verbatim at `spec/deployment-automation-plan.md`; implementation authorization superseded its historical no-implementation notes.
 
 ## Fresh checks

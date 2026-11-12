@@ -53,6 +53,13 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
+      # Before any registry login, build or push: the three fixed packages must already exist (pre-provisioned by
+      # the operator), be PRIVATE and linked to this repository. A GITHUB_TOKEN push must never create them: a
+      # package created by this public repository's GITHUB_TOKEN inherits PUBLIC visibility, irreversibly.
+      - name: Prove pre-provisioned GHCR packages are private before push
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 scripts/deploy/publish.py registry
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
       - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
@@ -73,7 +80,7 @@ jobs:
           file: ${{ matrix.service }}/Dockerfile
           platforms: linux/amd64
           push: true
-          tags: ghcr.io/dong-park/moss-${{ matrix.service }}:${{ github.sha }}-${{ github.run_attempt }}
+          tags: ghcr.io/dong-park/moss-deploy-${{ matrix.service }}:${{ github.sha }}-${{ github.run_attempt }}
           labels: |
             org.opencontainers.image.source=https://github.com/dong-park/moss
             org.opencontainers.image.revision=${{ github.sha }}
@@ -85,9 +92,13 @@ jobs:
             NEXT_PUBLIC_MOSS_TERMS_VERSION=${{ vars.NEXT_PUBLIC_MOSS_TERMS_VERSION }}
       - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
-          subject-name: ghcr.io/dong-park/moss-${{ matrix.service }}
+          subject-name: ghcr.io/dong-park/moss-deploy-${{ matrix.service }}
           subject-digest: ${{ steps.image.outputs.digest }}
           push-to-registry: true
+      - name: Re-prove GHCR packages stayed private after push
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 scripts/deploy/publish.py registry
       - name: Save exact image identity
         env:
           SERVICE: ${{ matrix.service }}
@@ -132,7 +143,7 @@ jobs:
           path: images
       - name: Assemble exact candidate and successful baseline
         # First release only: waits (bounded, 15 min) for the operator's bootstrap baseline
-        # registration after these candidate images created the repository-linked packages.
+        # registration; the candidate images were pushed only into the pre-provisioned, proven-private packages.
         env:
           BASELINE_WAIT_SECONDS: "900"
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

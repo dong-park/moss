@@ -5,10 +5,64 @@ import os
 from pathlib import Path
 import sys
 import time
+import urllib.error
 import urllib.request
 
-from release import (REPOSITORY, canonical, digest, fingerprint, image_set, require,
-                     validate, verify_evidence, verify_run)
+from release import (IMAGE_REPOSITORIES, PACKAGE_NAMES, PACKAGE_OWNER, REPOSITORY, SERVICES, Rejected, canonical,
+                     digest, fingerprint, image_set, private_package, require, validate, verify_evidence, verify_run)
+
+DENIED = (401, 403, 404)
+RESPONSE_LIMIT = 1 << 20
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs): return None  # 3xx surfaces as its status; never followed
+
+
+_OPENER = urllib.request.build_opener(_NoRedirect)
+
+
+def http_get(url, token=None):
+    """One GET without redirects; returns (status, body). Transport failures carry no detail."""
+    headers = {'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'moss-release/1'}
+    if token: headers['Authorization'] = 'Bearer ' + token
+    try:
+        with _OPENER.open(urllib.request.Request(url, headers=headers, method='GET'), timeout=30) as response:
+            body = response.read(RESPONSE_LIMIT + 1)
+            require(response.geturl() == url and len(body) <= RESPONSE_LIMIT, 'unexpected registry response')
+            return response.status, body
+    except urllib.error.HTTPError as error:
+        error.close(); return error.code, b''
+    except Rejected: raise
+    except Exception: raise Rejected('registry request failed') from None
+
+
+def _json(body):
+    """Parsed JSON, or None (which every caller's shape check then rejects)."""
+    try: return json.loads(body)
+    except (ValueError, UnicodeDecodeError): return None
+
+
+def registry(token, fetch=None):
+    """Prove all three fixed packages exist, are PRIVATE and linked to REPOSITORY, and deny anonymous reads.
+    Uses only the job's GITHUB_TOKEN; any missing/forbidden/redirected/public/mismatched state rejects, and
+    nothing is ever created implicitly (no push happens before this passes)."""
+    fetch = fetch or http_get
+    require(isinstance(token, str) and token and token.isprintable() and ' ' not in token,
+            'workflow GITHUB_TOKEN required for package privacy proof')
+    for service in SERVICES:
+        name = PACKAGE_NAMES[service]
+        status, body = fetch(f'https://api.github.com/users/{PACKAGE_OWNER}/packages/container/{name}', token)
+        require(status == 200, 'package metadata unavailable (pre-provision it privately; never created here): ' + service)
+        private_package(service, _json(body))
+        status, body = fetch(f'https://ghcr.io/token?scope=repository:{PACKAGE_OWNER}/{name}:pull&service=ghcr.io', None)
+        if status in DENIED: continue
+        require(status == 200, 'anonymous registry probe inconclusive: ' + service)
+        anonymous = _json(body)
+        require(isinstance(anonymous, dict) and isinstance(anonymous.get('token'), str) and anonymous['token'],
+                'anonymous registry probe inconclusive: ' + service)
+        status, _ = fetch(f'https://ghcr.io/v2/{PACKAGE_OWNER}/{name}/tags/list', anonymous['token'])
+        require(status in DENIED, 'package is anonymously readable: ' + service)
 
 
 def api(path,body=None):
@@ -108,13 +162,23 @@ def request():
     raise RuntimeError('Host result timed out; request creation is not deployment success')
 
 
-if __name__=='__main__':
-    command=sys.argv[1]
-    if command=='config': print(json.dumps(public_config(),sort_keys=True))
+def main(argv):
+    command=argv[0] if argv else ''
+    if command=='registry':
+        try: registry(os.environ.get('GH_TOKEN',''))
+        except Exception as error:  # fixed messages only: never the token, response bodies or exception details
+            print('Rejected: '+(str(error) if isinstance(error,Rejected) else 'package privacy proof failed'),file=sys.stderr)
+            return 1
+        print('All three fixed GHCR packages are private, linked to '+REPOSITORY+', and deny anonymous reads')
+    elif command=='config': print(json.dumps(public_config(),sort_keys=True))
     elif command=='image':
-        service=os.environ['SERVICE']; image='ghcr.io/dong-park/moss-'+service+'@'+os.environ['DIGEST']
-        image_set({s:(image if s==service else f'ghcr.io/dong-park/moss-{s}@sha256:'+'0'*64) for s in ('web','server','sync')})
+        service=os.environ['SERVICE']; image=IMAGE_REPOSITORIES[service]+'@'+os.environ['DIGEST']
+        image_set({s:(image if s==service else IMAGE_REPOSITORIES[s]+'@sha256:'+'0'*64) for s in SERVICES})
         print(json.dumps({'service':service,'image':image}))
     elif command=='inputs': inputs()
     elif command=='request': request()
     else: raise RuntimeError('unsupported release command')
+    return 0
+
+
+if __name__=='__main__': sys.exit(main(sys.argv[1:]))
