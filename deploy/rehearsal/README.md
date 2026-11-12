@@ -26,7 +26,7 @@ bun deploy/rehearsal/run.ts --input /private/rehearsal-input.json --output /priv
 }
 ```
 
-Normal mode accepts three pinned `ghcr.io/...@sha256:64hex` references in each image set. All must be explicitly pulled before running. Image IDs and repository digests are projected with Docker `--format`, then immutable IDs are used throughout. Container inspection projects only IDs, image ID, state, mounts, labels and port bindings; `Config.Env` is never retrieved.
+Normal mode accepts only the three fixed private repositories `ghcr.io/dong-park/moss-deploy-{web,server,sync}@sha256:64hex` (one per service) in each image set; the retired public `ghcr.io/dong-park/moss-{web,server,sync}` and any other namespace are rejected. All must be explicitly pulled before running. Image IDs and repository digests are projected with Docker `--format`, then immutable IDs are used throughout. Container inspection projects only IDs, image ID, state, mounts, labels and port bindings; `Config.Env` is never retrieved.
 
 The public-config fingerprint covers **only** the exact four fields `api_url`, `sync_url`, `google_client_id`, `terms_version`. It is SHA256 of recursively key-sorted compact ASCII JSON (Python `ensure_ascii=True`, UTF-8 bytes). Input hashes must match. Smoke URLs, credentials, asset lists, HTML paths and container names never enter this fingerprint. A known baseline requires an exact SHA and `legacy_baseline:false`; a legacy baseline requires `baseline_sha:null`, never an inferred source revision. `RELEASE_SHA` is passed to candidate services and known-baseline services only.
 

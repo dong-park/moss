@@ -32,9 +32,22 @@ test('public fingerprint rejects empty asset proof, wrong revision and changed a
 
 test('GHCR references require immutable digests for all three services', async () => {
   const { pinnedImages } = await import('./core.mjs');
-  const ref = `ghcr.io/example/moss@sha256:${'a'.repeat(64)}`;
-  assert.deepEqual(pinnedImages({ web: ref, server: ref, sync: ref }), { web: ref, server: ref, sync: ref });
-  for (const value of ['ghcr.io/example/moss:latest', 'postgres:18', 'sha256:' + 'a'.repeat(64)]) assert.throws(() => pinnedImages({ web: ref, server: value, sync: ref }), /pinned GHCR server/);
+  const images = Object.fromEntries(['web', 'server', 'sync'].map(s => [s, `ghcr.io/dong-park/moss-deploy-${s}@sha256:${'a'.repeat(64)}`]));
+  assert.deepEqual(pinnedImages(images), images);
+  for (const value of ['ghcr.io/dong-park/moss-deploy-server:latest', 'postgres:18', 'sha256:' + 'a'.repeat(64)]) assert.throws(() => pinnedImages({ ...images, server: value }), /pinned GHCR server/);
+});
+test('GHCR mode accepts only the three fixed private repositories; retired public and other names are rejected', async () => {
+  const { pinnedImages } = await import('./core.mjs');
+  const digest = `@sha256:${'a'.repeat(64)}`;
+  const images = Object.fromEntries(['web', 'server', 'sync'].map(s => [s, `ghcr.io/dong-park/moss-deploy-${s}${digest}`]));
+  for (const service of ['web', 'server', 'sync']) {
+    const other = service === 'web' ? 'sync' : 'web';
+    for (const repository of [`ghcr.io/dong-park/moss-${service}`, `ghcr.io/example/moss-${service}`, 'ghcr.io/example/moss',
+      `ghcr.io/dong-park/moss-deploy-${other}`, `ghcr.io/evil/moss-deploy-${service}`, `ghcr.io/dong-park/moss-deploy-${service}-x`,
+      `ghcr.io/dong-park/moss-deploy-${service}/x`, `ghcr.io/dong-park/x/moss-deploy-${service}`, `docker.io/dong-park/moss-deploy-${service}`]) {
+      assert.throws(() => pinnedImages({ ...images, [service]: repository + digest }), new RegExp(`pinned GHCR ${service}`), repository);
+    }
+  }
 });
 test('canonical public config hash ignores object key order, preserves array order', async () => {
   const { canonical } = await import('./core.mjs');

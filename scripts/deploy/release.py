@@ -7,6 +7,14 @@ from urllib.parse import urlsplit
 
 SERVICES = ('web', 'server', 'sync')
 REPOSITORY = 'dong-park/moss'
+# The ONLY accepted image repositories: pre-provisioned PRIVATE user packages linked to REPOSITORY (by numeric id).
+# The retired moss-{web,server,sync} packages became public (GITHUB_TOKEN-created packages inherit the public
+# repository's visibility; a public package cannot become private again) and are rejected everywhere.
+PACKAGE_OWNER = 'dong-park'
+REPOSITORY_ID = 1383130341
+PACKAGE_NAMES = {service: 'moss-deploy-' + service for service in SERVICES}
+IMAGE_REPOSITORIES = {service: 'ghcr.io/' + PACKAGE_OWNER + '/' + name for service, name in PACKAGE_NAMES.items()}
+RETIRED_IMAGE_REPOSITORIES = tuple('ghcr.io/dong-park/moss-' + service for service in SERVICES)
 WORKFLOW = '.github/workflows/release.yml'
 GATES = ('contract', 'ci / web-checks', 'ci / sync-checks', 'ci / mcp-checks', 'ci / deploy-checks', 'ci / server-checks',
          'audit / web', 'audit / server', 'build (web)', 'build (server)', 'build (sync)', 'rehearsal')
@@ -32,7 +40,22 @@ def image_set(images):
     require(isinstance(images, dict) and set(images) == set(SERVICES), 'three fixed images required')
     for service, image in images.items():
         require(isinstance(image, str) and re.fullmatch(
-            rf'ghcr\.io/dong-park/moss-{service}@sha256:[0-9a-f]{{64}}', image), 'untrusted image')
+            re.escape(IMAGE_REPOSITORIES[service]) + r'@sha256:[0-9a-f]{64}', image)
+            and image.split('@', 1)[0] not in RETIRED_IMAGE_REPOSITORIES, 'untrusted image')
+
+
+def private_package(service, value):
+    """GitHub package metadata must prove the fixed package is PRIVATE and linked to exactly REPOSITORY."""
+    require(service in PACKAGE_NAMES, 'unknown service package')
+    require(isinstance(value, dict) and value.get('name') == PACKAGE_NAMES[service]
+            and value.get('package_type') == 'container', 'package identity mismatch: ' + service)
+    require(value.get('visibility') == 'private', 'package is not private: ' + service)
+    owner, repository = value.get('owner'), value.get('repository')
+    require(isinstance(owner, dict) and owner.get('login') == PACKAGE_OWNER, 'package owner mismatch: ' + service)
+    require(isinstance(repository, dict) and type(repository.get('id')) is int
+            and repository['id'] == REPOSITORY_ID and repository.get('full_name') == REPOSITORY,
+            'package is not linked to dong-park/moss: ' + service)
+    return value
 
 
 def validate(m):
