@@ -6,6 +6,7 @@ import { useT } from "@/i18n/Provider";
 import { layout } from "@/design/tokens";
 import { linkUrl, reconcileMobileOperation, useMobileCanvas } from "./mobileCanvas";
 import { useVisualViewport } from "./useVisualViewport";
+import { CardPrivacyControl } from "./CardPrivacyControl";
 import { MobileLinkEditor } from "./MobileLinkEditor";
 import { MobileResizeControls } from "./MobileResizeControls";
 import { resizeCardDimensions } from "./cardSizing";
@@ -46,6 +47,7 @@ export function MobileCardControls({ compact, actions }: { compact: boolean; act
         <MobileResizeControls card={card} apply={next => resizeCardDimensions(card.id, next)} close={close} />
       </> : <>
         {actions}
+        {compact && <CardPrivacyControl placement="toolbar" />}
         {card.kind === "board" && card.boardRef && <button type="button" onClick={() => { close(); void useWorkspace.getState().enterSubcanvas(card.id); }}>{t("workspace.mobile.open")}</button>}
         {url !== null ? <>
           {url && <a href={url} target="_blank" rel="noopener noreferrer">{t("workspace.mobile.open")}</a>}

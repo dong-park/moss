@@ -48,3 +48,8 @@ it("Tab and Space stay native to settings and never reach canvas shortcuts", () 
     expect(useWorkspace.getState().selectedIds).toEqual([card.id]);
   } finally { window.removeEventListener("keydown", shortcut); }
 });
+
+ it("compact privacy entry belongs to the selection toolbar, not the canvas overlay", () => {
+  render(<I18nProvider locale="ko"><CardPrivacyControl placement="toolbar" /></I18nProvider>);
+  expect(screen.getByRole("button").parentElement?.className).not.toContain("absolute");
+ });

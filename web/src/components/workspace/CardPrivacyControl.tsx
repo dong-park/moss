@@ -4,18 +4,20 @@ import { useEffect, useId, useRef, useState } from "react";
 import { useT } from "@/i18n/Provider";
 import { useStorage } from "@/state/storage";
 import { useWorkspace, type Card } from "@/state/workspace";
+import { useCompactControls } from "./useCompactControls";
 import { useMobileCanvas } from "./mobileCanvas";
 
 /** Screen-space settings are separate from the card's editing and connection handles. */
-export function CardPrivacyControl() {
+export function CardPrivacyControl({ placement = "canvas" }: { placement?: "canvas" | "toolbar" }) {
+  const compact = useCompactControls();
   const card = useWorkspace(s => s.selectedIds.length === 1 ? s.cards.find(c => c.id === s.selectedIds[0]) : undefined);
   const hidden = useWorkspace(s => !!s.editingId || !!s.expandedCardId || s.penMode);
   const operating = useMobileCanvas(s => s.operation.kind !== "idle");
-  if (!card || hidden || operating) return null;
-  return <Settings key={card.id} card={card} />;
+  if ((placement === "canvas" && compact) || !card || hidden || operating) return null;
+  return <Settings key={card.id} card={card} inline={placement === "toolbar"} />;
 }
 
-function Settings({ card }: { card: Card }) {
+function Settings({ card, inline }: { card: Card; inline: boolean }) {
   const t = useT();
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
@@ -34,14 +36,14 @@ function Settings({ card }: { card: Card }) {
     const current = root.current;
     return () => { window.removeEventListener("pointerdown", outside); current?.removeEventListener("keydown", escape); };
   }, [open]);
-  return <div ref={root} data-canvas-control="privacy" className="absolute left-3 top-16 z-[var(--z-panel)] max-w-[calc(100%-24px)] text-xs"
+  return <div ref={root} data-canvas-control="privacy" className={inline ? "relative text-xs" : "absolute left-3 top-16 z-[var(--z-panel)] max-w-[calc(100%-24px)] text-xs"}
     onMouseDown={e => e.stopPropagation()} onPointerDown={e => e.stopPropagation()}
     onKeyDown={e => e.stopPropagation()}>
     <button ref={trigger} type="button" aria-expanded={open} aria-controls={id} onClick={() => setOpen(!open)}
       className="min-h-11 rounded-xl border border-border bg-bg px-3 text-text shadow-card focus-visible:outline-2 focus-visible:outline-accent-blue">
       {t("reviewCanvas.privacy")} · {t(globalExcluded || card.aiOptOut ? "reviewCanvas.aiExcluded" : "reviewCanvas.aiAllowed")}
     </button>
-    {open && <div id={id} className="mt-2 w-64 max-w-full rounded-xl border border-border bg-bg p-3 text-text shadow-card">
+    {open && <div id={id} className={`${inline ? "fixed bottom-[calc(100%+8px)] right-0" : "mt-2"} w-64 max-w-[calc(100vw-24px)] rounded-xl border border-border bg-bg p-3 text-text shadow-card`}>
       <label className="flex min-h-12 cursor-pointer items-center gap-3">
         <input type="checkbox" checked={!!card.aiOptOut} onChange={() => useWorkspace.getState().toggleAIOptOut(card.id)} className="h-5 w-5" />
         {t("reviewCanvas.cardAIExclude")}
