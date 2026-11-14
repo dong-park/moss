@@ -37,3 +37,23 @@
     min-height: calc(44px * var(--zoom-inv, 1));
   }
 }
+
+.zoom[data-compact="true"] { max-width: calc(100vw - 24px); box-sizing: border-box; flex-wrap: wrap; }
+.zoom[data-compact="true"][data-selected="true"] { display: none; }
+.dock[data-compact="true"] { max-width: calc(100vw - 16px); }
+
+/* Compact labels share the icon touch target; desktop keeps its hover tooltip. */
+.dock[data-compact="true"] > button[data-dock-id] {
+  height: 48px !important;
+}
+.dock[data-compact="true"] > button[data-dock-id] > span:first-child {
+  width: 28px !important;
+  height: 28px !important;
+  flex-shrink: 0;
+}
+.dock[data-compact="true"] [data-dock-label="true"] {
+  position: static;
+  padding: 2px 0 0;
+  background: transparent;
+  line-height: 14px;
+}
