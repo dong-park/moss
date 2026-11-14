@@ -418,7 +418,7 @@ it("reflows an ink-free memo, switches before drawing, and preserves existing in
   expect(useWorkspace.getState().cards[0].overlay).toBe(overlay);
 });
 
-it("starts compact ink editing at full size", () => {
+it("starts compact ink editing at full size", async () => {
   Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
   Object.defineProperty(window, "innerHeight", { configurable: true, value: 844 });
   seed([textCard()]);
@@ -428,4 +428,25 @@ it("starts compact ink editing at full size", () => {
   expect(screen.getByTestId('expanded-editor-wrap').getAttribute('data-initial-full-size')).toBe('false');
   fireEvent.click(screen.getByRole('button', { name: '편집' }));
   expect(screen.getByTestId('expanded-editor-wrap').getAttribute('data-initial-full-size')).toBe('true');
+  fireEvent.click(screen.getByRole('button', { name: '완료' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  act(() => useWorkspace.getState().setExpandedCard('c1'));
+  expect(screen.getByTestId('expanded-editor-wrap').getAttribute('data-initial-full-size')).toBe('false');
 });
+
+it.each([{ width: 390, ink: false }, { width: 1280, ink: true }])(
+  'keeps fit editing at $width px with ink=$ink', ({ width, ink }) => {
+    const previousWidth = window.innerWidth;
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: width });
+    try {
+      seed([textCard({ overlay: ink ? JSON.stringify({ paths: [[{ x: 700, y: 123 }, { x: 710, y: 124 }]] }) : undefined })]);
+      useWorkspace.getState().setExpandedCard('c1');
+      wrap(<MemoExpandDialog />);
+      expect(screen.getByTestId('expanded-editor-wrap').getAttribute('data-initial-full-size')).toBe('false');
+      if (width < 768) fireEvent.click(screen.getByRole('button', { name: '편집' }));
+      expect(screen.getByTestId('expanded-editor-wrap').getAttribute('data-initial-full-size')).toBe('false');
+    } finally {
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: previousWidth });
+    }
+  },
+);
