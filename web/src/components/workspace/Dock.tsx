@@ -502,6 +502,7 @@ export function Dock({
       ref={dockRef}
       data-canvas-control="dock"
       data-compact={compact}
+      data-mobile-more-open={compact && moreOpen}
       role="toolbar"
       aria-label={t("workspace.dock.label")}
       onMouseEnter={() => {
