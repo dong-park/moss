@@ -62,3 +62,20 @@ NOT RUN: 실제 브라우저 5장면 전후 캡처, DOM geometry, 메모 본문�
 - Result: 58 passed, 1 failed, 2 pre-existing skipped. Failure: Dock.test.tsx compact link creation expects dialog "링크 주소 수정"; not changed or weakened.
 - Includes existing partial zoom CSS (viewport max-width/wrapping/selected zoom hiding) and existing Dock selected-state change in the same commit.
 - NOT RUN: actual bounding-rect RED/GREEN, after viewport JSON/780×1688 PNG, full build/test (prohibited). Parent must verify actual toolbar and desktop geometry; server remains running. Memo policy unchanged by this slice.
+
+## Implementation follow-up 2026-11-14
+
+README 58-pass/1-fail was Dock.test.tsx, compact dock / opens by keyboard, creates a link memo, and closes. Fresh reproduction: dialog missing, 56 passed / 1 failed / 2 existing skipped across four focused files. Compact controls now belong to Canvas MobileCardActions; Dock-only harness omitted that owner. Mounted MobileCardActions in that test, retaining all dialog, focus, state and cancel assertions. Fresh focused run: Dock, MobileCardControls, MobileLinkEditor, ZoomBar — 57 passed, 2 existing skipped. No test skipped or weakened.
+
+Local commits: 946d276 selection consolidation + harness; fa9184d link top64; fc2b903 selected zoom attribute (CSS already in 11a17d4). AGENTS and memo policy files excluded.
+
+Own isolated tab: tab_3_b3fff760-e9f9-4bb0-ae9c-345480a9d63c; direct preview.open succeeded. Actual browser evaluation asserted innerWidth=390, innerHeight=844, devicePixelRatio=2. All four new PNG snapshots report 780x1688 and were visually inspected. Existing saved URL https://example.com/mobile-qa reopened in address editor; rect x8,y64,width374,height223.390625, bottom287.390625; viewport/header geometry assertion passed. Desktop emulation does not verify an actual iOS software keyboard.
+
+| Scene | Evidence | Result |
+|---|---|---|
+| Initial dock | [after](screens/impl-after-initial.png), [before floating label](screens/verified-after-initial.png) | labels inside dock, zoom above dock |
+| Selection | [after](screens/impl-after-selection.png) | one bottom action row; zoom hidden |
+| Existing link edit | [after](screens/impl-after-existing-link-edit.png) | stored URL loaded; dialog below header, inside viewport |
+| Share | [after](screens/impl-after-share.png) | FAIL: existing privacy/AI button overlaps share text; policy awaiting user, untouched |
+
+Noninitial before captures remain UNVERIFIED; no baseline restored. NOT RUN: full build/tests (prohibited), physical mobile keyboard. Server preserved. One rejected selector click: PreviewAutomationInvalidSelectorError, “No element matches the selector, so no input was sent.” Recovered by observed button text and direct evaluation; capture was not blocked.
