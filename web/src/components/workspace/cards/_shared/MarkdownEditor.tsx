@@ -270,7 +270,12 @@ export function ExpandedMarkdownEditor({
     scale: currentScale,
     action: t(fullSize ? "workspace.memo.scaleFit" : "workspace.memo.scaleFull"),
   });
-  useEffect(() => { setFullSize(initialFullSize); }, [initialFullSize]);
+  const [previousInitialFullSize, setPreviousInitialFullSize] = useState(initialFullSize);
+  // Reset only when the entry preference changes; preserve user toggles on rerender.
+  if (previousInitialFullSize !== initialFullSize) {
+    setPreviousInitialFullSize(initialFullSize);
+    setFullSize(initialFullSize);
+  }
   useEffect(() => {
     const el = scrollRef.current;
     if (!el || typeof ResizeObserver === "undefined") return;
