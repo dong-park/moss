@@ -262,7 +262,12 @@ export function ExpandedMarkdownEditor({
   const scrollRef = useRef<HTMLDivElement>(null);
   const [fitScale, setFitScale] = useState(1);
   const [fullSize, setFullSize] = useState(initialFullSize);
-  useEffect(() => { setFullSize(initialFullSize); }, [initialFullSize]);
+  const [previousInitialFullSize, setPreviousInitialFullSize] = useState(initialFullSize);
+  // Reset only when the entry preference changes; preserve user toggles on rerender.
+  if (previousInitialFullSize !== initialFullSize) {
+    setPreviousInitialFullSize(initialFullSize);
+    setFullSize(initialFullSize);
+  }
   useEffect(() => {
     const el = scrollRef.current;
     if (!el || typeof ResizeObserver === "undefined") return;
