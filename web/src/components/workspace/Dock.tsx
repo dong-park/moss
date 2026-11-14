@@ -487,7 +487,7 @@ export function Dock({
    * 2단계 리뷰 P1-1: layout.dock.width(고정 토큰) 대신 dockWidth(실측)로 계산 —
    * 버튼 슬롯이 평상시 iconBase(40px)이고 hover로만 커지므로 실제 폭은 토큰의
    * 근사치일 뿐이다. */
-  if (touchControls && selected && !controlsBlocked) return <MobileCardControls compact={compact} />;
+  if (touchControls && selected && !controlsBlocked) return compact ? null : <MobileCardControls compact={compact} />;
 
   let centerX = effectiveCanvasWidth / 2;
   const rightEdge = effectiveCanvasWidth - RIGHT_TOOLBAR_RESERVED;
@@ -811,7 +811,7 @@ function DockButton({
         />
       )}
       {(showLabel || focused) && (
-        <span className="pointer-events-none absolute -top-6 whitespace-nowrap rounded bg-bg/95 px-1.5 py-1 text-[11px] leading-none text-text">
+        <span data-dock-label="true" className="pointer-events-none absolute -top-6 whitespace-nowrap rounded bg-bg/95 px-1.5 py-1 text-[11px] leading-none text-text">
           {label}
         </span>
       )}

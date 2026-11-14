@@ -72,3 +72,24 @@ describe("mobile memo layout policy", () => {
     vi.unstubAllGlobals();
   });
 });
+
+it("preserves the user's fit toggle on rerender and follows changed initialFullSize props", async () => {
+  const onChange = vi.fn();
+  const view = (initialFullSize: boolean) => <I18nProvider locale="ko"><MilkdownProvider>
+    <ExpandedMarkdownEditor value="ink memo" onChange={onChange} canonical initialFullSize={initialFullSize} />
+  </MilkdownProvider></I18nProvider>;
+  const { container, rerender } = render(view(true));
+  await waitFor(() => expect(container.querySelector('[contenteditable=true]')).toBeTruthy());
+  const editor = container.querySelector('[contenteditable=true]');
+  const surface = () => container.querySelector('[data-memo-layout]')!;
+  expect(surface().getAttribute('data-memo-full-size')).toBe('true');
+  fireEvent.click(screen.getByRole('button', { name: /%/ }));
+  expect(surface().getAttribute('data-memo-full-size')).toBe('false');
+  rerender(view(true));
+  expect(surface().getAttribute('data-memo-full-size')).toBe('false');
+  rerender(view(false));
+  expect(surface().getAttribute('data-memo-full-size')).toBe('false');
+  rerender(view(true));
+  expect(surface().getAttribute('data-memo-full-size')).toBe('true');
+  expect(container.querySelector('[contenteditable=true]')).toBe(editor);
+});

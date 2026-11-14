@@ -305,7 +305,7 @@ it("offers touch editing for an existing todo without relying on synthetic doubl
   const el = container.querySelector('[data-card-id="todo"]')!;
   pointer(el, "pointerdown", 1, 50, 50);
   pointer(window, "pointerup", 1, 50, 50);
-  const toolbar = container.querySelector('[role="toolbar"][aria-label="선택한 카드 조작"]')!;
+  const toolbar = container.querySelector('[role="toolbar"][data-mobile-card-controls]')!;
   expect(toolbar).toBeTruthy();
   fireEvent.click(toolbar.querySelector("button")!);
   expect(useWorkspace.getState()).toMatchObject({ expandedCardId: "todo", expandedCardMode: "edit", editingId: null });

@@ -1,0 +1,13 @@
+/* Viewport anchoring prevents a trigger near either edge from clipping the panel. */
+@media (max-width: 767px) {
+  .popover {
+    position: fixed;
+    top: calc(60px + env(safe-area-inset-top, 0px));
+    left: max(8px, env(safe-area-inset-left, 0px));
+    right: max(8px, env(safe-area-inset-right, 0px));
+    width: auto;
+    max-width: none;
+    max-height: calc(100dvh - 80px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    z-index: calc(var(--z-panel) + 3);
+  }
+}
