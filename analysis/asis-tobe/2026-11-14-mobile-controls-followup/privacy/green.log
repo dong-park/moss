@@ -1,0 +1,13 @@
+$ vitest run src/components/workspace/__tests__/CardPrivacyControl.test.tsx src/components/workspace/__tests__/MobileCardControls.test.tsx
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - ESM syntax in a file loaded as CommonJS (vitest.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v4.1.12 /Users/donghwan/.goat/desktop/worktrees/moss/fix-mobile-overlap-clip-eb95b6628722ac61/web
+
+
+ Test Files  2 passed (2)
+      Tests  18 passed (18)
+   Start at  16:40:50
+   Duration  1.98s (transform 702ms, setup 766ms, import 548ms, tests 565ms, environment 1.12s)
+
