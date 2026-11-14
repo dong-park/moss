@@ -1,5 +1,6 @@
 "use client";
 
+import styles from "./sharePopover.module.css";
 import { useT } from "@/i18n/Provider";
 import { MEMBER_LIMIT, type BoardMember, type MemberRole, type ShareStatus } from "@/state/share";
 import { MemberMenu } from "./MemberMenu";
@@ -51,7 +52,7 @@ export function SharePopover({
     <div
       role="dialog"
       aria-label={t("collab.share.title")}
-      className="absolute right-0 top-[calc(100%+8px)] z-[var(--z-panel)] max-h-[70dvh] overflow-y-auto max-w-[calc(100vw-16px)] w-[300px] rounded-2xl bg-white/85 p-[18px_18px_14px] shadow-[0_10px_30px_rgba(0,0,0,.10),0_0_0_.5px_rgba(0,0,0,.06)] backdrop-blur-[30px]"
+      className={`${styles.popover} absolute right-0 top-[calc(100%+8px)] z-[var(--z-panel)] max-h-[70dvh] overflow-y-auto max-w-[calc(100vw-16px)] w-[300px] rounded-2xl bg-white/85 p-[18px_18px_14px] shadow-[0_10px_30px_rgba(0,0,0,.10),0_0_0_.5px_rgba(0,0,0,.06)] backdrop-blur-[30px]`}
     >
       {shared ? (
         <>
