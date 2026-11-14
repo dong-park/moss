@@ -16,6 +16,8 @@
  * 편집 중에는 value를 deps에서 제외해 키스트로크마다 remount(커서 소실)를 막는다.
  * ───────────────────────────────────────────────────────────── */
 
+import { useT } from "@/i18n/Provider";
+
 import {
   useEffect,
   useLayoutEffect,
@@ -258,10 +260,16 @@ export function ExpandedMarkdownEditor({
   /** FEAT-memo-title: 본문 컬럼 위에 둘 제목 줄(스크롤 영역 안). */
   titleSlot?: ReactNode;
 }) {
+  const t = useT();
   const isClient = useIsClient();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [fitScale, setFitScale] = useState(1);
   const [fullSize, setFullSize] = useState(initialFullSize);
+  const currentScale = fullSize ? 100 : Math.round(fitScale * 100);
+  const scaleDescription = t("workspace.memo.scaleCurrent", {
+    scale: currentScale,
+    action: t(fullSize ? "workspace.memo.scaleFit" : "workspace.memo.scaleFull"),
+  });
   useEffect(() => { setFullSize(initialFullSize); }, [initialFullSize]);
   useEffect(() => {
     const el = scrollRef.current;
@@ -299,8 +307,9 @@ export function ExpandedMarkdownEditor({
     >
       {canonical && (
         <button type="button" className={styles.scaleToggle}
+          aria-label={scaleDescription} title={scaleDescription}
           aria-pressed={fullSize} onClick={() => setFullSize(!fullSize)}>
-          {fullSize ? `${Math.round(fitScale * 100)}%` : "100%"}
+          {currentScale}%
         </button>
       )}
       <div ref={scrollRef} className={`min-h-0 flex-1 overflow-auto ${styles.scroll}`}

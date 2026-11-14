@@ -64,7 +64,13 @@ describe("mobile memo layout policy", () => {
     expect(body.style.width).toBe('720px');
     const surface = container.querySelector('[data-memo-layout]') as HTMLElement;
     expect(Number(surface.style.getPropertyValue('--memo-fit-scale'))).toBeCloseTo((width - 40) / 720);
-    fireEvent.click(screen.getByRole('button', { name: '100%' }));
+    const scale = Math.round((width - 40) / 720 * 100);
+    const toggle = screen.getByRole('button', { name: `현재 배율 ${scale}%. 100%로 전환` });
+    expect(toggle.textContent).toBe(`${scale}%`);
+    expect(toggle.title).toBe(`현재 배율 ${scale}%. 100%로 전환`);
+    fireEvent.click(toggle);
+    expect(toggle.textContent).toBe('100%');
+    expect(toggle.getAttribute('aria-label')).toBe('현재 배율 100%. 화면에 맞추기로 전환');
     expect(surface.getAttribute('data-memo-full-size')).toBe('true');
     fireEvent.click(screen.getByRole('button', { name: /%/ }));
     expect(surface.getAttribute('data-memo-full-size')).toBe('false');
