@@ -466,3 +466,11 @@ body {
   --memo-title-floor: 13px;
   --board-name-floor: 13px;
 }
+
+@media (max-width: 767px) {
+  /* The share trigger owns a stacking context; canvas controls must not
+     intercept its mobile panel. Restore them automatically on close. */
+  body:has([data-share-popover]) [data-canvas-control="privacy"] {
+    visibility: hidden;
+  }
+}
