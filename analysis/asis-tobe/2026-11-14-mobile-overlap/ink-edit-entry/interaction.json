@@ -1,0 +1,16 @@
+{
+  "viewport": [
+    390,
+    844
+  ],
+  "toggle": [
+    {
+      "fullSize": false,
+      "zoom": 0.486111
+    },
+    {
+      "fullSize": true,
+      "zoom": 1
+    }
+  ]
+}
