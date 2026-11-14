@@ -88,3 +88,21 @@ Noninitial before captures remain UNVERIFIED; no baseline restored. NOT RUN: ful
 - Evidence: [before](screens/share-overlap-before.png), [after](screens/share-overlap-after.png), [viewport and hit-test](screens/share-overlap-after.viewport.json). Existing FAIL evidence retained.
 - Regression RED: SharePopover.mobile.test.ts 1 failed before implementation. GREEN: focused mobile/guidance/ShareControl tests 3 files, 11 passed, zero failures. Source regression is supplemented by the actual DOM checks above.
 - NOT RUN: full build/test (user prohibited), physical mobile device, desktop pixel comparison, server authentication flow. Server preserved; memo policy untouched.
+
+## Test evidence consolidation — 2026-11-14 / HEAD 0a310a3
+
+Requested: no product edits; four actual scene comparison boards; memo policy remains pending with parent.
+Applied asis-tobe skill. No product, test, AGENTS, checkout, or server changes in this slice.
+
+| Scene | Board PNG | Evidence status |
+|---|---|---|
+| Dock | png/dock-compare.png | Actual fixture pair; background card translation differs, so not a pixel baseline |
+| Selection | png/selection-compare.png | AFTER actual fixture; BEFORE UNVERIFIED |
+| Existing link | png/link-compare.png | AFTER actual fixture; BEFORE UNVERIFIED |
+| Share | png/share-compare.png | Actual fixture pair |
+
+HTML counterparts: board/{dock,selection,link,share}-compare.html. PNGs are composited evidence boards (not browser captures of HTML). All six source PNGs were opened and visually inspected in this slice; image dimensions independently read with Pillow: 780×1688. Existing capture records assert 390×844 DPR2; no new mobile capture was made. No invented viewport JSON was added. User original 23/29 PNGs were not located by filename in repository or searched attachment paths; their dimensions and provenance remain UNVERIFIED. Baseline fixture recreation was not performed. Missing before areas explicitly show UNVERIFIED rather than substitute unrelated scenes.
+
+Fresh own GOAT direct preview tab: tab_5_b3fff760-e9f9-4bb0-ae9c-345480a9d63c, localhost:3137/qa-mobile-overlap, 1280×800. DOM: zoom compact=false, position=absolute, rect x1046.5859375 y747.953125 w214.6640625 h32.046875; dock compact=false, position=fixed, rect x466.75 y724 w368.75 h56. No dock label nodes at idle (hover was not exercised). This confirms desktop compact=false only; baseline equality for tooltip, selection and share position rules remains UNVERIFIED.
+
+NOT RUN: desktop pixel comparison; desktop before/after DOM parity for tooltip, selection and share; original 23/29 dimension verification; baseline recreation; new mobile captures; HTML screenshot rendering. Related tests not repeated for documentation-only work. Full build/test prohibited and not run. Server remains running. Memo policy follow-up remains pending; question not repeated. Four boards exist but full four-pair acceptance is UNVERIFIED.
