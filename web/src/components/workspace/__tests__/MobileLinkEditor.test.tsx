@@ -54,3 +54,20 @@ it("browser back discards the local draft", async () => {
   await waitFor(() => expect(useMobileCanvas.getState().operation.kind).toBe("idle"));
   expect(useWorkspace.getState().cards[0].content).toBe(original);
 });
+
+it("keeps eight pixels below the measured header and follows window resize", () => {
+  const header = document.createElement("div");
+  header.dataset.workspaceEditorHeader = "";
+  let bottom = 92;
+  header.getBoundingClientRect = () => ({ bottom } as DOMRect);
+  document.body.appendChild(header);
+  const view = mount();
+  const dialog = screen.getByRole("dialog");
+  expect(dialog.style.top).toBe("100px");
+  bottom = 112;
+  act(() => window.dispatchEvent(new Event("resize")));
+  expect(dialog.style.top).toBe("120px");
+  expect(dialog.style.maxHeight).toBe(`${Math.max(0, window.innerHeight - 128)}px`);
+  view.unmount();
+  header.remove();
+});
