@@ -26,7 +26,7 @@ export function MobileLinkEditor({ operation }: { operation: Extract<MobileOpera
       <Dialog.Portal>
         <Dialog.Overlay className={styles.overlay} />
         <Dialog.Content data-mobile-link-editor className={styles.sheet} aria-describedby={undefined}
-          style={{ top: (viewport?.top ?? 0) + 8, maxHeight: viewport ? Math.max(0, viewport.height - 16) : "calc(100dvh - 16px)" }}
+          style={{ top: (viewport?.top ?? 0) + 64, maxHeight: viewport ? Math.max(0, viewport.height - 72) : "calc(100dvh - 72px)" }}
           onOpenAutoFocus={(e) => { e.preventDefault(); input.current?.focus(); }}
           onCloseAutoFocus={(e) => e.preventDefault()}>
           <Dialog.Title className={styles.title}>{t("workspace.mobile.linkDialog")}</Dialog.Title>
