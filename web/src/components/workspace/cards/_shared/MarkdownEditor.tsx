@@ -243,6 +243,7 @@ export function ExpandedMarkdownEditor({
   overlay,
   titleSlot,
   canonical = true,
+  initialFullSize = false,
   editable = true,
   autoFocus = true,
 }: {
@@ -251,6 +252,7 @@ export function ExpandedMarkdownEditor({
   overlay?: ReactNode;
   /** Ink or an active drawing tool requires the original 720px line wrapping. */
   canonical?: boolean;
+  initialFullSize?: boolean;
   editable?: boolean;
   autoFocus?: boolean;
   /** FEAT-memo-title: 본문 컬럼 위에 둘 제목 줄(스크롤 영역 안). */
@@ -259,7 +261,8 @@ export function ExpandedMarkdownEditor({
   const isClient = useIsClient();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [fitScale, setFitScale] = useState(1);
-  const [fullSize, setFullSize] = useState(false);
+  const [fullSize, setFullSize] = useState(initialFullSize);
+  useEffect(() => { setFullSize(initialFullSize); }, [initialFullSize]);
   useEffect(() => {
     const el = scrollRef.current;
     if (!el || typeof ResizeObserver === "undefined") return;

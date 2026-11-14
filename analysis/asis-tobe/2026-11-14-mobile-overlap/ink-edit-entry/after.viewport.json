@@ -1,0 +1,11 @@
+{
+  "width": 390,
+  "height": 844,
+  "dpr": 2,
+  "policy": "canonical",
+  "fullSize": true,
+  "clientWidth": 350,
+  "scrollWidth": 720,
+  "bodyWidth": 720,
+  "zoom": 1
+}
