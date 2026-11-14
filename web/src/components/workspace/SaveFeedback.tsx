@@ -7,7 +7,7 @@ import { normalizeBoardId } from "@/state/boardIds";
 import { boardSavePhase, retryBoardSave, useSaveFeedback } from "@/state/saveFeedback";
 
 /** Shared by the board and expanded memo. Connectivity is never a durable server acknowledgement. */
-export function SaveFeedback({ explainClose = false }: { explainClose?: boolean }) {
+export function SaveFeedback({ explainClose = false, compactSaved = false }: { explainClose?: boolean; compactSaved?: boolean }) {
   const t = useT();
   const boardId = useWorkspace((s) => s.currentBoardId);
   const board = useSaveFeedback((s) => s.boards[normalizeBoardId(boardId)]);
@@ -27,7 +27,8 @@ export function SaveFeedback({ explainClose = false }: { explainClose?: boolean 
     <div data-save-feedback className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 rounded-lg bg-white/90 px-2 py-1 text-[11px] text-text-soft">
       {explainClose && <span>{t("saveFeedback.autosaveClose")}</span>}
       <span role="status" aria-live="polite" aria-atomic="true">
-        {localLabel}
+        {compactSaved && phase === "saved" && <span aria-hidden="true" className="sm:hidden">✓</span>}
+        <span className={compactSaved && phase === "saved" ? "sr-only sm:not-sr-only" : undefined}>{localLabel}</span>
       </span>
       {!!board?.document?.failed.length && <span>{t("saveFeedback.documentError")}</span>}
       {Object.entries(board ?? {}).some(([key, resource]) => key !== "document" && resource.failed.length > 0)

@@ -31,3 +31,22 @@ it("connected sharing never marks pending local storage saved or claims server d
   expect(screen.getByRole("status").textContent).toBe("이 기기에 저장 중");
   expect(screen.getByText("공유 연결됨").title).toContain("서버 저장 완료를 확인하는 신호는 제공되지 않아요");
 });
+
+it("compacts only saved board feedback while retaining its localized status", () => {
+  useWorkspace.setState({ currentBoardId: "compact-board" });
+  beginSave("compact-board", "document", async () => {}).success();
+  render(<I18nProvider locale="ko"><SaveFeedback compactSaved /></I18nProvider>);
+  expect(screen.getByText("이 기기에 저장됨").className).toContain("sr-only sm:not-sr-only");
+  expect(screen.getByRole("status").textContent).toContain("이 기기에 저장됨");
+});
+
+it.each(["document", "cards", "title", "content", "position", "board", "mirror"])("keeps pending and errors visible in compact mode (%s)", (resource) => {
+  useWorkspace.setState({ currentBoardId: "pending-board" });
+  const save = beginSave("pending-board", resource, async () => {});
+  const view = render(<I18nProvider locale="ko"><SaveFeedback compactSaved /></I18nProvider>);
+  expect(screen.getByRole("status").lastElementChild?.className ?? "").not.toContain("sr-only");
+  act(() => save.failure());
+  expect(screen.getByRole("status").lastElementChild?.className ?? "").not.toContain("sr-only");
+  expect(screen.getByRole("button", { name: "저장 재시도" })).toBeTruthy();
+  view.unmount();
+});
