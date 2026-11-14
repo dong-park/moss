@@ -79,3 +79,12 @@ Own isolated tab: tab_3_b3fff760-e9f9-4bb0-ae9c-345480a9d63c; direct preview.ope
 | Share | [after](screens/impl-after-share.png) | FAIL: existing privacy/AI button overlaps share text; policy awaiting user, untouched |
 
 Noninitial before captures remain UNVERIFIED; no baseline restored. NOT RUN: full build/tests (prohibited), physical mobile keyboard. Server preserved. One rejected selector click: PreviewAutomationInvalidSelectorError, “No element matches the selector, so no input was sent.” Recovered by observed button text and direct evaluation; capture was not blocked.
+
+### Share overlap fix — verified 2026-11-14
+- Own GOAT tab `tab_4_b3fff760-e9f9-4bb0-ae9c-345480a9d63c`, actual viewport 390×844 DPR2. Before/after PNG dimensions 780×1688; visually inspected after.
+- BEFORE: dialog (8,60,374,282.859375), privacy control (11.25,108,104.1875,41.25). `elementFromPoint(60,125)` returned privacy button. Dialog z43 is contained by parent z40; increasing child z-index cannot escape that stacking context.
+- Minimal mobile-only change: while share panel exists, suppress the underlying canvas privacy control with visibility:hidden. Closing share restores visibility; privacy policy/state is unchanged. Desktop 1280px verified privacy remains visible and popover remains absolute.
+- AFTER PASS: heading rect (26,78,338,24), center hit is heading; former overlap point hits dialog. Hidden privacy has no painted/hittable overlap. Panel remains x8..382 below top safe area.
+- Evidence: [before](screens/share-overlap-before.png), [after](screens/share-overlap-after.png), [viewport and hit-test](screens/share-overlap-after.viewport.json). Existing FAIL evidence retained.
+- Regression RED: SharePopover.mobile.test.ts 1 failed before implementation. GREEN: focused mobile/guidance/ShareControl tests 3 files, 11 passed, zero failures. Source regression is supplemented by the actual DOM checks above.
+- NOT RUN: full build/test (user prohibited), physical mobile device, desktop pixel comparison, server authentication flow. Server preserved; memo policy untouched.

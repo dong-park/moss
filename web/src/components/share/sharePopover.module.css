@@ -1,5 +1,11 @@
 /* Viewport anchoring prevents a trigger near either edge from clipping the panel. */
 @media (max-width: 767px) {
+  /* The share trigger owns a stacking context; canvas controls must not
+     intercept its mobile panel. Restore them automatically on close. */
+  :global(body:has([data-share-popover])) :global([data-canvas-control="privacy"]) {
+    visibility: hidden;
+  }
+
   .popover {
     position: fixed;
     top: calc(60px + env(safe-area-inset-top, 0px));
