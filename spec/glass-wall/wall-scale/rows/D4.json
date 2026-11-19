@@ -1,0 +1,41 @@
+{
+  "id": "D4",
+  "kind": "decision",
+  "title": "벽 마카 획을 어떻게 그릴까",
+  "given": "DrawingLayer는 SVG에 획마다 path를 하나씩 그린다. 벽 획 3,000개가 다 화면에 들면 path도 3,000개다",
+  "when": "벽 획 그리기 방식을 정한다",
+  "then": "그리기 엔진을 SVG로 유지하는지가 갈리고, wall-marker 구현에 영향이 간다",
+  "options": [
+    {
+      "key": "A",
+      "label": "SVG 유지. 경계 상자로 화면 밖 획을 숨기고 멀리 단계에서는 점을 줄여 그린다",
+      "why": "useDrawing 엔진과 지우개 판정을 그대로 쓴다. T3에서 미달이면 B로 간다"
+    },
+    {
+      "key": "B",
+      "label": "벽 획은 Canvas2D 한 장에 그린다",
+      "why": "획 수에 강하다. 지우개 판정과 필기 중 그리기를 새로 짜야 한다"
+    },
+    {
+      "key": "C",
+      "label": "필기 중인 획만 SVG, 끝난 획은 캔버스로 굳힌다",
+      "why": "둘의 장점을 섞지만 경계가 복잡하다"
+    }
+  ],
+  "recommend": "A",
+  "confidence": "high",
+  "reversible": true,
+  "status": "끝남",
+  "blocks": [
+    "T5",
+    "T6",
+    "T7"
+  ],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": [
+    "2026-10-11 D4 → A (답 없음 · 추천대로)"
+  ]
+}

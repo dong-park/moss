@@ -1,0 +1,17 @@
+{
+  "id": "T3",
+  "kind": "task",
+  "title": "굵기는 3단이다",
+  "given": "마카 패널이 열려 있다",
+  "when": "굵기 점 세 개 중 굵게를 고르고 선을 긋는다",
+  "then": "시안 04처럼 가늘게·보통·굵게가 한눈에 구별된다. 이미 그은 다른 굵기 선은 굵기가 바뀌지 않는다",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

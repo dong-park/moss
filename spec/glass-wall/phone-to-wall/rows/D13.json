@@ -1,0 +1,34 @@
+{
+  "id": "D13",
+  "kind": "decision",
+  "title": "홈 화면 추가는 어디서 권하나",
+  "given": "홈 화면에 추가하지 않으면 공유 시트에 moss가 안 뜬다",
+  "when": "휴대폰 브라우저로 moss를 처음 열 때",
+  "then": "설치를 언제 한 번 권하는지가 갈린다",
+  "options": [
+    {
+      "key": "once",
+      "label": "휴대폰 벽 아래에 한 번만 '홈 화면에 추가하면 다른 앱에서 바로 붙여요'",
+      "why": "한 번 닫으면 다시 안 뜬다. 세팅 강요가 없다"
+    },
+    {
+      "key": "none",
+      "label": "권하지 않는다",
+      "why": "조용하지만 공유 시트 기능을 아무도 모른다"
+    }
+  ],
+  "recommend": "once",
+  "confidence": "high",
+  "reversible": true,
+  "status": "끝남",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": [
+    "2026-10-11 D13 → once (답 없음 · 추천대로)",
+    "2026-10-11 user.answer 반영: once",
+    "2026-10-11 D13 → once (사용자, 시트에서)"
+  ]
+}

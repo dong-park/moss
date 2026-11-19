@@ -1,0 +1,17 @@
+{
+  "id": "T4",
+  "kind": "task",
+  "title": "사진을 공유하면 사진 한 장이 벽에 붙는다",
+  "given": "갤러리에서 사진 한 장을 골랐다",
+  "when": "공유 시트에서 moss로 보낸다",
+  "then": "벽에 그 사진이 한 장 붙는다. '✓ 벽에 붙였어요 · <벽 이름>' 알림이 뜬다",
+  "confidence": "mid",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

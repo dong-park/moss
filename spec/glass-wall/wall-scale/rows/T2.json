@@ -1,0 +1,17 @@
+{
+  "id": "T2",
+  "kind": "task",
+  "title": "가까이서 팬해도 프레임이 떨어지지 않는다",
+  "given": "T1의 규모 벽이 100%로 열려 있다 (기준 기기, D2)",
+  "when": "5초 동안 정해진 경로로 팬한다",
+  "then": "프레임 시간 p95 ≤ 16.7ms, 떨어진 프레임 < 5%. 확인: T1 스크립트 출력",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

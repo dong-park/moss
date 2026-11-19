@@ -1,0 +1,17 @@
+{
+  "id": "T3",
+  "kind": "task",
+  "title": "글을 공유하면 그 글이 적힌 포스트잇 한 장이 붙는다",
+  "given": "메모앱에서 두 줄짜리 글을 골랐다",
+  "when": "공유 시트에서 moss로 보낸다",
+  "then": "포스트잇 한 장에 두 줄이 그대로 적힌다. '✓ 벽에 붙였어요 · <벽 이름>' 알림이 뜬다",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

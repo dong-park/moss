@@ -1,0 +1,17 @@
+{
+  "id": "T4",
+  "kind": "task",
+  "title": "가까이서는 포스트잇 글 전체가 보인다",
+  "given": "T3의 벽이 중간 거리로 보인다",
+  "when": "60% 이상으로 다가간다",
+  "then": "포스트잇 본문 전체와 포스트잇 위 마카 획이 보이고, 두 번 눌러 바로 고칠 수 있다",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

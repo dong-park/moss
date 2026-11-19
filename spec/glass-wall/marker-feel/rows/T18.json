@@ -1,0 +1,17 @@
+{
+  "id": "T18",
+  "kind": "task",
+  "title": "옛 메모 펜 획이 깨지지 않는다",
+  "given": "색·굵기 정보 없이 저장된 메모 펜 획이 있다",
+  "when": "그 메모를 연다",
+  "then": "획이 검정 가늘게로 보인다. 굵기를 바꿔도 옛 획 굵기는 그대로다",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

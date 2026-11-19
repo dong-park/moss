@@ -1,0 +1,17 @@
+{
+  "id": "T5",
+  "kind": "task",
+  "title": "공유를 누르고 2초 안에 붙었다는 알림을 본다",
+  "given": "중간급 안드로이드 폰에 moss가 설치돼 있고, moss 앱은 꺼져 있다",
+  "when": "공유 시트에서 moss를 누른다",
+  "then": "moss를 누른 때부터 '✓ 벽에 붙였어요' 알림이 뜰 때까지 20번 중 19번이 2초 안이다. 확인: 실기기에서 화면 녹화로 20회 잰다",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

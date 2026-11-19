@@ -1,0 +1,17 @@
+{
+  "id": "T5",
+  "kind": "task",
+  "title": "공유 시트에서 취소",
+  "given": "T4의 공유 시트가 떠 있다",
+  "when": "'취소'를 누르거나 Esc를 누른다",
+  "then": "시트가 닫히고 벽이 그대로 보인다. 배지는 '🔒 이 기기에만'이다. Google 로그인 창은 뜨지 않았다. 서버로 나간 요청이 0건이다",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

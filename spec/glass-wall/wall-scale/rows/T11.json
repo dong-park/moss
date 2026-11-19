@@ -1,0 +1,17 @@
+{
+  "id": "T11",
+  "kind": "task",
+  "title": "200장 안내는 한 번만 뜨고 그 뒤 성능은 유지된다",
+  "given": "포스트잇 199장인 벽이다",
+  "when": "한 장을 더 붙인 뒤 1,000장까지 계속 붙인다",
+  "then": "'메모가 많아졌어요' 안내가 한 번만 뜨고 다시 뜨지 않는다",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

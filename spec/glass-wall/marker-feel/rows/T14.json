@@ -1,0 +1,17 @@
+{
+  "id": "T14",
+  "kind": "task",
+  "title": "단축키로 굵기를 바꾼다",
+  "given": "마카를 쥐고 있다",
+  "when": "] 를 두 번, [ 를 한 번 누른다",
+  "then": "패널의 굵기 표시가 보통 → 굵게 → 굵게에 머문 뒤 보통으로 돌아온다. E를 누르면 천으로 바뀐다",
+  "confidence": "mid",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

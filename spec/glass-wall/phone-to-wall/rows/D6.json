@@ -1,0 +1,34 @@
+{
+  "id": "D6",
+  "kind": "decision",
+  "title": "사진은 무엇으로 붙이나",
+  "given": "브리프는 '포스트잇 한 장'이라고 했고, 시안은 링크만 보여 준다",
+  "when": "사진을 공유 받았을 때",
+  "then": "사진이 기존 사진 카드가 되는지, 포스트잇 안에 들어가는지가 갈린다",
+  "options": [
+    {
+      "key": "photo",
+      "label": "기존 사진 카드 한 장",
+      "why": "이미 있는 카드라 새로 만들 게 없다. 벽에 한 장 붙는 건 같다"
+    },
+    {
+      "key": "sticky",
+      "label": "포스트잇에 사진을 넣는다",
+      "why": "시안 말 그대로지만 포스트잇 크기에 사진이 작아진다"
+    }
+  ],
+  "recommend": "photo",
+  "confidence": "high",
+  "reversible": true,
+  "status": "끝남",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": [
+    "2026-10-11 D6 → photo (답 없음 · 추천대로)",
+    "2026-10-11 user.answer 반영: photo",
+    "2026-10-11 D6 → photo (사용자, 시트에서)"
+  ]
+}

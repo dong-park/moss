@@ -1,0 +1,17 @@
+{
+  "id": "T14",
+  "kind": "task",
+  "title": "보기 전용 벽에서는 두 번 눌러도 아무것도 생기지 않는다",
+  "given": "보기 전용으로 공유받은 벽이나 휴대폰 벽 보기를 열었다",
+  "when": "빈 곳을 두 번 누른다",
+  "then": "새 포스트잇이 생기지 않고 화면도 바뀌지 않는다",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

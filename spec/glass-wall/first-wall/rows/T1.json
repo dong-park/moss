@@ -1,0 +1,17 @@
+{
+  "id": "T1",
+  "kind": "task",
+  "title": "첫 실행에 빈 유리벽이 바로 선다",
+  "given": "이 브라우저에서 moss를 한 번도 연 적이 없다. local-promise가 로그인 없이 쓰기를 열어 두었다",
+  "when": "데스크톱 브라우저로 moss 주소를 연다",
+  "then": "로그인 화면과 보드 고르기 화면 없이 빈 유리벽이 뜬다. 아래 가운데에 마카 트레이가 있다. 벽에 포스트잇과 메모는 0장이다",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

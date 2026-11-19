@@ -1,0 +1,17 @@
+{
+  "id": "T5",
+  "kind": "task",
+  "title": "벽에서 시작한 획은 포스트잇을 옮겨도 벽에 남는다",
+  "given": "빨강 마카로 노란 포스트잇 둘레 빈 벽에 동그라미를 그렸다",
+  "when": "마카를 내려놓고 노란 포스트잇을 오른쪽으로 옮긴다",
+  "then": "동그라미는 원래 자리에 남고 포스트잇만 옮겨진다. 이 동작의 손맛 확인은 marker-meets-sticky 몫이다.",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

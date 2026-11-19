@@ -1,0 +1,17 @@
+{
+  "id": "T6",
+  "kind": "task",
+  "title": "포스트잇 위 마카 획은 멀리서 숨고 다가가면 돌아온다",
+  "given": "포스트잇 글 아래에 마카로 밑줄을 그어 두었다 (wall-marker 이후)",
+  "when": "멀리 단계로 물러났다가 다시 100%로 다가간다",
+  "then": "멀리서는 밑줄이 보이지 않는다. 다가가면 밑줄이 처음 그은 자리에 다시 보인다",
+  "confidence": "mid",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

@@ -1,0 +1,20 @@
+{
+  "id": "T2",
+  "kind": "task",
+  "title": "링크를 공유하면 제목과 도메인이 적힌 포스트잇 한 장이 붙는다",
+  "given": "마지막으로 본 벽이 '이직 고민'이다",
+  "when": "brunch.co.kr의 '번아웃 오기 전에 할 일' 글을 공유 시트에서 moss로 보낸다",
+  "then": "노란 포스트잇 한 장에 '번아웃 오기 전에 할 일'이 크게, 'brunch.co.kr'이 작게 적힌다. 아래에 '✓ 벽에 붙였어요 · 이직 고민' 알림이 뜬다",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [
+    "T5",
+    "T9"
+  ],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

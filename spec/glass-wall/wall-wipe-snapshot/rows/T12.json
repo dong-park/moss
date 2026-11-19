@@ -1,0 +1,17 @@
+{
+  "id": "T12",
+  "kind": "task",
+  "title": "새로고침과 다시 열기 뒤에도 사진첩이 남는다",
+  "given": "사진 2장이 있는 상태다",
+  "when": "브라우저를 새로고침하거나 앱을 껐다 켠다",
+  "then": "사진첩에 같은 2장이 같은 순서와 캡션으로 보인다.",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

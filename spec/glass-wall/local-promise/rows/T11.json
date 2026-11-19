@@ -1,0 +1,17 @@
+{
+  "id": "T11",
+  "kind": "task",
+  "title": "로그인한 사람이 공유할 때도 고지를 본다",
+  "given": "로그인했다. 혼자 쓰는 벽을 보고 있다",
+  "when": "'공유 ↗'를 누른다",
+  "then": "T4와 같은 제목과 본문의 시트가 뜬다. 버튼은 '공유'와 '취소'다. '공유'를 누르면 Google 창 없이 '☁ 공유 중'이 된다",
+  "confidence": "mid",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

@@ -1,0 +1,17 @@
+{
+  "id": "T9",
+  "kind": "task",
+  "title": "사진 삭제 확인에서 취소하면 사진이 남는다",
+  "given": "사진 삭제 확인 창이 떠 있다",
+  "when": "취소를 누른다",
+  "then": "사진이 사진첩에 그대로 있다.",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

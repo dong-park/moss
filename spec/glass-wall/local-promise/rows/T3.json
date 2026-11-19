@@ -1,0 +1,17 @@
+{
+  "id": "T3",
+  "kind": "task",
+  "title": "배지가 벽의 공유 상태를 보여 준다",
+  "given": "혼자 쓰는 벽 A와 공유한 벽 B가 이 기기에 있다",
+  "when": "A를 열었다가 B로 옮긴다",
+  "then": "A에서는 '🔒 이 기기에만'이 보인다. B로 옮기면 같은 자리에 '☁ 공유 중'이 보인다. 다시 A로 오면 '🔒 이 기기에만'으로 돌아온다",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

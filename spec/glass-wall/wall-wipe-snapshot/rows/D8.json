@@ -1,0 +1,32 @@
+{
+  "id": "D8",
+  "kind": "decision",
+  "title": "내보내기 번들에 사진을 싣나",
+  "given": "사용자가 .moss 번들로 내 데이터를 꺼낸다",
+  "when": "번들을 만든다",
+  "then": "사진첩이 내 파일에 포함되는지가 갈린다. 최종 결정은 local-ownership 몫이다",
+  "options": [
+    {
+      "key": "A",
+      "label": "그림과 데이터 모두 싣는다",
+      "why": "'언제든 내 파일로 꺼낸다'는 줄기 약속을 지킨다"
+    },
+    {
+      "key": "B",
+      "label": "싣지 않는다",
+      "why": "번들이 작다. 기기를 옮기면 사진첩이 사라진다"
+    }
+  ],
+  "recommend": "A",
+  "confidence": "high",
+  "reversible": true,
+  "status": "끝남",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": [
+    "2026-10-11 D8 → A (답 없음 · 추천대로)"
+  ]
+}

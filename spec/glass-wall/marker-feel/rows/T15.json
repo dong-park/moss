@@ -1,0 +1,17 @@
+{
+  "id": "T15",
+  "kind": "task",
+  "title": "유리벽에서 획이 시안처럼 보인다",
+  "given": "재질이 유리다",
+  "when": "네 색으로 굵게 획을 하나씩 긋는다",
+  "then": "뒤 방이 비쳐도 네 색 모두 또렷하게 구별된다. 시안 01·04의 색감과 같다",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

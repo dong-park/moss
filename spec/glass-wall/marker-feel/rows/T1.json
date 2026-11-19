@@ -1,0 +1,17 @@
+{
+  "id": "T1",
+  "kind": "task",
+  "title": "색은 4개만 고른다",
+  "given": "마카를 집어 마카 패널이 열려 있다",
+  "when": "패널의 색 동그라미를 본다",
+  "then": "검정·파랑·빨강·초록 네 개만 보이고, 지금 고른 색에 테두리가 있다. 다른 색을 더하는 칸은 없다",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

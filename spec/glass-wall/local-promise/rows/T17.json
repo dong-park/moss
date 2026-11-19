@@ -1,0 +1,17 @@
+{
+  "id": "T17",
+  "kind": "task",
+  "title": "로그인 기본을 전제한 테스트와 문서를 되돌린다",
+  "given": "로그인 게이트를 걷어 냈다",
+  "when": "웹 테스트 전체를 돌린다",
+  "then": "기존 테스트가 전부 통과한다. 로그인 상태를 주입하던 혼자 쓰기 테스트는 로그인 없이 돈다. FEAT-onboarding-routes의 D4·D5와 AC-4에 이 스펙으로 폐기됐다는 줄이 붙는다. 확인: `bun test` 실패 0, 단 기록된 플래키 2종은 제외",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

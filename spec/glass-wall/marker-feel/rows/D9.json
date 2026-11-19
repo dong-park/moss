@@ -1,0 +1,37 @@
+{
+  "id": "D9",
+  "kind": "decision",
+  "title": "천 폭",
+  "given": "천이나 손으로 닦는다",
+  "when": "줌을 바꿔 가며 닦는다",
+  "then": "한 번에 닦이는 폭이 갈린다",
+  "options": [
+    {
+      "key": "A",
+      "label": "화면 기준 고정 약 36px",
+      "why": "손에 늘 같은 크기로 느껴진다. 확대하면 섬세하게 닦인다"
+    },
+    {
+      "key": "B",
+      "label": "벽 기준 고정",
+      "why": "멀리서 닦으면 크게 닦여 실수가 커진다"
+    }
+  ],
+  "recommend": "A",
+  "confidence": "high",
+  "reversible": true,
+  "status": "끝남",
+  "blocks": [
+    "T6",
+    "T9"
+  ],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": [
+    "2026-10-11 D9 → A (답 없음 · 추천대로)",
+    "2026-10-11 user.answer 반영: A",
+    "2026-10-11 D9 → A (사용자, 시트에서)"
+  ]
+}

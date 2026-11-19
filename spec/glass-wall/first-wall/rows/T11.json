@@ -1,0 +1,17 @@
+{
+  "id": "T11",
+  "kind": "task",
+  "title": "새 사용자는 벽 한 장, 메모 0장으로 시작한다",
+  "given": "빈 저장소다",
+  "when": "첫 실행 부트스트랩을 끝까지 돌린다",
+  "then": "벽은 정확히 1개이고 메모는 0장이다. 그 벽 이름은 D4에서 정한 값이다. 두 탭에서 동시에 부트스트랩해도 벽은 1개다. 확인: fake-indexeddb로 부트스트랩하는 vitest",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

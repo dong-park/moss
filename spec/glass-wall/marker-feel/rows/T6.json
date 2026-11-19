@@ -1,0 +1,17 @@
+{
+  "id": "T6",
+  "kind": "task",
+  "title": "천으로 지나간 자리만 닦인다",
+  "given": "파랑 글씨 한 줄이 있고, 트레이에서 천을 집었다",
+  "when": "글씨 가운데 부분만 문지른다",
+  "then": "문지른 자리만 지워지고, 앞뒤 글자는 그대로 남는다",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}
