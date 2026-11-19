@@ -186,10 +186,10 @@ export function WorkspaceShell() {
           <>
             <RouteBoardSync boardId={boardId} />
             <div className={isCanvas ? "contents" : "flex min-h-0 flex-col"}>
-              <div data-testid="workspace-controls" className={isCanvas
+              <div data-workspace-editor-header data-testid="workspace-controls" className={isCanvas
                 ? "fixed top-3 right-3 z-[var(--z-panel)] flex max-w-[calc(100vw-24px)] flex-wrap items-center justify-end gap-2"
                 : "flex shrink-0 flex-wrap items-center justify-end gap-2 border-b border-border p-3 [&_button]:min-h-11 [&_button]:min-w-11"}>
-                <SaveFeedback />
+                <SaveFeedback compactSaved />
                 <OfflineBadge />
                 <ShareControlMount />
                 <ViewToggle />
@@ -202,7 +202,7 @@ export function WorkspaceShell() {
             {isCanvas && (
               <>
                 {/* FEAT-subcanvas: 서브 캔버스 경로 — 캔버스 좌상단 고정 오버레이(중첩 시에만 렌더). */}
-                <div className="fixed top-3 left-3 z-[var(--z-panel)]">
+                <div data-workspace-editor-header className="fixed top-16 left-3 max-w-[calc(100vw-24px)] sm:top-3 sm:max-w-[calc(100vw-300px)] z-[var(--z-panel)]">
                   <Breadcrumb />
                 </div>
                 <Dock

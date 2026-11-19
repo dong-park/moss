@@ -4,6 +4,7 @@ import { I18nProvider } from "@/i18n/Provider";
 import { Dock, magnifiedSize } from "@/components/workspace/Dock";
 import { __resetBoardDocsForTest, useWorkspace } from "@/state/workspace";
 import { useStorage } from "@/state/storage";
+import { MobileCardActions } from "../MobileCardActions";
 import { useMobileCanvas } from "../mobileCanvas";
 import { getDB, resetDB } from "@/state/db/schema";
 import { connectionMirrorSettled, flushAll, isPersistInFlight, persistSettled } from "@/state/cardPersist";
@@ -538,6 +539,8 @@ describe("compact dock", () => {
   it("opens by keyboard, creates a link memo, and closes", async () => {
     window.innerWidth = 390;
     renderDock();
+    // Canvas owns compact selection controls; retain the full dialog assertions.
+    render(<I18nProvider locale="ko"><MobileCardActions canvasRef={{ current: null }} /></I18nProvider>);
     const more = screen.getByRole("button", { name: "더 보기" });
     fireEvent.keyDown(more, { key: "ArrowDown" });
     const link = await screen.findByRole("menuitem", { name: "링크" });

@@ -1,0 +1,16 @@
+{
+  "status": "ok",
+  "value": {
+    "toolIcon": {
+      "_tag": "website",
+      "pageUrl": "http://localhost:3197/privacy-qa"
+    },
+    "safety": {
+      "possibleCommit": true,
+      "retryClass": "never",
+      "writeStatus": "committed",
+      "code": "write_committed"
+    },
+    "value": "{\"width\":390,\"height\":844,\"dpr\":2,\"privacy\":[{\"text\":\"개인정보 · AI 허용\",\"rect\":{\"x\":11.25,\"y\":108,\"width\":104.1875,\"height\":41.25,\"top\":108,\"right\":115.4375,\"bottom\":149.25,\"left\":11.25}}]}"
+  }
+}

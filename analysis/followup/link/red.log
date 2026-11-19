@@ -1,0 +1,33 @@
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - ESM syntax in a file loaded as CommonJS (vitest.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v4.1.12 /Users/donghwan/.goat/desktop/worktrees/moss/fix-mobile-overlap-clip-eb95b6628722ac61/web
+
+ ❯ src/components/workspace/__tests__/MobileLinkEditor.test.tsx (5 tests | 1 failed) 208ms
+   × keeps eight pixels below the measured header and follows window resize 12ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/components/workspace/__tests__/MobileLinkEditor.test.tsx > keeps eight pixels below the measured header and follows window resize
+AssertionError: expected '64px' to be '100px' // Object.is equality
+
+Expected: "100px"
+Received: "64px"
+
+ ❯ src/components/workspace/__tests__/MobileLinkEditor.test.tsx:66:28
+     64|   const view = mount();
+     65|   const dialog = screen.getByRole("dialog");
+     66|   expect(dialog.style.top).toBe("100px");
+       |                            ^
+     67|   bottom = 112;
+     68|   act(() => window.dispatchEvent(new Event("resize")));
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 4 passed (5)
+   Start at  16:51:28
+   Duration  1.29s (transform 280ms, setup 436ms, import 76ms, tests 208ms, environment 482ms)
+

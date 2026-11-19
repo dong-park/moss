@@ -1,0 +1,6 @@
+"use client";
+import {useEffect,useState} from 'react';
+import {Canvas} from '@/components/workspace/Canvas';
+import {Dock} from '@/components/workspace/Dock';
+import {useWorkspace,SYSTEM_BOARD_ID} from '@/state/workspace';
+export default function QA(){const [ready,setReady]=useState(false);useEffect(()=>{let done=false;const seed=()=>{if(done||!useWorkspace.getState().bootstrapComplete)return;done=true;useWorkspace.setState({currentBoardId:'qa-more-menu',boards:[{id:SYSTEM_BOARD_ID,name:'홈'},{id:'qa-more-menu',name:'더보기 검증'}] as never,cards:[],selectedIds:[],editingId:null,view:'canvas',canvasHasFitted:true,viewport:{x:0,y:0,scale:0.71}});setReady(true)};const unsub=useWorkspace.subscribe(seed);seed();return unsub},[]);return <main style={{height:'100dvh'}}>{ready&&<><Canvas/><Dock/></>}</main>}

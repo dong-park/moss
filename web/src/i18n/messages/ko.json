@@ -10,6 +10,9 @@
   },
   "workspace": {
     "memo": {
+      "scaleCurrent": "현재 배율 {scale}%. {action}",
+      "scaleFull": "100%로 전환",
+      "scaleFit": "화면에 맞추기로 전환",
       "title": {
         "placeholder": "제목",
         "label": "메모 제목"

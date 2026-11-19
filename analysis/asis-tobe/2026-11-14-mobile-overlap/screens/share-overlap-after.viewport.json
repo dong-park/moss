@@ -1,0 +1,16 @@
+{
+  "width": 390,
+  "height": 844,
+  "devicePixelRatio": 2,
+  "pngWidth": 780,
+  "pngHeight": 1688,
+  "dialog": {
+    "x": 8,
+    "y": 60,
+    "width": 374,
+    "height": 282.859375
+  },
+  "headingHit": true,
+  "privacyVisibility": "hidden",
+  "overlapPointHitsDialog": true
+}

@@ -1,0 +1,4 @@
+UNVERIFIED: implementation is not ready for acceptance. Required actual Canvas+Dock 390x844 before/after PNGs and viewport/PNG checks have not been performed.
+RED: CardPrivacyControl regression failed on absolute canvas placement (3 existing passed).
+GREEN: CardPrivacyControl + MobileCardControls 17 tests passed on final code.
+NOT RUN: browser visual QA, desktop visual comparison.

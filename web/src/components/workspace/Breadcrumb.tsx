@@ -50,7 +50,7 @@ export function Breadcrumb() {
   return (
     <nav
       aria-label={t("workspace.subcanvas.breadcrumb.label")}
-      className="flex items-center gap-1 text-sm text-text-muted"
+      className="flex min-w-0 max-w-full items-center gap-1 text-sm text-text-muted"
     >
       {ancestors.map((b) => (
         <span key={b.id} className="flex items-center gap-1">
@@ -69,8 +69,8 @@ export function Breadcrumb() {
           <span className="text-text-soft">›</span>
         </span>
       ))}
-      <span aria-current="page" className="flex items-center gap-1.5 px-1.5 py-1 text-text">
-        {labelOf(current.id, current.name)}
+      <span aria-current="page" className="flex min-w-0 items-center gap-1.5 px-1.5 py-1 text-text">
+        <span className="truncate">{labelOf(current.id, current.name)}</span>
         {shared ? (
           <span className="rounded-full bg-accent-lime/30 px-1.5 text-[11px] text-text">
             {t("workspace.subcanvas.breadcrumb.shared")}

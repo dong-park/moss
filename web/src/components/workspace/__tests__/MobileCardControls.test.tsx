@@ -94,3 +94,8 @@ it("main memo edit remains singular and enters the explicit edit mode",()=>{
  fireEvent.click(screen.getByRole("button",{name:"편집"}));
  expect(useWorkspace.getState()).toMatchObject({expandedCardId:"a",expandedCardMode:"edit",editingId:null});
 });
+it("keeps move and selection actions inside the same toolbar",()=>{
+ mount();
+ const move=screen.getByRole("button",{name:"끌어서 이동"});
+ expect(move.closest('[role="toolbar"]')).toBe(screen.getByRole("toolbar",{name:"선택한 카드 도구"}));
+});

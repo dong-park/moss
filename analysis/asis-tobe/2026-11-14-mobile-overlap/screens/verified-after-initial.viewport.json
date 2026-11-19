@@ -1,0 +1,12 @@
+{
+  "tabId": "tab_2_b3fff760-e9f9-4bb0-ae9c-345480a9d63c",
+  "width": 390,
+  "height": 844,
+  "dpr": 2,
+  "assertion": true,
+  "screenshotWidth": 780,
+  "screenshotHeight": 1688,
+  "evidence": "독; 축소/확대/내용/전체 보기",
+  "api": "preview.snapshot save:true + preview.evaluate",
+  "limitations": "desktop UA; native keyboard unverified; header is QA fixture"
+}

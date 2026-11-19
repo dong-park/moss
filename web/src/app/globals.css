@@ -466,3 +466,10 @@ body {
   --memo-title-floor: 13px;
   --board-name-floor: 13px;
 }
+
+/* The compact More menu owns this space until Radix closes it. */
+body:has([data-mobile-more-open="true"]) [data-canvas-control="zoom"][data-compact="true"],
+[data-mobile-more-open="true"] [data-dock-label="true"] {
+  visibility: hidden;
+  pointer-events: none;
+}

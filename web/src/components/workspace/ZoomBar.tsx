@@ -13,6 +13,7 @@ export function ZoomBar() {
   const t = useT();
   const compact = useCompactControls();
   const stacked = useStackedZoomControls();
+  const selected = useWorkspace((s) => s.selectedIds.length > 0);
   const scale = useWorkspace((s) => s.viewport.scale);
   const setScale = useWorkspace((s) => s.setScale);
   const fitAllCards = useWorkspace((s) => s.fitAllCards);
@@ -31,6 +32,7 @@ export function ZoomBar() {
     <div
       data-canvas-control="zoom"
       data-compact={compact}
+      data-selected={selected}
       className={`${styles.zoom} pointer-events-auto absolute right-5 z-[var(--z-panel)] flex items-center gap-0.5 rounded-md px-1.5 py-1`}
       style={{
         bottom: `calc(${stacked ? zoomBottom : 20}px + env(safe-area-inset-bottom, 0px))`,

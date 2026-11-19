@@ -1,0 +1,56 @@
+{
+  "status": "ok",
+  "value": {
+    "toolIcon": {
+      "_tag": "website",
+      "pageUrl": "http://localhost:3107/qa-storage-header-final?after"
+    },
+    "safety": {
+      "possibleCommit": true,
+      "retryClass": "never",
+      "writeStatus": "committed",
+      "code": "write_committed"
+    },
+    "value": {
+      "viewport": [
+        390,
+        844
+      ],
+      "rects": [
+        {
+          "x": 215.9765625,
+          "y": 11.25,
+          "width": 162.7734375,
+          "height": 34,
+          "top": 11.25,
+          "right": 378.75,
+          "bottom": 45.25,
+          "left": 215.9765625
+        },
+        {
+          "x": 11.25,
+          "y": 60,
+          "width": 333.015625,
+          "height": 26.25,
+          "top": 60,
+          "right": 344.265625,
+          "bottom": 86.25,
+          "left": 11.25
+        }
+      ],
+      "overlap": false,
+      "status": "✓이 기기에 저장됨",
+      "labelRect": {
+        "x": 231.7265625,
+        "y": 18.453125,
+        "width": 1,
+        "height": 1,
+        "top": 18.453125,
+        "right": 232.7265625,
+        "bottom": 19.453125,
+        "left": 231.7265625
+      },
+      "labelPosition": "absolute"
+    }
+  }
+}

@@ -262,6 +262,7 @@ export function MemoExpandDialog() {
               <ExpandedMarkdownEditor
                 key={card.id}
                 editable={editable}
+                initialFullSize={compact && editable && (drawing || parseHandwriting(card.overlay ?? "").paths.length > 0)}
                 autoFocus={!compact}
                 canonical={drawing || parseHandwriting(card.overlay ?? "").paths.length > 0}
                 value={card.content === EMPTY_LINK_CONTENT ? "" : card.content}

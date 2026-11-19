@@ -48,3 +48,27 @@ it("Tab and Space stay native to settings and never reach canvas shortcuts", () 
     expect(useWorkspace.getState().selectedIds).toEqual([card.id]);
   } finally { window.removeEventListener("keydown", shortcut); }
 });
+
+ it("compact privacy entry belongs to the selection toolbar, not the canvas overlay", () => {
+  render(<I18nProvider locale="ko"><CardPrivacyControl placement="toolbar" /></I18nProvider>);
+  expect(screen.getByRole("button").parentElement?.className).not.toContain("absolute");
+ });
+
+it("toolbar panel escapes clipping ancestors and preserves toggle, Escape and outside dismissal", () => {
+  const view = render(<div style={{ overflow: "auto", transform: "translateX(0)" }}><I18nProvider locale="ko"><CardPrivacyControl placement="toolbar" /></I18nProvider></div>);
+  const trigger = screen.getByRole("button");
+  fireEvent.click(trigger);
+  const checkbox = screen.getByRole("checkbox");
+  expect(view.container.contains(checkbox)).toBe(false);
+  fireEvent.pointerDown(checkbox);
+  fireEvent.click(checkbox);
+  expect(useWorkspace.getState().cards[0].aiOptOut).toBe(true);
+  expect(screen.getByRole("checkbox")).toBe(checkbox);
+  checkbox.focus();
+  fireEvent.keyDown(checkbox, { key: "Escape" });
+  expect(screen.queryByRole("checkbox")).toBeNull();
+  expect(document.activeElement).toBe(trigger);
+  fireEvent.click(trigger);
+  fireEvent.pointerDown(document.body);
+  expect(screen.queryByRole("checkbox")).toBeNull();
+});

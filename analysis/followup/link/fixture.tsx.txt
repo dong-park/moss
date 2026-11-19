@@ -1,0 +1,12 @@
+"use client";
+import {useEffect,useState} from 'react';
+import {Breadcrumb} from '@/components/workspace/Breadcrumb';
+import {MobileLinkEditor} from '@/components/workspace/MobileLinkEditor';
+import {useMobileCanvas} from '@/components/workspace/mobileCanvas';
+import {useWorkspace,SYSTEM_BOARD_ID} from '@/state/workspace';
+import {serializeBlock} from '@/state/blocks';
+export default function QA(){
+ const [ready,setReady]=useState(false); const op=useMobileCanvas(s=>s.operation);
+ useEffect(()=>{let done=false; const seed=()=>{if(done || !useWorkspace.getState().bootstrapComplete)return;done=true;useWorkspace.setState({currentBoardId:'qa-link',boards:[{id:SYSTEM_BOARD_ID,name:'홈'},{id:'qa-link',name:'모바일에서 기존 저장 링크 주소를 수정할 때 보드 이름의 아랫부분이 가려지는 현상을 검증하는 제품 보드이며 긴 보드명에서도 아래쪽 글자가 링크 주소 편집기에 가려지지 않아야 합니다',parentBoardId:SYSTEM_BOARD_ID}] as never,cards:[{id:'qa-existing-link',kind:'text',x:20,y:180,width:240,content:serializeBlock({type:'link',url:'https://example.com/saved'})!}],view:'canvas',penMode:false,editingId:null});setReady(true);}; const unsub=useWorkspace.subscribe(seed);seed();return()=>{unsub();useMobileCanvas.getState().close();};},[]);
+ return <main style={{height:'100dvh'}}>{ready&&<><div data-workspace-editor-header className="fixed top-3 left-3 z-[var(--z-panel)]"><Breadcrumb/></div><button style={{position:'absolute',top:180,left:20,minHeight:48}} onClick={()=>{useWorkspace.setState({currentBoardId:'qa-link',boards:[{id:SYSTEM_BOARD_ID,name:'홈'},{id:'qa-link',name:'모바일에서 기존 저장 링크 주소를 수정할 때 보드 이름의 아랫부분이 가려지는 현상을 검증하는 제품 보드이며 긴 보드명에서도 아래쪽 글자가 링크 주소 편집기에 가려지지 않아야 합니다',parentBoardId:SYSTEM_BOARD_ID}] as never});useMobileCanvas.getState().editLink('qa-existing-link');}}>기존 링크 주소 수정</button>{op.kind==='link'&&<MobileLinkEditor key={op.token} operation={op}/>}</>}</main>
+}

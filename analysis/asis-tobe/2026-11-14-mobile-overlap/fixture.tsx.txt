@@ -1,0 +1,36 @@
+"use client";
+import { SharePopover } from "@/components/share/SharePopover";
+import { useEffect, useState } from "react";
+import { Canvas } from "@/components/workspace/Canvas";
+import { Dock } from "@/components/workspace/Dock";
+import { MemoExpandDialog } from "@/components/workspace/cards/MemoExpandDialog";
+import { useWorkspace } from "@/state/workspace";
+import { getActiveBoardDoc } from "@/state/ydoc/activeDoc";
+let preparing: Promise<void> | undefined;
+async function prepare() {
+  await new Promise(r => setTimeout(r, 600));
+  const state = useWorkspace.getState();
+  const existing = state.boards.find(b => b.name === "QA mobile UX");
+  if (existing) await state.setCurrentBoard(existing.id);
+  else {
+    await state.createBoard("QA mobile UX");
+    const todo = state.addCardAt("text", 20, 40);
+    state.setTitle(todo, "터치로 고칠 할 일"); state.setContent(todo, "- [ ] 첫 번째 항목\n- [ ] 두 번째 항목");
+    const memo = state.addCardAt("text", 50, 250);
+    state.setTitle(memo, "QA 읽기 메모");
+    state.setContent(memo, Array.from({length:8},(_,i)=>`QA ${i+1}. Read this memo without opening the keyboard. Edit and finish above the keyboard.`).join("\n\n"));
+  }
+  useWorkspace.setState({ selectedIds: [], editingId: null, expandedCardId: null, canvasHasFitted: true, viewport: {x:20,y:10,scale:0.71} });
+}
+export default function QA() {
+  const ready = useWorkspace(s => s.bootstrapComplete);
+  const current = useWorkspace(s => s.currentBoardId);
+  const boards = useWorkspace(s => s.boards);
+  const [prepared, setPrepared] = useState(false);
+  useEffect(() => {
+    if (!ready) return;
+    preparing ??= prepare();
+    void preparing.then(()=>setPrepared(true));
+  },[ready]);
+  return <main data-qa-board={current} data-qa-active={getActiveBoardDoc()?.boardId} data-qa-boards={JSON.stringify(boards.map(b=>({id:b.id,name:b.name})))} style={{height:"100dvh",display:"flex",flexDirection:"column"}}><header style={{height:48,flexShrink:0,padding:12}}>QA · 로컬 fixture</header><div style={{position:"fixed",top:48,right:110,zIndex:40}}><SharePopover boardName="QA" status="local" viewerRole="owner" members={[]} inviteUrl={null} authenticated={false} busy={false} error={null} copied={false} onStart={()=>{}} onCopy={()=>{}} onReissue={()=>{}} onRemove={()=>{}} onUnshare={()=>{}} onLeave={()=>{}} /></div><div style={{flex:1,minHeight:0}}>{prepared && <><Canvas/><Dock/><MemoExpandDialog/></>}</div></main>;
+}

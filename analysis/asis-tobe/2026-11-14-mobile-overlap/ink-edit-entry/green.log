@@ -1,0 +1,12 @@
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - ESM syntax in a file loaded as CommonJS (vitest.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v4.1.12 /Users/donghwan/.goat/desktop/worktrees/moss/fix-mobile-overlap-clip-eb95b6628722ac61/web
+
+
+ Test Files  1 passed (1)
+      Tests  31 passed (31)
+   Start at  13:37:16
+   Duration  2.46s (transform 504ms, setup 504ms, import 563ms, tests 524ms, environment 756ms)
+

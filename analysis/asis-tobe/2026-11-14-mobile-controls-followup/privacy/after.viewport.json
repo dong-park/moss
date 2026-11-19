@@ -1,0 +1,16 @@
+{
+  "status": "ok",
+  "value": {
+    "toolIcon": {
+      "_tag": "website",
+      "pageUrl": "http://localhost:3197/privacy-qa"
+    },
+    "safety": {
+      "possibleCommit": true,
+      "retryClass": "never",
+      "writeStatus": "committed",
+      "code": "write_committed"
+    },
+    "value": "{\"width\":390,\"height\":844,\"dpr\":2,\"controls\":[{\"text\":\"편집↔ 이동개인정보 · AI 허용연결크기선택 해제\",\"rect\":{\"x\":8,\"y\":760,\"width\":374,\"height\":64,\"top\":760,\"right\":382,\"bottom\":824,\"left\":8},\"scrollWidth\":372,\"clientWidth\":372,\"overflow\":\"auto\"},{\"text\":\"편집\",\"rect\":{\"x\":15,\"y\":768,\"width\":48,\"height\":48,\"top\":768,\"right\":63,\"bottom\":816,\"left\":15},\"scrollWidth\":46,\"clientWidth\":46,\"overflow\":\"visible\"},{\"text\":\"↔ 이동\",\"rect\":{\"x\":67,\"y\":768,\"width\":57.2265625,\"height\":48,\"top\":768,\"right\":124.2265625,\"bottom\":816,\"left\":67},\"scrollWidth\":55,\"clientWidth\":55,\"overflow\":\"visible\"},{\"text\":\"개인정보 · AI 허용\",\"rect\":{\"x\":128.2265625,\"y\":768,\"width\":76.2734375,\"height\":48,\"top\":768,\"right\":204.5,\"bottom\":816,\"left\":128.2265625},\"scrollWidth\":76,\"clientWidth\":76,\"overflow\":\"visible\"},{\"text\":\"개인정보 · AI 허용\",\"rect\":{\"x\":128.2265625,\"y\":768,\"width\":76.2734375,\"height\":48,\"top\":768,\"right\":204.5,\"bottom\":816,\"left\":128.2265625},\"scrollWidth\":74,\"clientWidth\":74,\"overflow\":\"visible\"},{\"text\":\"연결\",\"rect\":{\"x\":208.5,\"y\":768,\"width\":48,\"height\":48,\"top\":768,\"right\":256.5,\"bottom\":816,\"left\":208.5},\"scrollWidth\":46,\"clientWidth\":46,\"overflow\":\"visible\"},{\"text\":\"크기\",\"rect\":{\"x\":260.5,\"y\":768,\"width\":48,\"height\":48,\"top\":768,\"right\":308.5,\"bottom\":816,\"left\":260.5},\"scrollWidth\":46,\"clientWidth\":46,\"overflow\":\"visible\"},{\"text\":\"선택 해제\",\"rect\":{\"x\":312.5,\"y\":768,\"width\":62.5,\"height\":48,\"top\":768,\"right\":375,\"bottom\":816,\"left\":312.5},\"scrollWidth\":61,\"clientWidth\":61,\"overflow\":\"visible\"}]}"
+  }
+}
