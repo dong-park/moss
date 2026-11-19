@@ -5,8 +5,8 @@ it('keeps compact zoom inside the viewport and hides duplicate selected zoom', (
   expect(css('canvasControls.module.css')).toContain('flex-wrap: wrap');
   expect(css('canvasControls.module.css')).toContain('.zoom[data-compact="true"][data-selected="true"]');
 });
-it('anchors the link dialog below the board header', () => {
-  expect(css('MobileLinkEditor.tsx')).toContain('viewport?.top ?? 0) + 64');
+it('marks both workspace header rows for link dialog positioning', () => {
+  expect(css('WorkspaceShell.tsx').match(/\bdata-workspace-editor-header(?=\s)/g)).toHaveLength(2);
 });
 
 it('places compact dock labels inside their touch buttons', () => {
