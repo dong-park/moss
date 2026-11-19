@@ -20,3 +20,4 @@ __pycache__/
 rehearsal-input.json
 evidence.json
 public-config.json
+.claude/worktrees/
