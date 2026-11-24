@@ -22,20 +22,27 @@
 import {
   useWorkspace,
   type Card,
+  cardCenter,
   encodeSubcanvas,
   __internal,
 } from "@/state/workspace";
-import { newBoardId } from "@/state/boardIds";
+import { newBoardId, SYSTEM_BOARD_ID } from "@/state/boardIds";
 import { useStorage } from "@/state/storage";
-import { getDB } from "@/state/db/schema";
+import { getDB, type ConnectionSide } from "@/state/db/schema";
+import { nearestSide } from "@/components/workspace/connectors/geometry";
 import {
   deleteNoteRecord,
   writeBoardRecord,
   writeNoteRecord,
 } from "@/state/ydoc";
 import { serializeBlock } from "@/state/blocks";
+import { aiAuthHeaders } from "@/state/ai/authHeaders";
+import { callAIConnectionLabel, callAISummarize } from "@/state/ai/client";
+import { normalizeTitle } from "@/state/memoTitle";
+import { isMemoColor } from "@/components/workspace/memoVariety";
 import { makeAttachmentFilename } from "@/state/db/opfs";
 import { storeAttachment } from "@/state/share/attachments";
+import { UNTRACKED_ORIGIN, withWriteOrigin, type WriteOrigin } from "@/state/ydoc/origin";
 import {
   MAX_ATTACHMENT_BYTES,
   MAX_IMAGE_BYTES,
@@ -54,6 +61,7 @@ export interface BridgeNote {
   attachmentRef?: string;
   mediaType?: string;
   boardRef?: string;
+  title?: string;
 }
 
 /**
@@ -72,6 +80,27 @@ function resolveBoard(raw: unknown): {
     isCurrent: target === current,
     target,
   };
+}
+
+/**
+ * 라우터를 거치는 보드 전환은 비동기다 — navigateToBoard가 URL만 바꾸고 돌아오면
+ * 라우트 effect가 나중에 보드를 불러온다. 그 사이 다음 op가 들어오면 새 메모가 로딩에
+ * 덮여 사라진다. 보드가 실제 현재 보드가 될 때까지 기다린 뒤 결과를 돌려준다.
+ */
+function waitForCurrentBoard(id: string, timeoutMs = 10_000): Promise<void> {
+  if (useWorkspace.getState().currentBoardId === id) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const unsub = useWorkspace.subscribe((s) => {
+      if (s.currentBoardId !== id) return;
+      clearTimeout(timer);
+      unsub();
+      resolve();
+    });
+    const timer = setTimeout(() => {
+      unsub();
+      reject(new Error(`보드 전환이 끝나지 않았습니다: ${id}`));
+    }, timeoutMs);
+  });
 }
 
 function newNoteId(): string {
@@ -255,6 +284,7 @@ function toBridgeNote(card: Card): BridgeNote {
     attachmentRef: card.attachmentRef,
     mediaType: card.mediaType,
     boardRef: card.boardRef,
+    title: card.title,
   };
 }
 
@@ -270,11 +300,30 @@ function base64ToBlob(dataBase64: string, mimeType: string): Blob {
  * 데이터 op를 useWorkspace 액션으로 디스패치한다. 순수하게 store만 만지므로
  * 테스트에서 store를 갈아끼워 단위 검증할 수 있다(WS 전송 계층과 분리).
  */
+/**
+ * cmd-z-undo n4: 브리지 쓰기는 사람의 cmd+z 기록에 들어가지 않는다. 스토어 액션은 모두
+ * 기록 안 하는 origin 문맥에서 부른다 — 액션이 단계를 열지 않고, 동기 쓰기와 액션이 넘기는
+ * await 뒤 쓰기(connectCards·setConnectionLabel의 saveConnection 등)가 그 origin을 쓴다.
+ */
+function untrackedActions<T extends object>(state: T): T {
+  return new Proxy(state, {
+    get(target, key, receiver) {
+      const value = Reflect.get(target, key, receiver);
+      if (typeof value !== "function") return value;
+      return (...args: unknown[]) =>
+        withWriteOrigin(UNTRACKED_ORIGIN, () => (value as (...a: unknown[]) => unknown)(...args));
+    },
+  });
+}
+
+/** 브리지가 storage·writeThrough에 직접 넘기는 문서 쓰기 origin. */
+const BRIDGE_ORIGIN: WriteOrigin = UNTRACKED_ORIGIN;
+
 export async function dispatchOp(
   op: string,
   params: Record<string, unknown> = {},
 ): Promise<unknown> {
-  const ws = useWorkspace.getState();
+  const ws = untrackedActions(useWorkspace.getState());
   switch (op) {
     case "ping":
       return { connected: true, boardId: ws.currentBoardId, cards: ws.cards.length };
@@ -310,6 +359,13 @@ export async function dispatchOp(
         );
       }
       const raw = typeof params.content === "string" ? params.content : "";
+      const title = typeof params.title === "string" ? normalizeTitle(params.title) : "";
+      if (params.color !== undefined && !isMemoColor(params.color)) {
+        throw new Error(`지원하지 않는 메모 색: ${String(params.color)} (blue·lime·purple·pink)`);
+      }
+      const color = isMemoColor(params.color) ? params.color : undefined;
+      const rotation =
+        typeof params.rotation === "number" && Number.isFinite(params.rotation) ? params.rotation : undefined;
       const x = typeof params.x === "number" ? params.x : 40;
       const y = typeof params.y === "number" ? params.y : 40;
       // 메모 본문은 고정 폭(MEMO_CONTENT_WIDTH=720) 컬럼이라, 카드가 그보다 좁으면
@@ -335,6 +391,9 @@ export async function dispatchOp(
         }
         // width/height 패치 후 영속되도록 setContent를 항상 호출(빈 본문도 OK).
         ws.setContent(id, finalContent);
+        if (title) ws.setTitle(id, title);
+        if (color) ws.setMemoColor([id], color);
+        if (rotation) ws.setCardRotation(id, rotation);
         ws.setEditing(null);
         ws.clearSelection();
         return { id, kind: "text" };
@@ -348,31 +407,75 @@ export async function dispatchOp(
         y,
         ...(square !== undefined ? { width: square, height: square } : {}),
         content: finalContent,
+        ...(title ? { title } : {}),
+        ...(color ? { color } : {}),
         aiOptOut: false,
-        rotation: 0,
+        rotation: rotation ?? 0,
       };
       const storage = useStorage.getState();
       // n23 P1-5: saveNote가 정규화된 Note를 돌려준다 — Dexie read-back이 비어
       // Y.Doc 쓰기를 조용히 건너뛰던 경로가 없다.
       const saved = await storage.saveNote(note);
-      await writeNoteRecord(saved);
+      await writeNoteRecord(saved, BRIDGE_ORIGIN);
       return { id, kind: "text", boardId: storageId };
     }
 
     case "notes.update": {
       const id = String(params.id ?? "");
-      const content = typeof params.content === "string" ? params.content : "";
+      const content = typeof params.content === "string" ? params.content : undefined;
+      // 제목은 웹과 같은 규칙(한 줄, 80자)으로 정규화한다. 빈 문자열은 제목 지우기.
+      const title = typeof params.title === "string" ? normalizeTitle(params.title) : undefined;
+      const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
+      const x = num(params.x);
+      const y = num(params.y);
+      const width = num(params.width);
+      const height = num(params.height);
+      const moves = x !== undefined || y !== undefined || width !== undefined || height !== undefined;
       if (!id) throw new Error("id가 필요합니다");
-      if (ws.cards.some((c) => c.id === id)) {
-        ws.setContent(id, content);
+      if (content === undefined && title === undefined && !moves) {
+        throw new Error("content·title·x·y·width·height 중 하나는 필요합니다");
+      }
+      const inStore = ws.cards.find((c) => c.id === id);
+      if (inStore) {
+        if (content !== undefined) ws.setContent(id, content);
+        if (title !== undefined) ws.setTitle(id, title);
+        if (width !== undefined || height !== undefined) {
+          // resizeCard가 크기를 클램프하고 메모(text)는 정사각형으로 맞춘다.
+          ws.resizeCard(id, {
+            width: width ?? inStore.width,
+            height: height ?? width ?? inStore.height ?? inStore.width,
+            x,
+            y,
+          });
+        } else if (x !== undefined || y !== undefined) {
+          ws.moveCard(id, x ?? inStore.x, y ?? inStore.y);
+        }
         return { id };
       }
-      // 다른 보드 카드 — 존재 확인 후 content만 병합 저장(없으면 junk 생성 방지).
+      // 다른 보드 카드 — 존재 확인 후 준 필드만 병합 저장(없으면 junk 생성 방지).
       const note = await getDB().notes.get(id);
       if (!note) throw new Error(`카드를 찾을 수 없습니다: ${id}`);
-      // n23 P1-5: saveNote가 정규화된 Note를 돌려준다.
-      const saved = await useStorage.getState().saveNote({ id, content });
-      await writeNoteRecord(saved);
+      if (content !== undefined) {
+        // n23 P1-5: saveNote가 정규화된 Note를 돌려준다.
+        const saved = await useStorage.getState().saveNote({ id, content });
+        await writeNoteRecord(saved, BRIDGE_ORIGIN);
+      }
+      if (title !== undefined) {
+        await useStorage.getState().updateNoteTitle(id, title, { origin: BRIDGE_ORIGIN });
+      }
+      if (moves) {
+        const w = width ?? note.width;
+        // 메모(text)는 정사각형 — 폭을 바꾸면 높이도 같이 맞춘다.
+        const h = note.kind === "text" && width !== undefined ? width : (height ?? note.height);
+        const saved = await useStorage.getState().saveNote({
+          id,
+          ...(x !== undefined ? { x } : {}),
+          ...(y !== undefined ? { y } : {}),
+          ...(w !== undefined ? { width: w } : {}),
+          ...(h !== undefined ? { height: h } : {}),
+        });
+        await writeNoteRecord(saved, BRIDGE_ORIGIN);
+      }
       return { id };
     }
 
@@ -388,9 +491,56 @@ export async function dispatchOp(
       // 판은 휴지통 대상이 아니다(spec §2) — 지금처럼 즉시 삭제.
       if (note.kind === "frame") await useStorage.getState().removeNote(id);
       else await useStorage.getState().trashNote(id);
-      await deleteNoteRecord(id, note.boardId ?? null);
+      await deleteNoteRecord(id, note.boardId ?? null, BRIDGE_ORIGIN);
       void ws.refreshTrashCount();
       return { id };
+    }
+
+    // 사진 카드(photo): 사진 자체가 카드다. 현재 보드에만 만든다. 판 안에 놓으면
+    // addPhotoAt의 소속 판정으로 판에 들어간다. naturalW/H로 원본 비율을 지킨다.
+    case "photos.create": {
+      const { isCurrent } = resolveBoard(params.boardId);
+      if (!isCurrent) throw new Error("사진 카드는 현재 보드에만 만들 수 있습니다. boards_switch로 먼저 전환하세요");
+      const dataBase64 = typeof params.dataBase64 === "string" ? params.dataBase64 : "";
+      const mimeType = typeof params.mimeType === "string" ? params.mimeType : "";
+      if (!dataBase64 || !mimeType) throw new Error("사진에는 dataBase64와 mimeType이 필요합니다");
+      if (!SUPPORTED_IMAGE_TYPES.has(mimeType)) throw new Error(`지원하지 않는 이미지 형식입니다: ${mimeType}`);
+      const blob = base64ToBlob(dataBase64, mimeType);
+      if (blob.size > MAX_IMAGE_BYTES) {
+        throw new Error(`이미지가 너무 큽니다(${blob.size} bytes > ${MAX_IMAGE_BYTES}).`);
+      }
+      const num = (v: unknown, d: number) => (typeof v === "number" && Number.isFinite(v) ? v : d);
+      const naturalW = num(params.naturalW, 0);
+      const naturalH = num(params.naturalH, 0);
+      const ref = await storeAttachment(ws.currentBoardId, makeAttachmentFilename(mimeType), blob);
+      const id = ws.addPhotoAt(num(params.x, 40), num(params.y, 40), { ref, mediaType: mimeType, naturalW, naturalH });
+      if (typeof params.width === "number" && Number.isFinite(params.width)) {
+        const ratio = naturalW > 0 && naturalH > 0 ? naturalH / naturalW : 1;
+        ws.resizeCard(id, { width: params.width, height: params.width * ratio });
+      }
+      if (typeof params.caption === "string" && params.caption.trim()) ws.setContent(id, params.caption.trim());
+      if (typeof params.rotation === "number") ws.setCardRotation(id, params.rotation);
+      ws.clearSelection();
+      return { id, kind: "photo" };
+    }
+
+    // 메모판(frame): 현재 보드에만 만든다. 판을 먼저 만든 뒤 그 안에 만든 메모는
+    // addCardAt의 소속 판정으로 판에 들어간다(판을 옮기면 같이 움직인다).
+    case "frames.create": {
+      const { isCurrent } = resolveBoard(params.boardId);
+      if (!isCurrent) throw new Error("메모판은 현재 보드에만 만들 수 있습니다. boards_switch로 먼저 전환하세요");
+      const num = (v: unknown, d: number) => (typeof v === "number" && Number.isFinite(v) ? v : d);
+      const id = ws.addFrameAt(num(params.x, 40), num(params.y, 40));
+      if (typeof params.width === "number" || typeof params.height === "number") {
+        const frame = useWorkspace.getState().cards.find((c) => c.id === id)!;
+        ws.resizeFrame(id, {
+          width: num(params.width, frame.width),
+          height: num(params.height, frame.height ?? 220),
+        });
+      }
+      if (typeof params.name === "string") ws.renameFrame(id, params.name);
+      ws.clearSelection();
+      return { id, kind: "frame" };
     }
 
     // 함(board) 카드: 서브 캔버스를 가리키는 funnel + 빈 서브 보드 생성.
@@ -428,8 +578,8 @@ export async function dispatchOp(
       // n23 P1-5: saveNote가 정규화된 Note를 돌려준다.
       const savedNote = await storage.saveNote(note);
       const savedBoard = await getDB().boards.get(childBoardId);
-      if (savedBoard) await writeBoardRecord(savedBoard);
-      await writeNoteRecord(savedNote);
+      if (savedBoard) await writeBoardRecord(savedBoard, BRIDGE_ORIGIN);
+      await writeNoteRecord(savedNote, BRIDGE_ORIGIN);
       return { id, kind: "board", boardRef: childBoardId, boardId: storageId };    }
 
     case "ai.preview": {
@@ -444,6 +594,38 @@ export async function dispatchOp(
       return res.json();
     }
 
+    /* ── AI: 이 탭의 로그인 세션으로 호출한다. 토큰은 탭 안에서만 쓰고 결과에 싣지 않는다 ── */
+    case "ai.embed": {
+      const texts = params.texts;
+      if (!Array.isArray(texts) || texts.length === 0 || !texts.every((t) => typeof t === "string" && t))
+        throw new Error("texts가 필요합니다");
+      // 라우트 문자열을 변수로 받는 fetcher 호출. embeddingQueue와 같은 단일 통로 규칙이다.
+      const fetcher: typeof fetch = (...a) => fetch(...a);
+      const res = await fetcher("/api/ai/embed", {
+        method: "POST",
+        headers: await aiAuthHeaders(),
+        body: JSON.stringify({ texts }),
+      });
+      if (!res.ok) throw new Error(`embed ${res.status}`);
+      return res.json();
+    }
+
+    case "ai.summarize": {
+      const texts = params.texts;
+      const kind = params.kind;
+      if (!Array.isArray(texts) || texts.length === 0 || !texts.every((t) => typeof t === "string" && t))
+        throw new Error("texts가 필요합니다");
+      if (kind !== "flow" && kind !== "cluster" && kind !== "rhythm")
+        throw new Error("kind는 flow|cluster|rhythm 이어야 합니다");
+      return callAISummarize(texts as string[], kind);
+    }
+
+    case "ai.connectionLabel": {
+      if (typeof params.textA !== "string" || typeof params.textB !== "string" || !params.textA || !params.textB)
+        throw new Error("textA와 textB가 필요합니다");
+      return callAIConnectionLabel(params.textA, params.textB);
+    }
+
     /* ── boards: useWorkspace 액션 경유(보드 목록·UI 라이브 반영) ── */
     case "boards.list":
       return {
@@ -454,6 +636,7 @@ export async function dispatchOp(
     case "boards.create": {
       const name = typeof params.name === "string" ? params.name : "";
       const id = await ws.createBoard(name); // 새 보드로 전환됨
+      await waitForCurrentBoard(id);
       return { id };
     }
 
@@ -468,20 +651,25 @@ export async function dispatchOp(
     case "boards.delete": {
       const id = String(params.id ?? "");
       if (!id) throw new Error("id가 필요합니다");
+      const wasCurrent = ws.currentBoardId === id;
       await ws.removeBoard(id);
+      // 현재 보드를 지우면 시스템 보드로 돌아간다. 그 전환이 끝나기 전에 다음 op가
+      // 들어오면 늦게 끝난 전환이 새 보드를 덮는다.
+      if (wasCurrent) await waitForCurrentBoard(SYSTEM_BOARD_ID);
       return { id };
     }
 
     case "boards.switch": {
       const id = String(params.id ?? "");
       if (!id) throw new Error("id가 필요합니다");
-      // n3 D8: URL이 원본 — 라우터가 있으면 push하고, 상태 반영은 라우트 effect가 한다.
-      // 요청한 보드로의 전환이므로 결과는 요청 id를 돌려준다(라우터 반영은 비동기).
       await ws.navigateToBoard(id);
+      // n3 D8: URL이 원본 — 라우터가 있으면 push하고, 상태 반영은 라우트 effect가 한다.
+      // 그 반영(보드 로딩)이 끝날 때까지 기다려야 다음 op가 새 보드에 안전하게 들어간다.
+      if (id !== "system") await waitForCurrentBoard(id);
       return { currentBoardId: id };
     }
 
-    /* ── connections: 캔버스 렌더 대상 아님 → storage(Dexie) 데이터 경로 ── */
+    /* ── connections: 두 카드가 현재 보드에 있으면 화면 연결선(connectCards)으로, 아니면 storage 경로 ── */
     case "connections.list": {
       const storage = useStorage.getState();
       const noteId = typeof params.noteId === "string" ? params.noteId : undefined;
@@ -495,10 +683,40 @@ export async function dispatchOp(
         throw new Error("sourceNoteId와 targetNoteId가 필요합니다");
       }
       const label = typeof params.label === "string" ? params.label : undefined;
+      const side = (v: unknown): ConnectionSide | undefined =>
+        v === "top" || v === "right" || v === "bottom" || v === "left" ? v : undefined;
+      const sourceSide = side(params.sourceSide);
+      const targetSide = side(params.targetSide);
+      const source = ws.cards.find((c) => c.id === sourceNoteId);
+      const target = ws.cards.find((c) => c.id === targetNoteId);
+      if (source && target) {
+        // 현재 보드: 사용자가 끈 선과 같은 경로라 즉시 그려진다. 변을 안 주면 마주 보는 변.
+        const id = ws.connectCards(
+          sourceNoteId,
+          sourceSide ?? nearestSide(source, cardCenter(target)),
+          targetNoteId,
+          targetSide ?? nearestSide(target, cardCenter(source)),
+        );
+        if (!id) throw new Error("자기 자신과는 연결할 수 없습니다");
+        if (label) ws.setConnectionLabel(id, label);
+        // connectCards가 새 선을 선택하므로 사용자 선택 상태를 되돌린다.
+        useWorkspace.setState({ selectedConnectionId: null });
+        return { id };
+      }
       const id = `cx-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6)}`;
       // mergeConnection이 source="manual"/status="active"/createdAt을 채운다.
       // n23 재심사 2R-6: Dexie 미러와 소유 문서 쓰기는 saveConnection 한 액션이 함께 한다.
-      await useStorage.getState().saveConnection({ id, sourceNoteId, targetNoteId, label });
+      await useStorage.getState().saveConnection(
+        {
+          id,
+          sourceNoteId,
+          targetNoteId,
+          label,
+          ...(sourceSide ? { sourceSide } : {}),
+          ...(targetSide ? { targetSide } : {}),
+        },
+        { origin: BRIDGE_ORIGIN },
+      );
       return { id };
     }
 
@@ -506,7 +724,7 @@ export async function dispatchOp(
       const id = String(params.id ?? "");
       if (!id) throw new Error("id가 필요합니다");
       // n23 재심사 2R-6: 미러 삭제와 소유 문서 삭제를 한 액션이 함께 한다.
-      await useStorage.getState().removeConnection(id);
+      await useStorage.getState().removeConnection(id, { origin: BRIDGE_ORIGIN });
       return { id };
     }
 

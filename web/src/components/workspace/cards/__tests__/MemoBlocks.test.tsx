@@ -5,6 +5,7 @@ import { EditorState } from "@milkdown/prose/state";
 import { EditorView } from "@milkdown/prose/view";
 import { editorViewCtx, parserCtx } from "@milkdown/core";
 import { I18nProvider } from "@/i18n/Provider";
+import { IMAGE_ACCEPT } from "@/state/attachmentLimits";
 import { useToasts } from "@/state/notifications";
 import { BlockMenu } from "../_shared/editor/BlockMenu";
 import {
@@ -34,6 +35,7 @@ let ctxState: {
     };
     dispatch: ReturnType<typeof vi.fn>;
     hasFocus: () => boolean;
+    focus: ReturnType<typeof vi.fn>;
   };
   parser: ReturnType<typeof vi.fn>;
 };
@@ -52,6 +54,7 @@ function resetCtxState() {
       },
       dispatch: vi.fn(),
       hasFocus: () => false,
+      focus: vi.fn(),
     },
     parser: vi.fn((md: string) => ({ content: md })),
   };
@@ -93,6 +96,28 @@ beforeEach(() => {
 
 afterEach(() => {
   useToasts.getState().clear();
+});
+
+describe("cmd-z-undo prover 기준 3: 블록을 넣은 뒤 포커스가 편집기로 돌아온다", () => {
+  // 포커스가 BODY에 남으면 메모 창의 cmd+z가 편집기 기록에 닿지 않는다(캔버스 cmd+z도 막혀 있다).
+  it("링크를 넣으면 편집기에 포커스를 준다", () => {
+    mount();
+    openMenu();
+    fireEvent.click(screen.getByText("링크"));
+    fireEvent.change(screen.getByPlaceholderText("URL"), { target: { value: "https://example.com" } });
+    fireEvent.click(screen.getByText("추가"));
+    expect(ctxState.view.dispatch).toHaveBeenCalled();
+    expect(ctxState.view.focus).toHaveBeenCalled();
+  });
+
+  it("링크 대화상자를 취소해도 포커스를 메뉴 버튼 대신 편집기로 보낸다", async () => {
+    mount();
+    openMenu();
+    fireEvent.click(screen.getByText("링크"));
+    fireEvent.click(screen.getByText("취소"));
+    await waitFor(() => expect(ctxState.view.focus).toHaveBeenCalled());
+    expect(ctxState.view.dispatch).not.toHaveBeenCalled();
+  });
 });
 
 describe("FEAT-sticky-redesign n4 · 블록 추가 메뉴", () => {
@@ -141,7 +166,7 @@ describe("FEAT-sticky-redesign n4 · 블록 추가 메뉴", () => {
 
   it("이미지 용량 초과 시 토스트만 뜨고 삽입되지 않는다", async () => {
     mount();
-    const input = document.querySelector('input[type="file"][accept="image/*"]') as HTMLInputElement;
+    const input = document.querySelector(`input[type="file"][accept="${IMAGE_ACCEPT}"]`) as HTMLInputElement;
     const big = new File([new Uint8Array(11 * 1024 * 1024)], "big.png", { type: "image/png" });
     Object.defineProperty(input, "files", { value: [big] });
     fireEvent.change(input);

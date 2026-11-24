@@ -10,13 +10,15 @@ import { useWorkspace, SYSTEM_BOARD_ID } from "@/state/workspace";
 import { useStorage } from "@/state/storage";
 import { resetDB } from "@/state/db/schema";
 import { countBlocks } from "@/state/blocks";
-import { flushCard } from "@/state/cardPersist";
+import { flushAll, flushCard } from "@/state/cardPersist";
 import { putBlob } from "@/state/db/opfs";
 import { configureAttachments, resetAttachments } from "@/state/share/attachments";
 import { resetShareStore, useShare } from "@/state/share/store";
 import { useAuth } from "@/state/auth";
+import { configureAIClient } from "@/state/ai/client";
 import type { BoardFile, FilesApi } from "@/state/share/files";
 import { dispatchOp, type BridgeNote } from "@/state/bridge/mossBridge";
+import { UNTRACKED_ORIGIN } from "@/state/ydoc/origin";
 
 // 1x1 PNG.
 const PNG_B64 =
@@ -284,6 +286,71 @@ describe("dispatchOp", () => {
     );
   });
 
+  it("손으로 붙인 벽: 메모·사진 기울기 저장", async () => {
+    const { id: m } = (await dispatchOp("notes.create", { title: "a", x: 40, y: 40, width: 200, rotation: -1.7 })) as { id: string };
+    const { id: p } = (await dispatchOp("photos.create", {
+      dataBase64: PNG_B64, mimeType: "image/png", x: 300, y: 40, width: 120, rotation: 2.3,
+    })) as { id: string };
+    const cards = useWorkspace.getState().cards;
+    expect(cards.find((c) => c.id === m)!.rotation).toBe(-1.7);
+    expect(cards.find((c) => c.id === p)!.rotation).toBe(2.3);
+  });
+
+  it("photos.create → 비율 지킨 사진 카드, 캡션, 판 소속", async () => {
+    const { id: frame } = (await dispatchOp("frames.create", { x: 0, y: 0, width: 700, height: 500 })) as { id: string };
+    const { id } = (await dispatchOp("photos.create", {
+      dataBase64: PNG_B64, mimeType: "image/png", naturalW: 400, naturalH: 600,
+      x: 40, y: 40, width: 200, caption: "라뮤즈 씬",
+    })) as { id: string };
+    const p = useWorkspace.getState().cards.find((c) => c.id === id)!;
+    expect([p.kind, p.width, p.height, p.content, p.frameId]).toEqual(["photo", 200, 300, "라뮤즈 씬", frame]);
+    expect(p.attachmentRef).toBeTruthy();
+    await expect(dispatchOp("photos.create", { dataBase64: PNG_B64, mimeType: "image/tiff" })).rejects.toThrow("형식");
+    await expect(dispatchOp("photos.create", { boardId: "b-o", dataBase64: PNG_B64, mimeType: "image/png" })).rejects.toThrow("현재 보드");
+  });
+
+  it("frames.create → 판 크기·이름, 그 안에 만든 메모는 판 소속과 색을 갖는다", async () => {
+    const { id: frame } = (await dispatchOp("frames.create", {
+      x: 0, y: 0, width: 700, height: 300, name: "예식장",
+    })) as { id: string };
+    const f = useWorkspace.getState().cards.find((c) => c.id === frame)!;
+    expect([f.kind, f.width, f.height]).toEqual(["frame", 700, 300]);
+    expect(f.content).toContain("예식장");
+    const { id } = (await dispatchOp("notes.create", {
+      title: "확정", x: 32, y: 32, width: 200, color: "lime",
+    })) as { id: string };
+    const m = useWorkspace.getState().cards.find((c) => c.id === id)!;
+    expect([m.frameId, m.color]).toEqual([frame, "lime"]);
+    await expect(dispatchOp("notes.create", { title: "x", color: "red" })).rejects.toThrow("메모 색");
+    await expect(dispatchOp("frames.create", { boardId: "b-other" })).rejects.toThrow("현재 보드");
+  });
+
+  it("notes.create/update title → 앞면 제목 반영, 본문은 그대로", async () => {
+    const { id } = (await dispatchOp("notes.create", {
+      content: "본문",
+      title: "  예식장\n계약  ",
+    })) as { id: string };
+    expect(useWorkspace.getState().cards[0]!.title).toBe("예식장 계약");
+    expect(((await dispatchOp("notes.list")) as BridgeNote[])[0]!.title).toBe("예식장 계약");
+
+    await dispatchOp("notes.update", { id, title: "새 제목" });
+    const card = useWorkspace.getState().cards[0]!;
+    expect(card.title).toBe("새 제목");
+    expect(card.content).toBe("본문");
+
+    await dispatchOp("notes.update", { id, title: "" });
+    expect(useWorkspace.getState().cards[0]!.title).toBeUndefined();
+    await expect(dispatchOp("notes.update", { id })).rejects.toThrow("하나는 필요합니다");
+  });
+
+  it("notes.update x/y/width → 메모를 옮기고 정사각형으로 줄인다", async () => {
+    const { id } = (await dispatchOp("notes.create", { content: "본문", width: 720 })) as { id: string };
+    await dispatchOp("notes.update", { id, x: 300, y: 400, width: 240 });
+    const card = useWorkspace.getState().cards[0]!;
+    expect([card.x, card.y, card.width, card.height]).toEqual([300, 400, 240, 240]);
+    expect(card.content).toBe("본문");
+  });
+
   it("notes.delete → 카드 제거, 없으면 throw", async () => {
     const { id } = (await dispatchOp("notes.create", { content: "bye" })) as { id: string };
     await dispatchOp("notes.delete", { id });
@@ -328,6 +395,71 @@ describe("dispatchOp", () => {
     });
   });
 
+  describe("ai.embed / ai.summarize / ai.connectionLabel (탭 로그인 세션)", () => {
+    const realFetch = globalThis.fetch;
+    afterEach(() => {
+      vi.unstubAllGlobals();
+      vi.restoreAllMocks();
+      configureAIClient({ fetcher: realFetch });
+    });
+
+    function stubFetch(body: unknown, status = 200) {
+      const m = vi.fn(async (...args: [string, RequestInit?]) => (void args, new Response(JSON.stringify(body), { status })));
+      vi.stubGlobal("fetch", m);
+      configureAIClient({ fetcher: m as unknown as typeof fetch });
+      return m;
+    }
+    function withSession() {
+      vi.spyOn(useAuth.getState(), "ensureSession").mockResolvedValue({
+        accessToken: "tok-1",
+      } as never);
+    }
+    function authOf(m: ReturnType<typeof stubFetch>) {
+      const init = m.mock.calls[0]![1] as RequestInit;
+      return (init.headers as Record<string, string>).Authorization;
+    }
+
+    it("embed: Bearer를 달아 보내고 결과에 토큰이 없다", async () => {
+      withSession();
+      const m = stubFetch({ vectors: [[1]], tokensUsed: 1, mocked: false });
+      const r = await dispatchOp("ai.embed", { texts: ["a"] });
+      expect(m.mock.calls[0]![0]).toBe("/api/ai/embed");
+      expect(authOf(m)).toBe("Bearer tok-1");
+      expect(JSON.stringify(r)).not.toContain("tok-1");
+    });
+
+    it("summarize: Bearer를 달아 보낸다", async () => {
+      withSession();
+      const m = stubFetch({ text: "요약", tokensUsed: 1, mocked: false });
+      const r = (await dispatchOp("ai.summarize", { texts: ["a"], kind: "flow" })) as { text: string };
+      expect(r.text).toBe("요약");
+      expect(m.mock.calls[0]![0]).toBe("/api/ai/summarize");
+      expect(authOf(m)).toBe("Bearer tok-1");
+    });
+
+    it("connectionLabel: Bearer를 달아 보낸다", async () => {
+      withSession();
+      const m = stubFetch({ label: "관련", tokensUsed: 1, mocked: false });
+      const r = (await dispatchOp("ai.connectionLabel", { textA: "x", textB: "y" })) as { label: string };
+      expect(r.label).toBe("관련");
+      expect(m.mock.calls[0]![0]).toBe("/api/ai/connection-label");
+      expect(authOf(m)).toBe("Bearer tok-1");
+    });
+
+    it("로그인 세션이 없으면 토큰 없이 가고 서버 401이 오류로 올라온다", async () => {
+      vi.spyOn(useAuth.getState(), "ensureSession").mockRejectedValue(new Error("no session"));
+      const m = stubFetch({ error: "unauthorized" }, 401);
+      await expect(dispatchOp("ai.embed", { texts: ["a"] })).rejects.toThrow("401");
+      expect(authOf(m)).toBeUndefined();
+    });
+
+    it("잘못된 인자는 거부한다", async () => {
+      await expect(dispatchOp("ai.embed", {})).rejects.toThrow("texts");
+      await expect(dispatchOp("ai.summarize", { texts: ["a"], kind: "x" })).rejects.toThrow("kind");
+      await expect(dispatchOp("ai.connectionLabel", { textA: "x" })).rejects.toThrow("textB");
+    });
+  });
+
   describe("boards (useWorkspace 액션 경유)", () => {
     it("boards.list → 사용자 보드 + current", async () => {
       useWorkspace.setState({
@@ -350,11 +482,25 @@ describe("dispatchOp", () => {
     });
 
     it("boards.create → createBoard 호출 + id 반환", async () => {
-      const createBoard = vi.fn(async () => "b-new");
+      const createBoard = vi.fn(async () => {
+        useWorkspace.setState({ currentBoardId: "b-new" });
+        return "b-new";
+      });
       useWorkspace.setState({ createBoard });
       const r = (await dispatchOp("boards.create", { name: "새 보드" })) as { id: string };
       expect(createBoard).toHaveBeenCalledWith("새 보드");
       expect(r.id).toBe("b-new");
+    });
+
+    it("boards.create → 라우터 전환(보드 로딩)이 끝난 뒤에야 돌려준다", async () => {
+      // 라우터 경유: createBoard는 URL만 바꾸고 먼저 돌아오고, 로딩은 나중에 끝난다.
+      const createBoard = vi.fn(async () => {
+        setTimeout(() => useWorkspace.setState({ currentBoardId: "b-late" }), 20);
+        return "b-late";
+      });
+      useWorkspace.setState({ createBoard });
+      await dispatchOp("boards.create", { name: "늦은 보드" });
+      expect(useWorkspace.getState().currentBoardId).toBe("b-late");
     });
 
     it("boards.rename → renameBoard 호출, 인자 검증", async () => {
@@ -370,6 +516,16 @@ describe("dispatchOp", () => {
       useWorkspace.setState({ removeBoard });
       await dispatchOp("boards.delete", { id: "b1" });
       expect(removeBoard).toHaveBeenCalledWith("b1");
+    });
+
+    it("boards.delete 현재 보드 → 시스템 보드 전환이 끝난 뒤에야 돌려준다", async () => {
+      useWorkspace.setState({ currentBoardId: "b-cur" });
+      const removeBoard = vi.fn(async () => {
+        setTimeout(() => useWorkspace.setState({ currentBoardId: SYSTEM_BOARD_ID }), 20);
+      });
+      useWorkspace.setState({ removeBoard });
+      await dispatchOp("boards.delete", { id: "b-cur" });
+      expect(useWorkspace.getState().currentBoardId).toBe(SYSTEM_BOARD_ID);
     });
 
     it("boards.switch → setCurrentBoard 호출 + 현재 보드 반환", async () => {
@@ -413,17 +569,42 @@ describe("dispatchOp", () => {
       expect(r.id).toMatch(/^cx-/);
       expect(saveConnection).toHaveBeenCalledWith(
         expect.objectContaining({ sourceNoteId: "a", targetNoteId: "b", label: "관련" }),
+        // cmd-z-undo n4: 브리지 쓰기는 기록 안 하는 origin으로 문서까지 간다.
+        { origin: UNTRACKED_ORIGIN },
       );
       await expect(
         dispatchOp("connections.create", { sourceNoteId: "a" }),
       ).rejects.toThrow("필요");
     });
 
+    it("connections.create 현재 보드 두 카드 → 화면 연결선, 변·라벨 반영, 선택은 비움", async () => {
+      useStorage.setState({ saveConnection: vi.fn(async () => {}) });
+      const { id: a } = (await dispatchOp("notes.create", { content: "A", x: 0, y: 0 })) as { id: string };
+      const { id: b } = (await dispatchOp("notes.create", { content: "B", x: 600, y: 0 })) as { id: string };
+      const { id } = (await dispatchOp("connections.create", {
+        sourceNoteId: a,
+        targetNoteId: b,
+        label: "근거",
+      })) as { id: string };
+      const conn = useWorkspace.getState().connections.find((c) => c.id === id)!;
+      expect([conn.sourceSide, conn.targetSide, conn.label]).toEqual(["right", "left", "근거"]);
+      expect(useWorkspace.getState().selectedConnectionId).toBeNull();
+
+      const { id: up } = (await dispatchOp("connections.create", {
+        sourceNoteId: b,
+        targetNoteId: a,
+        sourceSide: "top",
+        targetSide: "top",
+      })) as { id: string };
+      const c2 = useWorkspace.getState().connections.find((c) => c.id === up)!;
+      expect([c2.sourceSide, c2.targetSide]).toEqual(["top", "top"]);
+    });
+
     it("connections.delete → removeConnection 호출", async () => {
       const removeConnection = vi.fn(async () => {});
       useStorage.setState({ removeConnection });
       await dispatchOp("connections.delete", { id: "x1" });
-      expect(removeConnection).toHaveBeenCalledWith("x1");
+      expect(removeConnection).toHaveBeenCalledWith("x1", { origin: UNTRACKED_ORIGIN });
     });
   });
 
@@ -444,6 +625,8 @@ describe("dispatchOp", () => {
       useWorkspace.setState({ cards: [], currentBoardId: SYSTEM_BOARD_ID });
     });
     afterEach(async () => {
+      // 300ms 디바운스에 걸린 저장이 DB를 닫은 뒤나 다음 테스트의 새 DB에서 터지지 않게 먼저 비운다.
+      await flushAll();
       await resetDB();
       resetShareStore();
       resetAttachments();
@@ -459,6 +642,12 @@ describe("dispatchOp", () => {
       expect(useWorkspace.getState().cards).toHaveLength(0); // 현재(system) 화면 변화 없음
       const notes = await useStorage.getState().loadCards("b-other");
       expect(notes.map((n) => n.content)).toContain("딴 보드 카드");
+    });
+
+    it("notes.create title + boardId → 그 보드 DB에 제목 저장", async () => {
+      await dispatchOp("notes.create", { content: "본문", title: "계약", boardId: "b-t" });
+      const notes = await useStorage.getState().loadCards("b-t");
+      expect(notes[0]!.title).toBe("계약");
     });
 
     it("notes.create blocks[link] + boardId → 그 보드에 text 카드 저장", async () => {
@@ -491,6 +680,16 @@ describe("dispatchOp", () => {
 
       await dispatchOp("notes.update", { id, content: "changed" });
       expect(((await dispatchOp("notes.get", { id })) as BridgeNote).content).toBe("changed");
+
+      await dispatchOp("notes.update", { id, title: "딴 보드 제목" });
+      const got = (await dispatchOp("notes.get", { id })) as BridgeNote;
+      expect(got.title).toBe("딴 보드 제목");
+      expect(got.content).toBe("changed");
+
+      await dispatchOp("notes.update", { id, x: 10, y: 20, width: 240 });
+      const moved = (await dispatchOp("notes.get", { id })) as BridgeNote;
+      expect([moved.x, moved.y, moved.width, moved.height]).toEqual([10, 20, 240, 240]);
+      expect(moved.title).toBe("딴 보드 제목");
 
       await dispatchOp("notes.delete", { id });
       await expect(dispatchOp("notes.get", { id })).rejects.toThrow("찾을 수 없습니다");

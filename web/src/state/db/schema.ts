@@ -245,17 +245,36 @@ export interface Settings {
    */
   ownerUserId?: string | null;
   /**
-   * 주인을 기록하던(claim) 시점에 로그인하기 전에 쓴 메모가 이 기기에 있었다. 첫 벽을 공유하면
-   * 그 메모가 모두 서버로 올라가므로, 첫 벽 공유 시트가 한 번 확인을 받고 이 표시를 지운다.
-   * 이미 로그인된 세션이 복원돼 주인이 곧바로 기록되는 기기에서도 확인이 빠지지 않게 하려는 것이다.
+   * 주인을 기록하던 시점에 로그인하기 전에 쓴 메모가 이 기기에 있었다.
+   * 첫 벽 공유 시트가 한 번 확인을 받고 이 표시를 지운다.
    */
   anonymousDataAtClaim?: boolean;
+  /**
+   * 계정별로 서버에 올릴 보드 고르기를 끝낸 시각. 없으면 아직 고르지 않았다.
+   */
+  serverStoreSince?: Record<string, number>;
   /**
    * P1 AC-8: 이 기기에서 지운 보드 id(최근 순, 상한 있음). 보드 행을 지우는 순간
    * 남겨, `/b/<id>`로 다시 들어올 때 "찾을 수 없는 보드예요"를 띄운다. 휴지통
    * 복원으로 보드가 돌아오면 목록에서 뺀다. optional — 없으면 판정에 영향 없다.
    */
   deletedBoardIds?: string[];
+}
+
+/**
+ * remote-mcp n1: 이 기기에서 이 계정이 지운 보드. 보드 행을 지우기 직전에 남기고, 서버 사본이
+ * 지워졌거나(서버에 없음·404) 소유자가 아니거나(403) 실행 취소로 돌아오면 뺀다. 남아 있는 동안
+ * syncMyBoards는 그 보드를 서버 목록만 보고 되살리지 않는다. 계정별 행이라 다른 계정의
+ * 동기화에는 영향이 없고, 행 하나씩 쓰므로 표시·정리가 동시에 돌아도 서로 덮어쓰지 않는다.
+ */
+export interface ServerDeleteMark {
+  userId: string;
+  boardId: string;
+  /**
+   * D9: "다른 멤버의 보드에서도 사라진다"를 확인할 때 있던 멤버 id(소유자 제외). 서버 사본을 지우기
+   * 직전에 지금 멤버와 비교해, 여기에 없던 멤버가 있으면 지우지 않는다. 확인 없이 지운 보드는 [].
+   */
+  approvedMemberIds: string[];
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -277,6 +296,8 @@ export class MossDB extends Dexie {
   trash!: Table<TrashEntry, string>;
   /** 휴지통 메모에 닿아 있던 연결선. 양 끝이 다시 살아나면 connections로 돌아간다. */
   trashConnections!: Table<Connection, string>;
+  /** remote-mcp n1: 이 기기에서 계정별로 지운 서버 저장 보드. */
+  serverDeletes!: Table<ServerDeleteMark, [string, string]>;
 
   constructor(name = "moss") {
     super(name);
@@ -353,10 +374,14 @@ export class MossDB extends Dexie {
       trashConnections: "id, sourceNoteId, targetNoteId",
     };
     this.version(6).stores(storesV6);
-    // 벽 획(wall-marker)은 DB 테이블이 아니다 — 원본은 보드 Y.Doc의 `strokes` 맵 하나다.
-    // 한때 이 브랜치에서 v7 `strokes` 테이블(로컬 미러)을 뒀다가 걷어 냈다(두 저장소를 맞추는
-    // 틈에서 정확성 결함이 났다). v7은 배포된 적이 없고, 열려 있던 개발 DB의 남는 테이블은
-    // Dexie 4가 그대로 둔다.
+    // v7 (remote-mcp n1): serverDeletes 테이블 추가 — 계정별 "이 기기에서 지운 보드" 표시.
+    // 기존 테이블·데이터는 그대로 둔다. settings.pendingServerDeletes는 이 브랜치에서만 있었고
+    // 배포되지 않아 옮기지 않는다. v7은 되돌릴 수 없는 마이그레이션이다 — 한 번 올린 브라우저는
+    // v6 코드로 DB를 열지 못한다.
+    this.version(7).stores({
+      ...storesV6,
+      serverDeletes: "[userId+boardId], userId, boardId",
+    });
   }
 }
 

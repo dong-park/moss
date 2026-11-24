@@ -1,0 +1,35 @@
+{
+  "id": "D7",
+  "kind": "decision",
+  "title": "종이 층과 색: paper·흰 앞면 메모, 색을 정하는 때",
+  "given": "paper 앞면은 text.png 위에 같은 mask의 memoTint를 multiply로 칠한 층이다(text/Content.tsx 19·136·155~163행). todo·link·linkEmpty 앞면은 흰 카드 var(--color-card-base) #fdfcfa다(globals.css 30행). 이 흰색은 --color-panel #ffffff와 육안으로 안 갈린다. 단색 memoTint는 text.png의 종이 결이 빠져 앞면과 색이 다르다. 흰 앞면 셋은 더블클릭으로 창이 안 열리고 메모 표의 열기(state/memoTable.ts 650~659행 openMemo)로만 열린다. 앞면 판정 memoFace는 card.content에서 나와서, 창에서 빈 노랑 메모에 '- [ ] '를 치면 판정이 바뀐다",
+  "when": "종이 층 구성과 색을 정하는 때를 정한다",
+  "then": "단색 memoTint는 앞면과 눈에 띄게 다르다. 편집 중 실시간으로 따르면 노랑 종이가 치는 순간 흰색으로 바뀐다",
+  "options": [
+    {
+      "key": "A",
+      "label": "paper는 앞면과 같은 층을 쓴다: text.png 배경 + 같은 mask의 memoTint multiply, 말린 모서리 포함. todo·link·linkEmpty는 var(--color-card-base) 단색이다. 색은 창을 열 때 한 번 정해 고정하고 닫았다 다시 열면 새로 계산한다",
+      "why": "앞면과 같은 층이라 background 문자열이 같은지 잴 수 있다. text.png는 957×1021px라 792×792에 충분하다. 편집 중 색이 튀지 않는다"
+    },
+    {
+      "key": "B",
+      "label": "단색 memoTint 배경에 흰 카드는 var(--color-card-base)",
+      "why": "구현이 가장 싸지만 text.png의 종이 결이 빠져 앞면과 색이 다르고 말린 모서리가 없다"
+    },
+    {
+      "key": "C",
+      "label": "paper 층을 쓰되 card.content에서 색을 실시간으로 따른다",
+      "why": "앞면과 항상 일치하지만 '- [ ] '를 치는 순간 종이가 흰색으로 바뀐다"
+    }
+  ],
+  "recommend": "A",
+  "confidence": "mid",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

@@ -1,0 +1,115 @@
+$ vitest run src/components/workspace/cards/__tests__/MemoPendingEdit.test.tsx
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - ESM syntax in a file loaded as CommonJS (vitest.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v4.1.12 /Users/donghwan/.goat/desktop/worktrees/moss/goat-d66ffd45-76d620d348009219/web
+
+stderr | src/components/workspace/cards/__tests__/MemoPendingEdit.test.tsx > keeps the source editor usable after a destination load failure and allows retry
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+
+stderr | src/components/workspace/cards/__tests__/MemoPendingEdit.test.tsx > keeps the source editor usable after a destination load failure and allows retry
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+
+ ❯ src/components/workspace/cards/__tests__/MemoPendingEdit.test.tsx (7 tests | 1 failed) 4946ms
+   × keeps the source editor usable after a destination load failure and allows retry 728ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/components/workspace/cards/__tests__/MemoPendingEdit.test.tsx > keeps the source editor usable after a destination load failure and allows retry
+Error: destination open failed
+ ❯ src/components/workspace/cards/__tests__/MemoPendingEdit.test.tsx:141:38
+    139|   // Only the destination's local load fails; keep the real document c…
+    140|   // workspace transition, editor and persistence paths in this regres…
+    141|   failed.whenLoaded = Promise.reject(new Error("destination open faile…
+       |                                      ^
+    142|   void failed.whenLoaded.catch(() => {});
+    143|   await act(async () => {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 6 passed (7)
+   Start at  19:25:26
+   Duration  6.03s (transform 322ms, setup 280ms, import 380ms, tests 4.95s, environment 339ms)
+
+error: script "test" exited with code 1

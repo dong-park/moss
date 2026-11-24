@@ -1,10 +1,13 @@
 import { describe, test, expect, beforeEach, afterEach } from "vitest";
+import { resetAiLimit, setTokenChecker } from "../guard";
 import { POST } from "./route";
 
 const originalKey = process.env.OPENAI_API_KEY;
 
 beforeEach(() => {
   delete process.env.OPENAI_API_KEY;
+  resetAiLimit();
+  setTokenChecker(async () => "user-1");
 });
 
 afterEach(() => {
@@ -16,7 +19,7 @@ function req(body: unknown): Request {
   return new Request("http://test/api/ai/embed", {
     method: "POST",
     body: typeof body === "string" ? body : JSON.stringify(body),
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", Authorization: "Bearer test-token" },
   });
 }
 

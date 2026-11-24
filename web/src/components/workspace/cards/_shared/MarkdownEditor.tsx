@@ -16,9 +16,14 @@
  * 편집 중에는 value를 deps에서 제외해 키스트로크마다 remount(커서 소실)를 막는다.
  * ───────────────────────────────────────────────────────────── */
 
+import { useT } from "@/i18n/Provider";
+
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
+  useState,
+  type CSSProperties,
   useSyncExternalStore,
   type ReactNode,
 } from "react";
@@ -28,19 +33,22 @@ import {
   defaultValueCtx,
   editorViewCtx,
   editorViewOptionsCtx,
+  serializerCtx,
 } from "@milkdown/core";
 import { listenerCtx } from "@milkdown/plugin-listener";
 import { nord } from "@milkdown/theme-nord";
 import { Milkdown, MilkdownProvider, useEditor } from "@milkdown/react";
 import { TextSelection } from "@milkdown/prose/state";
+import type { Node as ProseNode } from "@milkdown/prose/model";
 
-import { MarkdownToolbar } from "./MarkdownToolbar";
+import styles from "./memoMobile.module.css";
 import { MEMO_CONTENT_WIDTH } from "./memoLayout";
-import { editorPlugins } from "./editor/extensions";
+import { editorPlugins, refreshBubble, setBubbleScrollEl } from "./editor/extensions";
 import { markdownPlaceholder } from "./markdownPlaceholder";
 import { BubbleMenuHost } from "./editor/BubbleMenuHost";
 import { EditorRegion } from "./editor/EditorRegion";
 import { registerMemoBodyFocus } from "./memoTitleFocus";
+import { registerEditFlush } from "@/state/editFlush";
 
 import "@milkdown/theme-nord/style.css";
 import "prosemirror-view/style/prosemirror.css";
@@ -48,6 +56,7 @@ import "prosemirror-view/style/prosemirror.css";
 export type MarkdownEditorProps = {
   value: string;
   editable: boolean;
+  autoFocus?: boolean;
   onChange: (markdown: string) => void;
   /** blur 시 새 포커스 대상(relatedTarget)을 넘긴다 — 카드 스코프 blur 가드용(AC-3). */
   onBlur?: (relatedTarget: EventTarget | null) => void;
@@ -68,7 +77,7 @@ function useIsClient() {
   );
 }
 
-export function MilkdownInner({ value, editable, onChange, onBlur, expanded, cardId }: MarkdownEditorProps) {
+export function MilkdownInner({ value, editable, onChange, onBlur, expanded, cardId, autoFocus = true }: MarkdownEditorProps) {
   // 콜백은 ref로 고정해 에디터 재생성 없이 최신 핸들러를 부른다.
   // ref 갱신은 render가 아닌 effect에서 (react-hooks/refs).
   const onChangeRef = useRef(onChange);
@@ -77,6 +86,21 @@ export function MilkdownInner({ value, editable, onChange, onBlur, expanded, car
     onChangeRef.current = onChange;
     onBlurRef.current = onBlur;
   });
+  // cmd-z-undo n4: 마지막으로 내보낸 본문. flush와 리스너가 같은 글을 두 번 쓰지 않게 한다.
+  const lastEmittedRef = useRef(value);
+  const emit = (markdown: string) => {
+    if (markdown === lastEmittedRef.current) return;
+    lastEmittedRef.current = markdown;
+    onChangeRef.current(markdown);
+  };
+  const emitRef = useRef(emit);
+  useEffect(() => {
+    emitRef.current = emit;
+  });
+  // cmd-z-undo 웨이브 3: 마지막으로 내보낸 시점의 문서. 처음 값은 편집기가 뜬 직후 문서다.
+  // flush는 문자열이 아니라 이 문서로 판정한다 — 직렬화가 원문을 바꿔(끝 줄바꿈, `- `→`* `,
+  // 이스케이프) 치지 않고 닫아도 다른 글로 보이기 때문이다.
+  const lastDocRef = useRef<ProseNode | null>(null);
 
   const { get } = useEditor(
     (root) =>
@@ -98,11 +122,21 @@ export function MilkdownInner({ value, editable, onChange, onBlur, expanded, car
             },
           }));
           const l = ctx.get(listenerCtx);
-          l.markdownUpdated((_, markdown) => onChangeRef.current(markdown));
+          // The listener's debounce survives editor destruction. Serialize only
+          // while its view is alive; closing already flushes the final document.
+          let destroyed = false;
+          l.destroy(() => { destroyed = true; });
+          l.updated((lctx, doc) => {
+            if (destroyed) return;
+            lastDocRef.current = doc;
+            emitRef.current(lctx.get(serializerCtx)(doc));
+          });
           // FEAT-card-entry-mode: 편집 진입(editable) 시 mount 직후 포커스 —
           // 더블클릭→첫 키스트로크 손실 방지. 제목 줄은 포커스를 뺏지 않는다(AC-2).
           l.mounted((mctx) => {
-            if (editable) mctx.get(editorViewCtx).focus();
+            const view = mctx.get(editorViewCtx);
+            lastDocRef.current = view.state.doc;
+            if (editable && autoFocus) view.focus();
           });
         })
         .config(nord)
@@ -135,6 +169,33 @@ export function MilkdownInner({ value, editable, onChange, onBlur, expanded, car
     return () => registerMemoBodyFocus(cardId, null);
   }, [cardId, get]);
 
+  // cmd-z-undo n4: 편집 묶음을 닫기 직전 스토어가 부른다. 리스너의 0.2초 디바운스에 남은
+  // 본문을 지금 내보낸다 — 창을 닫으면 편집기가 destroy돼 그 글이 버려지기 때문이다.
+  const flushRef = useRef<(() => void) | null>(null);
+  useLayoutEffect(() => {
+    flushRef.current = editable ? () => {
+      const editor = get();
+      if (!editor) return;
+      let markdown: string | undefined;
+      editor.action((ctx) => {
+        const { doc } = ctx.get(editorViewCtx).state;
+        // 마지막으로 내보낸 뒤 문서가 그대로면 쓸 것이 없다(치지 않고 닫기).
+        const last = lastDocRef.current;
+        if (last === null || doc.eq(last)) return;
+        markdown = ctx.get(serializerCtx)(doc);
+        lastDocRef.current = doc;
+      });
+      if (markdown !== undefined) emitRef.current(markdown);
+    } : null;
+  });
+  // Layout cleanup runs before Milkdown's passive cleanup destroys its view.
+  // Normal close/board transitions also flush before replacing store data.
+  useLayoutEffect(() => () => flushRef.current?.(), []);
+  useEffect(() => {
+    if (!editable) return;
+    return registerEditFlush(() => flushRef.current?.());
+  }, [editable, get]);
+
   return (
     <>
       <EditorRegion editable={editable} expanded={expanded}>
@@ -164,64 +225,111 @@ export default function MarkdownEditor(props: MarkdownEditorProps) {
 
 /* ─────────────────────────────────────────────────────────────
  * FEAT-memo-expand — 펼치기 모달 전용 에디터.
- * 상단 서식 프리셋 툴바 + 항상 편집 가능한 Milkdown 본문.
- * 툴바와 에디터가 같은 MilkdownProvider 아래 있어야 같은 인스턴스를 공유한다.
+ * 항상 편집 가능한 Milkdown 본문. 상단 서식 툴바는 없다 — 글자를 긁으면 뜨는
+ * 버블(BubbleMenuHost)로만 서식을 바꾼다. 스크롤하면 refreshBubble이 버블을 글자에 맞춘다.
+ * 펜 슬롯 등이 같은 MilkdownProvider 아래 있어야 같은 인스턴스를 공유한다.
  *
- * 고정 폭 1:1 (펜 정렬): 본문을 카드와 동일한 고정 폭([[MEMO_CONTENT_WIDTH]]) 컬럼으로
- * 잡는다. 카드와 모달이 같은 폭·폰트(13px)·padding(6/9)으로 1:1 배치되므로 줄바꿈이
- * 동일하고, 컬럼 안에 얹은 펜 overlay가 같은 글자 위에 정렬된다. 카드는 작아서 일부만
- * 보이고(크롭), 모달은 전체를 다 보여준다("펼치면 항상 최대"). 모달이 컬럼보다 좁으면
- * 본문이 가로 스크롤된다. (과거 CSS scale + viewBox 방식은 reflow로 펜이 어긋나 제거.)
+ * 고정 폭 (펜 좌표): 본문을 고정 폭([[MEMO_CONTENT_WIDTH]]) 컬럼, 13px, padding 6/9로
+ * 잡는다. 저장된 펜 선(card.overlay)이 이 컬럼 좌표라서, 폭·글꼴이 바뀌면 줄바꿈이 달라져
+ * 기존 선이 다른 글자 위로 간다. 카드 앞면은 제목만 보이고 본문·펜은 이 창에서만 보인다.
+ * Desktop keeps the canonical column. Mobile reflows only ink-free notes; ink
+ * and drawing mode scale the entire canonical body, without changing wrapping.
+ * Explicit 100% view enables intentional horizontal scrolling for detail work.
  *
  * overlay: 펜 그리기 레이어. 고정 폭 컬럼(relative) 안에 있어 absolute inset-0이
- * 컬럼을 1:1로 덮는다 — 카드와 같은 좌표공간.
+ * 컬럼을 1:1로 덮는다 — 저장된 선과 같은 좌표공간.
  * ───────────────────────────────────────────────────────────── */
 export function ExpandedMarkdownEditor({
   value,
   onChange,
   overlay,
   titleSlot,
+  canonical = true,
+  initialFullSize = false,
+  editable = true,
+  autoFocus = true,
 }: {
   value: string;
   onChange: (markdown: string) => void;
   overlay?: ReactNode;
+  /** Ink or an active drawing tool requires the original 720px line wrapping. */
+  canonical?: boolean;
+  initialFullSize?: boolean;
+  editable?: boolean;
+  autoFocus?: boolean;
   /** FEAT-memo-title: 본문 컬럼 위에 둘 제목 줄(스크롤 영역 안). */
   titleSlot?: ReactNode;
 }) {
+  const t = useT();
   const isClient = useIsClient();
-
-  if (!isClient) {
-    // SSR/jsdom 폴백 — 원문 마크다운만 표시(ProseMirror 미생성).
-    return (
-      <div className="min-h-0 flex-1 overflow-auto">
-        {titleSlot}
-        <div
-          className="moss-md relative whitespace-pre-wrap text-[13px] leading-6 text-text"
-          style={{ width: MEMO_CONTENT_WIDTH, padding: "6px 9px" }}
-        >
-          {value}
-          {overlay}
-        </div>
-      </div>
-    );
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [fitScale, setFitScale] = useState(1);
+  const [fullSize, setFullSize] = useState(initialFullSize);
+  const currentScale = fullSize ? 100 : Math.round(fitScale * 100);
+  const scaleDescription = t("workspace.memo.scaleCurrent", {
+    scale: currentScale,
+    action: t(fullSize ? "workspace.memo.scaleFit" : "workspace.memo.scaleFull"),
+  });
+  const [previousInitialFullSize, setPreviousInitialFullSize] = useState(initialFullSize);
+  // Reset only when the entry preference changes; preserve user toggles on rerender.
+  if (previousInitialFullSize !== initialFullSize) {
+    setPreviousInitialFullSize(initialFullSize);
+    setFullSize(initialFullSize);
   }
-  // FEAT-sticky-redesign n4: MilkdownProvider는 호출자(MemoExpandDialog)가
-  // Dialog.Content 전체(헤더 블록메뉴 + 이 본문)를 감싸며 한 번만 제공한다 —
-  // 헤더의 BlockMenu가 useInstance()로 같은 에디터 인스턴스를 잡아야 하기 때문.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry.contentRect.width > 0) {
+        setFitScale(Math.min(1, entry.contentRect.width / MEMO_CONTENT_WIDTH));
+      }
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [isClient]);
+  // 버블이 선택이 바뀔 때도 이 스크롤 영역의 보이는 범위로 위치를 정하게 등록한다.
+  // 창 크기가 바뀌면 글자 좌표가 달라지므로 버블 위치도 다시 계산한다.
+  useEffect(() => {
+    setBubbleScrollEl(scrollRef.current);
+    const onResize = () => {
+      if (scrollRef.current) refreshBubble(scrollRef.current);
+    };
+    window.addEventListener("resize", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      setBubbleScrollEl(null);
+    };
+  }, [isClient]);
+
+  // The same DOM/editor survives policy and viewport changes: selection, pending
+  // saves and ProseMirror history must survive switching the pen or fit view.
   return (
-    <>
-      <MarkdownToolbar />
-      <div className="min-h-0 flex-1 overflow-auto">
+    <div
+      data-memo-layout={canonical ? "canonical" : "reflow"}
+      data-memo-full-size={fullSize}
+      className={styles.surface}
+      style={{ "--memo-fit-scale": fitScale } as CSSProperties}
+    >
+      {canonical && (
+        <button type="button" className={styles.scaleToggle}
+          aria-label={scaleDescription} title={scaleDescription}
+          aria-pressed={fullSize} onClick={() => setFullSize(!fullSize)}>
+          {currentScale}%
+        </button>
+      )}
+      <div ref={scrollRef} className={`min-h-0 flex-1 overflow-auto ${styles.scroll}`}
+        style={{ maxWidth: MEMO_CONTENT_WIDTH + 24, padding: 0 }}
+        onScroll={() => { if (scrollRef.current) refreshBubble(scrollRef.current); }}>
+        {/* Title is outside the scaled geometry so its touch target stays usable. */}
         {titleSlot}
-        {/* 카드 컬럼과 동일: 고정 폭 + padding 6/9 + text-[13px]. 펜 정렬의 핵심. */}
-        <div
-          className="moss-md relative text-[13px]"
-          style={{ width: MEMO_CONTENT_WIDTH, padding: "6px 9px" }}
-        >
-          <MilkdownInner value={value} editable expanded onChange={onChange} />
+        <div data-memo-body-column className={`moss-md relative text-[13px] ${styles.body}`}
+          style={{ width: MEMO_CONTENT_WIDTH, padding: "6px 9px" }}>
+          {isClient
+            ? <MilkdownInner value={value} editable={editable} autoFocus={autoFocus} expanded onChange={onChange} />
+            : <div className="whitespace-pre-wrap">{value}</div>}
           {overlay}
         </div>
       </div>
-    </>
+    </div>
   );
 }

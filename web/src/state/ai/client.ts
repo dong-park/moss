@@ -9,6 +9,7 @@
  */
 
 import type { SummarizeKind } from "@/server/ai/summarize";
+import { aiAuthHeaders } from "./authHeaders";
 
 interface AIClientDeps {
   fetcher: typeof fetch;
@@ -42,7 +43,7 @@ export async function callAISummarize(
 ): Promise<SummarizeResponse> {
   const res = await deps.fetcher("/api/ai/summarize", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: await aiAuthHeaders(),
     body: JSON.stringify({ texts, kind }),
   });
   if (!res.ok) throw new Error(`summarize ${res.status}`);
@@ -55,7 +56,7 @@ export async function callAIConnectionLabel(
 ): Promise<ConnectionLabelResponse> {
   const res = await deps.fetcher("/api/ai/connection-label", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: await aiAuthHeaders(),
     body: JSON.stringify({ textA, textB }),
   });
   if (!res.ok) throw new Error(`connection-label ${res.status}`);

@@ -7,6 +7,7 @@
  * 로그인 안 한 경로(혼자 쓰는 보드)는 이 모듈을 부르지 않으므로 네트워크 0건이다 (AC-1).
  */
 import { apiBaseUrl, AuthRequestError } from "@/state/auth";
+import { readErrorBody } from "@/state/auth/api";
 
 export interface BoardFile {
   /** 서버 발급 UUID. Y.Doc의 `files` 맵 값으로 동기화된다. */
@@ -37,7 +38,9 @@ export const realFilesApi: FilesApi = {
       body: form,
     });
     if (!res.ok) {
-      throw new AuthRequestError(`POST files ${res.status}`, res.status);
+      // 413은 code로 계정 상한(quota_exceeded)과 크기 초과(too_large)를 가른다.
+      const { code, message } = await readErrorBody(res);
+      throw new AuthRequestError(message ?? `POST files ${res.status}`, res.status, code);
     }
     return (await res.json()) as BoardFile;
   },

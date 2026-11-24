@@ -1,0 +1,57 @@
+"use client";
+import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
+import { Canvas } from "@/components/workspace/Canvas";
+import { Dock } from "@/components/workspace/Dock";
+import { MemoExpandDialog } from "@/components/workspace/cards/MemoExpandDialog";
+import { RouteBoardSync, parseBoardId } from "@/components/workspace/WorkspaceShell";
+import { useWorkspace } from "@/state/workspace";
+import { getActiveBoardDoc } from "@/state/ydoc/activeDoc";
+
+type Fixture = { a: string; b: string; c: string; noteA: string; noteB: string };
+let preparing: Promise<Fixture> | undefined;
+async function prepare() {
+  await new Promise(r => setTimeout(r, 600));
+  const state = useWorkspace.getState();
+  const ensure = async (name: string) => state.boards.find(b => b.name === name)?.id ?? await state.createBoard(name);
+  const a = await ensure("QA mobile UX");
+  const b = await ensure("QA route target B");
+  const c = await ensure("QA route target C");
+  const memo = async (board: string) => {
+    await state.setCurrentBoard(board);
+    const existing = useWorkspace.getState().cards.find(c => c.kind === "text");
+    if (existing) return existing.id;
+    const id = state.addCardAt("text", 20, 40);
+    state.setTitle(id, "QA route memo"); state.setContent(id, "QA route body");
+    return id;
+  };
+  const noteB = await memo(b); const noteA = await memo(a);
+  useWorkspace.setState({view:"canvas",tableReturnBoardId:null,selectedIds:[],editingId:null,expandedCardId:null,canvasHasFitted:true,viewport:{x:20,y:10,scale:0.71}});
+  window.history.replaceState(window.history.state, "", `/b/${a}`);
+  return { a, b, c, noteA, noteB };
+}
+export default function QA() {
+  const ready = useWorkspace(s => s.bootstrapComplete);
+  const current = useWorkspace(s => s.currentBoardId);
+  const expanded = useWorkspace(s => s.expandedCardId);
+  const [fixture, setFixture] = useState<Fixture | null>(null);
+  const pathname = usePathname();
+  useEffect(() => { if(ready) {preparing ??= prepare();void preparing.then(setFixture);} }, [ready]);
+  useEffect(() => {
+    if(!fixture) return;
+    const events: unknown[] = [];
+    const onPop = () => events.push({type:"popstate",url:location.pathname,marker:history.state?.__mossMemoV1?.cardId??null});
+    window.addEventListener("popstate",onPop);
+    const qa = {
+      fixture, events,
+      open: () => useWorkspace.getState().setExpandedCard(fixture.noteA,"read"),
+      directB: () => useWorkspace.getState().setCurrentBoard(fixture.b),
+      directC: () => useWorkspace.getState().setCurrentBoard(fixture.c),
+      tableMemo: async () => {const s=useWorkspace.getState(); await s.setCurrentBoard(fixture.a); useWorkspace.setState({view:"table",tableReturnBoardId:fixture.a}); await s.setCurrentBoard(fixture.b); s.setExpandedCard(fixture.noteB,"read");},
+      read: () => ({...fixture,board:useWorkspace.getState().currentBoardId,active:getActiveBoardDoc()?.boardId,expanded:useWorkspace.getState().expandedCardId,view:useWorkspace.getState().view,tableReturn:useWorkspace.getState().tableReturnBoardId,url:location.pathname,marker:history.state?.__mossMemoV1?.cardId??null,next:history.state?.__NA,events}),
+    };
+    (window as unknown as {__mossNavigationQA: typeof qa}).__mossNavigationQA = qa;
+    return () => window.removeEventListener("popstate",onPop);
+  }, [fixture]);
+  return <main data-qa-board={current} data-qa-expanded={expanded} style={{height:"100dvh",display:"flex",flexDirection:"column"}}><header style={{height:48}}>QA · 실제 RouteBoardSync / native history</header>{fixture && <nav style={{position:"fixed",top:0,left:100,zIndex:999999,pointerEvents:"auto",background:"white",display:"flex",gap:8}}>{["open","directB","tableMemo","directC"].map(action=><button data-qa-action={action} key={action} style={{height:44,padding:8}} onClick={()=>{void (window as unknown as {__mossNavigationQA: Record<string,()=>unknown>}).__mossNavigationQA[action]();}}>{action}</button>)}</nav>}<div style={{flex:1,minHeight:0}}>{fixture && <><RouteBoardSync boardId={parseBoardId(pathname)??fixture.a}/><Canvas/><Dock/><MemoExpandDialog/></>}</div></main>;
+}

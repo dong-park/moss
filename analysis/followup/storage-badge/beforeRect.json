@@ -1,0 +1,48 @@
+{
+  "status": "ok",
+  "value": {
+    "toolIcon": {
+      "_tag": "website",
+      "pageUrl": "http://localhost:3107/qa-storage-header?before"
+    },
+    "safety": {
+      "possibleCommit": true,
+      "retryClass": "never",
+      "writeStatus": "committed",
+      "code": "write_committed"
+    },
+    "value": {
+      "viewport": [
+        390,
+        844
+      ],
+      "rects": [
+        {
+          "x": 153.15625,
+          "y": 11.25,
+          "width": 225.59375,
+          "height": 34,
+          "top": 11.25,
+          "right": 378.75,
+          "bottom": 45.25,
+          "left": 153.15625
+        },
+        {
+          "x": 11.25,
+          "y": 11.25,
+          "width": 333.015625,
+          "height": 26.25,
+          "top": 11.25,
+          "right": 344.265625,
+          "bottom": 37.5,
+          "left": 11.25
+        }
+      ],
+      "text": [
+        "이 기기에 저장됨캔버스표",
+        "홈›긴 보드 이름으로 저장 상태와 상단 경로의 겹침 확인하기"
+      ],
+      "overlap": true
+    }
+  }
+}

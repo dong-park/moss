@@ -1,0 +1,13 @@
+$ vitest run src/components/workspace/cards/_shared/__tests__/MemoMobile.test.tsx src/components/workspace/cards/__tests__/MemoExpand.test.tsx src/components/workspace/cards/__tests__/MemoMobileFlow.test.tsx src/components/workspace/cards/__tests__/MemoPendingEdit.test.tsx "--maxWorkers=1"
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - ESM syntax in a file loaded as CommonJS (vitest.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v4.1.12 /Users/donghwan/.goat/desktop/worktrees/moss/fix-mobile-overlap-clip-eb95b6628722ac61/web
+
+
+ Test Files  4 passed (4)
+      Tests  49 passed (49)
+   Start at  16:54:59
+   Duration  9.63s (transform 544ms, setup 775ms, import 1.35s, tests 5.69s, environment 1.48s)
+

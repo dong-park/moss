@@ -57,11 +57,13 @@ class FakeGoogleVerifier : GoogleVerifier {
         users[idToken] ?: throw GoogleVerificationException("unknown test token")
 }
 
+const val TERMS_V = "terms-test-1"
+
 abstract class ApiTest {
 
     protected val google = FakeGoogleVerifier()
     protected val filesDir: Path = java.nio.file.Files.createTempDirectory("moss-files-test")
-    protected val config = AppConfig(jwtSecret = "test-secret", filesDir = filesDir.toString())
+    protected open val config = AppConfig(jwtSecret = "test-secret", filesDir = filesDir.toString(), termsVersion = TERMS_V)
 
     init {
         // Make sure the shared database is up before any test runs.
@@ -81,6 +83,9 @@ abstract class ApiTest {
             Invites.deleteAll()
             Files.deleteAll()
             Boards.deleteAll()
+            PasswordResets.deleteAll()
+            RevokedRefreshTokens.deleteAll()
+            RefreshInvalidations.deleteAll()
             Users.deleteAll()
         }
     }
@@ -98,7 +103,7 @@ abstract class ApiTest {
         val client = client()
         val response = client.post("/auth/google") {
             contentType(ContentType.Application.Json)
-            setBody(GoogleLoginRequest(idToken))
+            setBody(GoogleLoginRequest(idToken, termsAccepted = true, termsVersion = TERMS_V))
         }
         check(response.status == HttpStatusCode.OK) { "login failed: ${response.status}" }
         return response.body()

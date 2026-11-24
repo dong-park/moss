@@ -16,6 +16,12 @@ export function secretMatches(expected: string, provided: string | undefined): b
 
 export interface InternalServerDeps {
   port: number;
+  deployment?: {
+    sha(): string | undefined;
+    buildSha(): string | undefined;
+    ready(): boolean;
+    checkDatabase(): Promise<void>;
+  };
   /** Bind address; defaults to loopback so the control surface is not public. */
   host?: string;
   /** Shared secret n4 must present in `X-Moss-Internal`. */
@@ -52,7 +58,9 @@ export async function startInternalServer(deps: InternalServerDeps): Promise<Int
     request: import("node:http").IncomingMessage,
     response: import("node:http").ServerResponse,
   ): Promise<void> {
-    if (request.method !== "POST") {
+    const url = new URL(request.url ?? "/", "http://internal");
+    const deploymentProbe = request.method === "GET" && url.pathname === "/deployment";
+    if (request.method !== "POST" && !deploymentProbe) {
       response.writeHead(404);
       response.end();
       return;
@@ -68,7 +76,27 @@ export async function startInternalServer(deps: InternalServerDeps): Promise<Int
       response.end();
       return;
     }
-    const url = new URL(request.url ?? "/", "http://internal");
+    if (deploymentProbe) {
+      response.setHeader("Cache-Control", "no-store");
+      response.setHeader("Content-Type", "application/json");
+      const sha = deps.deployment?.sha() || undefined;
+      const built = deps.deployment?.buildSha() || undefined;
+      // Manual/local builds without any revision are explicitly unversioned, never a release identity.
+      const unversioned = sha === undefined && built === undefined;
+      let ready = (unversioned || (typeof sha === "string" && sha.length === 40 && /^[0-9a-fA-F]{40}$/.test(sha) &&
+        sha === built)) && deps.deployment?.ready() === true && server.listening;
+      if (ready) {
+        try {
+          await deps.deployment!.checkDatabase();
+          ready = deps.deployment!.ready() && server.listening;
+        } catch {
+          ready = false;
+        }
+      }
+      response.writeHead(ready ? 200 : 503);
+      response.end(JSON.stringify(!ready ? { status: "unavailable" } : unversioned ? { status: "unversioned" } : { status: "ready", sha }));
+      return;
+    }
     const match = CLOSE_PATH.exec(url.pathname);
     if (match === null) {
       response.writeHead(404);

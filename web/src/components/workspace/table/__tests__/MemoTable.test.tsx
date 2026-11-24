@@ -1,3 +1,4 @@
+import "@testing-library/jest-dom/vitest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { I18nProvider } from "@/i18n/Provider";
@@ -211,4 +212,195 @@ describe("ViewToggle — 캔버스 ↔ 표(AC-1)", () => {
     fireEvent.click(screen.getByRole("tab", { name: "캔버스" }));
     expect(useWorkspace.getState().view).toBe("canvas");
   });
+});
+
+describe("phase5 — compact table", () => {
+  beforeEach(() => {
+    vi.stubGlobal("innerWidth", 390);
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  async function seed(count = 1) {
+    await useStorage.getState().init();
+    for (let i = 0; i < count; i++) {
+      await useStorage.getState().saveNote({
+        id: `mobile-${i}`, boardId: null, title: `Title ${i}`,
+        content: `Preview ${i}`, createdAt: i + 1, updatedAt: i + 1,
+      });
+    }
+    renderTable();
+    await waitFor(() => expect(screen.getAllByTestId("memo-table-row").length).toBeGreaterThan(0));
+  }
+
+  it.each([360, 390, 430])("%ipx uses compact preview rows and 96px virtualization geometry", async (width) => {
+    vi.stubGlobal("innerWidth", width);
+    await seed(3);
+    const grid = screen.getByRole("grid");
+    expect(Number.parseFloat((grid.firstElementChild as HTMLElement).style.minWidth)).toBe(0);
+    const rows = screen.getAllByTestId("memo-table-row");
+    expect(rows[0].style.height).toBe("96px");
+    expect(rows[1].style.top).toBe("96px");
+    expect(screen.getByText("Preview 0")).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "정렬" })).toBeTruthy();
+  });
+
+  it("selection and its keyboard activation never open or edit; preview explicitly opens", async () => {
+    await seed();
+    const originalOpen = useMemoTable.getState().openMemo;
+    const open = vi.spyOn(useMemoTable.getState(), "openMemo").mockResolvedValue();
+    act(() => useMemoTable.setState({ openMemo: open }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Title 0" }));
+    fireEvent.keyDown(screen.getByRole("checkbox", { name: "Title 0" }), { key: "Enter" });
+    expect(useMemoTable.getState().selectedIds.has("mobile-0")).toBe(true);
+    expect(open).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText("메모 제목")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Title 0 Preview 0" }));
+    expect(open).toHaveBeenCalledWith("mobile-0");
+    open.mockRestore();
+    act(() => useMemoTable.setState({ openMemo: originalOpen }));
+  });
+
+  it("details expose metadata and touch canvas action without changing row height", async () => {
+    await seed();
+    const originalCanvas = useWorkspace.getState().openCardOnCanvas;
+    const canvas = vi.spyOn(useWorkspace.getState(), "openCardOnCanvas").mockResolvedValue();
+    act(() => useWorkspace.setState({ openCardOnCanvas: canvas }));
+    fireEvent.click(screen.getByRole("button", { name: "상세 정보: Title 0" }));
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.textContent).toContain("만든 날");
+    expect(dialog.textContent).toContain("고친 날");
+    expect(screen.getByTestId("memo-table-row").style.height).toBe("96px");
+    fireEvent.click(screen.getByRole("button", { name: "캔버스에서 보기" }));
+    expect(canvas).toHaveBeenCalledWith("mobile-0");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    canvas.mockRestore();
+    act(() => useWorkspace.setState({ openCardOnCanvas: originalCanvas }));
+  });
+
+  it("compact sort, search, filter, range selection and batch trash retain the store flow", async () => {
+    await seed(3);
+    fireEvent.change(screen.getByRole("combobox", { name: "정렬" }), { target: { value: "title:asc" } });
+    expect(useMemoTable.getState().sort).toEqual({ key: "title", dir: "asc" });
+    fireEvent.click(screen.getByRole("checkbox", { name: "Title 0" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Title 2" }), { shiftKey: true });
+    expect(useMemoTable.getState().selectedIds.size).toBe(3);
+    fireEvent.click(screen.getByRole("button", { name: "선택 해제" }));
+    expect(useMemoTable.getState().selectedIds.size).toBe(0);
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "Preview 1" } });
+    await waitFor(() => expect(screen.getAllByTestId("memo-table-row")).toHaveLength(1));
+    fireEvent.change(screen.getByRole("combobox", { name: "첨부" }), { target: { value: "has" } });
+    await waitFor(() => expect(screen.queryAllByTestId("memo-table-row")).toHaveLength(0));
+    fireEvent.change(screen.getByRole("combobox", { name: "첨부" }), { target: { value: "all" } });
+    await screen.findByText("Title 1");
+    fireEvent.click(screen.getByRole("checkbox", { name: "Title 1" }));
+    fireEvent.click(screen.getByRole("button", { name: "휴지통으로" }));
+    await waitFor(() => expect(screen.queryAllByTestId("memo-table-row")).toHaveLength(0));
+  });
+
+  it("mobile windowing and keyboard scroll use compact height; resize keeps rows reachable", async () => {
+    const client = vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(192);
+    await seed(40);
+    const grid = screen.getByRole("grid");
+    expect(screen.getAllByTestId("memo-table-row")).toHaveLength(18);
+    fireEvent.keyDown(grid, { key: "ArrowDown" });
+    fireEvent.keyDown(grid, { key: "ArrowDown" });
+    fireEvent.keyDown(grid, { key: "ArrowDown" });
+    expect(grid.scrollTop).toBe(96);
+    fireEvent.scroll(grid, { target: { scrollTop: 1920 } });
+    expect(screen.getAllByTestId("memo-table-row")[0].style.top).toBe("1152px");
+    act(() => { window.innerWidth = 1280; window.dispatchEvent(new Event("resize")); });
+    expect(screen.getAllByTestId("memo-table-row").length).toBeGreaterThan(0);
+    expect(screen.getAllByTestId("memo-table-row")[0].style.height).toBe("36px");
+    client.mockRestore();
+  });
+});
+
+describe("review table — filter feedback and semantic rows", () => {
+  it("reset cancels a pending search and restores the current board defaults", async () => {
+    await useStorage.getState().init();
+    await useStorage.getState().saveNote({id:"reset", boardId:null, content:"Visible"});
+    renderTable();
+    await screen.findByTestId("memo-table-row");
+    fireEvent.change(screen.getByRole("searchbox"), {target:{value:"stale query"}});
+    fireEvent.click(screen.getByRole("button", {name:"필터 초기화"}));
+    await new Promise(resolve => setTimeout(resolve, 250));
+    expect(screen.getByRole("searchbox")).toHaveValue("");
+    expect(useMemoTable.getState().query).toBe("");
+    expect(useMemoTable.getState().boardFilter).toEqual([SYSTEM_BOARD_ID]);
+    expect(useMemoTable.getState().includeSubboards).toBe(true);
+    expect(screen.getAllByTestId("memo-table-row")).toHaveLength(1);
+    expect(screen.getByRole("status")).toHaveTextContent("결과 1개");
+  });
+
+  it("shows removable search, board, frame and attachment chips", async () => {
+    await useStorage.getState().init();
+    await useStorage.getState().saveNote({id:"frame-chip", kind:"frame", boardId:null, content:'{"name":"Planning"}'});
+    renderTable();
+    await waitFor(() => expect(useMemoTable.getState().loaded).toBe(true));
+    act(() => useMemoTable.setState({query:"abc", frameFilter:["frame-chip"], hasAttachment:false, includeSubboards:false}));
+    fireEvent.click(screen.getByRole("button", {name:"검색: abc 필터 해제"}));
+    expect(useMemoTable.getState().query).toBe("");
+    fireEvent.click(screen.getByRole("button", {name:"메모판: Planning 필터 해제"}));
+    expect(useMemoTable.getState().frameFilter).toBeNull();
+    fireEvent.click(screen.getByRole("button", {name:"첨부 없음 필터 해제"}));
+    expect(useMemoTable.getState().hasAttachment).toBeNull();
+    fireEvent.click(screen.getByRole("button", {name:"하위 파일함 제외 필터 해제"}));
+    expect(useMemoTable.getState().includeSubboards).toBe(true);
+    expect(screen.getByRole("button", {name:/보드: .* 필터 해제/})).toBeTruthy();
+  });
+
+  it("edits an empty stored title instead of the derived display title, without read writes", async () => {
+    await useStorage.getState().init();
+    await useStorage.getState().saveNote({id:"derived", boardId:null, content:"First line\nSecond", updatedAt:123});
+    const before = await getDB().notes.get("derived");
+    renderTable();
+    fireEvent.click(await screen.findByText("First line", {exact:true}));
+    const input = screen.getByRole("textbox", {name:"메모 제목"});
+    expect(input).toHaveValue("");
+    fireEvent.keyDown(input, {key:"Enter"});
+    expect(await getDB().notes.get("derived")).toEqual(before);
+  });
+
+  it("shows exact trash count for selected text and captioned photos", async () => {
+    await useStorage.getState().init();
+    await useStorage.getState().saveNote({id:"trash-text", boardId:null, title:"Text", content:""});
+    await useStorage.getState().saveNote({id:"trash-photo", kind:"photo", boardId:null, content:"Caption"});
+    renderTable();
+    await waitFor(() => expect(screen.getAllByTestId("memo-table-row")).toHaveLength(2));
+    fireEvent.click(screen.getByRole("checkbox", {name:"Text"}));
+    fireEvent.click(screen.getByRole("checkbox", {name:"Caption"}));
+    expect(screen.getByText("작업 대상 2개 · 숨은 선택 0개")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", {name:"휴지통으로"}));
+    await waitFor(async () => {
+      expect(await getDB().notes.get("trash-text")).toBeUndefined();
+      expect(await getDB().notes.get("trash-photo")).toBeUndefined();
+    });
+  });
+});
+
+
+it.each([390,1280])("review empty rows survive table remount at %ipx and stay semantically searchable", async (width) => {
+  vi.stubGlobal("innerWidth", width);
+  try {
+    await useStorage.getState().init();
+    for (const [id,content] of [["empty-memo",""],["empty-todo","- [ ] "],["empty-link","<!-- moss-link-empty -->"]]) {
+      await useStorage.getState().saveNote({id,content,boardId:null,updatedAt:123});
+    }
+    const before = await getDB().notes.toArray();
+    const mounted = renderTable();
+    await waitFor(() => expect(screen.getAllByTestId("memo-table-row")).toHaveLength(3));
+    expect(document.body.textContent).not.toContain("moss-link-empty");
+    expect(document.body.textContent).not.toContain("[ ]");
+    for (const name of ["빈 메모","할 일을 추가하세요","주소를 입력하세요"]) expect(screen.getByRole("checkbox", {name})).toBeTruthy();
+    fireEvent.change(screen.getByRole("searchbox"), {target:{value:"빈 링크"}});
+    await waitFor(() => expect(screen.getAllByTestId("memo-table-row")).toHaveLength(1));
+    expect(screen.getByRole("checkbox", {name:"주소를 입력하세요"})).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", {name:"필터 초기화"}));
+    mounted.unmount();
+    renderTable();
+    await waitFor(() => expect(screen.getAllByTestId("memo-table-row")).toHaveLength(3));
+    expect(await getDB().notes.toArray()).toEqual(before);
+  } finally {
+    vi.unstubAllGlobals();
+  }
 });

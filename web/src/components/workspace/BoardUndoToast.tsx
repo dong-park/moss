@@ -43,7 +43,8 @@ export function BoardUndoToast() {
       <button
         type="button"
         onClick={() => void undo()}
-        className="cursor-pointer rounded-md px-2 py-1 text-sm font-medium text-accent-lime transition-colors hover:bg-panel"
+        disabled={!pending.ready}
+        className="cursor-pointer rounded-md px-2 py-1 text-sm font-medium text-accent-lime transition-colors hover:bg-panel disabled:cursor-default disabled:opacity-50"
         data-board-undo-button
       >
         {t("workspace.boardPicker.undo")}
@@ -51,8 +52,9 @@ export function BoardUndoToast() {
       <button
         type="button"
         onClick={clear}
+        disabled={!pending.ready}
         aria-label="dismiss"
-        className="cursor-pointer rounded-md px-2 py-1 text-xs text-text-soft transition-colors hover:bg-panel"
+        className="cursor-pointer rounded-md px-2 py-1 text-xs text-text-soft transition-colors hover:bg-panel disabled:cursor-default disabled:opacity-50"
       >
         ×
       </button>

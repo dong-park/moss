@@ -1,0 +1,17 @@
+{
+  "id": "T11",
+  "kind": "task",
+  "title": "기존 테스트 정리와 회귀",
+  "given": "머리·툴바를 기대하는 테스트가 있다: MarkdownToolbar.test.tsx, MemoBlocks.test.tsx의 블록 추가 메뉴. CI는 cd web 뒤 이 순서로 돈다: npx tsc --noEmit, bun run lint, bun run test, bun run check:i18n, bun run build",
+  "when": "구현을 끝내고 위 다섯 명령을 같은 순서로 돌린다",
+  "then": "다섯 명령 모두 종료 코드 0이다. MemoExpand.test.tsx는 통과한다. 컴포넌트를 마운트만 떼고 파일은 남기면 두 테스트는 그대로 통과한다. 사진 카드 PhotoLightbox는 바뀌지 않는다. check:i18n은 안 쓰는 키(workspace.memoEditor.title 등)를 경고로만 보고 종료 코드 0이다(scripts/check-i18n.mjs 65~73행). 코드에서 t()로 쓰는 새 키가 ko.json에 없으면 실패하므로 새 키는 ko.json에 같이 넣는다. 확인: 명령 다섯 개의 종료 코드",
+  "confidence": "high",
+  "reversible": true,
+  "status": "끝남",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

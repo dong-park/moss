@@ -1,0 +1,35 @@
+{
+  "id": "D11",
+  "kind": "decision",
+  "title": "모든 모달에 열림 모션이 꺼져 있다. 전역 선택자를 Radix 1.3.1 속성에 맞게 고칠까",
+  "given": "globals.css 241행 선택자 [data-state=\"open\"][data-radix-dialog-content]를 설치된 @radix-ui/react-dialog 1.3.1이 내지 않아 앱의 모든 모달이 animationName 'none'이다(prover 실측). 이 PR의 diff는 globals.css를 바꾸지 않는다",
+  "when": "모달 열림 모션을 어떻게 할지 정한다",
+  "then": "한 줄 수정이지만 모든 모달의 동작이 바뀐다. 이 PR의 범위(펼친 메모지)를 넘는다",
+  "options": [
+    {
+      "key": "A",
+      "label": "별도 PR에서 [role=dialog][data-state=open] 등으로 고쳐 모든 모달 모션을 되살린다",
+      "why": "한 줄 수정이지만 모든 모달 동작이 바뀌어 이 PR 범위 밖이다"
+    },
+    {
+      "key": "B",
+      "label": "이 PR에서 같이 고친다",
+      "why": "종이 모션이 살아나지만 모든 모달이 바뀌고 T4·T13의 측정 시점 기준이 실제로 필요해진다"
+    },
+    {
+      "key": "C",
+      "label": "모션 없음을 기본으로 받아들이고 규칙을 지운다",
+      "why": "죽은 규칙이 없어지지만 모션을 포기한다"
+    }
+  ],
+  "recommend": "A",
+  "confidence": "mid",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

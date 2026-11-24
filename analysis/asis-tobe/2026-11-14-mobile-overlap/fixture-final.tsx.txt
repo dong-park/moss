@@ -1,0 +1,65 @@
+"use client";
+import { SharePopover } from "@/components/share/SharePopover";
+import { useEffect, useState } from "react";
+import { Canvas } from "@/components/workspace/Canvas";
+import { Dock } from "@/components/workspace/Dock";
+import { MemoExpandDialog } from "@/components/workspace/cards/MemoExpandDialog";
+import { useWorkspace } from "@/state/workspace";
+import { getActiveBoardDoc } from "@/state/ydoc/activeDoc";
+import { useStorage } from "@/state/storage";
+let preparing: Promise<void> | undefined;
+let stage = "waiting root bootstrap";
+let stageError: string | null = null;
+function status() {
+  const { bootstrapComplete, migrationPending, currentBoardId } = useWorkspace.getState();
+  return { stage, error: stageError, initialized: useStorage.getState().initialized, bootstrapComplete, migrationPending, currentBoardId };
+}
+async function step(name: string, action: () => Promise<unknown>) {
+  stage = name;
+  let timer: ReturnType<typeof setTimeout>;
+  try {
+    await Promise.race([action(), new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`Timed out awaiting ${name}`)), 20000); })]);
+  } finally { clearTimeout(timer!); }
+}
+async function prepare() {
+  await step("root init/bootstrap", () => new Promise<void>(resolve => {
+    if (useWorkspace.getState().bootstrapComplete) return resolve();
+    const unsubscribe = useWorkspace.subscribe(s => { if (s.bootstrapComplete) { unsubscribe(); resolve(); } });
+  }));
+  const state = useWorkspace.getState();
+  const existing = state.boards.find(b => b.name === "QA mobile UX");
+  if (existing) await step("setCurrentBoard", () => state.setCurrentBoard(existing.id));
+  else {
+    await step("createBoard", () => state.createBoard("QA mobile UX"));
+    const todo = state.addCardAt("text", 20, 40);
+    state.setTitle(todo, "터치로 고칠 할 일"); state.setContent(todo, "- [ ] 첫 번째 항목\n- [ ] 두 번째 항목");
+    const memo = state.addCardAt("text", 50, 250);
+    state.setTitle(memo, "QA 읽기 메모");
+    state.setContent(memo, Array.from({length:8},(_,i)=>`QA ${i+1}. Read this memo without opening the keyboard. Edit and finish above the keyboard.`).join("\n\n"));
+  }
+  // Seed existing fixtures too: ink must use the production serialized format.
+  const inkMemo = useWorkspace.getState().cards.find(c => c.title === "QA 읽기 메모");
+  if (inkMemo) useWorkspace.getState().setOverlay(inkMemo.id, JSON.stringify({
+    paths: [[{ x: 24, y: 96 }, { x: 300, y: 180 }, { x: 680, y: 260 }]],
+  }));
+  stage = "ready";
+  useWorkspace.setState({ selectedIds: [], editingId: null, expandedCardId: null, canvasHasFitted: true, viewport: {x:20,y:10,scale:0.71} });
+}
+export default function QA() {
+  const current = useWorkspace(s => s.currentBoardId);
+  const boards = useWorkspace(s => s.boards);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [diagnostics, setDiagnostics] = useState(status);
+  const [prepared, setPrepared] = useState(false);
+  useEffect(() => {
+    const update = () => setDiagnostics(status());
+    const interval = setInterval(update, 250);
+    const rejected = (event: PromiseRejectionEvent) => { stageError = event.reason?.stack ?? String(event.reason); update(); };
+    window.addEventListener("unhandledrejection", rejected);
+    preparing ??= prepare().catch(e => { stageError = e?.stack ?? String(e); preparing = undefined; throw e; });
+    void preparing.then(()=>setPrepared(true)).catch(e => setError(String(e)));
+    return () => { clearInterval(interval); window.removeEventListener("unhandledrejection", rejected); };
+  },[]);
+  return <main data-qa-board={current} data-qa-active={getActiveBoardDoc()?.boardId} data-qa-boards={JSON.stringify(boards.map(b=>({id:b.id,name:b.name})))} style={{height:"100dvh",display:"flex",flexDirection:"column"}}><details data-qa-stage={diagnostics.stage} style={{position:"absolute",top:48,left:0,zIndex:100,fontSize:10,maxWidth:280,background:"white",color:"black"}}><summary>{diagnostics.stage}</summary><pre style={{whiteSpace:"pre-wrap"}}>{JSON.stringify(diagnostics,null,2)}</pre></details><header style={{height:48,flexShrink:0,padding:12}}>QA · 로컬 fixture</header><div style={{position:"fixed",top:48,right:110,zIndex:40}}><button onClick={()=>setShareOpen(!shareOpen)}>공유 QA</button>{shareOpen && <SharePopover boardName="QA" status="local" viewerRole="owner" members={[]} inviteUrl={null} authenticated={false} busy={false} error={null} copied={false} onStart={()=>{}} onCopy={()=>{}} onReissue={()=>{}} onRemove={()=>{}} onUnshare={()=>{}} onLeave={()=>{}} />}</div><div style={{flex:1,minHeight:0}}>{error && <pre role="alert">{error}</pre>}{prepared && <><Canvas/><Dock/><MemoExpandDialog/></>}</div></main>;
+}

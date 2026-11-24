@@ -1,0 +1,17 @@
+{
+  "id": "T3",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": [],
+  "kind": "task",
+  "title": "그룹(메모판)이 어느 줌에서나 보인다",
+  "given": "메모가 든 판이 있다",
+  "when": "50%나 25%로 줄인다",
+  "then": "판은 옅은 흰 면과 진한 선으로 보이고, 선 1px·이름표 12px는 화면 크기로 고정된다."
+}

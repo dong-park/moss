@@ -14,6 +14,7 @@
  * 만들 수 있게 한다 — placeholder는 편집 가능할 때만 보인다(AC-1·AC-3).
  * ───────────────────────────────────────────────────────────── */
 
+import styles from "./memoMobile.module.css";
 import { t } from "@/i18n";
 import { isCommitEnter, useImeSafeBlur } from "../../ime";
 import {
@@ -27,6 +28,7 @@ export function MemoTitleRow({
   variant = "column",
   placeholder,
   inputRef,
+  autoFocus,
   onCommit,
   onEnter,
   onArrowDown,
@@ -34,6 +36,7 @@ export function MemoTitleRow({
 }: {
   title: string;
   editable?: boolean;
+  autoFocus?: boolean;
   /**
    * `column`은 창에서 쓰는 720px 고정 컬럼 왼쪽 정렬이다.
    * `center`는 앞면 메모지용 — 카드 폭에 맞춰 가운데 정렬한다(2026-09-22 사용자 결정).
@@ -54,8 +57,12 @@ export function MemoTitleRow({
   // 한글 조합 중 blur면 조합이 끝난 뒤 알린다 — 제목이 확정된 글자로 저장된다(T11).
   const handleBlur = useImeSafeBlur<HTMLInputElement>((e) => onBlur?.(e.relatedTarget));
   const centered = variant === "center";
+  // 앞면 제목은 카드 폭(cqw)에 맞춰 커지고, 멀리 줌에서는 화면 기준 하한
+  // (--memo-title-floor × 역배율, globals.css 줌 구간)보다 작아지지 않는다.
+  const centeredFontSize =
+    "max(clamp(15px, 8cqw, 60px), calc(var(--memo-title-floor, 0px) * var(--zoom-inv, 1)))";
   const style: React.CSSProperties = centered
-    ? { width: "100%", height: MEMO_TITLE_ROW_HEIGHT, padding: "0 12px", textAlign: "center" }
+    ? { width: "100%", height: MEMO_TITLE_ROW_HEIGHT, padding: "0 12px", textAlign: "center", fontSize: centeredFontSize }
     : { width: MEMO_CONTENT_WIDTH, height: MEMO_TITLE_ROW_HEIGHT, padding: "0 9px" };
 
   // AC-2: 컬럼 변형(창)은 빈 제목 줄을 그리지 않는다. 가운데 변형(앞면)은 빈
@@ -63,10 +70,33 @@ export function MemoTitleRow({
   if (!editable && !title && !centered) return null;
 
   if (!editable) {
+    if (centered) {
+      // 앞면 읽기: 글자가 커져도 잘리지 않게 세 줄까지 감싼다.
+      return (
+        <div
+          className={[
+            // break-keep은 낱말 사이에서 줄을 바꾸고, 카드보다 긴 낱말("2,600,000원")은 잘라 넘긴다.
+            "moss-md select-none overflow-hidden break-keep [overflow-wrap:anywhere] font-bold leading-tight",
+            title ? "text-text" : "text-text-faint",
+          ].join(" ")}
+          style={{
+            width: "100%",
+            padding: "0 10%",
+            textAlign: "center",
+            fontSize: centeredFontSize,
+            display: "-webkit-box",
+            WebkitBoxOrient: "vertical",
+            WebkitLineClamp: 3,
+          }}
+        >
+          {title || placeholder}
+        </div>
+      );
+    }
     return (
       <div
         className={[
-          "moss-md select-none overflow-hidden whitespace-nowrap text-ellipsis text-[15px] font-bold",
+          `moss-md select-none overflow-hidden whitespace-nowrap text-ellipsis text-[15px] font-bold ${styles.title}`,
           title ? "text-text" : "text-text-faint",
         ].join(" ")}
         style={style}
@@ -79,10 +109,12 @@ export function MemoTitleRow({
   return (
     <input
       ref={inputRef}
+      autoFocus={autoFocus}
       type="text"
       data-memo-title-input
       className={[
-        "moss-md w-full border-none bg-transparent text-[15px] font-bold text-text outline-none placeholder:text-text-faint",
+        "moss-md w-full border-none bg-transparent font-bold text-text outline-none placeholder:text-text-faint",
+        centered ? "" : `text-[15px] ${styles.title}`,
         // 앞면은 포커스 링을 끈다 — globals.css의 `*:focus-visible` 라임 outline이
         // 카드 폭을 꽉 채운 줄 위아래로 초록 선 두 개로 보인다(좌우는 카드가 자름).
         // 깜빡이는 커서가 이미 "여기 치면 된다"를 말한다(2026-09-22 사용자 결정).

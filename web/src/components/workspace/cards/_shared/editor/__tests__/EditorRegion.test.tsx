@@ -129,6 +129,7 @@ describe("EditorRegion — aria-live SR 안내 (AC-4)", () => {
         </EditorRegion>
       </I18nProvider>,
     );
-    expect(screen.getByRole("status").textContent).toContain("메모 저장됨");
+    expect(screen.getByRole("status").textContent).toContain("편집을 마쳤어요. 저장 상태를 확인해 주세요.");
+    expect(screen.getByRole("status").textContent).not.toContain("저장됨");
   });
 });

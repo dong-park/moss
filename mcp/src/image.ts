@@ -7,8 +7,11 @@
  * 여기서는 바이트를 base64로 만들어 WS로 실어 보낼 형태만 준비한다.
  * ───────────────────────────────────────────────────────────── */
 
-import { readFile } from "node:fs/promises";
-import { extname } from "node:path";
+import { execFile } from "node:child_process";
+import { mkdtemp, readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { extname, join } from "node:path";
+import { promisify } from "node:util";
 
 const EXT_MIME: Record<string, string> = {
   // image
@@ -124,4 +127,46 @@ function assertAllowed(mimeType: string, allow: MediaKind): void {
   if (allow === "audio" && !m.startsWith("audio/")) {
     throw new Error(`오디오 MIME이 아닙니다: ${mimeType}`);
   }
+}
+
+/* ── 사진 카드용: 원본 크기를 읽고, 크면 줄인다(macOS sips). ── */
+
+const run = promisify(execFile);
+
+export interface PreparedPhoto extends ResolvedMedia {
+  /** 원본(줄였으면 줄인 뒤) 픽셀 크기. 못 읽으면 0. */
+  width: number;
+  height: number;
+}
+
+async function sipsSize(path: string): Promise<{ width: number; height: number } | null> {
+  try {
+    const { stdout } = await run("sips", ["-g", "pixelWidth", "-g", "pixelHeight", path]);
+    const w = Number(/pixelWidth: (\d+)/.exec(stdout)?.[1] ?? 0);
+    const h = Number(/pixelHeight: (\d+)/.exec(stdout)?.[1] ?? 0);
+    return w > 0 && h > 0 ? { width: w, height: h } : null;
+  } catch {
+    return null; // sips가 없는 환경(macOS 밖) — 크기 없이 원본을 보낸다.
+  }
+}
+
+/**
+ * 로컬 사진 파일을 사진 카드용으로 준비한다. 긴 변이 maxSide를 넘으면 JPEG로 줄인다
+ * (보드 썸네일·확대 보기에 충분하고, moss 이미지 한도 10MB 안에 든다).
+ */
+export async function preparePhoto(path: string, maxSide = 1600): Promise<PreparedPhoto> {
+  const size = await sipsSize(path);
+  let src = path;
+  let dims = size;
+  if (size && Math.max(size.width, size.height) > maxSide) {
+    const out = join(await mkdtemp(join(tmpdir(), "moss-photo-")), "photo.jpg");
+    await run("sips", ["-Z", String(maxSide), "-s", "format", "jpeg", path, "--out", out]);
+    src = out;
+    dims = await sipsSize(out);
+  }
+  const media = await resolveMediaInput(
+    src === path ? { path } : { path: src, mimeType: "image/jpeg" },
+    "image",
+  );
+  return { ...media, width: dims?.width ?? 0, height: dims?.height ?? 0 };
 }

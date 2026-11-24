@@ -17,6 +17,8 @@
  * 카드와 모달이 같은 고정 폭 컬럼 위에 이 레이어를 1:1로 얹으므로, stroke가 카드↔
  * 모달 어디서 그려져도 동일 좌표공간에 저장되고 같은 글자 위에 정렬된다(viewBox 없음).
  * 기운 포스트잇처럼 화면 좌표가 자기 좌표와 다르면 `toLocal`을 주입한다.
+ * Mobile may scale the whole column; coordinateWidth maps input back to these
+ * canonical pixels without changing text wrapping or the serialized paths.
  * ───────────────────────────────────────────────────────────── */
 
 import { useImperativeHandle, useMemo, useRef, type Ref } from "react";
@@ -91,6 +93,7 @@ export type DrawingLayerProps = {
   clip?: boolean | { width: number; height: number };
   /** 레이어 커서. 기본은 도구에 따른 십자/셀. `inherit`이면 벽의 마카·천 포인터를 물려받는다. */
   cursor?: string;
+  coordinateWidth?: number;
 };
 
 function inkColor(color: MarkerColor, ink: string): string {
@@ -123,6 +126,7 @@ export function DrawingLayer({
   penWidth,
   tool,
   onChange,
+  coordinateWidth,
   stroke = "var(--color-text)",
   color = DEFAULT_MARKER_COLOR,
   width = DEFAULT_MARKER_WIDTH,
@@ -167,6 +171,7 @@ export function DrawingLayer({
     onErase: (result) => onChange(serializeStrokes(applyErase(strokes, result))),
     onCancel,
     svgRef,
+    coordinateWidth,
   });
 
   useImperativeHandle(handleRef, () => ({

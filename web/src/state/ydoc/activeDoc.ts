@@ -1,5 +1,5 @@
 import { clearDocument } from "y-indexeddb";
-import { boardDocName, openBoardDoc, type BoardDocHandle } from "./doc";
+import { boardDocName, discardBoardDocRecovery, openBoardDoc, type BoardDocHandle } from "./doc";
 import { normalizeBoardId } from "../boardIds";
 
 /**
@@ -169,6 +169,7 @@ export async function deleteBoardDoc(storageBoardId: string | null): Promise<voi
       /* 열기에 실패한 문서는 닫을 것이 없다 */
     }
   }
+  await discardBoardDocRecovery(key);
   await clearDocument(boardDocName(key));
 }
 

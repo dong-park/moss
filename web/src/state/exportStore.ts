@@ -3,6 +3,7 @@
 import { create } from "zustand";
 import { collectExportData } from "./export/collectExportData";
 import { exportMarkdownZip } from "./export/markdownExport";
+import { collectAttachments } from "./export/attachments";
 import { exportJsonCanvasZip } from "./export/jsonCanvasExport";
 import { exportMossBundle } from "./export/mossBundleExport";
 import {
@@ -101,10 +102,13 @@ export const useExportStore = create<ExportState>((set) => ({
 
       onProgress({ phase: "zip", current: 0, total: 1 });
 
+      const frameNotes = data.notes.filter((n) => n.kind === "frame");
+      const { attachments } = await collectAttachments(frameNotes);
+
       if (opts.format === "markdown") {
-        return exportMarkdownZip(data.notes, data.boards);
+        return exportMarkdownZip(data.notes, data.boards, attachments);
       }
-      return exportJsonCanvasZip(data.notes, data.boards, data.connections);
+      return exportJsonCanvasZip(data.notes, data.boards, data.connections, attachments);
     } finally {
       set({ exporting: false, progress: null });
     }

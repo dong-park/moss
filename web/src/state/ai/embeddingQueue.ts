@@ -14,6 +14,7 @@
  * 실패는 토스트로 알림 후 다음 호출 사이클에 다시 시도(다음 enqueue가 새 디바운스 시작).
  */
 
+import { aiAuthHeaders } from "./authHeaders";
 import { contentHash } from "./hash";
 import { filterNotesForAI } from "../aiGate";
 import { getDB } from "../db/schema";
@@ -35,6 +36,13 @@ interface QueueDeps {
   fetcher: typeof fetch;
   onError?: () => void;
 }
+
+/** 429로 못 보낸 메모. 대기 시각 전에는 보내지 않는다. 같은 id의 새 내용이 pending에 있으면 그쪽이 이긴다. */
+const held = new Map<string, PendingEntry>();
+let heldUntil = 0;
+let rateRetries = 0;
+const RATE_LIMIT_WAIT_MS = 61_000;
+const MAX_RATE_RETRIES = 3;
 
 const pending = new Map<string, PendingEntry>();
 let timer: ReturnType<typeof setTimeout> | null = null;
@@ -66,16 +74,18 @@ export function enqueueEmbed(
   content: string,
   aiOptOut: boolean,
 ) {
+  // 같은 메모의 새 호출은 보존된 옛 내용을 무효로 한다. 제외 표시나 빈 내용도 포함한다.
+  held.delete(noteId);
   pending.set(noteId, { content, aiOptOut });
   scheduleFlush();
 }
 
-function scheduleFlush() {
+function scheduleFlush(delay: number = DEBOUNCE_MS) {
   if (timer) clearTimeout(timer);
   timer = setTimeout(() => {
     timer = null;
     void flushNow();
-  }, DEBOUNCE_MS);
+  }, delay);
 }
 
 export async function flushNow(): Promise<void> {
@@ -92,11 +102,20 @@ export async function flushNow(): Promise<void> {
     })
     .finally(() => {
       inflight = null;
+      // 대기 중인 메모가 있는데 타이머가 디바운스에 덮였으면 대기 시각으로 다시 잡는다.
+      if (held.size > 0 && !timer) scheduleFlush(Math.max(heldUntil - Date.now(), 0));
     });
   return inflight;
 }
 
 async function doFlush(): Promise<void> {
+  // 전역 제외 중에는 보존된 메모도 취소한다. 해제된 뒤에 옛 내용을 보내지 않는다.
+  if (deps.getGlobalOptOut()) held.clear();
+  const holdOver = held.size > 0 && Date.now() < heldUntil;
+  if (!holdOver && held.size > 0) {
+    for (const [id, entry] of held) if (!pending.has(id)) pending.set(id, entry);
+    held.clear();
+  }
   if (pending.size === 0) return;
   const snapshot = Array.from(pending.entries());
   pending.clear();
@@ -127,9 +146,13 @@ async function doFlush(): Promise<void> {
       const batch = candidates.slice(i, i + BATCH_SIZE);
       const res = await deps.fetcher("/api/ai/embed", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: await aiAuthHeaders(),
         body: JSON.stringify({ texts: batch.map((b) => b.content) }),
       });
+      if (res.status === 429) {
+        holdUnsent(candidates.slice(i), snapshot);
+        return;
+      }
       if (!res.ok) throw new Error(`embed ${res.status}`);
       const json = (await res.json()) as { vectors: number[][] };
       const now = Date.now();
@@ -142,12 +165,35 @@ async function doFlush(): Promise<void> {
         });
       }
     }
+    rateRetries = 0;
   } catch (err) {
     // DB 닫힘(탭 종료/테스트 정리) 같은 비치명적 에러는 silent — 메모는 그대로.
     // 네트워크/upstream 실패는 사용자가 알 수 있게 토스트.
     if (isDatabaseClosed(err)) return;
     deps.onError?.();
   }
+}
+
+/** 보내지 못한 메모를 보존하고 61초 뒤로 재시도를 잡는다. 3번 넘게 막히면 포기한다. */
+function holdUnsent(
+  unsent: Array<{ id: string; content: string }>,
+  snapshot: Array<[string, PendingEntry]>,
+): void {
+  rateRetries += 1;
+  if (rateRetries > MAX_RATE_RETRIES) {
+    rateRetries = 0;
+    held.clear();
+    deps.onError?.();
+    return;
+  }
+  const byId = new Map(snapshot);
+  for (const u of unsent) {
+    const entry = byId.get(u.id);
+    // 그사이 같은 메모의 새 내용이 들어왔으면 옛 내용은 버린다.
+    if (entry && !pending.has(u.id)) held.set(u.id, entry);
+  }
+  heldUntil = Date.now() + RATE_LIMIT_WAIT_MS;
+  scheduleFlush(RATE_LIMIT_WAIT_MS);
 }
 
 function isDatabaseClosed(err: unknown): boolean {
@@ -165,6 +211,9 @@ function isDatabaseClosed(err: unknown): boolean {
 /** 테스트 전용 — 내부 상태 리셋. */
 export function _resetEmbeddingQueue() {
   pending.clear();
+  held.clear();
+  heldUntil = 0;
+  rateRetries = 0;
   if (timer) {
     clearTimeout(timer);
     timer = null;

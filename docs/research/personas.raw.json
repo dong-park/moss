@@ -1,0 +1,2096 @@
+[
+ {
+  "segment": "PKM/세컨드 브레인 피로자 — Notion·Obsidian·Roam·Logseq를 열심히 세팅하다 지친 지식노동자. collector's fallacy, 노트를 쌓기만 하고 다시 안 봄, 시스템 유지비, 태그/폴더 고민, 앱 유목민.",
+  "persona_sketches": [
+   {
+    "name_label": "플러그인·CSS 튜닝에 번아웃된 개발자/파워유저",
+    "context": "1~2년간 Obsidian에 '중독'되어 50~60개 플러그인과 CSS 테마를 세팅. 지식베이스가 약해질까 하는 FOMO로 계속 도구를 손봄. 결국 세팅 자체가 피곤해져 iA Writer/Neovim 같은 미니멀 도구로 이탈하거나, 연결할 때만 Obsidian을 가끔 염.",
+    "goals": [
+     "생각을 실제로 쓰고 연결하는 데 쓰고 싶음(도구 유지가 아니라)",
+     "FOMO 없이 '이 정도면 됐다'는 만족감",
+     "튜닝 유혹이 적은 환경"
+    ],
+    "current_tools": [
+     "Obsidian(플러그인 다수)",
+     "iA Writer",
+     "Neovim/obsidian.nvim",
+     "Drafts"
+    ],
+    "workarounds": [
+     "플러그인을 36개→거의 0으로 줄이기",
+     "실제 글쓰기는 미니멀 마크다운 앱에서, 연결/링크만 Obsidian에서",
+     "폴더형으로 회귀(zettelkasten 포기)"
+    ]
+   },
+   {
+    "name_label": "노트는 쌓는데 다시 안 보는 지식노동자(수집가의 오류형)",
+    "context": "아티클·하이라이트·아이디어를 열심히 저장하면 작은 성취감(저장=학습 착각)을 느끼지만, 처리/회상은 숙제처럼 느껴져 미처리 노트가 '불안 유발 더미'가 됨. 결국 시스템을 아예 안 열게 됨.",
+    "goals": [
+     "저장한 생각이 사라지지 않기",
+     "적절한 때 과거 메모가 다시 눈앞에 떠오르기",
+     "정리 숙제 없이도 다시 발견되기"
+    ],
+    "current_tools": [
+     "Obsidian",
+     "Notion 데이터베이스",
+     "Apple Notes/Google Keep",
+     "Readwise류 하이라이트"
+    ],
+    "workarounds": [
+     "Dataview로 '오늘 리뷰할 노트' 쿼리 수동 구성",
+     "미처리 소스를 통째로 inbox 폴더에 두고 흥미 없어지면 폴더째 삭제",
+     "리서페이싱 앱(Second Brain Max, Floating Memo, SwipeNote) 시도"
+    ]
+   },
+   {
+    "name_label": "앱 유목민 글쓰는 사람(Roam→Logseq→Obsidian 순례자)",
+    "context": "Roam 요금/데이터 불안으로 이탈, Logseq/Athens/Obsidian을 전전. 입력 필드가 많고 구조 강제가 심한 앱은 꾸준히 못 씀. '5년 뒤에도 내 노트를 통제할 수 있나'를 기준으로 삼음.",
+    "goals": [
+     "한 곳에 정착해서 생각이 흩어지지 않기",
+     "데이터 소유권/영속성",
+     "마찰 없는 캡처와 빠른 검색"
+    ],
+    "current_tools": [
+     "Obsidian(일상)",
+     "Logseq(지저분한 스크래치패드)",
+     "Drafts",
+     "Silverbullet/org-roam 검토"
+    ],
+    "workarounds": [
+     "Logseq=노이즈 허용 스크래치, Obsidian=시그널만 큐레이션으로 역할 분리",
+     "플레인 텍스트/마크다운만 고집해 이주 가능성 확보",
+     "마이그레이션 스크립트로 앱 간 데이터 변환"
+    ]
+   }
+  ],
+  "pain_points": [
+   {
+    "title": "수집가의 오류 — 저장하는 순간 '배웠다'고 착각, 노트는 평생 다시 안 열림",
+    "underlying_need": "저장이 목적이 아니라 '나중에 그 생각이 쓸모 있게 다시 내 앞에 나타나는 것'을 원함. 처리/회상이라는 별개의 습관을 도구가 대신 떠안아 주길 바람.",
+    "quote": "opens Obsidian, creates a new note, links it to three others, feels briefly brilliant, and never opens it again",
+    "source_type": "blog",
+    "source_url": "https://www.toolsforhumans.ai/blog/your-second-brain-is-write-only-heres-why-most-notes-never-get-revisited",
+    "frequency": "very-common",
+    "severity": "high",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "시스템 유지비 — 플러그인·CSS·템플릿 세팅이 '생각하기'를 대체하고 번아웃을 부름",
+    "underlying_need": "도구를 돌보는 게 아니라 생각하는 데 에너지를 쓰고 싶음. '이 정도면 충분하다'는 상태에 도달해 튜닝 유혹에서 해방되기.",
+    "quote": "I really thought I would have much use out of the 50-60 plugins I installed … and I never did and never will. / I thought my Obsidian setup would last a very long time but don't.",
+    "source_type": "forum",
+    "source_url": "https://forum.obsidian.md/t/1-year-after-posting-my-severe-addiction-i-dont-really-use-obsidian-anymore/90236",
+    "frequency": "very-common",
+    "severity": "high",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "세팅이 생산적인 '척'을 줌 — 정리/구조화가 실제 미루기(procrastination)가 됨",
+    "underlying_need": "'일하는 느낌'과 실제 사고 성과를 혼동하지 않길 원함. 구조를 짜지 않아도 생각이 응집되는 경험.",
+    "quote": "setting up sophisticated systems felt close to mental masturbation to them",
+    "source_type": "blog",
+    "source_url": "https://www.dsebastien.net/ai-wiki-pkm-pkm-anti-patterns/",
+    "frequency": "common",
+    "severity": "high",
+    "evidence_strength": "moderate"
+   },
+   {
+    "title": "폴더/태그 어디에 둘지 결정 마비 — '이걸 어디 넣지' 때문에 캡처가 멈춤",
+    "underlying_need": "분류 결정을 지금 당장 강요받지 않고 일단 생각을 담아두길 원함. 구조는 나중에 자연히 떠오르면 됨.",
+    "quote": "keeps an uncategorized folder for rough drafts and notes where they don't know where something goes",
+    "source_type": "forum",
+    "source_url": "https://forum.zettelkasten.de/discussion/comment/12683",
+    "frequency": "very-common",
+    "severity": "medium",
+    "evidence_strength": "moderate"
+   },
+   {
+    "title": "빈 캔버스 마비(blank slate) — Obsidian이 워크플로를 안 정해줘서 시작을 못 함",
+    "underlying_need": "규칙을 처음부터 설계하는 부담 없이 바로 머물며 쌓을 수 있는, 적당히 안내된 공간.",
+    "quote": "doesn't prescribe workflows, which can leave new users facing blank slate paralysis",
+    "source_type": "blog",
+    "source_url": "https://developers.fabric.so/comparison/heptabase-vs-obsidian",
+    "frequency": "common",
+    "severity": "medium",
+    "evidence_strength": "moderate"
+   },
+   {
+    "title": "노트 무덤(note graveyard) — 의도를 잊어버림, 적절한 때 되살아나길 바람",
+    "underlying_need": "정보 자체보다 '그때 왜 이걸 적었나'라는 맥락/의도가 사라지는 게 문제. 지금 쓰는 내용과 관련된 과거 메모가 자동으로 떠오르는 리서페이싱.",
+    "quote": "a graveyard of half-thoughts in my note app that never became anything / I forget intent, not information",
+    "source_type": "review",
+    "source_url": "https://www.producthunt.com/p/buddy-ai-note/where-do-your-notes-go-to-die",
+    "frequency": "very-common",
+    "severity": "high",
+    "evidence_strength": "moderate"
+   },
+   {
+    "title": "저장이 사고를 대체함 — 클립·태그·링크 후 통찰을 '살지' 않고 '보관'만 함",
+    "underlying_need": "세컨드 브레인이 반추를 아웃소싱하게 두지 않고, 생각을 실제로 쓰고 연결하게 돕는 도구.",
+    "quote": "a quote would spark an insight, get clipped, tagged, and linked, and then the insight was never lived; it was just stored",
+    "source_type": "blog",
+    "source_url": "https://home.rosano.ca/log/page/2/",
+    "frequency": "common",
+    "severity": "high",
+    "evidence_strength": "moderate"
+   },
+   {
+    "title": "캡처 마찰 — 아이디어 담는 데 10초 넘으면 아예 안 하게 됨",
+    "underlying_need": "생각이 날아가기 전에 2~10초 안에, 제목/폴더/태그 강제 없이 즉시 담기. (moss의 '2초 캡처' 가설과 직결)",
+    "quote": "if capturing an idea takes more than 10 seconds, you won't do it consistently",
+    "source_type": "blog",
+    "source_url": "https://glasp.ai/articles/building-a-second-brain",
+    "frequency": "very-common",
+    "severity": "high",
+    "evidence_strength": "moderate"
+   },
+   {
+    "title": "밀린 백로그가 공포가 됨 — 20개 쌓인 목록을 보면 회피, 시스템을 안 열게 됨",
+    "underlying_need": "압박/죄책감 없이 다시 열고 싶은 공간. streak·미완성 강박이 아니라 부담 없는 재방문. (moss의 '압박 알림 금지·미완성 허용'과 직결)",
+    "quote": "when I see 20 tasks, my brain treats them like 20 lions attacking me at once",
+    "source_type": "reddit",
+    "source_url": "https://reddit.sentinel-team.org/posts/1rg339r/snapshots/2026-02-27T21%3A41%3A20.4592Z",
+    "frequency": "common",
+    "severity": "medium",
+    "evidence_strength": "moderate"
+   },
+   {
+    "title": "구독 비용 저항 — '노트북으로 리스트 만드는 데 월 9천원을 왜 내냐'",
+    "underlying_need": "핵심 가치(생각 머무름·응집)에 비례하는 가격. 과금 전환점에서 '이 돈 낼 만큼 쓰나' 의심. Roam 요금 때문에 이탈한 전례도 있음.",
+    "quote": "why should [I] pay 8.99 a month so I can make lists on my laptop / (KR) Roam 사용하다 요금이 너무 비싸서 Obsidian으로 넘어왔습니다.",
+    "source_type": "review",
+    "source_url": "https://www.trustpilot.com/review/notion.so?page=2",
+    "frequency": "common",
+    "severity": "medium",
+    "evidence_strength": "moderate"
+   },
+   {
+    "title": "데이터 소유권·락인 불안 — '5년 뒤에도 내 노트를 통제할 수 있나', 이주 마찰",
+    "underlying_need": "플레인 텍스트/표준 포맷으로 언제든 빠져나갈 수 있다는 안심. Local-first·export(Markdown/JSON Canvas)가 신뢰의 조건. (moss 핵심 설계와 직결)",
+    "quote": "plain-text files were the feature they valued most / (KR) 앱을 다른 것으로 바꾸더라도 순수 텍스트 파일이라 다른 에디터에서 그대로 열 수 있다.",
+    "source_type": "forum",
+    "source_url": "https://hn.nuxt.dev/item/48896229",
+    "frequency": "common",
+    "severity": "high",
+    "evidence_strength": "moderate"
+   },
+   {
+    "title": "앱 유목민 — Roam→Logseq→Obsidian 전전, 어디에도 정착 못 함",
+    "underlying_need": "한 곳에 머물며 생각이 흩어지지 않기. 입력 필드/구조 강제가 과한 앱은 꾸준히 못 씀.",
+    "quote": "the sheer number of entry fields in these apps kept them from using any of them consistently",
+    "source_type": "blog",
+    "source_url": "https://www.androidauthority.com/free-obsidian-alternative-logseq-3584941",
+    "frequency": "common",
+    "severity": "medium",
+    "evidence_strength": "moderate"
+   },
+   {
+    "title": "느린 검색·회상 마찰 — 다시 찾기가 번거로워 재방문 자체가 끊김",
+    "underlying_need": "담아둔 생각을 '힘들이지 않고' 다시 만나기. 검색이 느리면 collector's fallacy가 가속됨.",
+    "quote": "Notion, which has notoriously slow and cumbersome search",
+    "source_type": "blog",
+    "source_url": "https://thesweetsetup.com/a-big-update-to-our-pkm-comparison-guide-a-workflow-for-saving-ideas-to-obsidian-and-more/",
+    "frequency": "common",
+    "severity": "medium",
+    "evidence_strength": "moderate"
+   },
+   {
+    "title": "선형 텍스트가 사고 방식과 안 맞음 — 공간적/시각적으로 생각하고 싶음",
+    "underlying_need": "아이디어를 공간에 배치하고 선으로 연결하며 '보면서 이해'하는 방식. (moss 무한 캔버스+연결선과 직결) Obsidian 캔버스는 접기/펼치기 등 조작이 수동적이라 불만.",
+    "quote": "understand by seeing, where ideas are placed on a whiteboard, arranged spatially, connected with lines, and structure emerges from layout",
+    "source_type": "forum",
+    "source_url": "https://talk.macpowerusers.com/t/obsidian-vs-heptabase-for-in-depth-study-notes/45607",
+    "frequency": "occasional",
+    "severity": "medium",
+    "evidence_strength": "moderate"
+   },
+   {
+    "title": "바빠지면 정크 드로어로 전락 — 삶이 분주해지는 순간 시스템이 무너짐",
+    "underlying_need": "유지 노동이 필요 없어서 바쁠 때도 방치돼도 가치가 유지되는(스스로 되살아나는) 시스템.",
+    "quote": "My Obsidian vault turned into a junk drawer once life got busy.",
+    "source_type": "blog",
+    "source_url": "https://www.iwoszapar.com/p/obsidian-vs-second-brain",
+    "frequency": "common",
+    "severity": "medium",
+    "evidence_strength": "moderate"
+   }
+  ],
+  "churn_reasons": [
+   "시스템 유지비(플러그인/CSS/템플릿 튜닝)가 실제 사고 성과보다 커져 번아웃 — 'maintaining the system is what kills most setups'",
+   "세팅은 생산적인 '척'을 주지만 결과물이 없다는 자각('mental masturbation')",
+   "Roam 등 구독 요금 부담으로 더 싼/로컬 대안으로 이탈",
+   "Roam의 데이터 손실·불투명성·빈약한 지원에 질려 이탈('fed up with data loss, lack of transparency and poor support')",
+   "Logseq의 DB 전환 방향(플레인텍스트 포기)에 대한 반발로 org-roam/Silverbullet 등으로 이주",
+   "입력 필드·구조 강제가 과해 어떤 앱도 꾸준히 못 씀 → 앱 유목",
+   "미처리 노트 더미가 불안/공포가 되어 앱을 아예 안 열게 됨(수동적 이탈)",
+   "바빠지는 순간 정크 드로어로 전락하고 복구 동기를 잃음",
+   "Notion의 느리고 번거로운 검색 등 회상 마찰로 재방문 습관이 끊김"
+  ],
+  "willingness_to_pay": "지불 의향은 '핵심 가치 대비 가격'에 민감하다. Notion에 대해 '노트북으로 리스트 만드는 데 월 $8.99를 왜 내냐(why should I pay 8.99 a month so I can make lists on my laptop)'는 불만, VAT 미표시·친구 좌석까지 과금되는 '갑작스런 연간 총액'에 대한 충격이 반복 등장(Trustpilot). 한국 사용자는 Roam 요금 부담으로 Obsidian(무료·로컬)으로 넘어온 사례가 명확히 기록됨(GeekNews). 반면 지불이 '가치 있다'고 느끼면 기꺼이 낸다: Logseq에 매달 후원하던 사용자, Obsidian 세팅에 쓴 시간을 '가장 잘 쓴 시간'이라 보는 유저, 유료 ADHD 앱 다수를 '사기 같다'면서도 도움 되는 도구엔 정착하는 패턴. 시사점: (1) 무료 로컬 티어가 신뢰·획득의 기본 조건이고, (2) 유료 전환은 '응집기 AI(다시 떠오른 생각/오늘의 연결)'처럼 유지 노동 없이도 생각이 되살아나는 체감 가치에 걸어야 하며, (3) 좌석/숨은 과금·불투명 가격은 즉시 이탈 트리거다. 단, '노트앱에 월정액'이라는 범주 자체에 저항하는 층이 두터워 freemium 무료 구간의 체감 효용이 특히 중요하다.",
+  "moss_fit": "잘 맞는 점: (1) '저장=학습 착각/노트 무덤'이라는 이 세그먼트의 핵심 고통에 moss의 AI 응집기(다시 떠오른 생각·오늘의 연결·오늘의 질문)가 정면으로 대응 — 사람들이 리서페이싱 앱(Second Brain Max, Floating Memo, SwipeNote, monoznote)을 직접 찾아 쓰는 수요가 실재. (2) '세팅 번아웃/빈 캔버스 마비'에 대해 제목·폴더·태그 강제 없는 2초 캡처와 수동 정리 불필요 설계가 유지비를 제거. (3) 'streak·생산성 점수·압박 알림 금지 + 미완성 허용'이 '밀린 백로그=20마리 사자' 공포와 정확히 반대 방향. (4) Local-first + Markdown/JSON Canvas export가 데이터 소유권/락인 불안과 'Roam 데이터 손실' 트라우마를 직접 해소. (5) 무한 캔버스+연결선이 '선형 텍스트가 사고와 안 맞는다, 보면서 이해하고 싶다'는 Heptabase류 수요를 흡수. (6) AI를 대필이 아닌 연결 제안자로 못박은 포지션이 'capture≠thinking, 반추를 아웃소싱하기 싫다'는 이 집단의 가치관과 일치.\n\n안 맞거나 위험한 점: (1) 바로 이 세그먼트가 'AI 추천 연결선=노이즈 아니냐'를 공개적으로 의심한다(monoznote 메이커의 질문: 리서페이싱이 재발견을 돕나 소음만 더하나). 임베딩 연결 제안의 정밀도·거절 학습이 약하면 또 하나의 '정리할 거리'가 되어 역효과. (2) 이들은 뼛속까지 '앱 유목민'이자 플레인텍스트 신봉자 — IndexedDB+OPFS 기반 로컬이라도 '내 파일을 폴더에서 직접 열 수 있나(Obsidian식 마크다운 소유권)'를 못 주면 신뢰 획득이 어렵다. export만으로는 부족하고 '진짜 내 파일' 감각이 관건. (3) 이들은 자기 세팅을 손수 만드는 걸 즐기는 성향도 커서(커스터마이즈=정체성) 'moss가 다 알아서 함'이 오히려 통제감 상실로 읽힐 수 있음 — 수동 연결선/서브캔버스 같은 '만질 여지'가 완충. (4) '노트앱 월정액' 범주 저항이 강해 유료 전환 난이도 높음. (5) 무한 캔버스+줌은 자유롭지만 '빈 캔버스 마비'를 또 유발할 위험 — 홈의 재노출(다시 떠오른 생각)이 빈 화면을 메워주는 온보딩 역할을 반드시 해야 함.",
+  "notable_sources": [
+   "https://forum.obsidian.md/t/1-year-after-posting-my-severe-addiction-i-dont-really-use-obsidian-anymore/90236 — 1년 뒤 Obsidian 이탈, 플러그인 50~60개 미사용·세팅 번아웃 1차 증언(강)",
+   "https://www.toolsforhumans.ai/blog/your-second-brain-is-write-only-heres-why-most-notes-never-get-revisited — write-only 세컨드브레인/수집가의 오류 핵심 서사",
+   "https://www.dsebastien.net/ai-wiki-pkm-pkm-anti-patterns/ — PKM 안티패턴 정리, 'mental masturbation'",
+   "https://home.rosano.ca/log/page/2/ — 볼트를 지운 사용자, '저장했지만 살지 않은 통찰'",
+   "https://www.producthunt.com/p/buddy-ai-note/where-do-your-notes-go-to-die — note graveyard / 'forget intent, not information'",
+   "https://glasp.ai/articles/building-a-second-brain — 캡처 10초 임계 가설",
+   "https://forum.zettelkasten.de/discussion/comment/12683 — 폴더/태그 결정 마비와 uncategorized 홀딩 폴더",
+   "https://developers.fabric.so/comparison/heptabase-vs-obsidian — blank slate paralysis / 공간적 사고(Heptabase)",
+   "https://www.trustpilot.com/review/notion.so?page=2 — 구독 비용 저항 원문",
+   "https://news.hada.io/topic?id=4730 — (KR) Roam 요금 부담→Obsidian, 데이터 소유권 담론",
+   "https://feedbagel.com/post/swipenote-a-tinder-style-app-for-rediscovering-your-old-notes-and-ideas — 리서페이싱 수요(앱 유목민의 junk drawer)",
+   "https://hn.nuxt.dev/item/48896229 — Logseq DB 전환 반발, 플레인텍스트 가치"
+  ]
+ },
+ {
+  "segment": "ADHD/신경다양성 사고자 — \"out of sight, out of mind\", 캡처 마찰, 흩어진 메모, 시각적·공간적 사고, 정리 압박과 수치심, 생산성 앱의 streak에 대한 반감",
+  "persona_sketches": [
+   {
+    "name_label": "노션 무덤을 남긴 성인 ADHD 진단자 (30대, 지식노동/학생)",
+    "context": "우울증·불안 치료를 받다 뒤늦게 성인 ADHD 진단을 받은 사람. 모두가 극찬하는 노션을 깔고 '완벽한 시스템'을 세팅하느라 저녁을 다 쓰고는 며칠 뒤 다시 안 엶. 하루에도 여러 번 '아 이거 적어둬야 하는데'가 떠오르지만, 적는 순간의 마찰(어디에? 어느 폴더? 제목 뭐로?)에서 생각이 증발한다. 스스로를 '의지가 약하다'고 자책하는 수치심이 깔려 있음.",
+    "goals": [
+     "떠오른 순간 2초 안에 흘려보내지 않고 붙잡기",
+     "나중에 그 생각이 '있었다는 사실 자체'를 다시 떠올리기",
+     "정리 못 하는 자신에 대한 수치심 없이 쓸 수 있는 도구"
+    ],
+    "current_tools": [
+     "Apple Notes(덤핑 그라운드화)",
+     "노션(세팅만 하고 방치)",
+     "종이·포스트잇",
+     "매일 여는 캘린더에 전부 몰아 적기",
+     "ColorNote 등 단순 앱"
+    ],
+    "workarounds": [
+     "폴더를 3~5개로만 줄이고 새 메모를 즉시 그 안에 던지기",
+     "메모장 대신 '하루 한 번 이상 반드시 여는' 캘린더에만 기록",
+     "할 일을 한 번에 최대 3개로 제한",
+     "알림을 거의 다 꺼서 딴 길로 새는 것 방지"
+    ]
+   },
+   {
+    "name_label": "아이디어가 노트·탭·텍스트파일로 흩어진 ADHD 지식노동자/개발자",
+    "context": "머릿속 아이디어가 공책, 여러 텍스트 파일, 수십 개 브라우저 탭에 흩뿌려져 있음. Miro·FigJam 같은 큰 화이트보드는 자기 용도엔 너무 복잡하게 느껴지고, 일반 메모 앱은 '충분히 시각적이지 않다'고 느낌. 결국 자기한테 맞는 무한 캔버스 도구를 직접 만들 정도로 니즈가 강함.",
+    "goals": [
+     "생각을 선형이 아니라 공간에 펼쳐 한눈에 보기",
+     "관련 생각끼리 묶고 연결선을 눈으로 확인",
+     "방해되지 않고 '그냥 시각적으로 사고하게' 해주는 도구"
+    ],
+    "current_tools": [
+     "공책 + 텍스트 파일 + 브라우저 탭 무더기",
+     "Obsidian Canvas / Excalidraw",
+     "직접 만든 웹 기반 무한 캔버스"
+    ],
+    "workarounds": [
+     "화이트보드에 수동으로 노드·연결선 그리기",
+     "마인드맵으로 먼저 발산한 뒤 가지를 할 일로 변환"
+    ]
+   },
+   {
+    "name_label": "정리 압박과 유지보수에 지친 시각적 사고자",
+    "context": "'세컨드 브레인'을 여러 번 만들었지만 전부 유지보수가 안 돼 무너짐. 매주 몇 시간씩 포맷·정리에 쓰는 자신을 발견하고, '정리하는 시간이 실제로 생각하는 시간보다 많다'는 데 환멸. streak·생산성 점수를 보면 하루 놓쳤을 때 수치심이 밀려와 앱 자체를 피하게 됨.",
+    "goals": [
+     "유지보수 없이도 알아서 유지되는 작업대",
+     "하루 걸러도 죄책감 없이 돌아올 수 있는 구조",
+     "흩어진 생각이 알아서 다시 눈앞에 떠오르는 경험"
+    ],
+    "current_tools": [
+     "Obsidian(플러그인 과다)",
+     "노션 데이터베이스",
+     "streak 기반 습관/할일 앱(이탈)"
+    ],
+    "workarounds": [
+     "플러그인·구조를 최소화하고 Obsidian 기본값 그대로 쓰기",
+     "정기 리뷰 대신 한 달에 5분 purge",
+     "streak 알림 끄기 / '총 활동일수' 세는 앱으로 갈아타기"
+    ]
+   }
+  ],
+  "pain_points": [
+   {
+    "title": "메모 앱이 매번 '덤핑 그라운드'가 되고 다시는 안 본다 — 문제는 캡처가 아니라 '되찾기'",
+    "underlying_need": "적는 건 쉽다. 진짜 필요한 건 쌓인 메모 속에서 그 생각을 '다시 마주치는' 것. 되찾기가 안 되면 쌓을수록 불안만 커진다.",
+    "quote": "Mine slowly becomes a dumping ground every single time. ... I never revisit them. ... I just had an episode when I wanted to add a new note and realized I have tons of notes saved throughout years.",
+    "source_type": "reddit (r/ADHD)",
+    "source_url": "https://reddit.sentinel-team.org/posts/1rcoljl/snapshots/2026-02-27T21%3A41%3A20.4592Z",
+    "frequency": "very-common",
+    "severity": "high",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "도구가 task manager라 '실생활 정리기'가 못 된다",
+    "underlying_need": "ADHD 사고는 할 일 체크가 아니라 흐르는 생각의 보관·연결을 원한다. 기존 앱은 완료-중심이라 미완성·발산형 사고를 담지 못한다.",
+    "quote": "Perhaps you are just using the wrong app, most are task managers and not real life organizers",
+    "source_type": "reddit (r/ADHD)",
+    "source_url": "https://reddit.sentinel-team.org/posts/1rcoljl/snapshots/2026-02-27T21%3A41%3A20.4592Z",
+    "frequency": "common",
+    "severity": "medium",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "적어둔 것을 다시 열어보지 않아 결국 또 놓친다 (한국 사용자)",
+    "underlying_need": "기록 행위 자체가 아니라 '매일 반드시 눈에 띄는 곳에 다시 떠오르게' 하는 재노출이 핵심. 안 보면 안 쓴 것과 같다.",
+    "quote": "이마저도 노트에 메모를 하니 적어둔 걸 보지 않아 다시 중요한 것들을 놓쳤었고",
+    "source_type": "korean-community (뉴닉 기고)",
+    "source_url": "https://newneek.co/@moba/article/14379",
+    "frequency": "very-common",
+    "severity": "high",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "할 일 목록을 보는 순간 뇌가 '즉시 거부' — To-Do List Grave",
+    "underlying_need": "목록이 압박·위협으로 느껴지면 회피하게 된다. 압박 없이 머물 수 있는, 위협적이지 않은 사고 공간이 필요.",
+    "quote": "Does anyone else have a \"To-Do List Grave\"? ... looking at it triggers an immediate \"nope\" response from your brain? ... When I see 20 tasks, my brain treats them like 20 lions attacking me at once.",
+    "source_type": "reddit (r/ADHD)",
+    "source_url": "https://reddit.sentinel-team.org/posts/1rg339r/snapshots/2026-02-27T21%3A41%3A20.4592Z",
+    "frequency": "common",
+    "severity": "high",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "목록·앱의 '존재 자체'를 잊어버린다 (out of sight, out of mind / object permanence)",
+    "underlying_need": "작업기억이 약해 눈앞에서 사라지면 머릿속에서도 사라진다. 사용자가 '열어야 한다'는 걸 기억하지 않아도 도구가 먼저 떠올려줘야 한다.",
+    "quote": "If I make a to-do list, either on my phone or on paper, I promptly forget it exists.",
+    "source_type": "reddit (r/ADHD)",
+    "source_url": "https://reddit.sentinel-team.org/posts/1rg339r/snapshots/2026-02-27T21%3A41%3A20.4592Z",
+    "frequency": "very-common",
+    "severity": "high",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "정리하는 데 쓰는 시간이 실제로 '하는' 시간보다 많다",
+    "underlying_need": "도구가 사고를 돕는 게 아니라 사고 대신 관리 노동을 만든다. 유지보수 0에 가까운, 알아서 유지되는 작업대를 원함.",
+    "quote": "I've tried dozens of tools and never found anything where I didn't spend more time organizing than doing.",
+    "source_type": "forum (Obsidian 포럼, ADHD 스레드)",
+    "source_url": "https://forum.obsidian.md/t/trying-to-find-a-good-setup-for-adhd/12218",
+    "frequency": "very-common",
+    "severity": "high",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "'세컨드 브레인'은 매주 몇 시간 유지보수가 필요해서 무너진다",
+    "underlying_need": "지속가능성. 포맷·유지보수가 사용을 압도하면, 아무리 좋은 시스템도 ADHD에겐 수명이 짧다.",
+    "quote": "I'm not willing to spend hours every week just to set up a second brain ... they seem to spend more time formatting their journal than actually using it.",
+    "source_type": "forum (Obsidian 포럼, ADHD 스레드)",
+    "source_url": "https://forum.obsidian.md/t/a-maintainable-second-braind-for-someone-with-adhd/36106",
+    "frequency": "common",
+    "severity": "high",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "빈 캔버스·과도한 자유도 앞에서 어디서 시작할지 몰라 마비된다",
+    "underlying_need": "결정 피로 제거. 제목/폴더/태그/구조를 강제하지 않되, 백지 앞 마비도 안 생기게 '그냥 던져넣으면 되는' 낮은 진입장벽.",
+    "quote": "Standing at the edge looking over everything Obsidian is capable of is a bit overwhelming sometimes",
+    "source_type": "forum (Obsidian 포럼, ADHD 스레드)",
+    "source_url": "https://forum.obsidian.md/t/trying-to-find-a-good-setup-for-adhd/12218",
+    "frequency": "common",
+    "severity": "medium",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "'완벽한 시스템'을 몇 시간 세팅하고 압도당해 다시는 안 연다 (노션)",
+    "underlying_need": "가능성이 많을수록 세팅에 빠져 정작 사용을 못 함. 세팅 없이 바로 쓰이는 기본값이 필요.",
+    "quote": "spent hours making the \"perfect\" system, got overwhelmed by all the possibilities, and never opened it again",
+    "source_type": "blog (Fishbowl, ADHD 사용자 노션 후기)",
+    "source_url": "https://www.fishbowlapp.com/post/i-tried-notion-because-everyone-raved-about-how-it-was-the-ultimate-productivity-tool-but-for-my-adhd-brain-it-was-a-spectacular-failure",
+    "frequency": "very-common",
+    "severity": "high",
+    "evidence_strength": "moderate"
+   },
+   {
+    "title": "생각·할 일이 공책·탭·텍스트파일·포스트잇으로 사방에 흩어진다",
+    "underlying_need": "흩어짐 자체가 되찾기 실패의 근원. 모든 조각이 한 공간에 모이면서도 그 공간이 위협적이지 않아야 함.",
+    "quote": "I'd have ideas scattered across notebooks, various text files, and a mess of browser tabs.",
+    "source_type": "hn (Hacker News, 무한 캔버스 제작자)",
+    "source_url": "https://hn.svelte.dev/item/45594777",
+    "frequency": "very-common",
+    "severity": "high",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "선형 메모는 사고방식과 안 맞고, 화이트보드는 너무 복잡하다 — 공간적으로 '한눈에' 보고 싶다",
+    "underlying_need": "ADHD 사고는 비선형. 관계를 글이 아니라 공간/배치로 보고 싶지만, 큰 협업 화이트보드는 과하고 메모 앱은 시각적이지 않다는 중간 공백.",
+    "quote": "The big whiteboard tools felt too complex for my needs, and simple note apps weren't visual enough. ... just lets you think visually.",
+    "source_type": "hn (Hacker News, 무한 캔버스 제작자)",
+    "source_url": "https://hn.svelte.dev/item/45594777",
+    "frequency": "common",
+    "severity": "medium",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "메모를 어디서 얻었는지·어떻게 이름 붙였는지 기억 못 해 검색이 실패한다",
+    "underlying_need": "작업기억에 의존하지 않는 되찾기. 이름/위치를 기억하지 못해도 연결·재노출로 생각이 알아서 돌아와야 함.",
+    "quote": "I couldn't remember where I got the thought from.",
+    "source_type": "forum (Obsidian 포럼, ADHD 스레드)",
+    "source_url": "https://forum.obsidian.md/t/a-maintainable-second-braind-for-someone-with-adhd/36106",
+    "frequency": "common",
+    "severity": "medium",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "앱의 존재를 잊어 안 열게 됨 → 위젯·2차 화면·알림에 억지로 의존",
+    "underlying_need": "도구가 사용자의 기억에 기대지 않고 먼저 나타나야 한다. 단, 알림 폭탄은 오히려 역효과.",
+    "quote": "I would just forget about its existence ... calendar alarms changed my life. Events without alarms don't happen ... the Reminders app, which he never opens.",
+    "source_type": "forum/blog (Lemmy + Marco Arment)",
+    "source_url": "https://marco.org/2026/08/",
+    "frequency": "common",
+    "severity": "medium",
+    "evidence_strength": "moderate"
+   },
+   {
+    "title": "streak·생산성 점수가 하루 놓침 → 수치심 → 회피의 악순환(RSD)을 만든다",
+    "underlying_need": "ADHD는 날마다 용량이 다르므로 '못 한 날'은 당연. 압박·게임화 없이, 쉬었다 돌아와도 환영받는 설계가 필요.",
+    "quote": "a missed day breaks the streak, which brings shame, which lowers executive function ... these can trigger RSD in ways that neurotypical designers don't anticipate",
+    "source_type": "blog (dev.to, ADHD 앱 설계 글)",
+    "source_url": "https://dev.to/nucleusos/adhd-support-app-no-streaks-why-gamification-hurts-more-than-it-helps-1ae0",
+    "frequency": "common",
+    "severity": "high",
+    "evidence_strength": "moderate"
+   },
+   {
+    "title": "'새 방법을 강제로 도입해야 한다'는 압박 자체가 스트레스가 되어 포기하게 된다 (한국 사용자)",
+    "underlying_need": "도입 자체가 숙제가 되면 완벽주의를 자극해 시작도 전에 무너진다. 기존 습관에 얹히는 무마찰 진입.",
+    "quote": "무언가 새로운 방법을 강제적으로 내 삶에 적용해야 한다는 강박이 오히려 스트레스로 작용했을 수 있기 때문입니다.",
+    "source_type": "korean-community (뉴닉 기고)",
+    "source_url": "https://newneek.co/@moba/article/14379",
+    "frequency": "occasional",
+    "severity": "medium",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "진단 전까지 '의지 문제'로 여기며 자책·수치심에 빠져 있었다",
+    "underlying_need": "도구가 사용자를 게으르다고 꾸짖지 않아야 한다. 생산성 지표·압박 알림은 이 수치심을 직격한다.",
+    "quote": "스스로를 비난하고 수치심과 자책에 빠지던 상태에서 벗어나게 해주었다 (성인 ADHD 키워드: 완벽주의·가면 쓰기·번아웃·거절 민감성)",
+    "source_type": "korean-community (교보 전자책 소개 + 브런치 진단 후기)",
+    "source_url": "https://brunch.co.kr/@abowlforafish/1",
+    "frequency": "common",
+    "severity": "high",
+    "evidence_strength": "moderate"
+   }
+  ],
+  "churn_reasons": [
+   "세팅·유지보수 과부하: 매주 몇 시간씩 포맷·정리해야 지속되는 구조라 결국 무너짐 ('spend more time formatting than using')",
+   "선택지·자유도 과잉으로 인한 결정 마비: 빈 캔버스/수많은 폴더·속성 앞에서 시작을 못 함",
+   "압도감: 쌓인 메모/목록을 보면 '20 lions'처럼 위협적으로 느껴져 앱을 회피",
+   "앱의 존재 자체를 잊음: out-of-sight라 리마인드가 없으면 그냥 안 열게 됨 ('promptly forget it exists')",
+   "되찾기 실패: 캡처는 쉬운데 다시 못 찾아 '덤핑 그라운드'가 되고 신뢰를 잃음",
+   "도구 미스핏: task manager라 미완성·발산형·비선형 사고를 담지 못함",
+   "streak·점수의 수치심(RSD): 하루 놓치면 죄책감 → 실행기능 저하 → 더 안 함 → 앱 삭제",
+   "알림 과다/산만: 앱 가는 길에도 다른 알림에 새버려 아예 알림을 꺼버림",
+   "'완벽한 시스템' 만들기에 빠져 정작 사용 못 하고 방치 (노션 무덤)",
+   "새 방법을 억지로 도입해야 한다는 압박이 완벽주의를 자극해 시작 전에 포기 (한국 사용자)",
+   "app-hopping: 새롭고 반짝이는 앱으로 계속 갈아타며 어디에도 정착 못 함"
+  ],
+  "willingness_to_pay": "지불 의향 신호는 '양가적'이다. (1) 작동만 하면 돈을 낸다는 명확한 신호: Numo 커뮤니티의 \\\"It's only expensive if it doesn't work\\\", Inflow 리뷰어의 \\\"absolutely worth the cost\\\"처럼, '이번엔 진짜 붙잡혔다'는 감각만 주면 결제한다. (2) 그러나 이탈이 빨라 연간 결제에 강한 저항이 있다 — 한 ADHD 블로거는 \\\"wasted on year-long subscriptions to apps I only used for 2-weeks\\\"라며 '1개월 결제 + 즉시 자동갱신 해지 + 2~3주차 재평가'를 권한다. 또한 Inflow 사례처럼 습관이 잡히면 가치가 사라져 갱신을 안 하는 패턴도 있다. 함의: moss freemium은 (a) 유료 가치가 '2~3주 안에' 체감되어야 하고(특히 재노출·연결이 '아 이게 돌아왔네' 순간을 조기에 줘야 함), (b) 연간락인보다 월 구독/관대한 무료 티어/언제든 취소가 전환과 재방문에 유리하며, (c) streak·압박이 아니라 '수치심 없이 돌아오게' 만드는 것이 리텐션=지불 지속의 핵심. 단, 이 세그먼트는 '무료+광고없음 10년'(ColorNote)이나 종이·포스트잇 같은 무료 대안에도 만족하는 층이 있어 가격 민감도가 상당하다.",
+  "moss_fit": "[잘 맞는 점]\n1) 2초 캡처·제목/폴더/태그 강제 없음 → 이 세그먼트 1순위 고통인 '캡처 마찰'과 '정리 전에 분류부터 시키는' 결정 마비를 정면으로 제거. 'organize before you use' 불만의 해독제.\n2) AI 응집기 + 과거 메모 홈 재노출('다시 떠오른 생각/오늘의 연결/오늘의 질문') → 이 세그먼트의 가장 깊은 고통인 'out of sight, out of mind'와 '적어둔 걸 다시 안 봐서 놓침', '앱 존재를 잊음'을 구조적으로 해결하는 거의 유일한 기능. 사용자가 기억·이름·위치에 의존하지 않아도 생각이 먼저 돌아온다.\n3) 무한 캔버스 + 줌(확대=세부, 축소=사고 지형도) + 수동/AI 연결선 → '선형 노트가 내 사고방식과 안 맞는다', '한눈에 보고 싶다', '화이트보드는 과하고 메모앱은 시각적이지 않다'는 중간 공백을 정확히 겨냥. 공간기억을 활용.\n4) streak·생산성 점수·압박 알림 '금지'가 제품 원칙 → RSD/수치심 악순환 회피. 이 세그먼트가 생산성 앱에 느끼는 반감의 핵심을 설계로 선언.\n5) 미완성 메모 허용·완료 강제 없음 → 'task manager가 아니라 real-life organizer' 니즈 충족.\n6) Local-first/오프라인/빠른 로드 → '앱 뜨는 사이 생각이 증발' 문제 완화.\n\n[안 맞거나 위험한 점 — 솔직하게]\nA) 가장 큰 리스크: 이 세그먼트의 실제 1위 고통은 '캡처'가 아니라 '되찾기(retrieval)'다. moss가 캡처만 쉽게 하고 재노출/연결의 체감이 약하면, 거대 캔버스는 더 거대한 '덤핑 그라운드'가 될 뿐이다('dumping ground every single time'). 재노출 품질이 제품의 생사를 가른다.\nB) 무한 캔버스+줌 '지형도'는 메모가 수백 개로 폭증하면 오히려 '20 lions' 압도감을 재현할 수 있다. 축소뷰가 위협적이지 않고 '머물 수 있게' 보이도록 정보 밀도·LOD 설계가 중요.\nC) AI 연결 제안(점선)이 부정확하면 '수락/거절' 결정이 또 하나의 정리 노동·결정 피로가 된다. 거절 학습이 빠르게 체감되지 않으면 노이즈로 이탈 유발.\nD) 캔버스에 자유롭게 배치하는 UX는 '빈 캔버스 앞 마비'를 재발시킬 수 있다. 빈 상태에서도 '그냥 던지면 되는' 기본 동선이 필요(온보딩에서 시각적 자유가 역효과일 수 있음).\nE) 구독 결제 저항·2~3주 이탈이 큰 세그먼트라, 유료 가치(특히 AI 재노출)가 초반에 안 터지면 'app graveyard'에 합류. 종이·무료앱 등 저렴/무료 대안의 중력도 셈.\nF) 근거의 비대칭: 이 세그먼트의 강한 1차 인용은 대부분 영어권(Reddit/Obsidian 포럼/HN)에서 나왔고, 한국 ADHD 사용자의 '캡처/재노출/시각적 사고' 직접 인용은 상대적으로 얇다(뉴닉·브런치 중심, 대체로 moderate). 한국어 우선 제품이므로 한국 커뮤니티(디스콰이엇·더쿠·네이버카페·클리앙) 추가 심층 조사 권장.",
+  "notable_sources": [
+   "https://reddit.sentinel-team.org/posts/1rcoljl/snapshots/2026-02-27T21%3A41%3A20.4592Z (r/ADHD: 메모 앱이 덤핑 그라운드가 되고 다시 안 봄 — 되찾기 실패)",
+   "https://reddit.sentinel-team.org/posts/1rg339r/snapshots/2026-02-27T21%3A41%3A20.4592Z (r/ADHD: 'To-Do List Grave', 목록 존재를 잊음, '20 lions')",
+   "https://forum.obsidian.md/t/trying-to-find-a-good-setup-for-adhd/12218 (Obsidian 포럼: 정리>작업, 빈 캔버스 압도감)",
+   "https://forum.obsidian.md/t/a-maintainable-second-braind-for-someone-with-adhd/36106 (Obsidian 포럼: 유지보수 부담, 출처·이름 망각으로 되찾기 실패)",
+   "https://hn.svelte.dev/item/45594777 (HN: 공책·탭·텍스트파일 흩어짐, 선형/화이트보드 미스핏, 시각적 사고)",
+   "https://newneek.co/@moba/article/14379 (뉴닉: 적어도 다시 안 봄, 새 방법 강제의 스트레스 — 한국)",
+   "https://www.fishbowlapp.com/post/i-tried-notion-because-everyone-raved-about-how-it-was-the-ultimate-productivity-tool-but-for-my-adhd-brain-it-was-a-spectacular-failure (노션 '완벽 시스템' 세팅 후 방치)",
+   "https://dev.to/nucleusos/adhd-support-app-no-streaks-why-gamification-hurts-more-than-it-helps-1ae0 (streak→수치심→RSD 악순환, no-streak 설계)",
+   "https://www.simplypsychology.org/object-permanence-and-adhd.html (out of sight out of mind = 작업기억/주의 기제 설명)",
+   "https://brunch.co.kr/@abowlforafish/1 (한국 성인 ADHD 진단 후기: 자책·수치심 맥락)",
+   "https://numo.ai/community/ym92l3l/is-this-app-really-worth (지불 의향: 'only expensive if it doesn't work')",
+   "https://chadd.org/adhd-news/adhd-news-adults/attention-monthly-from-chaos-to-clarity-using-mind-maps-to-navigate-adult-adhd/ (마인드맵/시각적 사고의 임상적 근거와 한계)"
+  ]
+ },
+ {
+  "segment": "연구자·대학원생·Zettelkasten 실천자 (문헌/아이디어 연결, 논문 작성 전 단계의 생각 응집, 오래된 노트 재발견, 인용·출처 관리 피로)",
+  "persona_sketches": [
+   {
+    "name_label": "제텔카스텐 10개월차에 환멸이 온 인문·사회계열 박사과정",
+    "context": "How to Take Smart Notes를 읽고 옵시디언에 atomic note·index note·tag·home note까지 제대로 세팅. 노트는 수백~800개로 늘었는데 정작 학위논문/저널 원고로는 한 글자도 안 나감. '학습엔 좋은데 아웃풋이 없다'는 자괴감. 마감 앞에서 노트를 병합·재구조화하며 시간을 보냄.",
+    "goals": [
+     "읽은 문헌을 내 주장으로 응집해 논문 초안으로 연결",
+     "수집만 하지 않고 실제 글쓰기로 전환",
+     "흩어진 생각 군집에서 논증 구조를 발견"
+    ],
+    "current_tools": [
+     "Obsidian",
+     "Zotero",
+     "How to Take Smart Notes(Ahrens) 방법론",
+     "Markdown 플레인텍스트"
+    ],
+    "workarounds": [
+     "개요(outline)를 먼저 잡아 '빠진 지식' 지점을 찾고 거기만 추가로 읽기",
+     "write-for-yourself permanent note로 재작성",
+     "주기적으로 랜덤 노트 열어 연결 찾기"
+    ]
+   },
+   {
+    "name_label": "논문 읽을 때마다 '이걸 어디에 적지' 고민하는 STEM 박사과정",
+    "context": "논문을 읽다 '예전 논문에서 이거 본 것 같은데'가 떠오르지만 그걸 찾으려면 백링크를 타고 다니거나 PDF를 CTRL-F로 뒤져야 함. 링크를 걸 위치/종류(지지/반박/근거)를 매번 고민하느라 캡처가 느려짐. Zotero의 특정 하이라이트로 점프하는 연동을 직접 만들어 씀.",
+    "goals": [
+     "읽는 즉시 과거 관련 생각과 자동으로 이어지길",
+     "출처(특정 페이지·하이라이트)와 노트가 끊기지 않게",
+     "백링크 노이즈 없이 '진짜 관련'만 보기"
+    ],
+    "current_tools": [
+     "Obsidian",
+     "Zotero(citekey 연동)",
+     "Smart Connections류 임베딩 플러그인"
+    ],
+    "workarounds": [
+     "ZK 노트를 Zotero 노트의 특정 부분에 직접 링크",
+     "새 노트 쓰기 전에 기존 노트에 먼저 링크를 걸어 orphan 방지",
+     "색상별 하이라이트(반박/인용/핵심)로 분류"
+    ]
+   },
+   {
+    "name_label": "노트 앱을 여러 번 갈아탄 한국 대학원생/주니어 연구자",
+    "context": "에버노트→노션→옵시디언을 돌며 셋업·정리에 시간을 쏟음. 하이라이트와 자료는 많은데 '막상 글/기획/연구할 때 떠오르지 않음'. 과거에 공들여 정리한 노트가 지금 보면 '남의 글'처럼 느껴짐. AI 요약은 빨라졌지만 '내 질문'이 남지 않아 지식이 내재화되지 않는다고 느낌.",
+    "goals": [
+     "쌓아둔 자료를 쓸 때 실제로 다시 만나기(재노출)",
+     "정리가 아니라 생각이 '자라는' 경험",
+     "AI가 대필이 아니라 내 사고를 응집·확장해주기"
+    ],
+    "current_tools": [
+     "Obsidian/노션",
+     "PDF 하이라이터",
+     "ChatGPT류 요약"
+    ],
+    "workarounds": [
+     "읽기 전에 질문부터 세우기",
+     "문헌 추출표(목적/방법/결과/한계 열)로 비교",
+     "읽은 직후 자기 말로 1문단 요약"
+    ]
+   }
+  ],
+  "pain_points": [
+   {
+    "title": "노트가 쌓이기만 하고 다시 안 열리는 '묘지' — 저장=이해라는 착각(Collector's Fallacy)",
+    "underlying_need": "수집 자체가 아니라, 쌓인 생각이 필요할 때 실제로 되살아나 사고/글쓰기로 이어지길 원함. 저장했다는 안도감과 실제 활용 사이의 간극을 메우고 싶음.",
+    "quote": "You end up with a vault full of \"might be useful someday\" content that just sits there, digital dust gathering on digital pages.",
+    "source_type": "blog",
+    "source_url": "https://digitalbiztalk.com/article/2-years-2094-notes-the-obsidian-reality-check",
+    "frequency": "very-common",
+    "severity": "high",
+    "evidence_strength": "moderate",
+    "underlying_need_extra": ""
+   },
+   {
+    "title": "과거의 나를 못 믿음 / 오래된 노트가 '남의 글'처럼 느껴져 재사용이 안 됨(맥락 상실)",
+    "underlying_need": "오래 전 통찰을 지금의 작업에 다시 연결하고 싶지만, 쓸 당시 맥락이 사라져 재검증·재해석 비용이 커짐. 과거 노트와 '대화'할 수 있는 재노출·맥락 복원이 필요.",
+    "quote": "My biggest issue with my Zettelkasten... is that I just don't trust my past self. It's as if he's another person—I have to rethink everything, double-check the info, make sure the sources are actually correct.",
+    "source_type": "forum",
+    "source_url": "https://forum.zettelkasten.de/discussion/comment/22068/",
+    "frequency": "very-common",
+    "severity": "high",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "같은 통찰을 한국어로도: 다시 읽으면 '남의 글' 같고, 정리할수록 노트가 '완성된 문서'로 굳어 재활용 안 됨",
+    "underlying_need": "정리(깔끔한 보관)가 아니라 '생각이 자라는' 연결을 원함. 과거 메모가 오늘의 나와 다시 만나 질문을 이어가게 하는 경험.",
+    "quote": "정리를 잘하면 할수록, 노트는 \"완성된 문서\"처럼 굳어버리거든요. ... 하지만 시간이 지나 다시 보면 남의 글처럼 느껴집니다.",
+    "source_type": "korean-community",
+    "source_url": "https://maily.so/linked.note/posts/mjz6qm8wrwk",
+    "frequency": "common",
+    "severity": "high",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "'이 생각을 어디에 적어야 하나' — 링크 위치·종류를 매번 결정하는 인지 부담이 캡처를 느리게 함",
+    "underlying_need": "읽다 떠오른 생각을 2초 안에 붙잡고 싶지만, 분류·연결 결정 때문에 흐름이 끊김. 연결 판단을 뒤로 미루거나 시스템이 거들어주길 원함.",
+    "quote": "I spend a lot of time thinking before noting \"simple\" things : where should I note this idea/information?",
+    "source_type": "forum",
+    "source_url": "https://forum.obsidian.md/t/a-phd-student-facing-difficulties-with-his-6-months-zk/105172",
+    "frequency": "very-common",
+    "severity": "high",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "백링크 노이즈 — 연결은 쌓이는데 정작 과거 근거를 찾으려면 백링크/PDF를 일일이 뒤져야 함",
+    "underlying_need": "'예전에 이거 봤는데'가 떠올랐을 때 즉시 그 지점으로 가고 싶음. 링크 양이 아니라 '관련성 높은 연결'로의 빠른 항해가 필요.",
+    "quote": "hang on - didn't I read something in a past paper about this?... it becomes a voyage through (back)links to find it... now it's a CTRL-F journey through pdfs",
+    "source_type": "forum",
+    "source_url": "https://forum.obsidian.md/t/a-phd-student-facing-difficulties-with-his-6-months-zk/105172",
+    "frequency": "common",
+    "severity": "high",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "생성은 잘하는데 연결을 못 함 → 고립 노트(orphan) 양산과 죄책감",
+    "underlying_need": "내용은 잘 만들지만 그것들이 하나의 사고 흐름으로 엮이지 않음. 연결 노동을 대신·보조해 줄 '응집기'가 필요하고, 안 엮인 노트에 대한 자책을 덜고 싶음.",
+    "quote": "The script found 620 notes with no outgoing links, about 20.5% of their collection... they described this as spotlighting their own laziness (classic blind spot bias).",
+    "source_type": "forum",
+    "source_url": "https://forum.zettelkasten.de/discussion/comment/13712",
+    "frequency": "very-common",
+    "severity": "medium",
+    "evidence_strength": "moderate"
+   },
+   {
+    "title": "노트는 수백~800개인데 논문/글로 이어지지 않는 아웃풋 공백(수집·정리에만 에너지 소진)",
+    "underlying_need": "논문 작성 '전 단계'의 생각 응집이 실제 초안으로 전환되길 원함. 시스템의 가치를 '내가 썼는가/결정했는가'로 체감하고 싶음.",
+    "quote": "The author had 800 notes and no output... most PKM systems put their effort into capture and organization, while the back half (retrieval, reflection, and output) gets neglected.",
+    "source_type": "blog",
+    "source_url": "https://theiterativelife.substack.com/p/the-zettelkasten-trap",
+    "frequency": "very-common",
+    "severity": "high",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "'good enough' 깊이를 못 정해 과잉 노트 작성 → 'invented more work than it's worth'",
+    "underlying_need": "미완성·가벼운 메모를 허용하고 싶지만 방법론의 완벽주의(atomic·thorough)가 과노동을 부름. 완성 압박 없는 캡처가 필요.",
+    "quote": "it motivates me to write even more thorough (and time consuming) notes... I find it difficult to find the \"good enough\" level prospectively... I can't help but feel like I've invented more work than it's worth.",
+    "source_type": "forum",
+    "source_url": "https://forum.obsidian.md/t/a-phd-student-facing-difficulties-with-his-6-months-zk/105172",
+    "frequency": "common",
+    "severity": "high",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "한 번 atomic했던 노트가 시간이 지나며 쪼개지고, 방법론의 'cookie-cutter' 규칙이 현실과 안 맞음",
+    "underlying_need": "경직된 규칙이 아니라 생각의 변화에 따라 유연하게 쪼개지고 합쳐지는 구조. 규칙 유지가 목적이 되지 않길 원함.",
+    "quote": "things that once seemed atomic fragment over time",
+    "source_type": "forum",
+    "source_url": "https://forum.obsidian.md/t/a-phd-student-facing-difficulties-with-his-6-months-zk/105172",
+    "frequency": "common",
+    "severity": "medium",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "인용·출처를 노트와 '끊기지 않게' 유지하는 마찰 (Zotero↔노트, 특정 하이라이트/페이지 연동)",
+    "underlying_need": "주장과 그 근거(특정 문장·페이지)가 항상 붙어 있어 인용 시점에 바로 추적 가능해야 함. 두 도구를 오가는 연동을 손수 만들 만큼 절실.",
+    "quote": "The game changer for me is to link my ZK notes to a specific part of a Zotero note",
+    "source_type": "forum",
+    "source_url": "https://forum.obsidian.md/t/a-phd-student-facing-difficulties-with-his-6-months-zk/105172",
+    "frequency": "common",
+    "severity": "medium",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "시스템이 커질수록 노트당 마찰·유지비가 늘어 지속 불가 → 반복 재시작/이탈(PKM bankruptcy)",
+    "underlying_need": "규모가 커져도 캡처·연결 비용이 선형으로 늘지 않는 구조. 'PKM 파산' 없이 오래 지속되는 작업대를 원함.",
+    "quote": "a system's effort per note tends to grow with its size... this makes it unsustainable over time (The Friction Fallacy)",
+    "source_type": "blog",
+    "source_url": "https://zettelkasten.de/posts/the-friction-fallacy/",
+    "frequency": "common",
+    "severity": "medium",
+    "evidence_strength": "moderate"
+   },
+   {
+    "title": "AI 요약은 이해·'내 질문'을 대신 못 함 — 대필이 아니라 응집이 필요하다는 명시적 요구",
+    "underlying_need": "AI가 정답 요약을 주는 게 아니라, 내 관점·질문을 이어가고 흩어진 생각을 연결해주길 원함. 대필 거부, 응집기 선호.",
+    "quote": "AI는 요약을 해주지만, 내 질문을 대신 만들어주지는 못합니다. 왜냐하면 그 노트에는 내 질문, 내 관점, 내 판단이 거의 없기 때문입니다.",
+    "source_type": "korean-community",
+    "source_url": "https://maily.so/linked.note/posts/mjz6qm8wrwk",
+    "frequency": "common",
+    "severity": "medium",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "하이라이트만 쌓이고 능동적 재구성이 없어 일주일 뒤면 핵심이 흐려짐",
+    "underlying_need": "수동적 밑줄이 아니라 자기 언어로 재구성+기존 지식과 연결해야 장기기억으로 넘어감. 재구성·연결을 유도하는 흐름이 필요.",
+    "quote": "이런 수동적 읽기는 읽는 순간에는 이해한 것 같지만, 일주일만 지나도 핵심 내용이 흐릿해집니다.",
+    "source_type": "korean-community",
+    "source_url": "https://casrai.org/guides/note-taking-methods",
+    "frequency": "common",
+    "severity": "medium",
+    "evidence_strength": "moderate"
+   },
+   {
+    "title": "규칙 없으면 '옵시디언은 시체' — 구조 설계·튜닝에 시간을 뺏기는 도구 과몰입",
+    "underlying_need": "방법론·플러그인 셋업이 아니라 생각에 머무르고 싶음. 처음부터 강제 구조 없이도 의미가 생기는 작업대.",
+    "quote": "규칙이 없으면 옵시디언은 시체",
+    "source_type": "korean-community",
+    "source_url": "https://fastcampus.co.kr/biz_online_obsidian",
+    "frequency": "occasional",
+    "severity": "low",
+    "evidence_strength": "weak"
+   }
+  ],
+  "churn_reasons": [
+   "규모 증가에 따른 마찰·유지비 폭증: 노트가 많아질수록 캡처·연결·정리 비용이 늘어 지속 불가능해지고 결국 손을 뗌('The Friction Fallacy'; 여러 사용자가 도구/프로세스를 바꿔가며 '여러 번 재시작했지만 결국 무너진다'고 증언).",
+   "ROI/아웃풋 부재: 노트는 수백~800개인데 논문·글·결정으로 이어지지 않아 '시간 낭비'로 느끼고 환멸(옵시디언 포럼 'Disillusioned with Zettelkasten', 'The Zettelkasten Trap').",
+   "Collector's Fallacy 자각: 저장=이해라는 착각을 깨닫고 '쌓기만 하는 디지털 먼지'에 회의. 'PKM 파산' 선언 후 새 볼트로 리셋하거나 한 개의 큰 텍스트 파일로 회귀.",
+   "방법론의 경직성(cookie-cutter): atomic·완벽주의 규칙이 실제 연구 흐름과 안 맞아 Nori Parelius처럼 '내가 생각한 그 제텔카스텐이 아니었다'며 떠남.",
+   "데이터 소유·상호운용성 집착: 플레인텍스트/Markdown·lock-in 회피가 도구 선택의 핵심 기준. 특정 포맷·앱에 갇힌다고 느끼면 바로 이탈(Zotero ZK를 버리고 plain Markdown으로 이동한 사례).",
+   "유지보수 피로: 플러그인·동기화·추출 깨짐, 색상/주석 꼬임 등 운영 부담이 누적되면 포기."
+  ],
+  "willingness_to_pay": "지불 의향은 '있으나 강한 가격 민감성'. 대학원생은 도구의 가치를 분명히 인정(한 옵시디언 포럼 사용자는 6주 사용 후 'it had revolutionized my research and workflows'라며 학생 할인을 요청)하지만 예산이 빡빡함. Zotero 포럼에선 한 대학원생이 6GB=$60/년을 '학생 예산엔 너무 비싸다'며 '$20~30이면 서비스를 포기하지 않고 구독할 학생이 많다'고 명시적 가격대를 제시(https://forums.zotero.org/discussion/133462). 다수는 WebDAV(Koofr 10GB 무료) 등 무료 우회로 유료를 회피. 반면 옵시디언은 교육·비영리 40% 할인을 제공해 Sync를 저가로 흡수(학생 가격 월 $2.4 수준 추정). 시사점: (1) 무료/로컬 핵심 기능은 비과금 상태로 충분히 쓸 수 있어야 하고, (2) 학생 할인·연 $20~40대의 저가 구독이 현실적 상한선, (3) '연결 제안/재노출'처럼 아웃풋을 실제로 끌어올리는 기능이라야 과금 전환이 일어남(단순 저장/동기화엔 안 냄). 미출판 연구·아이디어의 프라이버시(본문이 서버를 안 거치는 local-first)는 이 세그먼트에서 유료 전환보다 '신뢰·진입 장벽'을 낮추는 요소로 작동.",
+  "moss_fit": "[강하게 맞는 점]\n- '생성은 잘하는데 연결을 못 함'(orphan 양산)과 '백링크 노이즈'는 이 세그먼트의 1순위 고통인데, moss의 임베딩 기반 연결 제안(수락/거절+거절 학습)과 수동/AI(점선) 연결선 구분이 정확히 이 지점을 겨눔. 특히 'AI 추천이 뻔한 연결만 준다'는 회의에 대해 거절 학습이 설득 포인트.\n- '과거 노트가 남의 글 같다/다시 안 열린다'(묘지·재발견) → '다시 떠오른 생각·오늘의 연결·오늘의 질문' 홈 재노출이 직접 대응. 한국어 원문 'AI는 요약은 해주지만 내 질문을 대신 만들어주지 못한다'와 moss의 '응집기(대필 아님)' 철학이 거의 1:1로 일치.\n- '어디에 적지' 결정 부담·'good enough' 완벽주의 → 제목/폴더/태그 강제 없음, 2초 캡처, 미완성 허용, streak·압박 알림 금지가 과노동/번아웃을 직접 해소.\n- '사고 지형도'가 필요한 군집/흐름 파악 → 무한 캔버스+줌(축소=지형도)과 반복 키워드/군집/흐름 요약이 적합.\n- 미출판 연구의 프라이버시 → local-first(본문 서버 미경유)가 진입 신뢰를 높임. 데이터 소유 중시 성향과도 결이 맞음.\n\n[안 맞거나 위험한 점 — 솔직하게]\n- 치명적 공백: 이 세그먼트의 핵심 반복 고통은 '인용·출처 관리'(Zotero 연동, citekey, 특정 하이라이트/페이지로 점프, PDF 주석)인데 moss는 레퍼런스 관리가 사실상 NON-GOAL이고 export만 제공. Zotero를 대체하지 못하면 '또 하나의 수집함'이 되어 워크플로에 끼지 못할 위험. 최소한 Zotero/BibTeX·PDF 하이라이트 유입과 출처-카드 추적은 '있으면 좋음'이 아니라 생존 조건에 가까움.\n- 아웃풋 전환 공백: '노트→논문 초안'으로의 전환이 최대 이탈 사유('800개인데 아웃풋 0'). moss는 응집·연결엔 강하지만 글쓰기 아웃풋(초안화, outline, 섹션 구성)이 약하면 동일한 '수집 함정'을 재생산. Markdown export만으론 부족할 수 있음.\n- Lock-in 우려: 이들은 plain-text·data ownership에 민감해 옵시디언을 고름. IndexedDB/OPFS 독자 저장 + export-only는 '갇힌다'는 거부감을 부를 수 있음. Markdown/JSON Canvas export의 왕복(round-trip) 충실도가 신뢰의 관건.\n- 추천 품질 리스크: 이 세그먼트는 'Smart Connections가 뻔한 연결만 준다'류 회의가 강함. 초기 추천이 얕으면 즉시 신뢰를 잃음 → 거절 학습·설명가능성(왜 이 연결인지)이 없으면 역효과.\n- 캔버스 vs. 선형 텍스트: 논문 집필은 결국 선형 텍스트/아웃라인 사고가 강한데, 무한 캔버스는 탐색엔 좋아도 '긴 문헌 노트+인용 블록'을 다루는 밀도엔 불리할 수 있음(공간 네비게이션 피로). 롱폼 텍스트 카드의 가독성·검색이 받쳐줘야 함.\n\n요약: '응집·재발견·완벽주의 해소'에선 세그먼트 적합도가 매우 높지만, '출처 관리'와 '아웃풋(초안) 전환'의 두 공백이 이 세그먼트에서 moss의 도입/잔존을 가르는 결정 변수. 둘 중 하나라도 비면 환멸→이탈 패턴을 그대로 답습할 위험이 큼.",
+  "notable_sources": [
+   "https://forum.obsidian.md/t/a-phd-student-facing-difficulties-with-his-6-months-zk/105172 (박사과정 당사자들의 링크/재발견/인용/atomicity 붕괴 직접 인용 다수 — 최고 밀도 1차 출처)",
+   "https://maily.so/linked.note/posts/mjz6qm8wrwk (한국어: 정리의 역설, 남의 글 같음, AI는 내 질문을 못 만든다 — moss 가치제안과 거의 1:1)",
+   "https://theiterativelife.substack.com/p/the-zettelkasten-trap (800 notes, no output — 아웃풋 공백)",
+   "https://forum.zettelkasten.de/discussion/comment/22068/ (과거의 나를 못 믿음 — 재발견/맥락 상실)",
+   "https://forum.zettelkasten.de/discussion/comment/13712 (620 orphan notes/20.5%, blind spot bias — 연결 실패·죄책감)",
+   "https://zettelkasten.de/posts/the-friction-fallacy/ (규모↑→마찰↑→이탈)",
+   "https://zettelkasten.de/posts/noris-zettelkasten-journey-why-she-let-it-go-interview/ (연구자 Nori의 이탈: cookie-cutter 방법론 비판)",
+   "https://forums.zotero.org/discussion/133462 (학생 WTP: 6GB $60은 비싸다, $20~30이면 구독)",
+   "https://forum.obsidian.md/t/any-chance-for-a-xmas-new-years-sync-publish-discount/28888 (학생 할인 수요 + 'revolutionized my research')",
+   "https://digitalbiztalk.com/article/2-years-2094-notes-the-obsidian-reality-check (Collector's Fallacy·digital dust — 2차 요약)"
+  ]
+ },
+ {
+  "segment": "작가·뉴스레터/유튜브/블로그 크리에이터·카피라이터 (아이디어 조각 → 초안 전환, 영감 저장소의 묘지화, 스와이프 파일, AI 대필 거부감 vs AI 보조 기대)",
+  "persona_sketches": [
+   {
+    "name_label": "메모 앱 유목민이 된 10년차 PKM 작가/블로거",
+    "context": "요즘IT·브런치에 글을 쓰는 지식노동자. 원노트→에버노트→노션→옵시디언으로 도구를 계속 갈아타며 '완벽한 지식관리 시스템'을 찾는다. 글감은 수백 개 쌓였는데 정작 발행 주기는 느려졌다. 새벽에 노션 대시보드를 다시 꾸미다 하루가 간다.",
+    "goals": [
+     "쌓아둔 메모를 실제 글(브런치/뉴스레터)로 전환",
+     "도구를 또 갈아타지 않고 '머무를' 안정적인 작업대 확보",
+     "과거에 적어둔 생각이 다시 떠오르게 하는 재노출"
+    ],
+    "current_tools": [
+     "노션",
+     "옵시디언",
+     "에버노트/원노트(과거)",
+     "구글 Keep(빠른 캡처)",
+     "애플 메모"
+    ],
+    "workarounds": [
+     "빠른 초안은 노션 대신 구글 Keep/애플 메모에 따로 적음",
+     "글감 전용 빈 테이블/Ideas 폴더를 하나 만들어 모음",
+     "주간 리뷰로 일부만 '프로젝트'로 승격"
+    ]
+   },
+   {
+    "name_label": "스와이프 파일이 묘지가 된 프리랜스 카피라이터",
+    "context": "세일즈 페이지·이메일 카피를 쓰는 프리랜서. 좋은 광고를 보면 Evernote/폴더에 저장하지만, 파일이 너무 커져서 막상 쓸 때 안 뒤진다. AI로 초안을 뽑는 건 '왜 먹히는지'를 모르게 될까 봐 꺼린다.",
+    "goals": [
+     "막힐 때 바로 꺼내 쓸 수 있는 영감 저장소",
+     "스와이프를 '복붙'이 아니라 '왜 먹히는지'와 함께 보관",
+     "빈 화면 대신 쓸 만한 출발점 확보"
+    ],
+    "current_tools": [
+     "Evernote(태그/폴더)",
+     "Gmail 라벨(이메일 스와이프)",
+     "개인 swipe file 폴더",
+     "노션"
+    ],
+    "workarounds": [
+     "막히면 저장해둔 카피를 'Frankenstein'처럼 짜깁기",
+     "제품/매체별 폴더 분류",
+     "가끔 '베스트'/'different' 폴더만 따로 둠"
+    ]
+   },
+   {
+    "name_label": "영상 아이디어 100개가 밀린 1인 유튜버/뉴스레터 운영자",
+    "context": "혼자 기획·대본·촬영을 다 하는 크리에이터. 아이디어는 산책 중, 운전 중, 샤워 중에 떠오르는데 캡처가 늦어 사라진다. 머릿속엔 수십 개 기획이 밀려 있지만 어떤 걸 먼저 할지 몰라 아무것도 못 찍는다.",
+    "goals": [
+     "떠오른 순간 2초 안에 붙잡기",
+     "밀린 아이디어 더미에서 '다음에 만들 것' 고르기",
+     "아이디어끼리 묶어서 시리즈/연재로 응집"
+    ],
+    "current_tools": [
+     "애플 메모",
+     "구글 Keep",
+     "음성 메모/보이스 캡처 앱",
+     "노션 콘텐츠 캘린더"
+    ],
+    "workarounds": [
+     "키보드 옆 작은 노트에 손으로 적어둠",
+     "음성 녹음 후 나중에 정리",
+     "여러 앱에 흩어 적고 나중에 못 찾음"
+    ]
+   }
+  ],
+  "pain_points": [
+   {
+    "title": "영감 저장소의 묘지화: '고화질로 잊히는 곳'이 된 메모",
+    "underlying_need": "적어둔 생각이 사라지지 않는다는 안도감만 주고 끝나는 게 아니라, 실제로 다시 떠오르고 글로 이어지길 원함",
+    "quote": "a place where ideas go to be forgotten in high definition / Store Everything, Create Nothing",
+    "source_type": "blog/product-review",
+    "source_url": "https://www.producthunt.com/p/socra-socratic-ai-tutor-partner/why-most-note-taking-apps-fail-writers-and-how-socra-ai-drafting-is-different",
+    "frequency": "very-common",
+    "severity": "high",
+    "evidence_strength": "moderate"
+   },
+   {
+    "title": "캡처에 '다음 단계'가 없어서 메모가 노이즈가 됨",
+    "underlying_need": "캡처 자체가 목적이 아니라 캡처한 조각이 초안으로 넘어가는 다리(전환)가 필요",
+    "quote": "your notes remain static until they eventually become noise / Notes are just raw materials ... standing at the edge of that gap",
+    "source_type": "blog/product-review",
+    "source_url": "https://www.producthunt.com/p/socra-socratic-ai-tutor-partner/why-most-note-taking-apps-fail-writers-and-how-socra-ai-drafting-is-different",
+    "frequency": "very-common",
+    "severity": "high",
+    "evidence_strength": "moderate"
+   },
+   {
+    "title": "수집(collector's fallacy)이 학습·창작을 대체하는 착각",
+    "underlying_need": "'저장했다'는 만족을 '이해했다/썼다'로 착각하지 않도록, 저장한 것이 다시 작업에 소환돼야 함",
+    "quote": "the satisfying illusion that saving something is the same as learning or doing it ... If you cannot picture that moment, you are collecting, not capturing",
+    "source_type": "blog",
+    "source_url": "https://superlazy-api-ne3g.onrender.com/blog/what-should-go-in-your-second-brain",
+    "frequency": "very-common",
+    "severity": "high",
+    "evidence_strength": "moderate"
+   },
+   {
+    "title": "도구 정리·꾸미기가 실제 글쓰기를 대체함",
+    "underlying_need": "시스템 구축이 아니라 글 생산이 목표. 세팅에 뺏기는 에너지를 없애고 바로 쓰고 싶음",
+    "quote": "I spent a lot of time organizing my stuff rather than actually creating/writing stuff ... I'd start redesigning/modifying my dashboard",
+    "source_type": "blog",
+    "source_url": "https://deepakness.com/blog/notion-not-for-writers/",
+    "frequency": "very-common",
+    "severity": "high",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "무거운 도구(노션)는 2초 캡처·빠른 초안에 안 맞음",
+    "underlying_need": "떠오른 순간 즉시, 마찰 없이 붙잡고 초안을 끄적일 수 있는 가벼움",
+    "quote": "It takes ages to open ... if one needs to write a quick draft, it's just not a handy tool ... I went back to using Google Keep to note down quick drafts and ideas on my phone",
+    "source_type": "blog",
+    "source_url": "https://deepakness.com/blog/notion-not-for-writers/",
+    "frequency": "common",
+    "severity": "high",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "스와이프 파일이 너무 커져 결국 무시되고 잊힘",
+    "underlying_need": "영감 더미를 '막힐 때 실제로 꺼내 쓰는' 상태로 유지(응집·재노출)",
+    "quote": "so they don't get overwhelming and eventually get ignored and forgotten ... I realized I had way too much to handle ... If swipe-worthy promos pile up unorganized, they're not much use",
+    "source_type": "forum/industry",
+    "source_url": "https://www.awai.com/2016/02/bringing-order-to-swipe-file-chaos/",
+    "frequency": "common",
+    "severity": "high",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "스와이프/복붙 의존이 '왜 먹히는지'를 못 보게 함",
+    "underlying_need": "조각을 복제하는 게 아니라 조각 사이의 원리·연결을 이해하며 자기 것으로 전환",
+    "quote": "I never understood WHY my copy worked ... When I felt stuck ... I'd just open the vault and 'Frankenstein together' a piece of copy ... I'd hit a dead end",
+    "source_type": "blog/newsletter",
+    "source_url": "https://tim-schreiber.beehiiv.com/p/why-i-hate-swipe-files",
+    "frequency": "common",
+    "severity": "medium",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "떠오른 순간 캡처가 늦어 아이디어가 사라짐",
+    "underlying_need": "생각이 휘발되기 전, 어떤 상황(산책·운전)에서도 즉시 붙잡는 초저마찰 캡처",
+    "quote": "I can come up with a dozen ideas ... Just one problem: I can't remember them ... I never actually wrote down the idea, until after the message/cat/picture/upload process ... I have to bring the notebook with me, everywhere",
+    "source_type": "blog(ADHD creator)",
+    "source_url": "https://adhdos.substack.com/p/how-i-rediscovered-the-best-tool",
+    "frequency": "very-common",
+    "severity": "high",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "여러 앱에 흩어진 캡처를 나중에 못 찾음",
+    "underlying_need": "포맷(음성/텍스트/이미지/링크)에 상관없이 한 곳에 모이고, 애매한 기억으로도 다시 찾아짐",
+    "quote": "",
+    "source_type": "comparison/tool",
+    "source_url": "https://fabric.so/comparison/best-adhd-note-taking-app",
+    "frequency": "very-common",
+    "severity": "medium",
+    "evidence_strength": "weak"
+   },
+   {
+    "title": "'마스터 아이디어 리스트' 자체가 압박·부담이 됨",
+    "underlying_need": "골라야 할 긴 백로그의 압박 없이, 생각이 자연스럽게 다시 떠오르는 방식",
+    "quote": "A few weeks ago I deleted my entire idea list. And you know what? Nothing happened. ... I very much agree with not maintain an 'idea list' to pick from",
+    "source_type": "substack+comment",
+    "source_url": "https://annaluciawrites.substack.com/p/why-i-dont-keep-an-idea-list/comments",
+    "frequency": "occasional",
+    "severity": "medium",
+    "evidence_strength": "moderate"
+   },
+   {
+    "title": "AI 대필은 거부, AI 보조(발상·연결·조사)는 기대",
+    "underlying_need": "저작자성은 내가 쥐되, 반복 키워드·군집·연결 제안 같은 '응집기' 역할의 AI는 환영",
+    "quote": "only 7% use it to generate text content for publication ... a majority of AI users are using it to suggest possible titles and headings, for brainstorming, or as a thesaurus",
+    "source_type": "industry-survey",
+    "source_url": "https://www.publishersweekly.com/pw/print/20251110/99019-new-report-examines-writers-attitudes-toward-ai.html",
+    "frequency": "very-common",
+    "severity": "high",
+    "evidence_strength": "moderate"
+   },
+   {
+    "title": "AI 대필에 대한 강한 집단적 거부감(독자·동료·업계)",
+    "underlying_need": "AI가 '대신 써주는' 제품으로 인식되면 이 세그먼트가 신뢰를 거둠 — 명확한 비대필 포지셔닝 필요",
+    "quote": "70여 명 작가가 출판사에 '기계로 만든 책을 절대 출간하지 않겠다' 약속을 요구 / 'AI 글쓰기'라는 개념 자체가 많은 독자에게 강한 거부감",
+    "source_type": "news/korean-summary",
+    "source_url": "https://kuow.org/stories/more-than-70-writers-send-open-letter-about-ai-to-literary-publishers",
+    "frequency": "common",
+    "severity": "high",
+    "evidence_strength": "moderate"
+   },
+   {
+    "title": "초고 이전 '의사결정 피로'가 전환을 막음(한국 블로거)",
+    "underlying_need": "주제·제목·구조·정리 등 준비 단계의 결정을 줄여, '무엇을 담을까'만 남기고 바로 초고로",
+    "quote": "본문 작성만이 진짜 '글쓰기'입니다. 나머지는 모두 의사결정과 준비 작업",
+    "source_type": "korean-community(wikidocs blog)",
+    "source_url": "https://wikidocs.net/blog/@rudah96/14042/",
+    "frequency": "common",
+    "severity": "medium",
+    "evidence_strength": "moderate"
+   },
+   {
+    "title": "조사·수집을 많이 할수록 초고 전환이 더 어려워짐",
+    "underlying_need": "수집 단계와 창작 단계의 분리, 그리고 수집물이 초고로 자연스럽게 응축되는 흐름",
+    "quote": "the more ideas I come up with and the more sources I capture, the more rewriting/refining work I have to do",
+    "source_type": "substack(storyletter)",
+    "source_url": "https://storyletter.substack.com/p/to-build-a-note-is-note-taking-productive",
+    "frequency": "common",
+    "severity": "medium",
+    "evidence_strength": "moderate"
+   }
+  ],
+  "churn_reasons": [
+   "노션이 너무 무겁고 느려서 빠른 캡처·초안에 안 맞음 → 구글 Keep/애플 메모로 회귀(deepakness)",
+   "도구 세팅·대시보드 꾸미기가 글쓰기를 대체하는 번아웃 → 드래프팅 전용 도구로 분리(옵시디언/스크리브너)",
+   "메모 앱 유목민화: 완벽한 시스템을 찾아 원노트→노션→옵시디언 등 끝없는 전환(브라이언, 요즘IT)",
+   "옵시디언은 자유도가 높은 대신 구조를 직접 설계해야 하는 부담 → 링크·정리가 또 다른 미루기(procrastination)가 됨",
+   "스와이프/메모가 너무 커져 검색·활용이 안 됨 → 결국 방치·삭제(AWAI, Anna Lucia)",
+   "AI 글쓰기 제품이 '대필'로 인식되면 세그먼트가 신뢰를 거두고 이탈(출판계 공개서한·독자 거부감)"
+  ],
+  "moss_fit": "잘 맞는 점: (1) '머무름·응집·연결'이라는 핵심 동사가 이 세그먼트의 진짜 고통(수집은 되는데 전환이 안 됨, 영감 저장소의 묘지화)과 정확히 겹친다. (2) 2초 캡처·제목/폴더/태그 강제 없음은 '무거운 노션' 이탈자와 '떠오른 순간 사라짐' 고통을 직격한다. (3) 과거 메모의 홈 재노출('다시 떠오른 생각/오늘의 연결/오늘의 질문')은 collector's fallacy와 묘지화를 구조적으로 깨는 거의 유일한 차별점 — 이 세그먼트가 가장 목말라하는 기능. (4) AI를 '대필이 아닌 응집기'로 명시한 포지셔닝은 '대필 거부 + 보조 기대'라는 세그먼트 심리와 완벽히 정렬(수락/거절 학습, 점선 추천 연결선 구분). (5) 손글씨·이미지·링크·코드·스티키 등 다양한 카드와 무한 캔버스는 스와이프 파일/영감 보드를 자연스럽게 수용. (6) Local-first·오프라인·메모 본문이 서버를 안 거침은 AI 학습 유출을 걱정하는 작가들에게 신뢰 포인트.\n\n안 맞거나 위험한 점: (1) 가장 큰 미충족 욕구는 '초고 전환(draft conversion)'인데, moss의 NON-GOAL이 AI 대필이라 '빈 화면에서 초안까지'를 직접 메우지 않는다 — 이 세그먼트는 조각 수집 다음의 '쓰기'에서 막히므로, 캔버스에서 긴 산문 초안으로 넘어가는 경험(카드 묶기→선형 초안 뷰, Markdown export로 외부 에디터 연결)이 약하면 '수집만 더 예쁘게 하는 또 하나의 묘지'가 될 위험. (2) 무한 캔버스+줌 자체가 옵시디언처럼 '구조 설계·정리에 시간 뺏기는' 새 번아웃을 만들 수 있음 — 이 세그먼트는 정리 도구 피로로 이탈한 사람들이라 온보딩이 '세팅 없이 바로 쓰임'을 증명해야 함. (3) 카피라이터의 스와이프 파일은 '왜 먹히는지'를 알고 싶은 니즈가 커서, 단순 저장·연결을 넘어 '이유/맥락 주석'을 못 받쳐주면 얕게 느껴질 수 있음. (4) 선형 텍스트 중심 작가(브런치·뉴스레터)에게는 캔버스 메타포 자체가 과할 수 있어, 캔버스를 싫어하는 사용자용 리스트/문서 뷰 대안이 없으면 진입 장벽.\"",
+  "willingness_to_pay": "지불 의향 신호는 분명히 존재하나 '전환 가치'를 증명해야 열린다. (1) 이 세그먼트는 이미 유료 지출 습관이 있음 — 노션 유료, 옵시디언 Sync/Publish, 스크리브너(일회성 구매), Evernote, 그리고 옵시디언 작가용 템플릿·스와이프 파일 제품(Gumroad/Payhip)과 Echo·Socra 같은 유료 '작가용 메모·초안' 앱이 팔린다. 즉 '메모→초안' 문제에 돈을 쓰는 시장이 형성돼 있음. (2) 다만 핵심 가치가 '정리'가 아니라 '전환·재노출·연결'일 때만 지갑이 열린다(수집 도구는 무료 대체재가 많음 — 구글 Keep/애플 메모). moss의 유료 훅은 AI 응집기(연결 제안·군집 요약)와 과거 메모 재노출이 적절; 이건 무료 메모앱이 못 주는 차별 가치라 freemium 상단 전환 포인트로 설득력 있음. (3) 위험 신호: AI 비용 민감 + '대필 아님' 때문에 \"AI가 글을 대신 써주니 월 2만원\"식 ROI 서사를 못 쓴다 — 가치 서사를 '사라지던 생각을 글로 되살려 발행 빈도↑'로 잡아야 함. (4) 프리랜스 카피라이터는 수익과 직결(막힘 해소=납기 준수)되어 WTP가 상대적으로 높고, 취미 블로거·초기 크리에이터는 무료 티어 체류 성향이 강함. evidence_strength: moderate(직접적 가격 지불 인용은 못 확보, 주변 유료 제품 생태로 추정).\"",
+  "notable_sources": [
+   "https://www.producthunt.com/p/socra-socratic-ai-tutor-partner/why-most-note-taking-apps-fail-writers-and-how-socra-ai-drafting-is-different — '고화질로 잊히는 곳'/'Store Everything, Create Nothing'/'notes become noise' (묘지화·전환 공백)",
+   "https://deepakness.com/blog/notion-not-for-writers/ — 노션이 작가에게 안 맞는 이유: 정리에 시간 뺏김, 느림, 빠른 초안 불가 (강한 1인칭 churn)",
+   "https://tim-schreiber.beehiiv.com/p/why-i-hate-swipe-files — 스와이프 의존의 함정: 'why it worked'를 모름, 'Frankenstein', dead end",
+   "https://www.awai.com/2016/02/bringing-order-to-swipe-file-chaos/ — 스와이프 파일이 커져 무시·방치되는 문제",
+   "https://adhdos.substack.com/p/how-i-rediscovered-the-best-tool — 아이디어 머신인데 '기억을 못 함', 캡처 지연으로 소실 (저마찰 캡처 니즈)",
+   "https://annaluciawrites.substack.com/p/why-i-dont-keep-an-idea-list/comments — 마스터 아이디어 리스트 삭제 후 오히려 홀가분 (백로그 압박)",
+   "https://www.publishersweekly.com/pw/print/20251110/99019-new-report-examines-writers-attitudes-toward-ai.html — 2025 작가 1,481명 설문: 출판용 생성 7%뿐, 발상·제목·시소러스엔 다수 사용 (대필 거부·보조 수용)",
+   "https://kuow.org/stories/more-than-70-writers-send-open-letter-about-ai-to-literary-publishers — 작가 70여 명 반-AI 공개서한 (집단적 대필 거부감)",
+   "https://yozm.wishket.com/magazine/detail/2517/ — 한국: '10년 이상 메모 앱 유목민', 원노트→노션→옵시디언 전환사",
+   "https://wikidocs.net/blog/@rudah96/14042/ — 한국: 초고 이전 '의사결정·준비 피로'가 발행을 막는다",
+   "https://superlazy-api-ne3g.onrender.com/blog/what-should-go-in-your-second-brain — collector's fallacy: 저장=학습이라는 착각, '묻어두면 landfill'",
+   "https://storyletter.substack.com/p/to-build-a-note-is-note-taking-productive — 수집이 늘수록 재작성 부담 증가, 수집/창작 단계 분리 필요"
+  ]
+ },
+ {
+  "segment": "시각적 사고자·디자이너·기획자 — 개인용 무한 캔버스/화이트보드 사용자 (Miro, FigJam, Milanote, Muse, Heptabase, Kinopio, Scrintal, Obsidian Canvas, tldraw, Apple Freeform)",
+  "persona_sketches": [
+   {
+    "name_label": "팀 Miro/FigJam에 지쳐 개인용 생각 보드를 따로 찾는 3~7년차 프로덕트 디자이너",
+    "context": "회사에서는 FigJam/Miro로 워크샵·회고를 돌리지만, '내 머릿속 정리'는 그 안에서 못 한다. 팀 보드는 협업 전제라 지저분하게 쓰기 부담스럽고, 개인 생각을 섞으면 남이 본다. 퇴근 후나 출퇴근길에 떠오른 조각들을 어디에 둘지 몰라 결국 메모앱·스샷·노션에 흩어 둔다.",
+    "goals": [
+     "남 눈치 안 보고 거칠게 펼쳐 둘 수 있는 개인 캔버스",
+     "리서치 조각·레퍼런스 이미지·한 줄 아이디어를 공간에 모아두고 나중에 다시 연결",
+     "팀 도구와 분리된, 완성 압박 없는 공간"
+    ],
+    "current_tools": [
+     "FigJam",
+     "Miro",
+     "Figma",
+     "Notion",
+     "Apple Freeform"
+    ],
+    "workarounds": [
+     "개인 계정/별도 워크스페이스를 하나 더 파서 개인 보드로 사용",
+     "FigJam 보드를 '임시 쓰레기통'처럼 쓰다가 못 찾아서 포기",
+     "레퍼런스는 스크린샷 폴더 + 노션 임베드로 분산"
+    ]
+   },
+   {
+    "name_label": "Obsidian/Heptabase를 캔버스로 쓰는 시각형 PKM 사용자",
+    "context": "텍스트 노트는 쌓였는데 '관계'가 안 보여서 캔버스로 넘어왔다. Obsidian Canvas나 Heptabase 화이트보드에 노트를 끌어다 공간 배치하며 사고한다. 하지만 노드가 100~150개를 넘어가면 렉이 걸리고, 카드 안에서 글 쓰는 게 불편해 흐름이 끊긴다. 도구가 '미완성'이라는 불안도 있다.",
+    "goals": [
+     "흩어진 노트를 공간에 늘어놓고 군집·흐름을 눈으로 파악",
+     "수동 연결선으로 생각의 구조를 직접 만들기",
+     "로컬 소유권(내 파일)을 지키면서 시각적으로 사고"
+    ],
+    "current_tools": [
+     "Obsidian Canvas",
+     "Heptabase",
+     "Excalidraw",
+     "Logseq",
+     "Scrintal"
+    ],
+    "workarounds": [
+     "캔버스가 커지면 서브 캔버스로 쪼개기",
+     "카드 편집이 불편해 Canvas Markdown Side Editor 같은 플러그인 설치",
+     "도형·펜이 없어 Excalidraw를 따로 병행"
+    ]
+   },
+   {
+    "name_label": "가벼운 개인 아이디어 보드를 쓰는 1인 크리에이터/프리랜서 기획자",
+    "context": "무드보드, 기획 초안, 글감 수집을 Milanote·Kinopio·Freeform 같은 가벼운 도구로 한다. 돈 내기는 애매한데 무료 플랜 한도(아이템 100개, 보드 3개)에 금방 막히고, 어느 날 도구가 서비스를 접거나(뮤즈처럼) view-only로 잠겨 작업물이 묶이는 걸 겪었다.",
+    "goals": [
+     "설치·로그인 없이 2초 안에 떠오른 걸 던져두기",
+     "무드보드/레퍼런스를 시각적으로 모으기",
+     "내가 쌓은 게 사라지거나 인질 잡히지 않는다는 안심"
+    ],
+    "current_tools": [
+     "Milanote",
+     "Kinopio",
+     "Apple Freeform",
+     "Notion"
+    ],
+    "workarounds": [
+     "무료 한도 차면 오래된 보드 삭제하거나 새 계정 생성",
+     "중요한 건 export/스샷으로 백업",
+     "도구를 여러 개 번갈아 쓰며 분산"
+    ]
+   }
+  ],
+  "pain_points": [
+   {
+    "title": "노드가 100~150개만 넘어도 캔버스가 렉 걸려 '생각의 흐름'이 끊긴다",
+    "underlying_need": "생각이 커질수록 더 많이 펼쳐 놓고 싶은데, 바로 그 순간(노드가 많아질 때) 도구가 느려져 사고를 멈추게 한다. '막힘 없이 계속 머무르며 응집'하려는 동기를 정면으로 방해한다.",
+    "quote": "My Obsidian canvases in the standard vault I use are noticeably laggy and not smooth at all ... if the scrolling on Canvas isn't smooth, it kills the enthusiasm to use the app a bit.",
+    "source_type": "forum",
+    "source_url": "https://forum.obsidian.md/t/why-is-obsidian-canvas-laggy-but-e-g-clover-canvas-smooth/62135",
+    "frequency": "very-common",
+    "severity": "high",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "텍스트 하나 편집하는 데 몇 초씩 기다리는 대형 보드(Miro)",
+    "underlying_need": "캡처와 편집은 즉각적이어야 생각이 날아가지 않는데, 무거운 보드는 입력 자체에 지연을 줘 '2초 캡처' 기대를 깬다.",
+    "quote": "the board grew so slow that the browser became unresponsive ... double-clicking an element meant waiting about three seconds",
+    "source_type": "forum",
+    "source_url": "https://community.miro.com/ask-the-community-45/boards-are-very-laggy-and-slow-on-desktop-app-and-web-app-12191",
+    "frequency": "very-common",
+    "severity": "high",
+    "evidence_strength": "moderate"
+   },
+   {
+    "title": "카드 안에서 글 쓰는 게 좁고 번거롭다 — 줌인/더블클릭/포커스 전환 반복",
+    "underlying_need": "캔버스의 공간 사고와 '제대로 된 텍스트 작성'을 동시에 하고 싶은데, 두 모드가 충돌한다. 생각을 공간에 두면서도 각 조각을 편하게 쓰고 싶은 욕구.",
+    "quote": "editing Markdown cards directly inside Canvas can feel cramped and clunky ... you often have to zoom in and out, double-click small cards, and switch focus repeatedly",
+    "source_type": "forum",
+    "source_url": "https://forum.obsidian.md/t/plugin-canvas-markdown-side-editor/106568",
+    "frequency": "common",
+    "severity": "high",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "보드가 커지면 스티키/텍스트를 나중에 못 찾는다 — 검색 부재(FigJam)",
+    "underlying_need": "펼쳐 둔 생각을 '다시 떠올려' 재활용하려는 핵심 동기. 검색이 없으면 쌓을수록 묻혀서, 캔버스가 아카이브가 아니라 블랙홀이 된다.",
+    "quote": "Users have been asking for basic text search for years ... a Figmate said search was on the team's radar, with no timeline. In the meantime, there are plugins ... Search Stickies & Supersearch",
+    "source_type": "forum",
+    "source_url": "https://forum.figma.com/t/find-search-keywords-and-text-in-figjam/3269",
+    "frequency": "very-common",
+    "severity": "high",
+    "evidence_strength": "moderate"
+   },
+   {
+    "title": "검색이 보드 이름/직접 텍스트까지만, 이미지·첨부 안의 내용은 안 걸린다(Apple Freeform)",
+    "underlying_need": "시각형 사용자는 이미지·레퍼런스를 많이 붙이는데, 그 안의 맥락이 검색 안 되면 '모아둔 것'을 되찾을 수 없다.",
+    "quote": "search returns results for text found in the name of your board and inside the document, but it doesn't return results based on the contents of files added to your board or the text in images",
+    "source_type": "review",
+    "source_url": "https://www.macstories.net/reviews/freeform-leverages-the-freedom-and-flexibility-of-a-blank-canvas/",
+    "frequency": "common",
+    "severity": "medium",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "무료 플랜 한도가 실제 프로젝트 한 번에 넘어간다(Milanote 100개 / Kinopio 100카드)",
+    "underlying_need": "'완성 압박 없이 일단 다 던져두기'가 목적인데, 던지자마자 한도에 막혀 지우거나 결제하라는 압박을 받는다. 미완성 축적을 허용받고 싶은 욕구와 정면 충돌.",
+    "quote": "The free plan imposes significant constraints with a limit of 100 notes, cards, and images combined, which users can reach quickly during active projects.",
+    "source_type": "review",
+    "source_url": "https://www.capterra.com/p/165790/Milanote/pricing/",
+    "frequency": "very-common",
+    "severity": "high",
+    "evidence_strength": "moderate"
+   },
+   {
+    "title": "무료 '보드 3개' 한도 + 초과 시 view-only 잠금(Miro)이 개인 사용자를 가둔다",
+    "underlying_need": "개인은 여러 주제를 병렬로 굴리고 싶은데, 팀 과금 구조라 보드 수가 팀 단위로 묶여 금방 막히고, 넘으면 기존 작업이 읽기전용으로 잠긴다. '내가 쌓은 게 인질 잡히지 않는다'는 안심이 깨진다.",
+    "quote": "3 of them are locked saying i need to buy to access it ... When I try to create a new board, Miro shows me this message [and could not create one]",
+    "source_type": "forum",
+    "source_url": "https://community.miro.com/ask-the-community-45/free-plan-won-t-let-me-create-a-4th-board-i-thought-boards-were-unlimited-28959",
+    "frequency": "common",
+    "severity": "high",
+    "evidence_strength": "moderate"
+   },
+   {
+    "title": "개인 사고 도구인데 '팀 협업'을 전제로 설계돼 혼자 쓰기엔 과하거나 어색하다",
+    "underlying_need": "혼자 머물며 생각을 응집하는 사적 공간을 원하는데, 팀 도구는 공유·권한·협업 UI가 전제라 '나만의 거친 사고판'으로 쓰기 심리적·구조적으로 부담.",
+    "quote": "장시간 아이디어를 함께 고민하기엔 구글 docs나 노션 같은 문서 툴로는 한계가 있었습니다.",
+    "source_type": "korean-community",
+    "source_url": "https://yozm.wishket.com/magazine/detail/1047",
+    "frequency": "common",
+    "severity": "medium",
+    "evidence_strength": "moderate"
+   },
+   {
+    "title": "모바일/태블릿에서 화이트보드가 반쪽 — 폰에서는 보기만 되거나 편집이 제한(Heptabase)",
+    "underlying_need": "생각은 아무 때나(침대, 이동 중) 떠오르는데, 데스크톱에서만 제대로 되면 '2초 캡처'와 '언제든 머무름'이 불가능해진다.",
+    "quote": "we used to receive feedback almost every day asking why desktop whiteboard features weren't available on mobile",
+    "source_type": "blog",
+    "source_url": "https://wiki.heptabase.com/newsletters/2024-06-01",
+    "frequency": "common",
+    "severity": "medium",
+    "evidence_strength": "moderate"
+   },
+   {
+    "title": "연결·정리가 전부 수동이라, 쌓을수록 '다시 꺼내 보는' 재노출이 안 된다",
+    "underlying_need": "공간 배치는 좋지만 모든 연결을 손으로 만들어야 해서, 과거에 둔 생각이 저절로 다시 떠오르지 않는다. 묻힌 생각이 재부상하길 바라는 욕구.",
+    "quote": "캔버스가 직접 관계를 만들고 배치하는 데는 좋지만 모든 작업이 수동이다",
+    "source_type": "forum",
+    "source_url": "https://forum.obsidian.md/t/when-is-obsidian-canvas-ever-going-to-be-actually-finished/76602",
+    "frequency": "common",
+    "severity": "medium",
+    "evidence_strength": "weak"
+   },
+   {
+    "title": "도형·손글씨(펜) 같은 기본 표현 수단이 없어 시각적 사고가 막힌다(Obsidian Canvas)",
+    "underlying_need": "시각형 사용자는 글자만이 아니라 도형·화살표·펜으로 생각한다. 표현 수단이 좁으면 '머릿속 그림'을 그대로 못 옮긴다.",
+    "quote": "after all these years, there has been no updates to include shapes or handwriting into Obsidian Canvas",
+    "source_type": "forum",
+    "source_url": "https://forum.obsidian.md/t/when-is-obsidian-canvas-ever-going-to-be-actually-finished/76602",
+    "frequency": "common",
+    "severity": "medium",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "캔버스를 넓게 쓰면 글자가 너무 작아져 '지형도'와 '세부'를 오가기 어렵다",
+    "underlying_need": "축소=전체 조망, 확대=세부라는 줌 사고를 하고 싶은데, 단순 확대/축소만 있으면 멀리서 보면 아무것도 안 보이고 가까이 가면 길을 잃는다. LOD(줌 레벨별 정보량) 부재.",
+    "quote": "캔버스가 너무 크면 글자가 아주 작아져 보이지 않는다 [so 캔버스를 작게 나누는 방식을 권함]",
+    "source_type": "blog",
+    "source_url": "https://medium.com/@TechTim42/tips-for-using-obsidian-canvas-b2719459b442",
+    "frequency": "common",
+    "severity": "medium",
+    "evidence_strength": "weak"
+   },
+   {
+    "title": "도구가 개발을 멈추거나 서비스를 접어 작업물이 묶일까 불안(Muse 종료, Obsidian Canvas 정체)",
+    "underlying_need": "생각을 평생 쌓아 둘 '영속적 집'을 원하는데, 도구가 죽으면 다 날아간다. 장기 투자처로서의 신뢰·소유권 욕구.",
+    "quote": "it does not make sence for me to continue with Obsidian (without evolution of Canvas)... We have alternatives like Logseq, Heptabase, Milanote, Scrintal",
+    "source_type": "forum",
+    "source_url": "https://forum.obsidian.md/t/canvas-development-has-stopped/60649",
+    "frequency": "occasional",
+    "severity": "high",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "개발팀이 기본기 대신 'AI 신기능'만 좇는다는 피로감(Heptabase)",
+    "underlying_need": "사용자는 안정적이고 매끈한 핵심 경험을 원하는데, 화려한 AI 기능에 밀려 기본이 안 다듬어지면 떠난다. AI는 '거드는 역할'이길 바라는 심리.",
+    "quote": "I stopped using it when it felt like the developers were more focused on chasing fancy new features [instead of] getting some of the basic features to work better and more seamlessly.",
+    "source_type": "forum",
+    "source_url": "https://outlinersoftware.com/topics/viewt/12528",
+    "frequency": "occasional",
+    "severity": "medium",
+    "evidence_strength": "strong"
+   }
+  ],
+  "churn_reasons": [
+   "성능 한계: 노드가 수백 개로 늘면 렉/프리즈가 생겨 '더 쌓을수록 더 느려지는' 역설 때문에 이탈 (Obsidian Canvas, Miro)",
+   "무료 한도의 벽: 아이템 100개·보드 3개 같은 한도에 실제 프로젝트가 금방 부딪혀, 결제할 만큼은 아니라 그냥 떠남 (Milanote, Kinopio, Miro)",
+   "검색/재발견 실패: 쌓아둔 생각을 못 찾아 캔버스가 '블랙홀'이 되면 신뢰를 잃고 메모앱/노션으로 회귀 (FigJam, Freeform)",
+   "팀 중심 설계 거부감: 개인 사고판으로 쓰기엔 협업·공유·권한이 전제라 과하고 어색함 (Miro, FigJam)",
+   "도구 수명 불안: 개발 정체(Obsidian Canvas)나 서비스 종료(Adobe Muse)로 작업물이 묶일까 봐 장기 투자 중단",
+   "방향성 실망: 기본기 안정화 대신 AI 신기능만 좇는다고 느낄 때 이탈 (Heptabase)",
+   "카드 편집 피로: 캔버스 안 텍스트 작성이 좁고 번거로워, 결국 글은 다른 에디터로 분산되며 도구가 쪼개짐"
+  ],
+  "moss_fit": "잘 맞는 점: (1) '머무름·응집·연결'이라는 핵심 동사가 이 세그먼트의 미충족 욕구(남 눈치 없이 거칠게 펼치고, 과거 생각이 다시 떠오르길 바람)와 정확히 겹친다 — 팀 협업 전제의 Miro/FigJam이 못 주는 '사적 사고판'. (2) Local-first(IndexedDB+OPFS, 오프라인)는 '서비스 종료/보드 잠금으로 작업물이 인질 잡히는' 가장 뼈아픈 이탈 사유를 구조적으로 해소하고, 'export(Markdown/JSON Canvas)'가 소유권 불안을 더 눌러준다. (3) 줌=사고 지형도(LOD)는 'Obsidian에서 크게 쓰면 글자가 안 보여 쪼개야 하는' 문제의 정확한 해답. (4) AI를 '대필 아닌 응집기'로 두고 자동 재노출('다시 떠오른 생각')을 주는 설계는, '전부 수동이라 묻힌 생각이 안 떠오른다'와 'AI 신기능만 좇는 피로감' 양쪽을 동시에 공략한다. (5) 미완성 허용·한도 없는 캡처·streak 금지는 '무료 한도 벽'과 '완성 압박' 불만의 반대편에 선 포지셔닝.\\n\\n안 맞거나 위험한 점: (1) 성능이 생사다. 이 세그먼트가 가장 크게 이탈하는 이유가 '노드 100~150개에서 렉'인데, 브라우저 PWA + IndexedDB/Canvas 렌더링으로 수천 노드에서 60fps 팬/줌을 못 내면 기존 도구와 똑같이 버림받는다. 네이티브(Miro조차) 아닌 웹이라 오히려 더 불리할 수 있어, 가상화·LOD 렌더링이 MVP 필수. (2) 도형·펜·손글씨 기대치. 시각형 사용자는 텍스트만으로 부족한데(Obsidian Canvas 불만), 펜/이미지 카드는 있으나 '도형·화살표 드로잉' 수준의 자유도가 약하면 디자이너가 금세 한계를 느낀다. (3) '팀 협업 NON-GOAL'은 이 세그먼트의 상당수가 회사에서 팀 보드를 쓰다 넘어오는 맥락이라 양날 — '개인 전용'이 차별점이자, 레퍼런스 공유/피드백 1회성 공유조차 전무하면 진입 장벽이 될 수 있음(읽기전용 공유 링크 정도는 고려 가치). (4) 모바일/태블릿에서 캔버스 편집이 반쪽이면 '2초 캡처·언제든 머무름' 약속이 깨진다 — PWA 터치/펜 입력 품질이 Heptabase 모바일이 겪은 불만을 그대로 답습할 위험. (5) WTP는 월 6~9달러대에 몰려 있고 '개인용 캔버스에 돈 내기 애매하다'는 정서가 강함 — Freemium 한도 설계가 '던지자마자 막히는' 경쟁사 실수를 반복하면 초기 이탈을 자초한다.",
+  "willingness_to_pay": "지불 의향 신호는 '있지만 가격 민감'. 개인용 시각 도구의 유료 전환선은 월 6~9달러대에 수렴한다: Kinopio는 100카드 무료 후 $6/월·$60/년·$200/평생, Heptabase Pro는 연결제 월 $8.99(월결제 $11.99)이고 무료 영구 플랜이 없다. Milanote·Miro는 무료로 쓰다 한도(100아이템/3보드)에 막혀 '결제할 만큼은 아니라서' 이탈하는 패턴이 반복 — 즉 핵심 무료 경험이 충분하면 머물고, 한도 벽에 부딪히면 결제보다 이탈을 택하는 경향. Heptabase에서 보듯 'AI 무제한'을 상위 티어($17.99+)로 올리면 비싸다는 저항이 바로 나오므로, moss의 AI 응집 기능은 '적당한 무료 크레딧 + 쓴 만큼 과금' 쪽이 이 세그먼트 정서에 맞는다. 평생 요금제(Kinopio $200)나 '내 데이터 소유(local-first+export)'는 '서비스가 죽어도 안전하다'는 안심을 주어 유료 전환의 설득 포인트가 될 수 있다. 근거: Kinopio 가격(https://apptisan.substack.com/p/kinopio), Heptabase 가격(https://saas.apppricinglab.com/alternatives/heptabase/), Milanote 무료 한도(https://www.capterra.com/p/165790/Milanote/pricing/).",
+  "notable_sources": [
+   "https://forum.obsidian.md/t/why-is-obsidian-canvas-laggy-but-e-g-clover-canvas-smooth/62135 — Obsidian Canvas 렉으로 '쓸 의욕이 꺾인다'는 1차 사용자 증언",
+   "https://forum.obsidian.md/t/plugin-canvas-markdown-side-editor/106568 — 카드 내 편집이 'cramped and clunky'하다는 문제 정의 + 사이드 에디터 우회",
+   "https://forum.figma.com/t/find-search-keywords-and-text-in-figjam/3269 — FigJam에 수년째 기본 검색이 없어 플러그인으로 때우는 상황",
+   "https://www.macstories.net/reviews/freeform-leverages-the-freedom-and-flexibility-of-a-blank-canvas/ — Apple Freeform 검색이 이미지/첨부 내용까지는 안 걸리는 한계",
+   "https://community.miro.com/ask-the-community-45/free-plan-won-t-let-me-create-a-4th-board-i-thought-boards-were-unlimited-28959 — Miro 무료 보드 한도·view-only 잠금으로 작업물이 묶이는 불만",
+   "https://outlinersoftware.com/topics/viewt/12528 — 'AI 신기능만 좇는다'며 Heptabase를 떠난 사용자 증언(이탈 동기)",
+   "https://forum.obsidian.md/t/canvas-development-has-stopped/60649 — 캔버스 개발 정체로 도구 신뢰·장기 투자를 재고하는 심리",
+   "https://wiki.heptabase.com/newsletters/2024-06-01 — 모바일 화이트보드 편집 부재가 '매일 들어오던' 핵심 불만이었다는 벤더 자인",
+   "https://www.capterra.com/p/165790/Milanote/pricing/ — Milanote 무료 100아이템 한도가 실제 프로젝트에서 금방 소진",
+   "https://yozm.wishket.com/magazine/detail/1047 — 한국 기획자: 장시간 아이디어 고민에 노션 같은 문서 도구는 한계라는 1차 서술"
+  ]
+ },
+ {
+  "segment": "1인 창업자·인디해커·PM·개발자 — 샤워/이동 중 떠오른 아이디어와 사이드프로젝트 구상을 Apple Notes·카톡 '나와의 채팅'에 던져두고, 생각 정리·의사결정·아이디어 연결과 재방문을 원하지만 대부분 '아이디어 묘지'로 끝나는 사람들",
+  "persona_sketches": [
+   {
+    "name_label": "바이브코딩으로 repo 묘지까지 갖게 된 인디해커",
+    "context": "혼자 또는 소규모로 제품을 만든다. 샤워·산책·출퇴근 중 제품 아이디어가 수시로 떠오르고, 요즘은 AI로 MVP를 빨리 찍어낼 수 있어서 '노트 묘지'가 '반쯤 만든 repo 묘지'로 번졌다. 'A graveyard of notes to a graveyard of half-finished repos'라는 자기 진단에 공감.",
+    "goals": [
+     "떠오른 순간 2초 안에 흘리지 않고 잡아두기",
+     "흩어진 아이디어 조각을 나중에 다시 꺼내 연결해 '될 만한 것' 하나로 응집",
+     "실행 압박 없이, 그러나 좋은 생각이 묻히지 않게 재방문"
+    ],
+    "current_tools": [
+     "Apple Notes",
+     "GitHub(미완성 repo)",
+     "Notion",
+     "간혹 Obsidian"
+    ],
+    "workarounds": [
+     "떠오르면 일단 Apple Notes에 2~3문장만 적고 방치",
+     "도메인부터 질러놓고 흐지부지",
+     "아이디어를 '언젠가'라는 이름의 노트에 몰아넣기"
+    ]
+   },
+   {
+    "name_label": "카톡 '나와의 채팅'에 던져두는 3년차 PM",
+    "context": "회의 중·퇴근길·자기 전에 제품/기능 아이디어, 의사결정 메모, 링크가 떠오른다. 가장 손이 빠른 게 카톡 '나와의 채팅'이라 거기에 쌓는다. 나중에 스크롤로 거슬러 올라가지만 맥락이 섞여 다시 못 찾는다.",
+    "goals": [
+     "생각의 흐름을 끊지 않고 즉시 포착",
+     "의사결정 근거와 아이디어를 시간이 지나도 맥락째 되살리기",
+     "반복해서 떠오르는 주제(군집)를 스스로 알아차리기"
+    ],
+    "current_tools": [
+     "카톡 나와의 채팅",
+     "Apple Notes",
+     "Notion(회사 위키/문서)"
+    ],
+    "workarounds": [
+     "카톡 나와의 채팅을 임시 인박스로",
+     "중요한 건 캡처 스크린샷으로 또 저장",
+     "결국 어디 적었는지 몰라 다시 검색"
+    ]
+   },
+   {
+    "name_label": "제텔카스텐/볼트 세팅에 지친 개발자",
+    "context": "'두 번째 뇌'를 만들겠다며 Obsidian 볼트와 플러그인을 세팅했지만, 유지가 부업처럼 느껴져 멈췄다. 결국 plain-text·로컬·프라이버시는 포기 못 하지만 '정리 노동'은 더는 하기 싫다.",
+    "goals": [
+     "세팅·태그·폴더 노동 없이 그냥 쌓고 싶다",
+     "로컬/프라이버시 보장(민감한 아이디어가 서버로 안 넘어가길)",
+     "과거 메모가 알아서 다시 떠오르고 연결되길"
+    ],
+    "current_tools": [
+     "Obsidian",
+     "로컬 마크다운 파일",
+     "터미널/스크립트"
+    ],
+    "workarounds": [
+     "플러그인 잔뜩 깔았다가 '한 번 쓰고 다신 안 엶'",
+     "큰 노트 하나에 전부 덤프",
+     "그래프뷰는 예쁘지만 실제론 거의 안 봄"
+    ]
+   }
+  ],
+  "pain_points": [
+   {
+    "title": "포착까지의 모든 마찰이 곧 아이디어 소실",
+    "underlying_need": "생각이 떠오른 그 순간, 흐름을 끊지 않고 2초 안에 잡아두고 싶다. 앱 열기·제목 짓기·폴더 고르기 같은 단계 하나하나가 '잊어버릴 확률'을 올린다.",
+    "quote": "Any friction between the time I have an idea and the moment I can capture it increases the risk I will forget it",
+    "source_url": "https://news.ycombinator.com/item?id=34295553",
+    "source_type": "hn",
+    "frequency": "very-common",
+    "severity": "high",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "'지금 안 적으면 사라진다'는 즉시포착 압박",
+    "underlying_need": "머릿속에 번쩍 떠오른 작은 생각은 지금 당장 받아내지 않으면 증발한다는 걸 몸으로 안다. 그래서 캡처 도구의 '최초 1초'가 전부다.",
+    "quote": "some little thought that popped into my head that I'll forget if I don't get it down now",
+    "source_url": "https://news.ycombinator.com/item?id=32254468",
+    "source_type": "hn",
+    "frequency": "very-common",
+    "severity": "high",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "샤워·이동 중 번뜩인 아이디어가 그대로 증발",
+    "underlying_need": "가장 좋은 아이디어는 손이 묶여 있는 순간(샤워·운전·잠들기 직전)에 온다. 적어둘 수단이 없으면 '뭔가 좋은 게 있었는데'라는 잔상만 남고 영영 사라진다.",
+    "quote": "I do know that if I don't write down great ideas, they're often lost forever ... Dangit, I had a clever little solution to Fermat's Last Theorem in the shower yesterday, but now I've forgotten it!",
+    "source_url": "https://news.ycombinator.com/item?id=30429474",
+    "source_type": "hn",
+    "frequency": "very-common",
+    "severity": "high",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "쌓기만 하고 다시는 안 보는 'write-only' 메모 묘지",
+    "underlying_need": "저장 자체는 되는데, 재방문·재활성 장치가 없어 노트가 '쓰고 끝'이 된다. 적는 행위로 머리는 비워지지만 그 생각이 다시 삶으로 돌아오지 않는다 — 바로 '아이디어 묘지'의 본질.",
+    "quote": "in practice most notes are write-only and are never read back ever again",
+    "source_url": "https://news.ycombinator.com/item?id=39516871",
+    "source_type": "hn",
+    "frequency": "very-common",
+    "severity": "high",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "적어도 어차피 안 읽으니 '보관함'이라 자위",
+    "underlying_need": "재방문이 안 되는 현실을 사람들은 '어차피 아카이브니까 괜찮다'고 합리화한다. 즉 포착의 가치는 믿지만, 되살아나게 하는 기능은 아무도 기대하지 않는 상태 — 여기에 빈틈이 있다.",
+    "quote": "Most notes I take I never read again. That's OK, that's what archives are for. ... the most important bit in note taking is taking the damn note.",
+    "source_url": "https://news.ycombinator.com/item?id=30344588",
+    "source_type": "hn",
+    "frequency": "very-common",
+    "severity": "medium",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "도구는 세팅만 하고 한 번 쓰고 다시는 안 엶",
+    "underlying_need": "새 노트/PKM 앱을 열심히 설정해놓고 실제로는 정착을 못 한다. 세팅 비용이 효용을 넘어서면 결국 손이 가장 빠른 Apple Notes·카톡으로 회귀한다.",
+    "quote": "I configure it, use it once, and then literally never open the application again.",
+    "source_url": "https://news.ycombinator.com/item?id=38835788",
+    "source_type": "hn",
+    "frequency": "common",
+    "severity": "high",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "시스템 '유지' 자체가 끝없는 부업이 됨",
+    "underlying_need": "정리·태그·재구성에 끝이 없어서 노트 관리가 제2의 직업처럼 느껴진다. 사람들은 '정리 강박 없이' 그냥 머물 수 있는 느슨한 작업대를 원한다.",
+    "quote": "It's a very thirsty pursuit - there's always more you could do and you never reach a clear stopping point.",
+    "source_url": "https://news.ycombinator.com/item?id=33103605",
+    "source_type": "hn",
+    "frequency": "common",
+    "severity": "high",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "아이디어 과잉 → 다 붙잡으려다 실행이 마비",
+    "underlying_need": "생각이 너무 많아 동시에 쥐려다 셧다운된다. 버리고 싶지는 않고, 압박 없이 '지금 집중할 하나'로 응집·분기할 길이 필요하다.",
+    "quote": "I get overwhelmed VERY easily, juggling so many ideas at once causes me to completely shut down. ... POOF! I'm on to the next idea!",
+    "source_url": "https://adultingadhd.substack.com/p/divergent-thinking-i-have-99-ideas",
+    "source_type": "blog",
+    "frequency": "very-common",
+    "severity": "high",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "시간이 없어 못 한 아이디어가 계속 쌓임",
+    "underlying_need": "실행 역량보다 아이디어 생성 속도가 빨라서 '시간이 없어 못 구현한 것들'이 재고처럼 쌓인다. 묻히지 않게 보관하되 언젠가 다시 꺼내볼 수 있어야 한다.",
+    "quote": "I always used to say that I had too many ideas and not enough time to implement them",
+    "source_url": "https://news.ycombinator.com/item?id=49775766",
+    "source_type": "hn",
+    "frequency": "common",
+    "severity": "medium",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "메모가 여러 도구에 흩어져 '어디 적었는지'를 못 찾음",
+    "underlying_need": "생산성 앱을 여러 번 갈아타며 생긴 파편화로, 저장은 했는데 Notion인지 Obsidian인지 설치했다 지운 그 앱인지 몰라 못 찾는다. 단일 신뢰 저장소가 절실하다. (원문 블로그를 직접 열어 확인하지 못해 근거 약함)",
+    "quote": "",
+    "source_url": "https://slite.com/learn/obsidian-vs-notion",
+    "source_type": "blog",
+    "frequency": "very-common",
+    "severity": "high",
+    "evidence_strength": "weak"
+   },
+   {
+    "title": "폴더 분류는 '나중에 다른 관점'으로 찾을 때 무력",
+    "underlying_need": "폴더는 정보를 분류할 뿐 연결하지 못해, 시간이 지나 다른 맥락으로 그 노트가 필요할 때 결국 못 찾는다. 분류가 아니라 '연결'이 필요하다. (한국어 블로그, 검색 요약으로 인용 확인 — 직접 열람은 못 함)",
+    "quote": "폴더 구조는 정보를 분류하는 시스템이지, 정보를 연결하는 시스템이 아니기 때문입니다",
+    "source_url": "https://tilnote.io/pages/6a2fba20feda101b0aa0f3da",
+    "source_type": "korean-community",
+    "frequency": "common",
+    "severity": "medium",
+    "evidence_strength": "weak"
+   },
+   {
+    "title": "캔버스 연결선이 진짜 링크가 아니고, 연결이 전부 수동",
+    "underlying_need": "무한 캔버스로 생각을 공간에 펼치는 건 좋지만, 연결선이 실제 양방향 링크가 아니고 전부 손으로 이어야 해서 유지가 부담이다. '펼침'과 '연결'이 자동으로 따라오길 원한다. (커뮤니티 리뷰, 검색 요약 기반 — 직접 확인 못 함)",
+    "quote": "wished the links in canvas view were actual bidirectional links between notes",
+    "source_url": "https://concepts.dsebastien.net/concept/obsidian-canvas/",
+    "source_type": "forum",
+    "frequency": "occasional",
+    "severity": "medium",
+    "evidence_strength": "weak"
+   },
+   {
+    "title": "구독 전환·월정액 피로로 '좋아하던 도구'도 떠남",
+    "underlying_need": "단순 저장/노트에는 월 과금을 거부하는 정서가 강하다. 한 번 샀던 앱이 구독제로 바뀌자 이탈했고, 월 $7은 '기술이 아니라 서비스'로 느껴질 때만 낸다. (알고리아 집계로 인용은 확인했으나 개별 코멘트 퍼머링크 미확보)",
+    "quote": "I loved it, used it for years, but moved away when they introduced a subscription model. ... I want to feel like I am paying for a service, not for a technology.",
+    "source_url": "https://hn.algolia.com/?query=would%20you%20pay%20note%20taking&type=comment",
+    "source_type": "hn",
+    "frequency": "common",
+    "severity": "medium",
+    "evidence_strength": "moderate"
+   }
+  ],
+  "churn_reasons": [
+   "세팅·플러그인·DB 유지가 '부업'처럼 느껴져 Obsidian/Notion에서 이탈 ('plugin paralysis' / 'database fatigue' / 시스템 유지가 끝이 없음)",
+   "새 도구를 열심히 설정해놓고 한 번 쓰고 다시 안 엶 → 손이 가장 빠른 Apple Notes·카톡 '나와의 채팅'으로 회귀",
+   "쌓아둔 메모가 재방문되지 않아(write-only) 도구 전체에 대한 신뢰를 잃고 결국 아무 데나 던지는 습관으로 후퇴",
+   "여러 번 도구를 갈아타며 메모가 분산 → '어디 적었는지' 못 찾아 포기",
+   "무료이던 앱이 구독제로 전환되자 이탈, 단순 노트에 월정액 지불 거부",
+   "캔버스/그래프가 보기엔 좋지만 연결이 수동이라 유지 부담 → 방치"
+  ],
+  "willingness_to_pay": "혼재된 신호. (부정) 이 세그먼트는 '순수 노트/저장'에 대한 월 구독 저항이 매우 크다 — massysett \\\"there's not a single note taking app or feature I would pay for, and I've tried many\\\", danShumway \\\"it's not worth $7 a month for me ... I want to feel like I am paying for a service, not for a technology\\\", zapperdapper는 좋아하던 앱이 구독제로 바뀌자 이탈하고 \\\"over years it does add up\\\"라 평가. (긍정) 반대로 '명확한 지속 가치'나 일회성 구매에는 지갑을 연다 — tokamak-teapot \\\"I'm certainly willing to pay more than I already am ... if it comes with some decent tools\\\", 과거 $30 Mac 앱 일시불은 수년간 만족하며 사용. 함의: moss의 유료화는 (1) 저장·캡처는 무료로 열어두고, (2) 서버 비용이 정당화되는 'AI 응집기'(연결 제안·군집 요약·재노출)처럼 '기술이 아니라 서비스'로 체감되는 영역에 과금해야 지불 저항을 넘는다. 출처: https://hn.algolia.com/?query=would%20you%20pay%20note%20taking&type=comment",
+  "moss_fit": "[잘 맞는 점] (1) '포착 지연=소실'이 이 세그먼트의 1순위 고통인데 moss의 2초 캡처·제목/폴더/태그 강제 없음이 정확히 그 지점을 때린다 — wildpeaks·corrral·davegauer 인용과 직결. (2) '세팅만 하고 안 씀' '유지가 부업' 이탈 사유를, 강제 구조 없는 느슨한 작업대로 정면 해소. (3) 최대 미충족 지점인 'write-only 묘지(쌓지만 재방문 없음)'를 '다시 떠오른 생각/오늘의 연결/오늘의 질문' 재노출이 제품의 중심 기능으로 삼음 — 경쟁 노트앱 대부분이 포기한 영역. (4) 수동 연결 부담을 AI 추천 연결선(점선, 수락/거절·거절 학습)이 덜어줌 — '대필'이 아니라 '응집기'라 'AI가 내 사고를 대신한다'는 거부감도 피함. (5) Local-first(IndexedDB+OPFS, 본문이 서버 미통과)는 민감한 사업 아이디어를 다루는 창업자·개발자의 프라이버시 니즈와, JSON Canvas/Markdown export는 lock-in 공포(PKMS 단골 우려)를 완화. [안 맞거나 위험한 점] (a) 이 세그먼트의 밑바닥 동기는 결국 '실행/의사결정'인데(17개 아이디어 하나도 실행 못 함, 99 ideas completed 0), moss는 태스크·업무관리·정량 생산성 지표를 NON-GOAL로 명시 → '무덤에서 꺼내 실제로 만들기'까지는 안 해주므로 '또 다른 예쁜 아이디어 보관함'으로 전락할 위험. '응집→분기→실행 핸드오프(예: export로 넘기기)'의 서사가 약하면 재방문 가치가 공허해질 수 있음. (b) 구독 저항이 큰 집단이라 freemium 과금선을 잘못 그으면(저장조차 유료) 바로 이탈. (c) 개발자 하위군은 로컬 plain-text/마크다운 파일 직접 접근·스크립트화를 선호(Obsidian의 핵심 매력) → OPFS/IndexedDB 블랙박스가 '내 데이터를 내가 못 만진다'는 불만을 부를 수 있어, 파일 수준 export/동기화 경험이 중요. (d) '카톡 나와의 채팅' 회귀 습관이 워낙 강력한 디폴트라, 모바일 설치·공유시트 수준의 초저마찰 진입이 없으면 전환장벽이 높다.",
+  "notable_sources": [
+   "Hacker News (Ask HN: 노트 방법론/유료화 관련 다수 스레드, 실사용자 verbatim 코멘트: wildpeaks·corrral·davegauer·sph·brnt·syndicatedjelly·PebblesRox·spacedcowboy)",
+   "r/PKMS (file-and-forget, Apple Notes를 PKM으로 쓰는 한계·폴더 난립·검색 의존 토론)",
+   "Obsidian 커뮤니티/포럼 (Blip Capture 플러그인=순간 포착 니즈, Canvas 연결선이 실제 링크가 아니라는 리뷰)",
+   "adultingadhd Substack 'I have 99 ideas but I've not completed 1' (아이디어 과잉→실행 마비, 메이커/ADHD 겹침)",
+   "indiehackers (fleeting notes/ADHD 포착 도구, '아이디어 묘지'→'반쯤 만든 repo 묘지' 담론: Stu Greenham)",
+   "한국어: tilnote(폴더는 연결이 아니다), braindetox 옵시디언 제텔카스텐 가이드, '메모세지/프리로그' 등 채팅형 메모 앱(카톡식 포착 수요 방증)",
+   "Peerlist/National Geographic (포착 마찰·플로우 단절의 인지비용, 샤워 아이디어의 과학)"
+  ]
+ },
+ {
+  "segment": "한국 사용자 특화: 노션 피로 · 메모앱 유목민 · 한국어 입력/검색 문제 · 한국 커뮤니티의 메모앱 불만",
+  "persona_sketches": [
+   {
+    "name_label": "노션·옵시디언 다 써보고 10년째 못 정착한 메모앱 유목민 (3~5년차 직장인/기획자)",
+    "context": "원노트→노션→옵시디언을 수년씩 옮겨다님. 새 앱을 깔면 또 '세팅'부터 해야 하는 게 지겨움. 공유가 필요할 때만 노션을 켜고 평소 생각은 로컬 앱에 쌓지만, 결국 어디에 뭘 적었는지 흩어져 있음.",
+    "goals": [
+     "생각을 세팅 없이 바로 쌓고 싶음",
+     "앱을 또 갈아타지 않고 한 곳에 정착하고 싶음",
+     "나중에 글/기획 재료로 다시 꺼내 쓰고 싶음"
+    ],
+    "current_tools": [
+     "노션",
+     "옵시디언",
+     "원노트",
+     "애플 메모"
+    ],
+    "workarounds": [
+     "메모의 70%는 옵시디언, 30%는 노션으로 용도 분리",
+     "플러그인·테마를 직접 조립",
+     "구글드라이브/아이클라우드 폴더로 수동 동기화"
+    ]
+   },
+   {
+    "name_label": "카톡 '나와의 채팅'이 메모장인 라이트 유저",
+    "context": "출퇴근길 링크·사진·아이디어를 가장 마찰 적은 카톡 나와의 채팅에 던져둠. 전용 메모앱은 무겁고 귀찮아서 안 씀. 그런데 저장은 쉬운데 나중에 그걸 다시 못 찾고, 사진은 만료되고, 채팅방은 지우지도 못해 답답함.",
+    "goals": [
+     "2초 안에 아무 생각이나 던져두기",
+     "앱을 새로 배우고 싶지 않음",
+     "민감정보/사진이 그대로 노출되지 않길 바람"
+    ],
+    "current_tools": [
+     "카카오톡 나와의 채팅",
+     "애플 메모",
+     "네이버 메모"
+    ],
+    "workarounds": [
+     "'#일' 같은 머리표를 직접 붙여 유사 태그 효과",
+     "나중에 떠올릴 키워드를 직접 적어둠",
+     "민감정보는 올렸다가 바로 삭제"
+    ]
+   },
+   {
+    "name_label": "아이디어 휘발이 두려운 생각 많은 사람 (창작자/ADHD 성향)",
+    "context": "떠오른 생각이 앱을 열고 폴더 고르는 사이에 사라짐. 분류를 강요당하면 그 순간 흐름이 끊김. 한 줄만 적어두면 나중에 왜 적었는지 몰라 버리게 됨.",
+    "goals": [
+     "캡처 순간엔 분류하지 않고 일단 쏟아내기",
+     "정리는 나중에/자동으로",
+     "잊어버린 과거 생각이 다시 떠오르길 바람"
+    ],
+    "current_tools": [
+     "애플 메모",
+     "구글 킵",
+     "음성 메모"
+    ],
+    "workarounds": [
+     "하나의 inbox에 다 몰아넣고 주기적으로 분류",
+     "맥락 단어를 한두 개 덧붙여 저장",
+     "자기 전 머릿속 brain dump"
+    ]
+   }
+  ],
+  "pain_points": [
+   {
+    "title": "카톡 나와의 채팅: 시간순 한 줄로만 쌓여 폴더·태그로 묶을 수 없다 → 저장은 쉬운데 다시 못 찾는 역설",
+    "underlying_need": "분류를 강요당하지 않고 빠르게 던져두되, 나중에 주제별로 다시 꺼내 쓰고 싶다. moss의 '제목/폴더 강제 없음 + 캔버스 공간 배치 + 검색'이 정확히 이 공백을 겨냥.",
+    "quote": "본질적으로 시간순으로 흐르는 채팅방이기 때문에, 보낸 모든 것이 한 줄로 길게 쌓일 뿐 폴더로 묶거나 태그로 분류할 수 없습니다. / 저장량이 많아질수록 '쌓아두기는 쉬운데 다시 찾기는 점점 어려워지는' 역설이 생깁니다.",
+    "source_url": "https://braindetox.kr/posts/kakaotalk_send_to_me_bookmark_2026.html",
+    "source_type": "korean-blog",
+    "frequency": "very-common",
+    "severity": "high",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "카톡 나와의 채팅방을 지울 수 없어 생기는 통제감 상실·불쾌감, 이탈 선언",
+    "underlying_need": "내 생각이 쌓인 공간을 내 뜻대로 정리·통제하고 싶다. 플랫폼이 공간을 틀어쥐는 순간 사용자는 배신감을 느끼고 떠난다(= local-first·사용자 소유권의 가치).",
+    "quote": "감옥에 갇힌 기분입니다 불결하네요 카카오톡;; / 매우 불편합니다. 그게 떠 있는게 싫은데 지울 방법이 없어요. / 저는 이 시간부로 두번 다시 나와의 채팅창 안 씁니다.",
+    "source_url": "https://www.clien.net/service/board/park/13158560",
+    "source_type": "korean-community(클리앙)",
+    "frequency": "common",
+    "severity": "medium",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "카톡 임시 저장소의 메모·파일 유실과 보안 노출 (미디어 만료, 기기 분실 시 그대로 노출)",
+    "underlying_need": "가볍게 던져둔 생각이 사라지지 않고 안전하게 남아있길 바란다. '생각이 사라지지 않게'가 핵심인 moss와 직결되며, 본문이 서버를 안 거치는 local-first가 보안 불안을 해소.",
+    "quote": "일정 기간이 지나면 만료되어 다운로드가 안 될 수 있습니다. / (휴대폰 분실·잠금해제 시) 메모 내용이 그대로 노출됩니다. 암호화된 금고가 아니라는 점을 강조합니다.",
+    "source_url": "https://braindetox.kr/posts/kakaotalk_send_to_me_bookmark_2026.html",
+    "source_type": "korean-blog",
+    "frequency": "common",
+    "severity": "medium",
+    "evidence_strength": "moderate"
+   },
+   {
+    "title": "노션 기능 과잉: 메모만 하려는 입문자가 '무엇부터 배울지' 혼란 → 다른 앱으로 이주",
+    "underlying_need": "도구를 배우는 데 쓰는 에너지를 생각하는 데 쓰고 싶다. moss의 '정리·관리가 아니라 머무름' 철학과 2초 캡처가 이 피로의 반대편.",
+    "quote": "무엇이 중요한지, 무엇부터 배워야 하는지 혼란이 생깁니다. / 다른 앱으로 이주하려는 사람들도 나타나고 있습니다.",
+    "source_url": "https://yozm.wishket.com/magazine/detail/2517/",
+    "source_type": "korean-media(요즘IT)",
+    "frequency": "very-common",
+    "severity": "high",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "메모앱 유목민: 10년간 원노트→노션→옵시디언을 옮겨다녀도 어디에도 정착 못 함",
+    "underlying_need": "'더 나은 앱'을 찾아 헤매는 피로를 끝내고 한 곳에 머무르고 싶다. 단, 이주 비용/락인 공포 때문에 export 보장이 입장 조건.",
+    "quote": "10년 이상 여정을 이어온 유목민입니다. / 원노트(5년), 노션(4년)을 사용하다 2년 전, 옵시디언으로 넘어왔죠.",
+    "source_url": "https://yozm.wishket.com/magazine/detail/2517/",
+    "source_type": "korean-media(요즘IT)",
+    "frequency": "common",
+    "severity": "medium",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "옵시디언 세팅 피로 + 한글 자료 부족으로 시작 자체가 벽",
+    "underlying_need": "로컬·프라이버시는 원하지만 빈 화면 앞에서 플러그인·테마를 직접 조립하는 초기 피로는 싫다. moss는 '로컬-first의 장점은 취하되 세팅은 0'을 노려야 함.",
+    "quote": "옵시디언 그 자체도 활용이 쉽지 않습니다. / 노션에 비해 옵시디언은 한글 자료가 턱없이 부족합니다.",
+    "source_url": "https://yozm.wishket.com/magazine/detail/2518",
+    "source_type": "korean-media(요즘IT)",
+    "frequency": "common",
+    "severity": "high",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "옵시디언 동기화가 유료 부가서비스이고, 모바일에서 볼트 연결이 직관적이지 않다",
+    "underlying_need": "여러 기기에서 '그냥 켜면 내 생각이 거기 있길' 바란다. moss의 PWA·오프라인·local-first 동기화가 이 마찰을 줄일 수 있는 지점(단, 동기화 UX를 반드시 쉽게).",
+    "quote": "노트를 다른 기기에서 쓰려면 클라우드 서비스인 옵시디언 싱크(Obsidian Sync)나 기존에 구독한 서비스로 온라인 동기화를 해야 하죠. / (iPhone) 자꾸 기존 로컬 내용과 달라서 어플을 껏다 다시하고, 하고 하고 계속 반복했어요~",
+    "source_url": "https://www.gpters.org/ai-writing/post/preparation-stage-creating-your-9I33W09RQpMJSVq",
+    "source_type": "korean-community(지피터스)",
+    "frequency": "common",
+    "severity": "medium",
+    "evidence_strength": "moderate"
+   },
+   {
+    "title": "쌓이기만 하고 다시 안 보는 '메모 무덤' — 정리해도 필요할 때 못 찾는다",
+    "underlying_need": "정리의 목적은 깔끔함이 아니라 '다시 떠오름(재등장)'이다. moss의 AI 응집기('다시 떠오른 생각/오늘의 연결/오늘의 질문')가 정면으로 겨냥하는 핵심 니즈.",
+    "quote": "정리의 목적은 깔끔함이 아니다. 정리의 목적은 재등장이다. / 메모가 늘어날 수록 메모에서 얻을 이득이 줄어든다.",
+    "source_url": "https://wikidocs.net/297596",
+    "source_type": "korean-blog/wiki",
+    "frequency": "very-common",
+    "severity": "high",
+    "evidence_strength": "moderate"
+   },
+   {
+    "title": "캡처 지연이 곧 생각의 소멸 — 앱을 열고 저장위치 고르는 사이 생각이 달아난다",
+    "underlying_need": "떠오른 즉시 2초 안에 붙잡고, 분류는 나중에 하고 싶다. moss의 '2초 캡처 + 제목/폴더 강제 없음'이 바로 이 job-to-be-done.",
+    "quote": "When you're trying to jot down a thought, create a new task, or respond to a comment, a slow app startup can be a dealbreaker.",
+    "source_url": "https://www.notion.com/ko/blog/notion-on-android-is-now-more-than-twice-as-fast-to-launch",
+    "source_type": "vendor-blog(노션 공식, 자사 문제 인정)",
+    "frequency": "very-common",
+    "severity": "high",
+    "evidence_strength": "moderate"
+   },
+   {
+    "title": "노션 '꾸미기/템플릿 만들기'가 일을 대신하는 생산성 착시 (한국 '노션 꾸미기' 문화 포함)",
+    "underlying_need": "도구를 예쁘게 만드는 가짜 성취 말고, 생각 자체에 머무르고 싶다. moss가 streak·생산성 점수·꾸미기 유혹을 배제한 설계와 맞닿음.",
+    "quote": "tweaking my workspace to have neat, toggled headings and whatnot occupied much of my time and made me feel productive without making any meaningful progress.",
+    "source_url": "https://www.androidauthority.com/why-i-ditched-notion-for-google-keep-3635125",
+    "source_type": "review-blog(영문, 전역 담론)",
+    "frequency": "common",
+    "severity": "medium",
+    "evidence_strength": "moderate"
+   },
+   {
+    "title": "한국어 검색/초성 검색·손글씨 검색의 벽: 양이 많아지면 검색이 먹통",
+    "underlying_need": "한국어로 쌓은 생각을 한국어답게(초성·부분일치) 즉시 찾고 싶다. moss가 한국어 우선 제품으로서 반드시 이겨야 하는 진입 조건이자 차별점.",
+    "quote": "손글씨 검색이 안됩니다 / 페이지가 좀 많아지면 앞페이지만 검색되고 뒷페이지는 먹통 / 영문이름을 가진 앱을 한글 초성으로 검색하는 기능및 키워드 설정에 대해서는 내부적으로 상세히 검토해 보도록 하겠습니다.",
+    "source_url": "https://r1.community.samsung.com/t5/%EA%B0%A4%EB%9F%AD%EC%8B%9C-s/%EC%82%BC%EC%84%B1%EB%85%B8%ED%8A%B8-%EC%86%90%EA%B8%80%EC%94%A8-%EA%B2%80%EC%83%89/td-p/28015649",
+    "source_type": "korean-community(삼성멤버스, 403으로 원문요약)",
+    "frequency": "common",
+    "severity": "medium",
+    "evidence_strength": "weak"
+   },
+   {
+    "title": "에버노트식 '기능 제한형 유료화'에 대한 배신감 — 가격보다 기존 무료 기능을 줄이는 방식에 반발",
+    "underlying_need": "내 생각이 인질로 잡히지 않길 바란다. freemium은 받아들이되 '핵심 머무름/열람'까지 막으면 바로 떠난다 → moss freemium 설계의 레드라인.",
+    "quote": "무료 버전 사용자는 하나의 노트북과 최대 50개의 노트만 생성할 수 있습니다. / 반발은 가격보다 '기존 무료 기능을 제한한 방식'에 집중됐습니다.",
+    "source_url": "https://www.itworld.co.kr/article/3551079/%EC%97%90%EB%B2%84%EB%85%B8%ED%8A%B8-%EB%AC%B4%EB%A3%8C-%EC%9A%94%EA%B8%88%EC%A0%9C-%ED%98%9C%ED%83%9D-%EB%8C%80%ED%8F%AD-%EC%B6%95%EC%86%8C.html",
+    "source_type": "korean-media(ITWorld)",
+    "frequency": "common",
+    "severity": "medium",
+    "evidence_strength": "moderate"
+   },
+   {
+    "title": "노션의 웹 기반·오프라인 한계와 콘텐츠 누적 시 체감 느려짐",
+    "underlying_need": "네트워크나 서버 상태와 무관하게 내 생각에 즉시 접근하고 싶다. moss의 IndexedDB+OPFS local-first·오프라인 동작이 직접적 대안.",
+    "quote": "Apple Notes나 Google Keep 같은 간단한 앱보다 학습 곡선이 가파르고, 오프라인 지원에는 아직 한계가 있어요. / (노션은) 본질적으로는 웹 인터페이스 기반의 껍데기에 가깝다.",
+    "source_url": "https://2sync.com/ko/blog/is-notion-a-good-note-taking-app",
+    "source_type": "vendor-blog(동기화툴 업체, 편향 주의)",
+    "frequency": "occasional",
+    "severity": "medium",
+    "evidence_strength": "moderate"
+   },
+   {
+    "title": "한글 IME 조합/중복 입력 버그로 메모 입력 신뢰도가 흔들림 (앱을 가리지 않고 발생)",
+    "underlying_need": "한국어 입력이 매끄럽고 믿을 수 있어야 '머무는' 작업대가 된다. moss(웹 PWA)는 IME 조합 처리를 특히 꼼꼼히 해야 하는 기술적 과제이자 함정.",
+    "quote": "키 중복 현상 자주 발생. ... 이 모든 현상은 기본 메모 앱, 구글독스, 브라우저로 들어간 구글독스 등 앱을 가리지 않고 나타난다.",
+    "source_url": "https://discussionskorea.apple.com/thread/256249531",
+    "source_type": "korean-community(애플 토론)",
+    "frequency": "occasional",
+    "severity": "medium",
+    "evidence_strength": "weak"
+   }
+  ],
+  "churn_reasons": [
+   "세팅/학습 피로: 노션은 '뭐부터 배울지' 모르겠고, 옵시디언은 플러그인·테마를 직접 조립해야 해서 시작 전에 지침",
+   "기능 과잉(오버엔지니어링): 단순히 생각만 쌓고 싶은데 데이터베이스·관계형·수식이 과함",
+   "다시 못 찾음: 쌓기는 쉬운데 재등장(재방문) 구조가 없어 '메모 무덤'이 됨 → 앱을 쓸 이유가 사라짐",
+   "동기화의 불편/유료화: 옵시디언 싱크 유료·모바일 볼트 연결 혼란, 무료 대체는 iOS 접근성 떨어짐",
+   "한글 자료·한국어 지원 부족: 옵시디언 한글 자료 부족, 초성/손글씨 검색 미흡, IME 입력 불안",
+   "플랫폼 통제/락인에 대한 반발: 카톡 나와의 채팅방을 지우지도 못함, 에버노트식 무료 기능 제한",
+   "속도 지연: 앱 시작·콘텐츠 누적 시 느려짐 → 캡처 순간 생각이 날아감",
+   "꾸미기 착시 피로: 도구를 다듬는 데 시간을 쓰고 정작 생각은 못 함"
+  ],
+  "willingness_to_pay": "지불 의향은 '존재하되 조건부'다. (1) 옵시디언 사용자들이 Sync(유료)를 결제하고, 유목민 글의 필자처럼 노션 4년 유료를 거쳐온 것을 보면 '한 곳에 정착할 만한 도구'엔 월 구독을 낼 용의가 있다. 지피터스 글에서도 유료 싱크 결제가 자연스럽게 등장한다. (2) 그러나 레드라인이 명확하다 — 에버노트 사례에서 반복됐듯 반발은 '가격'이 아니라 '기존 무료 기능을 줄이는 방식'에 집중됐다(무료 50노트·1노트북 제한에 배신감). 따라서 moss freemium은 '내 생각을 보고·머무는' 핵심 경험은 무료로 지켜야 하고, AI 응집기/대용량/고급 export 같은 증폭 기능에 과금해야 한다. (3) 카톡·구글킵 라이트 유저층은 지불 의향이 낮으므로 유료 전환 타깃은 '유목민·헤비 캡처러'로 좁히는 게 현실적. 근거: itworld 에버노트 요금제 축소 기사, byline 2016 유료화 분석, 옵시디언 Sync/Publish 유료 구조(요즘IT).",
+  "moss_fit": "[잘 맞는 점]\n1) '다시 떠오른 생각/오늘의 연결/오늘의 질문' = 한국 사용자들이 가장 아파하는 '메모 무덤(쌓기만 하고 재등장 없음)'의 직접 해결책. \"정리의 목적은 재등장이다\"라는 담론과 제품 철학이 정확히 포개짐.\n2) 2초 캡처 + 제목/폴더/태그 강제 없음 = 노션 기능과잉 피로, 캡처 지연으로 생각이 날아가는 문제, 카톡 나와의 채팅의 '분류 못 함' 문제를 한 번에 겨냥.\n3) Local-first(본문 서버 미통과, 오프라인) = 카톡 유실·노출 불안, 노션 오프라인 한계, 플랫폼 통제 반발을 해소. 한국 유목민의 프라이버시·소유권 니즈와 맞음.\n4) streak·생산성 점수·압박 알림 금지 = '꾸미기/생산성 착시' 피로와 반대 방향의 포지셔닝으로 명확한 차별점.\n5) Markdown/JSON Canvas export = 유목민의 락인 공포·이주 비용을 낮춰 '입장 조건'을 충족.\n\n[안 맞거나 위험한 점 — 솔직하게]\n1) 한국어 검색(초성·부분일치)과 IME 조합 입력은 '있으면 좋은' 기능이 아니라 '없으면 즉시 이탈'하는 진입 조건이다. 삼성노트 검색 먹통·초성검색 미지원·웹 IME 중복입력 사례가 보여주듯, 웹 PWA인 moss는 이걸 기본기로 완벽히 해내지 못하면 한국어 우선 제품이라는 약속이 무너진다. (최우선 리스크)\n2) 무한 캔버스 + 줌 + 서브캔버스 + 수동/AI 연결선은 라이트 유저(카톡·구글킵 층)에겐 '또 다른 노션/옵시디언식 학습곡선·세팅 피로'로 느껴질 위험이 크다. 2초 캡처의 가벼움과 캔버스의 무게가 충돌하지 않도록, 캔버스를 몰라도 그냥 쌓이는 '제로-세팅 기본값'이 필수.\n3) AI 추천 연결선이 부정확하면 '응집기'가 아니라 노이즈가 되어 신뢰를 잃는다. 거절 학습이 체감될 만큼 빨라야 함(한국 사용자는 어설픈 AI 추천에 냉정).\n4) Freemium 설계가 에버노트식으로 '머무름/열람' 핵심까지 제한하면 가장 충성도 높을 유목민층에서 배신감 역풍. 과금은 증폭 기능에만.\n5) 손글씨(펜) 카드를 내세우면 굿노트/삼성노트의 '손글씨 검색 안 됨' 기대치를 그대로 떠안게 된다 — 손글씨 검색/변환을 어중간하게 지원하느니 범위를 명확히 긋는 편이 안전.",
+  "notable_sources": [
+   "https://braindetox.kr/posts/kakaotalk_send_to_me_bookmark_2026.html (카톡 나와의 채팅 메모 한계 분석: 시간순 쌓임·검색역설·유실·보안)",
+   "https://www.clien.net/service/board/park/13158560 (클리앙: 나와의 채팅방 못 지움 불만 원문 다수)",
+   "https://yozm.wishket.com/magazine/detail/2517/ (요즘IT: 메모앱 10년 유목민, 노션 기능과잉·이주)",
+   "https://yozm.wishket.com/magazine/detail/2518 (요즘IT: 옵시디언 세팅피로·한글자료부족·동기화 유료·공유한계)",
+   "https://www.gpters.org/ai-writing/post/preparation-stage-creating-your-9I33W09RQpMJSVq (옵시디언 iPhone 볼트 연결 혼란 경험담)",
+   "https://wikidocs.net/297596 (메모 무덤·재등장 담론: '정리의 목적은 재등장이다')",
+   "https://www.notion.com/ko/blog/notion-on-android-is-now-more-than-twice-as-fast-to-launch (노션 공식: 캡처 지연이 dealbreaker라는 자사 인정)",
+   "https://www.androidauthority.com/why-i-ditched-notion-for-google-keep-3635125 (노션 꾸미기 착시로 이탈, Google Keep 회귀)",
+   "https://www.itworld.co.kr/article/3551079 (에버노트 무료 요금제 축소·기능제한형 유료화 반발)",
+   "https://r1.community.samsung.com/t5/%EA%B0%A4%EB%9F%AD%EC%8B%9C-s/%EC%82%BC%EC%84%B1%EB%85%B8%ED%8A%B8-%EC%86%90%EA%B8%80%EC%94%A8-%EA%B2%80%EC%83%89/td-p/28015649 (삼성노트 손글씨/대량 검색 먹통 문의)",
+   "https://discussionskorea.apple.com/thread/256249531 (애플 커뮤니티: 한글 IME 중복입력, 기본 메모앱 포함)",
+   "https://2sync.com/ko/blog/is-notion-a-good-note-taking-app (노션 학습곡선·오프라인 한계, 편향 주의)"
+  ]
+ },
+ {
+  "segment": "프라이버시/local-first 지지자 및 AI 노트앱(Mem/Reflect/Notion AI/Tana/Capacities/Anytype/Day One 등) 사용자 — 데이터 소유권·오프라인·서비스 종료(락인/export) 공포·클라우드 AI에 사적 생각을 넘기는 불안·구독 피로를 공유하는 사람들",
+  "persona_sketches": [
+   {
+    "name_label": "노션/4개 클라우드 앱에 지쳐 'Life OS'를 직접 만든 프라이버시 개발자",
+    "context": "일정·관계·사적 생각이 Notion/캘린더/메모 등 4개 클라우드 서비스에 흩어져 있다가, 어느 날 Notion 프라이버시 정책을 '정말로' 읽고 충격받음. 일기를 쓰는 사람인데 '아무도 보면 안 되는 것'을 적는다는 자각이 트리거.",
+    "goals": [
+     "사적 생각은 내 하드웨어에만, 동기화는 내가 명시적으로 선택할 때만",
+     "AI는 쓰되 일기 본문이 OpenAI 서버로 안 가게",
+     "회사가 망하거나 약관을 바꿔도 내 데이터가 그대로 남기"
+    ],
+    "current_tools": [
+     "Notion(이탈 중)",
+     "자체 제작 local-first 시스템 + 로컬 소형 모델 RAG",
+     "암호화 로컬 저장"
+    ],
+    "workarounds": [
+     "직접 Life OS 코딩",
+     "at-rest 암호화",
+     "로컬 LLM으로 클라우드 AI 회피"
+    ]
+   },
+   {
+    "name_label": "서비스 종료·가격 인상에 데인 뒤 '파일 소유'로 이주한 장기 노트 사용자",
+    "context": "Evernote/Roam을 수년 썼는데 인수·가격 인상(Evernote 연 $250까지)으로 '내 데이터를 임대만 하고 있었다'는 걸 깨달음. 메모 수만 개를 급히 export해 본 경험이 있음. 한국 커뮤니티(다모앙 등)에도 동일 정서.",
+    "goals": [
+     "앱이 망해도 다른 편집기로 바로 열리는 포맷",
+     "월 구독 말고 소유",
+     "오프라인·빠른 반응속도"
+    ],
+    "current_tools": [
+     "Obsidian(.md 파일)",
+     "UpNote(라이프타임)",
+     "직접 구성한 드라이브 싱크"
+    ],
+    "workarounds": [
+     "마크다운/JSON 포맷 고집",
+     "Sync는 안 쓰고 직접 폴더 동기화",
+     "정기 export 백업"
+    ]
+   },
+   {
+    "name_label": "AI가 노트앱마다 비집고 들어오는 게 싫은 '도구는 깨끗해야' 사용자",
+    "context": "쓰던 노트앱들이 하나씩 AI 요약/태깅/제안을 기본 탑재하면서 '내가 요청하지 않은 글쓰기'와 백그라운드 처리에 피로. Day One의 'AI creeping', Reddit의 'AI로 오염됐다'는 정서를 공유.",
+    "goals": [
+     "AI 없는(또는 완전 선택적) 깔끔한 에디터",
+     "내 노트를 읽고 학습·전송하지 않는 보장",
+     "방해 없는 캡처/쓰기"
+    ],
+    "current_tools": [
+     "Obsidian(AI 없음)",
+     "Joplin",
+     "일부는 Notion으로 이탈하기도"
+    ],
+    "workarounds": [
+     "AI 기능 끄기",
+     "AI 없는 앱으로 교체",
+     "BYO-API-key로만 AI 연결"
+    ]
+   }
+  ],
+  "pain_points": [
+   {
+    "title": "클라우드 AI/노트앱에 사적 생각·일기를 넘기는 근본 불안: '내 비공개 생각이 남의 서버에서 처리된다'",
+    "underlying_need": "일기·사적 사고는 외부에 절대 노출되면 안 되는 범주. 기능보다 '통제권'이 먼저 — 데이터는 내 기기에만 있고, 동기화/AI 처리는 내가 명시적으로 선택할 때만 일어나야 안심한다 (JTBD: 판단당할 두려움 없이 날것의 생각을 쏟아내기).",
+    "quote": "But when I journal, I write things I don't want anyone to read. Ever. / Your private thoughts get processed on someone else's server. / Even if they claim not to store it, you're trusting their word.",
+    "source_type": "blog",
+    "source_url": "https://solodevstack.com/blog/building-life-os-privacy-first-personal-system",
+    "frequency": "very-common",
+    "severity": "high",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "'local-first' 마케팅과 실제의 불일치: 동의 없이 로컬 전용 데이터가 네트워크로 동기화된 배신감 (Anytype 0.54.0 사건)",
+    "underlying_need": "앱을 고른 유일한 이유가 '데이터가 기기에 머문다'는 약속인데, 업데이트 한 번에 그 약속이 깨짐. '암호화돼 있으니 괜찮다'는 설명은 위안이 안 됨 — 동의 없는 노출 그 자체가 신뢰 파괴. 사용자는 '진짜로 로컬일 수 있는 옵션'을 원함.",
+    "quote": "I'm so frustrated because the whole reason I'm using Anytype is that my data STAYS on my device. / it's another node of exposure I didn't consent to. / What's the point of saying you're local first if theres no option to actually be that?",
+    "source_type": "forum",
+    "source_url": "https://community.anytype.io/t/local-only-vault-suddenly-syncing-to-anytype-network-after-update-to-0-54-0/30084",
+    "frequency": "common",
+    "severity": "high",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "서비스 종료·인수·가격 인상으로 인한 락인 공포: '데이터를 소유한 게 아니라 접근권을 임대했을 뿐'",
+    "underlying_need": "수년간 쌓은 사고 자산이 회사의 사업 결정(인수, 요금 2배/연 $250, 무료 폐지)에 인질로 잡힘. '망해도, 요금 바뀌어도, 인터넷 끊겨도 내 노트는 그대로'인 포맷/구조가 핵심 안전장치. (JTBD: 평생 축적할 생각 저장소를 외부 변수로부터 지키기)",
+    "quote": "They jacked up the subscription prices, and suddenly, users with tens of thousands of notes realized they had no recourse. They didn't own their data; they were just renting access to it.",
+    "source_type": "blog",
+    "source_url": "https://billmclean.substack.com/p/the-great-note-taking-trap",
+    "frequency": "very-common",
+    "severity": "high",
+    "evidence_strength": "moderate"
+   },
+   {
+    "title": "서비스 종료·락인 공포(한국 사용자): 메모 서비스가 정책 변경/종료해 급하게 export한 경험, Evernote 인수에 '씁쓸'",
+    "underlying_need": "한국 사용자도 동일하게 '종료되면 어쩌지'를 선택 기준으로 삼음. 마크다운 등 열린 포맷이라 '나중에 안 써도 못 읽게 되는 상황이 없다'는 점을 명시적으로 안전장치로 봄.",
+    "quote": "서비스가 문을 닫으면 어떻게 되나 하는 걱정도 있습니다. 실제로 잘 쓰던 메모 서비스가 정책을 바꾸거나 종료해서 내보내기 작업을 급하게 해본 분도 계실 겁니다. / 노트가 마크다운이라는 단순한 텍스트 형식으로 저장됩니다. 그 덕분에 이 프로그램을 나중에 쓰지 않게 되더라도 노트를 못 읽게 되는 상황이 생기지 않습니다.",
+    "source_type": "korean-community",
+    "source_url": "https://damoang.net/obsidang/37",
+    "frequency": "common",
+    "severity": "high",
+    "evidence_strength": "moderate"
+   },
+   {
+    "title": "폐쇄형 소스라 E2EE 주장을 믿을 수 없음: '결국 클라이언트를 믿어야 하는데, 클라이언트는 언제든 바뀐다' (Reflect)",
+    "underlying_need": "'종단간 암호화'라는 광고 문구만으로는 부족. 검증 불가능한 폐쇄 소스에서 서버가 브라우저에 뭘 내려보내는지 알 수 없음 → 프라이버시 민감층에게는 '프라이버시 워싱'으로 읽힘. 신뢰의 근거(오픈소스/검증 가능성)를 원함.",
+    "quote": "Claims to be end-to-end encrypted, but still closed source. / That's correct - ultimately you have to trust the client, and the client can change (we do update it from time to time). / I am not a fan of privacy washing.",
+    "source_type": "forum",
+    "source_url": "https://discuss.privacyguides.net/t/reflect-app-encrypted-note-taking-app/27531",
+    "frequency": "common",
+    "severity": "medium",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "AI가 노트앱에 무단으로 '기어들어오는' 것에 대한 거부감: 요청하지 않은 요약·태깅·제안",
+    "underlying_need": "도구는 '깨끗한 작업대'여야 하는데 AI가 기본 탑재되며 백그라운드에서 내 노트를 읽고 처리. 가격 인상과 겹치면 이탈 트리거. '완전 선택적 AI'와 '내 노트를 건드리지 않는다'는 보장을 원함.",
+    "quote": "Day One was a great app, but the new pricing and AI creeping into the app puts me off. / I'm done.",
+    "source_type": "review",
+    "source_url": "https://forums.dayoneapp.com/forums/topic/day-one-was-good/",
+    "frequency": "common",
+    "severity": "medium",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "'내 노트앱이 전부 AI로 오염됐다' — AI 없는 에디터를 찾아 커뮤니티에 호소",
+    "underlying_need": "AI 자체가 아니라 '강제성'과 '데이터 마이닝 우려'가 문제. 좋은 마크다운 + 동기화는 원하지만 AI는 빼고 싶음. Obsidian이 'AI로 어수선하지 않아서' 피난처로 추천됨.",
+    "quote": "all my note taking apps are now polluted with AI features (요지) / Obsidian is still clean with no AI cluttering the interface, and Markdown support is solid.",
+    "source_type": "reddit",
+    "source_url": "https://reddit.sentinel-team.org/posts/1s7vcky/snapshots/2026-04-03T21%3A40%3A17.30602Z",
+    "frequency": "common",
+    "severity": "medium",
+    "evidence_strength": "moderate"
+   },
+   {
+    "title": "AI 자동 연결/제안이 'generic·얕은 사고'로 실망: 많이 모으기 전엔 쓸모없고, 안정성도 떨어짐 (Mem)",
+    "underlying_need": "AI가 '응집기' 역할을 제대로 하려면 제안의 질이 핵심. 노트 50개 수준에선 제안이 뻔하고, 자동 정리가 오히려 '얕은 생각' 도구로 전락. 사용자는 수락/거절로 학습되는 '정말 내 맥락에 맞는' 연결을 원함.",
+    "quote": "at 50 notes the AI suggestions feel generic; at 500 notes they feel uncanny / delights you with these features but frustrates you with stability and quality",
+    "source_type": "review",
+    "source_url": "https://aiagentrank.io/blog/mem-ai-review-2026",
+    "frequency": "common",
+    "severity": "medium",
+    "evidence_strength": "weak"
+   },
+   {
+    "title": "수집만 하고 다시 안 보는 '쓰기 전용 2번째 뇌'/디지털 무덤 (collector's fallacy)",
+    "underlying_need": "캡처는 생산적으로 '느껴지지만' 재방문은 귀찮은 잡무 → 노트가 쌓이기만 하고 묻힘. 저장을 학습으로 착각. 과거 생각을 '다시 떠오르게' 해주는 재노출/리뷰 장치가 근본 해법. (moss의 '다시 떠오른 생각'과 직결)",
+    "quote": "Slowly, but surely your digital world becomes cluttered with notes you never revisit. / Possession becomes a proxy for progress. / Everyone's building a second brain. But how many of us are actually using it?",
+    "source_type": "blog",
+    "source_url": "https://goodluckman.substack.com/p/the-collectors-fallacy-why-most-notetaking",
+    "frequency": "very-common",
+    "severity": "high",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "노트가 쌓이면 '망각된 아이디어의 무덤' — 지식은 있는데 뭐가 있는지 몰라 사실상 못 씀",
+    "underlying_need": "정기적 재방문 없이는 시스템이 '지식은 담고 있으나 쓸 수 없는' 상태가 됨. 무작위 재노출·간격 반복·예약 리뷰 같은 'resurfacing' 습관이 필요. moss의 홈 재노출('오늘의 연결/질문')이 겨냥하는 바로 그 공백.",
+    "quote": "without regular revisitation, they become a graveyard of forgotten ideas / the system holds the knowledge but is effectively unusable",
+    "source_type": "blog",
+    "source_url": "https://www.dsebastien.net/ai-wiki-pkm-pkm-anti-patterns/",
+    "frequency": "common",
+    "severity": "high",
+    "evidence_strength": "moderate"
+   },
+   {
+    "title": "Tana/Capacities의 과도한 복잡도·세팅/유지 부담에 지쳐 포기",
+    "underlying_need": "'생각을 담는' 게 목적인데 시스템 구축·유지가 목적을 삼켜버림(supertag/object 모델 학습비용, 노드 이동조차 여러 단계). 강제 구조 없이 2초 안에 담기는 '머무름' 중심 도구를 원함. (moss의 제목/폴더/태그 비강제와 직결)",
+    "quote": "found Tana to be overwhelming and such a drag on my time / It was the interface's 'death by a thousand paper cuts' / Capacities' model of notes as objects too complex to me",
+    "source_type": "forum",
+    "source_url": "https://talk.macpowerusers.com/t/replacement-for-tana/44724",
+    "frequency": "common",
+    "severity": "medium",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "구독 피로: '또 하나의 월 구독'에 대한 거부와 '소유 vs 임대' 선호",
+    "underlying_need": "핵심 기능(특히 sync)을 월 구독으로 거는 모델에 지침. Roam 비싸서 해지 후 복귀, 단발 결제/라이프타임 선호. '렌트가 아니라 소유'라는 심리적 안정이 지불의 전제.",
+    "quote": "This is yet another paid feature which should be included in the standard licensing versus another monthly fee. / I canceled my Roam Research subscription a while ago too. / it was expensive and went back to using One Note",
+    "source_type": "review",
+    "source_url": "https://e-student.org/obsidian-review/",
+    "frequency": "common",
+    "severity": "medium",
+    "evidence_strength": "moderate"
+   },
+   {
+    "title": "AI 서비스가 종료되면 '내 기억/메모도 함께 죽는가' — AI 기반 메모리 앱의 지속성 공포",
+    "underlying_need": "Rewind→Limitless→Meta 인수 후 앱 종료, Supermemory의 Slack 제품 한 달 만에 종료 같은 사례로 'AI에 종속된 기억'의 휘발성을 체감. AI는 부가여야 하고, 본문은 AI와 무관하게 내 손에 남아야 한다는 요구. (moss: AI는 '대필' 아닌 '응집기', 본문은 서버 미통과)",
+    "quote": "if your AI shuts down, do memories die? (제목 명제) / Supermemory's Slack 'company brain' ... the company shut it down a month after launch and refunded everyone",
+    "source_type": "blog",
+    "source_url": "https://memx.app/blog/if-your-ai-shuts-down-do-memories-die/",
+    "frequency": "occasional",
+    "severity": "medium",
+    "evidence_strength": "weak"
+   },
+   {
+    "title": "E2EE의 함정: AI를 쓰려면 암호화된 일기가 '일시적으로 복호화'됨 (Day One)",
+    "underlying_name": "",
+    "underlying_need": "'종단간 암호화'를 믿고 쓰는 일기앱조차 AI 처리 순간엔 암호가 풀림 → E2EE를 고른 이유와 정면 충돌. 사용자는 '본문이 평문으로 서버를 통과하지 않는' 아키텍처(온디바이스 처리)를 원함. (moss: 본문 서버 미통과 + 로컬 처리 지향과 직결)",
+    "quote": "content from end-to-end encrypted journals is temporarily not end-to-end encrypted while being processed with AI. This is one of the reasons AI features require your consent before first use.",
+    "source_type": "review",
+    "source_url": "https://dayoneapp.com/guides/labs/ai-features/",
+    "frequency": "occasional",
+    "severity": "medium",
+    "evidence_strength": "strong"
+   }
+  ],
+  "churn_reasons": [
+   "서비스 인수·종료·가격 인상(Evernote 연 $69.99→$129.99→$250, 무료 폐지, Roam 가격 2배)으로 '데이터를 임대만 했다'는 자각 후 파일 소유형(Obsidian 등)으로 이주",
+   "쓰던 앱에 AI가 강제 탑재되고(백그라운드 요약·태깅) 동시에 가격이 오르면 즉시 이탈 (Day One: 'I'm done')",
+   "'local-first'라며 동의 없이 네트워크 동기화가 일어나는 등 프라이버시 약속 위반 시 신뢰 붕괴 (Anytype 0.54.0)",
+   "폐쇄형 소스 + 강한 AI 통합 조합이 '프라이버시 워싱'으로 읽혀 프라이버시 민감층이 '하드 패스' (Reflect)",
+   "Tana/Capacities의 세팅·유지 복잡도가 생각 담기라는 본래 목적을 압도해 '얕은 사고 도구'로 느껴지면 포기",
+   "AI 자동 연결/제안이 generic하고 안정성이 낮아 기대했던 '응집' 가치를 못 줄 때 실망 이탈 (Mem)",
+   "구독 피로: 핵심 기능(sync)을 또 다른 월 구독으로 거는 모델 거부, 해지 후 무료/단발 결제 앱으로 회귀"
+  ],
+  "willingness_to_pay": "지불 의향은 '소유감'과 '프라이버시 보장'에 강하게 연동됨. 월 구독(특히 sync를 볼모로 한)에는 피로가 크지만, 'pay once, own forever'/라이프타임에는 명확한 긍정 신호가 존재한다 — UpNote 라이프타임, Gravity 'pay once and own the app forever', TNOTE 'lifetime access', OwnSync 'Pay once, own it forever'(출처: https://hunted.space/product/lists-notes , https://peerlist.io/tmanchester/project/gravity--the-simplest-notes ). Obsidian 생태계는 '앱은 무료, sync는 선택적 유료'가 수용되는 반면 '기본 기능을 월 구독으로 거는 것'엔 저항(출처: https://e-student.org/obsidian-review/ ). 프라이버시 개발자층은 아예 직접 만들거나 로컬 LLM/자체 API 키를 쓸 만큼 '내 데이터 통제'에 시간·비용을 투자함(출처: https://solodevstack.com/blog/building-life-os-privacy-first-personal-system ). 시사점: moss Freemium은 (1) 무료에서도 캡처/로컬 저장/export가 온전해야 '임대가 아니라 소유' 신뢰를 주고, (2) 유료는 AI 응집/서브캔버스 등 '부가 가치'에 붙이되 월 구독 거부감을 완화할 라이프타임/연 결제 옵션과 '유료 해지해도 내 데이터는 그대로'라는 보장이 전환의 핵심 레버가 된다. 반대로 '본문 서버 미통과·오프라인·열린 포맷 export'는 지불 이전에 신뢰의 전제 조건이라 유료 뒤에 숨기면 이 세그먼트는 아예 진입하지 않는다.",
+  "moss_fit": "강하게 맞는 점: (1) Local-first(IndexedDB+OPFS)·오프라인·'메모 본문은 기본적으로 서버를 통과하지 않음'은 이 세그먼트의 1순위 불안(사적 생각을 남의 서버에서 처리)과 Anytype/Day One 사건이 보여준 '동의 없는 노출/AI용 일시 복호화' 공포를 정면으로 해소한다. (2) Markdown/JSON Canvas export는 서비스 종료·인수·가격 인상 락인 공포(Evernote/Roam, 한국 다모앙 정서)의 핵심 안전장치 — '망해도 다른 편집기로 열린다'는 약속과 일치. (3) AI를 '대필'이 아닌 '응집기'로 한정하고 추천 연결을 점선으로 구분·수락/거절·거절 학습하는 설계는 'AI가 무단으로 기어든다'는 거부감과 'generic 제안' 실망을 동시에 완화. (4) 과거 메모 재노출('다시 떠오른 생각/오늘의 연결/오늘의 질문')은 collector's fallacy·'쓰기 전용 2번째 뇌'·'망각된 아이디어의 무덤'이라는 가장 반복되는 고통을 직접 겨냥한다 — 이 세그먼트가 말로는 '프라이버시'를 앞세우지만 실제로 묵히는 노트 문제의 해법이기도 함. (5) streak·생산성 점수·압박 알림 금지와 제목/폴더/태그 비강제는 Tana/Capacities 복잡도 피로와 Pennen류가 거부한 'streak가 처벌하는' 모델에 대한 반감과 부합.\n\n안 맞거나 위험한 점(솔직히): (A) 신뢰의 '검증 가능성' 공백 — PrivacyGuides 사용자들은 폐쇄형 소스 + E2EE 광고를 '프라이버시 워싱'으로 본다. moss가 웹 PWA 폐쇄 소스라면 '본문이 서버를 안 통과한다'를 말로만 하면 이 층은 안 믿는다. 오픈소스 클라이언트/외부 감사/'AI 켤 때 정확히 무엇이 어디로 가는지' 투명 고지 없이는 핵심 지지층을 못 얻을 위험. (B) '기본적으로(by default)'라는 단서 — AI 추천 연결(임베딩)은 어디서 계산되나? 온디바이스가 아니라 서버 임베딩이면 Day One의 '일시 복호화' 함정과 똑같은 비판을 받는다. 임베딩/추천 경로의 데이터 흐름이 이 세그먼트의 수용 여부를 가른다. (C) 웹/IndexedDB·OPFS는 Obsidian류 '진짜 내 디스크의 .md 파일' 소유감보다 약하게 느껴질 수 있음 — 브라우저 스토리지는 날아갈 수 있다는 불신과 '열린 포맷이지만 앱 안에 갇힌' 느낌. 상시 로컬 파일 export/자동 백업 노출이 필요. (D) 구독 모델 — 월 구독에 대한 피로가 큰 층이라, 'sync/AI를 볼모로 한 월 구독'으로 보이면 이탈. 본문 export·오프라인은 무료에서 온전해야 하고 라이프타임/연 결제 옵션이 전환 레버. (E) AI 서비스 종속 공포(Rewind/Supermemory 종료 사례) — AI 응집 기능이 꺼지거나 회사가 접어도 '본문과 수동 연결선은 100% 남는다'가 보장·가시화돼야 'AI 죽으면 내 기억도 죽나' 불안을 넘는다.",
+  "notable_sources": [
+   "https://solodevstack.com/blog/building-life-os-privacy-first-personal-system (클라우드 AI 프라이버시 불신으로 local-first 자작, 강한 직접 인용 다수)",
+   "https://community.anytype.io/t/local-only-vault-suddenly-syncing-to-anytype-network-after-update-to-0-54-0/30084 (동의 없는 동기화 배신감, local-first 마케팅 불일치)",
+   "https://discuss.privacyguides.net/t/reflect-app-encrypted-note-taking-app/27531 (폐쇄소스 E2EE 불신, '프라이버시 워싱', trust the client)",
+   "https://forums.dayoneapp.com/forums/topic/day-one-was-good/ + https://dayoneapp.com/guides/labs/ai-features/ (AI creeping 이탈 + E2EE 일시 복호화 함정)",
+   "https://billmclean.substack.com/p/the-great-note-taking-trap (소유 vs 임대, Evernote/Roam 락인)",
+   "https://goodluckman.substack.com/p/the-collectors-fallacy-why-most-notetaking + https://www.dsebastien.net/ai-wiki-pkm-pkm-anti-patterns/ (collector's fallacy, 디지털 무덤)",
+   "https://talk.macpowerusers.com/t/replacement-for-tana/44724 (Tana/Capacities 복잡도 포기)",
+   "https://damoang.net/obsidang/37 (한국: 서비스 종료 불안·마크다운 소유, 다만 본문 재확인 403으로 moderate)",
+   "https://reddit.sentinel-team.org/posts/1s7vcky/... (AI로 오염된 노트앱, AI 없는 에디터 호소)",
+   "https://memx.app/blog/if-your-ai-shuts-down-do-memories-die/ (AI 종료 시 기억 소멸 공포, 벤더 글이라 weak)",
+   "https://hunted.space/product/lists-notes , https://peerlist.io/tmanchester/project/gravity--the-simplest-notes (pay once/라이프타임 지불 의향 신호)"
+  ]
+ },
+ {
+  "segment": "학생·평생학습자·태블릿 손글씨 사용자 (GoodNotes/Notability/OneNote/삼성노트/Apple 펜슬 + 타이핑 혼용). 아이패드·갤럭시탭으로 수업/교재 PDF에 필기하고, 시험·과제는 노트북(윈도우/맥)으로 하는 혼합 환경. 공부 노트가 시험 후 사실상 '죽은 자료'가 되는 것, 손글씨 검색, 개념 간 연결, 크로스 플랫폼 접근, 데이터 소유/이동성이 핵심 고통축.",
+  "persona_sketches": [
+   {
+    "name_label": "교재 PDF에 필기하는 '파일 캐비닛' 대학생 (의치약·공대 등 암기+개념형 전공)",
+    "context": "아이패드 + 애플펜슬로 강의 슬라이드/교과서 PDF 위에 필기. 과목별 폴더에 노트가 수십 개 쌓이지만, 학기가 끝나면 거의 열지 않는다. 시험 2주 전 '내가 어디에 뭘 썼더라'를 반복한다.",
+    "goals": [
+     "강의 필기를 장기 지식으로 남기기",
+     "서로 다른 과목/주제의 개념을 연결해 이해하기",
+     "시험 직전 과거 필기를 빠르게 재발견하기"
+    ],
+    "current_tools": [
+     "GoodNotes 6",
+     "Anki(별도 플래시카드)",
+     "아이클라우드 백업"
+    ],
+    "workarounds": [
+     "중요 개념만 따로 Anki 카드로 재입력",
+     "시험 전 핵심을 '요약본'으로 다시 필기해 프린트",
+     "노트 앞에 '개요(목차)' 페이지를 손으로 만들어 검색 대체"
+    ]
+   },
+   {
+    "name_label": "아이패드로 수업 듣고 윈도우로 과제하는 복수전공·편입 준비 학생",
+    "context": "강의는 아이패드로 필기(Notability/GoodNotes), 리포트·코딩 과제는 윈도우 노트북으로. 기기를 넘나들 때 필기 노트가 같이 안 따라와서 매번 PDF로 내보내 붙여넣는다.",
+    "goals": [
+     "어느 기기에서나 같은 필기/메모에 접근",
+     "필기와 타이핑 메모를 한 작업대에서 섞기",
+     "기기 바꿔도 데이터가 그대로 살아있기"
+    ],
+    "current_tools": [
+     "Notability(아이패드)",
+     "OneNote(크로스플랫폼 대안)",
+     "Google Drive/OneDrive 수동 내보내기"
+    ],
+    "workarounds": [
+     "필기를 PDF/이미지로 내보내 클라우드에 업로드",
+     "윈도우에서는 OneNote로 이원화해 두 곳에 분산 기록",
+     "핵심은 그냥 타이핑으로 다시 적음"
+    ]
+   },
+   {
+    "name_label": "여러 주제를 몇 년씩 파는 직장인 독학러·수험생(평생학습자)",
+    "context": "자격증·어학·관심 분야를 장기간 공부. 과거에 쓴 메모가 지금 공부와 연결되길 바라지만, 과목/노트북 경계에 갇혀 '흩어진 조각'으로 남는다. 제텔카스텐·옵시디언을 시도했다가 유지 부담으로 포기한 경험.",
+    "goals": [
+     "과거 메모가 현재 생각과 '다시 연결'되기",
+     "꾸준함을 강제하지 않아도 유지되는 느슨한 시스템",
+     "손글씨 아이디어와 링크/텍스트를 한곳에서"
+    ],
+    "current_tools": [
+     "GoodNotes/삼성노트",
+     "옵시디언(시도 후 이탈)",
+     "종이 노트 병행"
+    ],
+    "workarounds": [
+     "손글씨를 사진 찍어 Notion/옵시디언에 옮김(번거로워 중단)",
+     "주제 인덱스 노트를 수동 작성",
+     "결국 검색·연결 포기하고 종이로 회귀"
+    ]
+   }
+  ],
+  "pain_points": [
+   {
+    "title": "필기는 쌓이는데 시험·학기 후 '죽은 자료'가 됨 (write-once, never revisited)",
+    "underlying_need": "공부한 내용이 그 순간의 필기로 끝나지 않고 장기 지식으로 남아 다시 떠오르길 원함. 복습이 '내가 다시 열어봐야' 성립하는 수동 구조 자체가 문제.",
+    "quote": "노트를 읽어 나가기(정리되고 검색 가능한 경우에도)는 수동적인 복습입니다 ... 간격 반복 알고리즘이 없습니다.",
+    "source_type": "korean-blog",
+    "source_url": "https://www.notelyn.com/ko/blog/can-goodnotes-make-flashcards-for-you",
+    "frequency": "very-common",
+    "severity": "high",
+    "evidence_strength": "moderate"
+   },
+   {
+    "title": "시험 직전 노트 증발(데이터 손실) 공포",
+    "underlying_need": "필기 노트가 유일한 공부 자산인데, 앱 글리치/크래시/재설치로 통째로 날아갈 수 있다는 불안. 소유·영속성 보장이 깔려야 신뢰가 생김.",
+    "quote": "My notes are gone again",
+    "source_type": "reddit",
+    "source_url": "https://www.reddit.com/r/GoodNotes/comments/1i8r91u/my_notes_are_gone_again/",
+    "frequency": "common",
+    "severity": "high",
+    "evidence_strength": "moderate"
+   },
+   {
+    "title": "기기 이동·초기화 시 손글씨만 소실되고 타이핑만 남음",
+    "underlying_need": "가장 공들인 손글씨가 백업/마이그레이션에서 가장 먼저 깨짐. '내 필기가 기기에 종속되지 않는다'는 보장이 필요.",
+    "quote": "The file is there but when you open the file you only see the text you have typed BUT not the handwriting you did with the stylus.",
+    "source_type": "forum",
+    "source_url": "https://eu.community.samsung.com/t5/tablets/handwritings-dissapeared-on-samsung-notes/td-p/10860931",
+    "frequency": "common",
+    "severity": "high",
+    "evidence_strength": "moderate"
+   },
+   {
+    "title": "손글씨 검색(OCR)이 안 되거나 부정확함",
+    "underlying_need": "과거 필기에서 특정 개념/단어를 다시 찾고 싶은데, 비영어 문자·불규칙 필체·가져온 PDF(OCR 레이어 없음)에서 검색이 무너짐. '손으로 썼어도 찾을 수 있어야' 함.",
+    "quote": "OCR is not working for handwritten Nordic letters ÆØÅ! Is this been worked on?",
+    "source_type": "review",
+    "source_url": "https://feedback.goodnotes.com/forums/191274-customer-suggestions-for-goodnotes/suggestions/20443087-universal-search-across-documents-folders-pages",
+    "frequency": "common",
+    "severity": "high",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "전역 검색 부재 — 어느 노트북에 뭘 썼는지 못 찾음",
+    "underlying_need": "노트가 노트북/폴더 단위로 흩어져, 제목·북마크·내용을 가로질러 한 번에 못 찾음. 흩어진 기록으로의 재접근이 핵심 JTBD.",
+    "quote": "Without universal search, I'm needing to guess at what is where.",
+    "source_type": "review",
+    "source_url": "https://feedback.goodnotes.com/forums/191274-customer-suggestions-for-goodnotes/suggestions/20443087-universal-search-across-documents-folders-pages",
+    "frequency": "common",
+    "severity": "medium",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "페이지/노트북 경계가 사고를 끊는다 — 무한 캔버스 열망",
+    "underlying_need": "한 페이지에 안 들어가는 개념을 펼치고 공간적으로 연결하고 싶음. 페이지 단위가 사고의 흐름을 강제로 자름. (이 요청은 3,565표)",
+    "quote": "I just hit an absolute wall every time with the constraints of the page.",
+    "source_type": "review",
+    "source_url": "https://feedback.goodnotes.com/forums/191274-customer-suggestions-for-goodnotes/suggestions/47479160-infinite-canvas",
+    "frequency": "very-common",
+    "severity": "high",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "페이지가 '별도 파일'이라 개념 재배치·연결이 어렵다",
+    "underlying_need": "한 페이지에 안 맞는 개념들을 묶고 이어보려는데, 각 페이지가 독립 파일이라 이동·연결이 불가. 개념 간 관계를 보고 싶은 욕구.",
+    "quote": "It's especially useful when you're connecting concepts that don't fit neatly into a single page.",
+    "source_type": "review",
+    "source_url": "https://feedback.goodnotes.com/forums/191274-customer-suggestions-for-goodnotes/suggestions/47479160-infinite-canvas",
+    "frequency": "common",
+    "severity": "high",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "과목·노트북 사일로 — 지식이 '흩어진 조각'으로 남음",
+    "underlying_need": "방향 없이 쌓인 메모들 사이에 연결이 없어 지식으로 응집되지 않음. 과거 메모를 자주 되짚고 링크하는 습관을 도구가 떠받쳐주길 바람.",
+    "quote": "방향성 없이 쌓인 노트들은 흩어진 조각들로 남는다. ... 두 번째는 '메모 간 연결의 부재'다.",
+    "source_type": "korean-community",
+    "source_url": "https://maily.so/linked.note/posts/mjz6qm8wrwk",
+    "frequency": "common",
+    "severity": "high",
+    "evidence_strength": "moderate"
+   },
+   {
+    "title": "크로스 플랫폼 단절 (아이패드 ↔ 윈도우/안드로이드)",
+    "underlying_need": "수업은 태블릿, 과제는 노트북이라 같은 필기에 어느 기기에서나 접근해야 하는데, Notability는 애플 전용이고 삼성노트는 타 앱에서 같은 필기로 못 엶. 기기 중립적 접근이 필요.",
+    "quote": "there isn't any way to export Samsung Notes to other apps that able to open and edit them with the same handwriting style system.",
+    "source_type": "forum",
+    "source_url": "https://r2.community.samsung.com/t5/Tablets/Very-bad-samsung-notes-app-experience/m-p/15621726",
+    "frequency": "common",
+    "severity": "high",
+    "evidence_strength": "moderate"
+   },
+   {
+    "title": "벤더 락인 — 구독 끊기면 내 손글씨가 읽기전용 '인질'",
+    "underlying_need": "내가 쓴 손글씨를 내가 소유·반출할 수 있어야 함. 구독·정책 변경에 공부 자산이 볼모 잡히는 구조에 대한 근본 불신.",
+    "quote": "All of my notes are bricked and read-only ... It feels as though my notes are being held hostage.",
+    "source_type": "reddit",
+    "source_url": "https://www.reddit.com/r/GoodNotes/comments/1ko9qe0/livid/",
+    "frequency": "occasional",
+    "severity": "high",
+    "evidence_strength": "moderate"
+   },
+   {
+    "title": "폐쇄 포맷 — 손글씨를 꺼낼 수 없다(암호화 바이너리, PDF는 편집 불가)",
+    "underlying_need": "다른 도구로 옮기거나 백업해도 손글씨가 편집 가능한 형태로 보존되길 원함. 개방 포맷(SVG/JSON/마크다운) 반출이 데이터 소유의 조건.",
+    "quote": "the .notes files are encrypted binary and you cannot read them ... PDFs don't go the full distance because the handwriting is not easily editable.",
+    "source_type": "review",
+    "source_url": "https://feedback.goodnotes.com/forums/191274-customer-suggestions-for-goodnotes/suggestions/40953457-open-data-format-for-goodnotes",
+    "frequency": "occasional",
+    "severity": "medium",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "구독 전환·가격 변경 반발 (평생 구매인 줄 알았는데 구독)",
+    "underlying_need": "학생 예산에서 예측 가능한 소유·가격을 원함. '한 번 샀는데 1년 뒤 기능이 멈춘다'는 배신감이 이탈을 촉발.",
+    "quote": "key features included in original app purchases would stop functioning after one year ... Thousands of Notability users took to Twitter and Reddit to express their frustration.",
+    "source_type": "blog",
+    "source_url": "https://thenextweb.com/news/notability-subscription-free-note-taking-app",
+    "frequency": "common",
+    "severity": "medium",
+    "evidence_strength": "strong"
+   },
+   {
+    "title": "'예쁜 노트' 함정 — 꾸미느라 시간 쓰고 정작 학습·복습은 안 함",
+    "underlying_need": "빠르게 생각을 잡아두고 싶은데, 도구/문화가 정리·장식을 유도해 캡처가 무거워지고 학습 본질에서 멀어짐. 마찰 없는 캡처가 진짜 니즈.",
+    "quote": "you don't take notes to look good, you take notes to learn",
+    "source_type": "reddit",
+    "source_url": "https://www.reddit.com/r/ipad/comments/1ic4dfi/my_notes/",
+    "frequency": "common",
+    "severity": "medium",
+    "evidence_strength": "moderate"
+   },
+   {
+    "title": "손글씨→Obsidian/Notion 디지털화 workflow 유지 부담으로 포기",
+    "underlying_need": "필기한 아이디어를 '제2의 뇌'에서 검색·연결하고 싶지만, 옮기고 유지하는 비용이 커서 시스템이 무너지고 종이로 회귀. 캡처와 연결이 한곳에서 자동으로 이어지길 바람.",
+    "quote": "the amount of time it takes to maintain it (was the main problem with Obsidian); a physical commonplace book ... lacks efficiency—there is no search function and no linking of ideas.",
+    "source_type": "blog",
+    "source_url": "https://superlearninglab.substack.com/p/fix-your-forgetting-machine-build/comments",
+    "frequency": "common",
+    "severity": "medium",
+    "evidence_strength": "moderate"
+   }
+  ],
+  "churn_reasons": [
+   "투자 대비 효용 상실: 필기는 쌓이는데 시험 후 다시 안 봐서 '왜 쓰나' 느끼고 앱을 방치/이탈",
+   "데이터 손실·읽기전용 락인을 겪고 '차라리 연필과 종이로' 회귀 (ownership 불신)",
+   "구독 전환/가격 변경 반발로 경쟁앱 이동 (Notability 2021 → GoodNotes 반값 프로모션으로 이주)",
+   "크로스 플랫폼 단절: 기기를 바꾸거나 윈도우/안드로이드를 병행하면서 같은 노트를 못 봐 이탈",
+   "손글씨→PKM(옵시디언/Notion) 디지털화·유지 비용이 커서 세팅을 포기하고 종이/단일 앱으로 회귀",
+   "개념 연결·전역 검색이 구조적으로 안 돼 Nebo·Miro 등 '무한 캔버스/연결' 되는 도구로 부분 이탈",
+   "필기감/적응 문제로 원래 익숙한 앱(예: 삼성노트)으로 되돌아감 — 전환 비용 자체가 이탈 요인"
+  ],
+  "willingness_to_pay": "이 세그먼트는 유료 결제 경험과 의향이 비교적 높다. 이미 GoodNotes 일시불, Notability 구독, Anki 보조 유료툴, 심지어 손글씨→Notion 변환(NoteThisDown 약 €8/월), 사진→PKM 브릿지(FlowState) 같은 틈새 유료 제품에도 지갑을 연다. 다만 결제의 '형태'에 매우 민감하다: (1) '한 번 샀는데 구독으로 바뀌어 기능이 멈춘다'는 배신에 대한 거부감이 크고(Notability 백래시가 대표 사례), (2) '구독 끊으면 내 노트가 인질'이라는 락인 공포가 결제 전환을 막는다. 따라서 이 세그먼트에서 지불 의향을 실제 전환으로 바꾸려면 Freemium은 맞지만 '구독과 무관하게 내 손글씨/메모를 항상 반출·소유'한다는 보장(local-first, Markdown/JSON Canvas export)이 가격 그 자체보다 먼저다. 학생 예산 특성상 예측 가능한 저가·일시불·학생 할인 선호가 강하고, 무료 저장 한도(예: OneNote 5GB 초과 시 동기화 중단)에 대한 불만도 유료 전환 트리거가 된다.",
+  "moss_fit": "맞는 점(강점): (1) 사일로 해소 — 과목/노트북 경계에 갇혀 '흩어진 조각'이 되는 문제를 무한 캔버스 + 수동/AI 연결선이 정면으로 겨냥. '개념이 한 페이지에 안 맞는다', '페이지가 별도 파일이라 못 잇는다'는 최상위 고통(3,565표)과 직결. (2) 복습 휘발 방지 — '다시 떠오른 생각/오늘의 연결/오늘의 질문'이 수동 재열람에 의존하는 기존 복습의 근본 한계를 공략(압박·streak 없이). (3) 데이터 소유/락인 해소 — local-first + 개방 포맷 export가 '인질/암호화 바이너리/구독 끊기면 읽기전용' 공포를 정면 반박하며 결제 전환의 핵심 조건을 충족. (4) 크로스 플랫폼 — 웹 PWA라 아이패드↔윈도우↔안드로이드 접근이 네이티브 전용 앱보다 구조적으로 유리. (5) 2초 캡처·제목/폴더 강제 없음이 '예쁜 노트 함정'과 반대 방향.\n\n안 맞거나 위험한 점(솔직): (1) 이 세그먼트의 '1순위 니즈'는 사실 moss의 NON-GOAL 쪽에 가깝다 — 교과서/강의 PDF 위 정밀 주석, 레이어드 필기, 전문가급 필기감·팜리젝션은 GoodNotes/Notability의 코어이고 moss의 '펜 카드'로는 약할 가능성이 큼. 이들이 moss로 '필기 앱 자체를 대체'하길 기대하면 실망한다. (2) 손글씨 검색(OCR)은 이 세그먼트의 핵심 페인인데, moss의 AI는 임베딩 연결·요약 중심이고 손글씨 인식을 명시적으로 약속하지 않음 — 온디바이스 손글씨 OCR이 없으면 '손으로 썼어도 찾을 수 있어야'라는 기대를 충족 못 한다(펜 카드가 검색 안 되면 치명적). (3) '시험 벼락치기·마감 중심' 공부 모드와 moss의 '완료 아닌 머무름, 압박·생산성 지표 금지' 철학이 충돌 — 단기 성적 최적화를 원하는 학생에겐 Anki/플래시카드가 여전히 더 적합. (4) 태블릿 네이티브 필기감/펜 레이턴시가 PWA 한계로 약하면, 이 세그먼트는 전환 자체를 거부(필기감이 이탈·잔존의 1차 변수). \n\n종합 포지셔닝 제안: moss는 이 세그먼트에게 'GoodNotes를 대체하는 필기 앱'이 아니라 'GoodNotes/Notability 위에 얹히는 사고의 상층부(연결·재발견·소유)'로 접근할 때 핏이 가장 좋다. 즉 필기 export를 받아 개념을 잇고 과거를 재노출하는 '응집 레이어'. 펜 카드는 가벼운 아이디어/스케치용으로 포지셔닝하되, 최소한의 손글씨 검색(혹은 펜 카드에 텍스트 메모 결합)은 전환의 사실상 전제 조건.",
+  "notable_sources": [
+   "GoodNotes 무한 캔버스 요청(3,565표, 날짜별 verbatim 다수): https://feedback.goodnotes.com/forums/191274-customer-suggestions-for-goodnotes/suggestions/47479160-infinite-canvas",
+   "GoodNotes 전역검색/손글씨 OCR 한계(Nordic 문자 등): https://feedback.goodnotes.com/forums/191274-customer-suggestions-for-goodnotes/suggestions/20443087-universal-search-across-documents-folders-pages",
+   "GoodNotes 개방 포맷 요청(암호화 바이너리·PDF 편집 불가): https://feedback.goodnotes.com/forums/191274-customer-suggestions-for-goodnotes/suggestions/40953457-open-data-format-for-goodnotes",
+   "GoodNotes 구독 변경으로 노트 읽기전용 '인질' (r/GoodNotes, 2025-05): https://www.reddit.com/r/GoodNotes/comments/1ko9qe0/livid/",
+   "GoodNotes 노트 증발 사례 (r/GoodNotes): https://www.reddit.com/r/GoodNotes/comments/1i8r91u/my_notes_are_gone_again/",
+   "삼성노트 기기 이동/초기화 시 손글씨 소실: https://eu.community.samsung.com/t5/tablets/handwritings-dissapeared-on-samsung-notes/td-p/10860931",
+   "삼성노트 크로스앱 반출/편집 불가 불만: https://r2.community.samsung.com/t5/Tablets/Very-bad-samsung-notes-app-experience/m-p/15621726",
+   "Notability 구독 전환 백래시(2021): https://thenextweb.com/news/notability-subscription-free-note-taking-app",
+   "예쁜 노트 vs 학습 논쟁 (r/studytips, r/ipad): https://www.reddit.com/r/studytips/comments/1jpkcbn/aesthetic_notes/",
+   "PKM 유지 부담으로 이탈·종이 회귀, 손글씨 digitize workflow: https://superlearninglab.substack.com/p/fix-your-forgetting-machine-build/comments",
+   "한국어: 메모 간 연결 부재·방치 담론(제텔카스텐): https://maily.so/linked.note/posts/mjz6qm8wrwk",
+   "한국어: GoodNotes 복습 수동성·간격반복 알고리즘 부재: https://www.notelyn.com/ko/blog/can-goodnotes-make-flashcards-for-you"
+  ]
+ }
+]

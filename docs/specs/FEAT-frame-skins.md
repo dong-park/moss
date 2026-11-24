@@ -2,7 +2,7 @@
 
 > 메모판 뒤에 깔리는 그림을 갈아 끼운다. 스킨은 배경 그림일 뿐이다. 메모의 자리·소속·동작은 하나도 바뀌지 않는다.
 
-**Status**: 구현 완료 (WORK)
+**Status**: 대체됨: spec/frame-image-template (세로 칸 스킨 코드는 제거됨. 옛 columns 데이터만 판 content에 남는다)
 **Owner**: dong-park
 **Estimated**: S
 **Started**: 2026-09-26

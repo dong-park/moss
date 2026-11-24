@@ -1,0 +1,119 @@
+$ vitest run src/components/workspace/cards/__tests__/MemoPendingEdit.test.tsx
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - ESM syntax in a file loaded as CommonJS (vitest.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v4.1.12 /Users/donghwan/.goat/desktop/worktrees/moss/goat-d66ffd45-76d620d348009219/web
+
+stderr | src/components/workspace/cards/__tests__/MemoPendingEdit.test.tsx > keeps input entered while the destination board is still loading
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+
+stderr | src/components/workspace/cards/__tests__/MemoPendingEdit.test.tsx > keeps input entered while the destination board is still loading
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+
+ ❯ src/components/workspace/cards/__tests__/MemoPendingEdit.test.tsx (5 tests | 1 failed) 3762ms
+   × keeps input entered while the destination board is still loading 747ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/components/workspace/cards/__tests__/MemoPendingEdit.test.tsx > keeps input entered while the destination board is still loading
+AssertionError: expected 'before' to contain 'pending'
+
+Expected: "pending"
+Received: "before"
+
+ ❯ src/components/workspace/cards/__tests__/MemoPendingEdit.test.tsx:114:62
+    112|   await act(async () => { release(); await switching; });
+    113|   await act(() => ws().setCurrentBoard(board));
+    114|   expect(ws().cards.find((card) => card.id === id)?.content).toContain…
+       |                                                              ^
+    115| });
+    116|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 4 passed (5)
+   Start at  19:12:54
+   Duration  4.88s (transform 330ms, setup 289ms, import 389ms, tests 3.76s, environment 360ms)
+
+error: script "test" exited with code 1

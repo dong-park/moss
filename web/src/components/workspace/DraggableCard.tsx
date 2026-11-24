@@ -1,5 +1,9 @@
 "use client";
 
+import { touchCardDrags, type TouchDrag } from "./touchCanvas";
+import { useTouchControls } from "./useTouchControls";
+import { useMobileCanvas } from "./mobileCanvas";
+
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { animate } from "motion/react";
 import * as ContextMenu from "@radix-ui/react-context-menu";
@@ -15,11 +19,12 @@ import { systemBoardName } from "@/state/systemBoardName";
 import { CardContent } from "./cards/CardContent";
 import { StickyStrokeLayer, type StickyStrokeHandle } from "./StickyStrokeLayer";
 import { memoFace } from "./cards/text/face";
+import controlStyles from "./canvasControls.module.css";
 import { isExpandable } from "./cards/_shared/expandable";
 import { ResizeHandles } from "./ResizeHandles";
-import { decodeFrameConfig, type FrameSkinId } from "@/state/frameContent";
+import { storePhoto } from "./canvasCapture";
 import {
-  cardRotationDeg,
+  cardTilt,
   formatDeg,
   isMemoColor,
   MEMO_COLORS,
@@ -29,18 +34,15 @@ import {
   type MemoColor,
 } from "./memoVariety"; // FEAT-memo-variety
 import { AIOptOutBadge } from "@/components/privacy/AIOptOutBadge";
-import { ExpandIcon, LockIcon } from "@/components/icons";
+import { ExpandIcon } from "@/components/icons";
 import { useT } from "@/i18n/Provider";
 import { nextTiltAngle } from "./dragTilt";
 import { strokeOwnerOfCard } from "@/state/marker/strokeOwner";
+import { beginUndoGroup, endUndoGroup, type UndoGroupToken } from "@/state/ydoc/undo";
 
 const DRAG_THRESHOLD = 3; // px — 이 거리 넘으면 드래그로 인식
 
-/** FEAT-frame-skins §7: 판 우클릭 "판 모양" 하위 메뉴 항목. */
-const FRAME_SKIN_MENU = [
-  { id: "free", labelKey: "workspace.frameSkin.free" },
-  { id: "columns", labelKey: "workspace.frameSkin.columns" },
-] as const satisfies readonly { id: FrameSkinId; labelKey: string }[];
+const FRAME_BG_ACCEPT = "image/png,image/jpeg,image/gif,image/webp,image/svg+xml";
 
 /**
  * FEAT-drag-tilt: 놓은 뒤 0도로 돌아오는 스프링. 2~3회 흔들리다 선다.
@@ -125,7 +127,6 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
   const toggleSelect = useWorkspace((s) => s.toggleSelect);
   const setEditing = useWorkspace((s) => s.setEditing);
   const setExpandedCard = useWorkspace((s) => s.setExpandedCard);
-  const toggleAIOptOut = useWorkspace((s) => s.toggleAIOptOut);
   // FEAT-subcanvas: 함 카드 더블클릭 진입 + 드래그로 카드 넣기.
   const enterSubcanvas = useWorkspace((s) => s.enterSubcanvas);
   const moveCardToSubcanvas = useWorkspace((s) => s.moveCardToSubcanvas);
@@ -138,8 +139,10 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
   // FEAT-frame-feel T2/T4: 넣기 강조 대상 판과, 흔들리는 판 — 휘발 상태.
   const setDropTargetFrame = useWorkspace((s) => s.setDropTargetFrame);
   const setWobbleFrame = useWorkspace((s) => s.setWobbleFrame);
-  // FEAT-frame-skins: 판 우클릭 → 판 모양 전환.
-  const setFrameSkin = useWorkspace((s) => s.setFrameSkin);
+  // FEAT-frame-image-template: 판 우클릭 → 배경 이미지 올리기·바꾸기·지우기.
+  const setFrameBackground = useWorkspace((s) => s.setFrameBackground);
+  const clearFrameBackground = useWorkspace((s) => s.clearFrameBackground);
+  const frameBgInputRef = useRef<HTMLInputElement>(null);
   const setMemoColor = useWorkspace((s) => s.setMemoColor);
   const boards = useWorkspace((s) => s.boards);
   const currentBoardId = useWorkspace((s) => s.currentBoardId);
@@ -153,6 +156,8 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
    * 100+ 카드에서 lag spike의 근본 원인.
    */
   const selected = useWorkspace((s) => s.selectedIds.includes(card.id));
+  const touchControls = useTouchControls();
+  const mobileOperation = useMobileCanvas((s) => s.operation);
   const editing = useWorkspace((s) => s.editingId === card.id);
   /**
    * 리사이즈 핸들 노출 조건 — 자기 카드가 유일하게 선택된 경우.
@@ -192,7 +197,7 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
   const baseTransform = memoBaseTransform(card);
   const liftedTransform = memoLiftedTransform(card);
   // FEAT-drag-tilt: 흔들림이 얹힐 고유 각도. memoBaseTransform과 같은 규칙(메모·함).
-  const baseDeg = cardRotationDeg(card.id, card.kind);
+  const baseDeg = cardTilt(card);
   const getScale = () => useWorkspace.getState().viewport.scale;
 
   /**
@@ -203,6 +208,26 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
   const [tiltActive, setTiltActive] = useState(false);
   // 안착 스프링. 안착 중 다시 잡으면 멈춰야 옛 스프링과 새 드래그가 같은 변수에 쓰지 않는다.
   const settleAnimRef = useRef<{ stop: () => void } | null>(null);
+  // cmd-z-undo n4: 드래그 1회 = 기록 1단계. 묶음은 첫 이동에서 열고 mouseup의 모든 길에서
+  // 닫는다. 휴지통·함 흡수·내보내기 드롭은 그 동작이 끝난 뒤(flyInto의 done) 닫는다.
+  const dragGroupRef = useRef<UndoGroupToken | null>(null);
+  const flyGroupsRef = useRef(new Set<UndoGroupToken>());
+  const touchDragRef = useRef<TouchDrag | undefined>(undefined);
+  const dragListenersRef = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    const flyGroups = flyGroupsRef.current;
+    return () => {
+      // 언마운트 정리: 리스너를 떼고 아직 안 닫힌 묶음을 닫는다.
+      touchDragRef.current?.cancel();
+      touchDragRef.current = undefined;
+      dragListenersRef.current?.();
+      dragListenersRef.current = null;
+      endUndoGroup(dragGroupRef.current);
+      dragGroupRef.current = null;
+      for (const t of flyGroups) endUndoGroup(t);
+      flyGroups.clear();
+    };
+  }, []);
   // FEAT-frame-feel T4: 판 드래그 종료 시 멤버들에 걸어 둔 안착 스프링들. 다시 잡으면
   // 옛 스프링을 멈춘다(FEAT-drag-tilt과 같은 규율).
   const wobbleSettleRef = useRef<{ stop: () => void } | null>(null);
@@ -295,8 +320,8 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
     useWorkspace.getState().clearSnapCard();
     const el = containerRef.current;
     if (!el || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
-    playSnap(el, cardRotationDeg(card.id, card.kind));
-  }, [snapNow, card.id, card.kind]);
+    playSnap(el, cardTilt(card));
+  }, [snapNow, penMode, card]);
 
   const dragRef = useRef<{
     startX: number;
@@ -309,8 +334,18 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
     multi: boolean;
   } | null>(null);
 
-  const onMouseDown = (e: React.MouseEvent) => {
-    if (toolHeld) return; // 마카·천을 든 동안: 끌지 않는다(그리기·닦기가 포인터를 받는다)
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    touchCardDrags.set(el, (point) => (touchDragRef.current = onMouseDown({
+      ...point, button: 0, target: el, shiftKey: false, metaKey: false, ctrlKey: false,
+      stopPropagation: () => {},
+    })));
+    return () => { touchCardDrags.delete(el); };
+  });
+
+  const onMouseDown = (e: Pick<React.MouseEvent, "clientX" | "clientY" | "button" | "target" | "shiftKey" | "metaKey" | "ctrlKey" | "stopPropagation">): TouchDrag | undefined => {
+    if (toolHeld || penMode) return; // 펜 모드: 드래그 대신 그리기 (DrawingLayer가 포인터 처리)
     // 제목 입력 위에서 누르면 글자 선택·커서 이동이라 끌지 않는다. 앞면 본문은
     // 읽기 전용이므로 편집 중이어도 종이 아무 데나 잡아 카드를 끌 수 있다.
     if (editing && (e.target as HTMLElement).closest("[data-memo-title-input]")) return;
@@ -633,13 +668,16 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
       }
     };
 
-    const onMove = (ev: MouseEvent) => {
+    const onMove = (ev: { clientX: number; clientY: number }) => {
       const d = dragRef.current;
       if (!d) return;
       const dx = ev.clientX - d.startX;
       const dy = ev.clientY - d.startY;
       if (!d.moved && Math.hypot(dx, dy) > DRAG_THRESHOLD) {
         d.moved = true;
+        // cmd-z-undo n4: 첫 이동에서 드래그 묶음을 연다. 여러 장 드래그는 이동 중에도 쓴다.
+        endUndoGroup(dragGroupRef.current);
+        dragGroupRef.current = beginUndoGroup();
         // 임계를 넘는 순간 카드가 떠오른다(lift). 묶음이면 선택 전체.
         setDragging(card.id, d.multi);
         if (willTilt) startTilt();
@@ -723,11 +761,18 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
       bumpScale: number,
       commit: () => Promise<unknown> | void,
       after?: () => void,
+      group?: UndoGroupToken | null,
     ) => {
       const cardEl = containerRef.current;
+      if (group) flyGroupsRef.current.add(group);
       const done = () => {
         releaseLift();
         after?.();
+        // cmd-z-undo n4: 드롭 동작(지우기·옮기기)이 끝난 뒤 드래그 묶음을 닫는다.
+        if (group) {
+          flyGroupsRef.current.delete(group);
+          endUndoGroup(group);
+        }
       };
       if (!cardEl || typeof cardEl.animate !== "function" || !targetEl) {
         void Promise.resolve(commit()).finally(done);
@@ -766,20 +811,23 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
     };
 
     // 함 위에서 놓았을 때 — 흡수 후 그 서브 캔버스로 이동.
-    const runAbsorb = (funnelId: string) =>
+    const runAbsorb = (funnelId: string, group: UndoGroupToken | null) =>
       flyInto(
         document.querySelector<HTMLElement>(`[data-card-id="${funnelId}"]`),
         1.08,
         () => moveCardToSubcanvas(card.id, funnelId),
+        undefined,
+        group,
       );
 
     // FEAT-eject: 브레드크럼 조각 위에서 놓았을 때 — 흡수의 역모션 후 상위 보드로.
-    const runEject = (crumbBoardId: string) =>
+    const runEject = (crumbBoardId: string, group: UndoGroupToken | null) =>
       flyInto(
         document.querySelector<HTMLElement>(`[data-crumb-board-id="${crumbBoardId}"]`),
         1.12,
         () => moveCardToBoard(card.id, crumbBoardId),
         () => setDropTargetCrumb(null),
+        group,
       );
 
     /**
@@ -787,7 +835,7 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
      * 다중이면 놓은 순간의 선택을 고정해 둔다. 240ms 모션 사이에 다른 카드를 누르면
      * 선택이 바뀌어, 그대로 removeSelected를 부르면 엉뚱한 카드를 지운다.
      */
-    const runTrash = (multi: boolean) => {
+    const runTrash = (multi: boolean, group: UndoGroupToken | null) => {
       const ids = multi ? useWorkspace.getState().selectedIds : [card.id];
       flyInto(
         document.querySelector<HTMLElement>('[data-dock-id="trash"]'),
@@ -797,6 +845,8 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
           if (multi) ws.removeSelected(ids);
           else ws.remove(card.id);
         },
+        undefined,
+        group,
       );
     };
 
@@ -809,13 +859,25 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
           ? containerRef.current
           : document.querySelector<HTMLElement>(`[data-card-id="${id}"]`);
       if (!el) return;
-      const deg = cardRotationDeg(id, target.kind);
+      const deg = cardTilt(target);
       playSnap(el, deg);
     };
 
-    const onUp = () => {
+    const onUp = (cancelled = false) => {
+      touchDragRef.current = undefined;
+      // Interruption retains the current position as one undoable move, but never
+      // executes a destructive trash/subcanvas/breadcrumb drop.
+      if (cancelled) {
+        hoveredTrash = false;
+        hoveredCrumbId = null;
+        hoveredFunnelId = null;
+      }
       const d = dragRef.current;
       dragRef.current = null;
+      dragListenersRef.current = null;
+      // cmd-z-undo n4: 이 드래그의 묶음 토큰. 아래 모든 길이 닫는다.
+      const group = dragGroupRef.current;
+      dragGroupRef.current = null;
       if (tiltRaf) {
         cancelAnimationFrame(tiltRaf);
         tiltRaf = 0;
@@ -825,11 +887,12 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
         wobbleRaf = 0;
       }
       window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
+      window.removeEventListener("mouseup", onMouseUp);
 
       // 다중선택 중 클릭만 했다면 단일 선택으로 환원 (Figma 스타일). lift 없었음.
       if (d && !d.moved && d.multi) {
         selectOne(card.id);
+        endUndoGroup(group);
         return;
       }
       // 드래그하지 않은 단순 클릭 — 정리할 lift 없음.
@@ -840,6 +903,7 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
         setDropTargetFrame(null);
         // 한 번 누르기는 선택까지다(2026-09-22 사용자 결정). 선택한 채로 글자를
         // 치면 제목 편집으로 들어간다 — useCardFlowShortcuts가 맡는다.
+        endUndoGroup(group);
         return;
       }
       // FEAT-trash-drag: 휴지통 위에서 놓았으면 흡수 모션 후 삭제(다중 선택 포함).
@@ -853,12 +917,12 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
         setDropTargetTrash(false);
         setDropTargetFrame(null);
         if (willWobble) endWobble();
-        runTrash(d.multi);
+        runTrash(d.multi, group);
         return;
       }
       // FEAT-eject: 브레드크럼 조각 위에서 놓았으면 역모션 후 상위 보드로 내보낸다(crumb 우선).
       if (!d.multi && hoveredCrumbId) {
-        runEject(hoveredCrumbId);
+        runEject(hoveredCrumbId, group);
         hoveredCrumbId = null;
         hoveredFunnelId = null;
         setDropTargetFunnel(null);
@@ -868,7 +932,7 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
       }
       // FEAT-subcanvas: 함 위에서 놓았으면 흡수 모션 후 그 서브 캔버스로 이동.
       if (!d.multi && hoveredFunnelId) {
-        runAbsorb(hoveredFunnelId);
+        runAbsorb(hoveredFunnelId, group);
         hoveredFunnelId = null;
         setDropTargetTrash(false);
         setDropTargetFrame(null);
@@ -949,10 +1013,20 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
           snapMemo(card.id);
         }
       }
+      // cmd-z-undo n4: 보통 드롭은 마지막 쓰기(resolveMembership) 뒤에 묶음을 닫는다.
+      endUndoGroup(group);
     };
 
+    const onMouseUp = () => onUp();
     window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+    window.addEventListener("mouseup", onMouseUp);
+    dragListenersRef.current = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onMouseUp);
+      if (tiltRaf) cancelAnimationFrame(tiltRaf);
+      if (wobbleRaf) cancelAnimationFrame(wobbleRaf);
+    };
+    return { move: onMove, end: () => onUp(), cancel: () => onUp(true) };
   };
 
   const onDoubleClick = (e: React.MouseEvent) => {
@@ -967,6 +1041,7 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
     // spec/card-faces.md: 할 일 앞면은 카드에서 편집, 링크 앞면은 링크로 이동 — 메모 창을 열지 않는다.
     if (card.kind === "text") {
       const face = memoFace(card.content);
+      if (touchControls && (face.t === "link" || face.t === "linkEmpty")) { selectOne(card.id); return; }
       if (face.t === "todo") {
         setEditing(card.id);
         return;
@@ -1081,9 +1156,10 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
         // 오른쪽 끝을 넘어 그대로 보였다. width는 card.height 유무와 무관하게
         // 항상 크롭돼야 하므로 overflow는 조건 없이 hidden으로 둔다.
         // FEAT-text-tool: textbox만 예외 — 선택 툴바가 카드 위로 떠야 해서 visible.
+        // 메모판: 이름표가 판 바깥 위에 있다.
         // FEAT-photo-card: 사진도 예외 — 캡션 여백이 카드 상자 밖으로 흘러넘친다.
         overflow:
-          faceCard || card.kind === "photo" ? "visible" : "hidden",
+          faceCard || card.kind === "photo" || card.kind === "frame" ? "visible" : "hidden",
       }}
     >
       <CardContent
@@ -1147,50 +1223,26 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
           }}
           aria-label={t("workspace.memoEditor.expand")}
           data-card-expand
-          className="absolute right-1 top-1 z-[31] flex h-6 w-6 cursor-pointer items-center justify-center rounded-md border border-border bg-bg text-text-soft opacity-0 shadow-card transition-opacity hover:text-text focus-visible:opacity-100 group-hover:opacity-100"
+          className={`${controlStyles.cardExpand} absolute right-1 top-1 z-[31] flex h-6 w-6 cursor-pointer items-center justify-center rounded-md border border-border bg-bg text-text-soft opacity-0 shadow-card transition-opacity hover:text-text focus-visible:opacity-100 group-hover:opacity-100`}
         >
           <ExpandIcon size={13} />
         </button>
       )}
 
-      {/* FEAT-privacy: aiOptOut 표시 (우상단). 선택 시에는 토글 버튼으로 전환. */}
-      {card.aiOptOut && !selected && (
+      {/* Read-only badge; changing privacy lives in the named screen-space settings. */}
+      {card.aiOptOut && (
         <span className="pointer-events-none absolute -right-1 -top-1 rounded-full bg-bg p-0.5 shadow-card">
           <AIOptOutBadge size={12} />
         </span>
       )}
-      {selected && !editing && (
-        <button
-          type="button"
-          onMouseDown={(e) => e.stopPropagation()}
-          onClick={(e) => {
-            e.stopPropagation();
-            toggleAIOptOut(card.id);
-          }}
-          aria-label={
-            card.aiOptOut
-              ? t("privacy.card.toggleDisable")
-              : t("privacy.card.toggleEnable")
-          }
-          aria-pressed={!!card.aiOptOut}
-          className={[
-            "absolute -right-2 -top-2 z-[32] flex h-6 w-6 cursor-pointer items-center justify-center rounded-full border border-border bg-bg shadow-card transition-colors",
-            card.aiOptOut
-              ? "text-text"
-              : "text-text-soft hover:text-text",
-          ].join(" ")}
-        >
-          <LockIcon size={12} />
-        </button>
-      )}
-      {isOnlySelected && !editing && (
-        <ResizeHandles card={card} measuredHeight={measuredHeight} />
+      {isOnlySelected && !editing && !penMode && (!touchControls || (mobileOperation.kind === "resize" && mobileOperation.cardId === card.id)) && (
+        <ResizeHandles card={card} measuredHeight={measuredHeight} mobile={touchControls} />
       )}
     </div>
   );
 
   // FEAT-eject: 서브캔버스 밖(루트/시스템)이면 우클릭 메뉴 없이 카드만 렌더.
-  // FEAT-frame-skins: 판은 서브캔버스 밖에서도 "판 모양" 메뉴가 필요하다.
+  // 판은 서브캔버스 밖에서도 배경 이미지 메뉴가 필요하다.
   // 편집/펜 모드에선 트리거를 비활성화해 브라우저 기본 메뉴(복사·붙여넣기 등)를 살린다.
   const isFrame = card.kind === "frame";
   // 파일함은 어디서든 우클릭으로 이름을 바꾼다.
@@ -1208,9 +1260,21 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
       : name.trim() === ""
         ? t("cards.board.unnamed")
         : name;
-  const currentSkin = isFrame ? decodeFrameConfig(card.content).skin : "free";
+  const hasFrameBg = isFrame && !!card.attachmentRef;
+  const onFrameBgPicked = async (file: File | undefined) => {
+    if (!file) return;
+    const photo = await storePhoto(file); // 형식·크기 거부는 토스트만 뜨고 null.
+    if (!photo) return;
+    setFrameBackground(card.id, {
+      ref: photo.ref,
+      mediaType: photo.mediaType,
+      w: photo.naturalW,
+      h: photo.naturalH,
+    });
+  };
 
   return (
+    <>
     <ContextMenu.Root>
       <ContextMenu.Trigger asChild disabled={editing || toolHeld}>
         {cardNode}
@@ -1274,36 +1338,26 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
               )}
             </>
           )}
-          {/* FEAT-frame-skins §7: 판 모양 하위 메뉴 — 지금 스킨에 체크. */}
+          {/* FEAT-frame-image-template: 배경 이미지 — 있으면 바꾸기·지우기. */}
           {isFrame && (
-            <ContextMenu.Sub>
-              <ContextMenu.SubTrigger
-                data-frame-skin-menu="true"
-                className="flex cursor-pointer items-center justify-between rounded-md px-3 py-1.5 text-sm text-text outline-none transition-colors data-[highlighted]:bg-panel data-[state=open]:bg-panel"
+            <>
+              <ContextMenu.Item
+                data-frame-bg-item={hasFrameBg ? "replace" : "upload"}
+                className="cursor-pointer rounded-md px-3 py-1.5 text-sm text-text outline-none transition-colors data-[highlighted]:bg-panel"
+                onSelect={() => frameBgInputRef.current?.click()}
               >
-                <span>{t("workspace.frameSkin.menu")}</span>
-                <span className="text-text-soft">›</span>
-              </ContextMenu.SubTrigger>
-              <ContextMenu.Portal>
-                <ContextMenu.SubContent className="z-[var(--z-panel)] min-w-44 rounded-lg border border-border bg-bg p-1 shadow-card-lift">
-                  {FRAME_SKIN_MENU.map((item) => (
-                    <ContextMenu.Item
-                      key={item.id}
-                      data-frame-skin-item={item.id}
-                      className="flex cursor-pointer items-center justify-between rounded-md px-3 py-1.5 text-sm text-text outline-none transition-colors data-[highlighted]:bg-panel"
-                      onSelect={() => setFrameSkin(card.id, item.id)}
-                    >
-                      <span>{t(item.labelKey)}</span>
-                      {currentSkin === item.id && (
-                        <span aria-hidden="true" className="text-text-soft">
-                          ✓
-                        </span>
-                      )}
-                    </ContextMenu.Item>
-                  ))}
-                </ContextMenu.SubContent>
-              </ContextMenu.Portal>
-            </ContextMenu.Sub>
+                {t(hasFrameBg ? "workspace.frameBg.replace" : "workspace.frameBg.upload")}
+              </ContextMenu.Item>
+              {hasFrameBg && (
+                <ContextMenu.Item
+                  data-frame-bg-item="clear"
+                  className="cursor-pointer rounded-md px-3 py-1.5 text-sm text-text outline-none transition-colors data-[highlighted]:bg-panel"
+                  onSelect={() => clearFrameBackground(card.id)}
+                >
+                  {t("workspace.frameBg.clear")}
+                </ContextMenu.Item>
+              )}
+            </>
           )}
           {/* 메모 색 하위 메뉴 — 여러 장을 선택했고 이 메모가 그 안에 있으면 선택 전부에 적용. */}
           {isMemo && (
@@ -1350,6 +1404,21 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
         </ContextMenu.Content>
       </ContextMenu.Portal>
     </ContextMenu.Root>
+    {isFrame && (
+      <input
+        ref={frameBgInputRef}
+        type="file"
+        accept={FRAME_BG_ACCEPT}
+        data-frame-bg-input="true"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          e.target.value = "";
+          void onFrameBgPicked(file);
+        }}
+      />
+    )}
+    </>
   );
 });
 

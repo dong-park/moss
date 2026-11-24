@@ -1,9 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useT } from "@/i18n/Provider";
 import { useAuth } from "@/state/auth";
 import { MemberAvatar } from "@/components/share/MemberAvatar";
+import { ConnectedAppsDialog } from "@/components/auth/ConnectedAppsDialog";
 
 /**
  * 우상단 계정 아이콘 → 이름 + 로그아웃 메뉴 (spec/logout.md).
@@ -12,9 +14,11 @@ import { MemberAvatar } from "@/components/share/MemberAvatar";
 export function AccountMenu() {
   const t = useT();
   const user = useAuth((s) => s.user);
+  const [appsOpen, setAppsOpen] = useState(false);
   if (!user) return null;
 
   return (
+    <>
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
         <button
@@ -39,6 +43,12 @@ export function AccountMenu() {
           <DropdownMenu.Separator className="mx-1 my-1 h-px bg-border" />
           <DropdownMenu.Item
             className="cursor-pointer rounded-md px-2.5 py-1.5 text-[13px] text-text outline-none transition-colors data-[highlighted]:bg-hover"
+            onSelect={() => setAppsOpen(true)}
+          >
+            {t("collab.auth.account.connectedApps")}
+          </DropdownMenu.Item>
+          <DropdownMenu.Item
+            className="cursor-pointer rounded-md px-2.5 py-1.5 text-[13px] text-text outline-none transition-colors data-[highlighted]:bg-hover"
             onSelect={() => void useAuth.getState().logout()}
           >
             {t("collab.auth.account.logout")}
@@ -46,5 +56,7 @@ export function AccountMenu() {
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>
+    {appsOpen ? <ConnectedAppsDialog onClose={() => setAppsOpen(false)} /> : null}
+    </>
   );
 }

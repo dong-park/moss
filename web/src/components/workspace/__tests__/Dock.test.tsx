@@ -1,10 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { I18nProvider } from "@/i18n/Provider";
 import { Dock, magnifiedSize } from "@/components/workspace/Dock";
-import { useWorkspace } from "@/state/workspace";
+import { __resetBoardDocsForTest, useWorkspace } from "@/state/workspace";
 import { useStorage } from "@/state/storage";
-import { resetDB } from "@/state/db/schema";
+import { MobileCardActions } from "../MobileCardActions";
+import { useMobileCanvas } from "../mobileCanvas";
+import { getDB, resetDB } from "@/state/db/schema";
+import { connectionMirrorSettled, flushAll, isPersistInFlight, persistSettled } from "@/state/cardPersist";
 
 /**
  * FEAT-sticky-redesign n8: 독(Dock) — spec AC-1~AC-5 + Enter 생성(§8 접근성).
@@ -105,9 +108,21 @@ beforeEach(() => {
   });
 });
 
-afterEach(async () => {
-  vi.restoreAllMocks();
+async function resetDockDatabase() {
+  // Card creation starts writes synchronously but does not await their completion.
+  // Finish those writes and detach document observers before closing their DB.
+  await flushAll();
+  await persistSettled(useWorkspace.getState().cards.map((card) => card.id));
+  await __resetBoardDocsForTest();
+  await connectionMirrorSettled();
   await resetDB();
+}
+
+afterEach(async () => {
+  cleanup();
+  useMobileCanvas.getState().close();
+  vi.restoreAllMocks();
+  await resetDockDatabase();
   useStorage.setState({ initialized: false, settings: null, quota: null });
   useWorkspace.setState({
     cards: [],
@@ -124,6 +139,42 @@ afterEach(async () => {
   if (originalStorage) {
     Object.defineProperty(navigator, "storage", originalStorage);
   }
+});
+
+it("database teardown waits for a pending Dock note save", async () => {
+  const originalWidth = window.innerWidth;
+  await useStorage.getState().init();
+  await useWorkspace.getState().loadFromStorage();
+  const db = getDB();
+  const close = vi.spyOn(db, "close");
+  const saveNote = useStorage.getState().saveNote;
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  vi.spyOn(useStorage.getState(), "saveNote").mockImplementation(async (patch) => {
+    await gate;
+    return saveNote(patch);
+  });
+  window.innerWidth = 1280;
+  renderDock();
+  fireEvent.click(screen.getByRole("button", { name: "메모" }));
+  const id = useWorkspace.getState().selectedIds[0];
+  expect(id).toBeTruthy();
+  expect(isPersistInFlight(id)).toBe(true);
+  cleanup();
+  const resetting = resetDockDatabase();
+  try {
+    // Yield one task while the controlled save is still pending.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(close).not.toHaveBeenCalled();
+  } finally {
+    release();
+    await persistSettled([id]);
+    await resetting;
+    window.innerWidth = originalWidth;
+  }
+  // Dexie's delete also closes the handle; every close must follow the save.
+  expect(close).toHaveBeenCalled();
+  expect(isPersistInFlight(id)).toBe(false);
 });
 
 describe("AC-1: 독 버튼 (펜·시그널스 임시 숨김 + 휴지통)", () => {
@@ -488,5 +539,100 @@ describe("접근성: Enter로 화면 가운데에 생성", () => {
       .getState()
       .cards.find((c) => c.kind === "frame");
     expect(frame).toBeDefined();
+  });
+});
+
+describe("compact dock", () => {
+  const originalWidth = window.innerWidth;
+  afterEach(() => { window.innerWidth = originalWidth; });
+
+  it.each([360, 390, 430, 767])("keeps primary tools and trash reachable at %ipx", (width) => {
+    window.innerWidth = width;
+    renderDock();
+    expect(screen.getAllByRole("button").map(b => b.getAttribute("aria-label")))
+      .toEqual(["메모", "할 일", "사진", "더 보기", "휴지통"]);
+    expect(screen.queryByLabelText("펜")).toBeNull();
+    expect(screen.queryByLabelText("시그널스")).toBeNull();
+  });
+
+  it("opens by keyboard, creates a link memo, and closes", async () => {
+    window.innerWidth = 390;
+    renderDock();
+    // Canvas owns compact selection controls; retain the full dialog assertions.
+    render(<I18nProvider locale="ko"><MobileCardActions canvasRef={{ current: null }} /></I18nProvider>);
+    const more = screen.getByRole("button", { name: "더 보기" });
+    fireEvent.keyDown(more, { key: "ArrowDown" });
+    const link = await screen.findByRole("menuitem", { name: "링크" });
+    expect(screen.getAllByRole("menuitem").map(b => b.getAttribute("aria-label"))).toEqual(["메모판", "링크", "텍스트", "파일함"]);
+    expect(link.textContent).toContain("주소와 페이지 미리보기");
+    fireEvent.click(link);
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    expect(useWorkspace.getState().cards).toHaveLength(1);
+    expect(useWorkspace.getState().cards[0].kind).toBe("text");
+    const id = useWorkspace.getState().cards[0].id;
+    expect(useWorkspace.getState().editingId).toBeNull();
+    expect(useWorkspace.getState().selectedIds).toEqual([id]);
+    expect(useMobileCanvas.getState().operation).toMatchObject({kind:"link",cardId:id});
+    expect(screen.getByRole("dialog", {name:"링크 주소 수정"})).toBeTruthy();
+    expect(document.activeElement).toBe(screen.getByRole("textbox", {name:"링크 주소"}));
+    fireEvent.click(screen.getByRole("button", {name:"취소"}));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(useWorkspace.getState().cards).toHaveLength(1);
+  });
+
+  it.each([["메모판", "frame"], ["텍스트", "textbox"], ["파일함", "board"]])("More creates %s", async (label, kind) => {
+    window.innerWidth = 390;
+    await useStorage.getState().init();
+    await useWorkspace.getState().loadFromStorage();
+    renderDock();
+    fireEvent.keyDown(screen.getByRole("button", { name: "더 보기" }), { key: "ArrowDown" });
+    fireEvent.click(await screen.findByRole("menuitem", { name: label }));
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    expect(useWorkspace.getState().cards.some(c => c.kind === kind)).toBe(true);
+  });
+
+  it("compact primary memo still supports drag/drop and suppresses the trailing click", async () => {
+    window.innerWidth = 360;
+    await useStorage.getState().init();
+    await useWorkspace.getState().loadFromStorage();
+    const canvas = mountCanvasStub();
+    vi.spyOn(document, "elementFromPoint").mockReturnValue(canvas);
+    renderDock();
+    const before = useWorkspace.getState().cards.length;
+    const memo = screen.getByLabelText("메모");
+    fireEvent.mouseDown(memo, { clientX: 100, clientY: 700, button: 0 });
+    fireEvent.mouseMove(document, { clientX: 100, clientY: 600 });
+    expect(useWorkspace.getState().dockDrag?.toolId).toBe("text");
+    fireEvent.mouseUp(document, { clientX: 300, clientY: 400 });
+    fireEvent.click(memo);
+    expect(useWorkspace.getState().dockDrag).toBeNull();
+    expect(useWorkspace.getState().cards).toHaveLength(before + 1);
+  });
+
+  it("outside pointer and resize dismiss the extra tools", async () => {
+    window.innerWidth = 390;
+    renderDock();
+    const more = screen.getByRole("button", { name: "더 보기" });
+    fireEvent.keyDown(more, { key: "ArrowDown" });
+    await screen.findByRole("menu");
+    fireEvent.pointerDown(document.body, { pointerType: "mouse", button: 0 });
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    fireEvent.keyDown(more, { key: "ArrowDown" });
+    await screen.findByRole("menu");
+    window.innerWidth = 1280;
+    fireEvent(window, new Event("resize"));
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    expect(screen.getByRole("button", { name: "메모판" })).toBeTruthy();
+  });
+
+  it("Escape dismisses and restores focus", async () => {
+    window.innerWidth = 360;
+    renderDock();
+    const more = screen.getByRole("button", { name: "더 보기" });
+    fireEvent.keyDown(more, { key: "ArrowDown" });
+    const menu = await screen.findByRole("menu");
+    fireEvent.keyDown(menu, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(more));
   });
 });

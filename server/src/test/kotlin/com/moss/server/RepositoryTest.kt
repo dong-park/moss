@@ -2,6 +2,8 @@ package com.moss.server
 
 import com.moss.server.auth.TokenService
 import com.moss.server.boards.BoardRepository
+import com.moss.server.boards.SignupConsent
+import com.moss.server.boards.SignupPolicy
 import com.moss.server.boards.JoinResult
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -16,12 +18,12 @@ import kotlin.test.assertTrue
 /** DB-level regressions that are hard to provoke deterministically over HTTP. */
 class RepositoryTest : ApiTest() {
 
-    private fun repo() = BoardRepository(config.maxMembersPerBoard)
+    private fun repo() = BoardRepository(config.maxMembersPerBoard, signupPolicy = SignupPolicy(100, TERMS_V))
 
     @Test
     fun concurrentShareOfSameBoardDoesNotViolatePrimaryKey() = runBlocking {
         val repository = repo()
-        val owner = repository.upsertUser(GoogleUser("sub-owner", "Owner", null))
+        val owner = repository.upsertUser(GoogleUser("sub-owner", "Owner", null), SignupConsent(TERMS_V))
         val boardId = newBoardId()
 
         val results = listOf(
@@ -37,8 +39,8 @@ class RepositoryTest : ApiTest() {
     @Test
     fun concurrentUpsertOfSameGoogleSubReturnsTheSameUser() = runBlocking {
         val repository = repo()
-        val first = async { repository.upsertUser(GoogleUser("sub-race", "Alice", null)) }
-        val second = async { repository.upsertUser(GoogleUser("sub-race", "Alice", "https://img/a.png")) }
+        val first = async { repository.upsertUser(GoogleUser("sub-race", "Alice", null), SignupConsent(TERMS_V)) }
+        val second = async { repository.upsertUser(GoogleUser("sub-race", "Alice", "https://img/a.png"), SignupConsent(TERMS_V)) }
         val (a, b) = listOf(first, second).awaitAll()
 
         assertEquals(a.id, b.id)

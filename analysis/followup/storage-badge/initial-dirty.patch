@@ -1,0 +1,68 @@
+diff --git a/web/AGENTS.md b/web/AGENTS.md
+index 8bd0e39..af3b7c8 100644
+--- a/web/AGENTS.md
++++ b/web/AGENTS.md
+@@ -1,5 +1,9 @@
+ <!-- BEGIN:nextjs-agent-rules -->
+-# This is NOT the Next.js you know
+ 
+-This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
++## This is NOT the Next.js you know
++
++This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
++
++This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
++
+ <!-- END:nextjs-agent-rules -->
+diff --git a/web/src/components/workspace/SaveFeedback.tsx b/web/src/components/workspace/SaveFeedback.tsx
+index a17bf1f..230ff1d 100644
+--- a/web/src/components/workspace/SaveFeedback.tsx
++++ b/web/src/components/workspace/SaveFeedback.tsx
+@@ -7,7 +7,7 @@ import { normalizeBoardId } from "@/state/boardIds";
+ import { boardSavePhase, retryBoardSave, useSaveFeedback } from "@/state/saveFeedback";
+ 
+ /** Shared by the board and expanded memo. Connectivity is never a durable server acknowledgement. */
+-export function SaveFeedback({ explainClose = false }: { explainClose?: boolean }) {
++export function SaveFeedback({ explainClose = false, compactSaved = false }: { explainClose?: boolean; compactSaved?: boolean }) {
+   const t = useT();
+   const boardId = useWorkspace((s) => s.currentBoardId);
+   const board = useSaveFeedback((s) => s.boards[normalizeBoardId(boardId)]);
+@@ -27,7 +27,8 @@ export function SaveFeedback({ explainClose = false }: { explainClose?: boolean
+     <div data-save-feedback className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 rounded-lg bg-white/90 px-2 py-1 text-[11px] text-text-soft">
+       {explainClose && <span>{t("saveFeedback.autosaveClose")}</span>}
+       <span role="status" aria-live="polite" aria-atomic="true">
+-        {localLabel}
++        {compactSaved && phase === "saved" && <span aria-hidden="true" className="sm:hidden">✓</span>}
++        <span className={compactSaved && phase === "saved" ? "sr-only sm:not-sr-only" : undefined}>{localLabel}</span>
+       </span>
+       {!!board?.document?.failed.length && <span>{t("saveFeedback.documentError")}</span>}
+       {Object.entries(board ?? {}).some(([key, resource]) => key !== "document" && resource.failed.length > 0)
+diff --git a/web/src/components/workspace/WorkspaceShell.tsx b/web/src/components/workspace/WorkspaceShell.tsx
+index d0b019f..cdee282 100644
+--- a/web/src/components/workspace/WorkspaceShell.tsx
++++ b/web/src/components/workspace/WorkspaceShell.tsx
+@@ -189,7 +189,7 @@ export function WorkspaceShell() {
+               <div data-workspace-editor-header data-testid="workspace-controls" className={isCanvas
+                 ? "fixed top-3 right-3 z-[var(--z-panel)] flex max-w-[calc(100vw-24px)] flex-wrap items-center justify-end gap-2"
+                 : "flex shrink-0 flex-wrap items-center justify-end gap-2 border-b border-border p-3 [&_button]:min-h-11 [&_button]:min-w-11"}>
+-                <SaveFeedback />
++                <SaveFeedback compactSaved />
+                 <OfflineBadge />
+                 <ShareControlMount />
+                 <ViewToggle />
+diff --git a/web/src/components/workspace/__tests__/SaveFeedback.test.tsx b/web/src/components/workspace/__tests__/SaveFeedback.test.tsx
+index 0428a25..ec09351 100644
+--- a/web/src/components/workspace/__tests__/SaveFeedback.test.tsx
++++ b/web/src/components/workspace/__tests__/SaveFeedback.test.tsx
+@@ -31,3 +31,11 @@ it("connected sharing never marks pending local storage saved or claims server d
+   expect(screen.getByRole("status").textContent).toBe("이 기기에 저장 중");
+   expect(screen.getByText("공유 연결됨").title).toContain("서버 저장 완료를 확인하는 신호는 제공되지 않아요");
+ });
++
++it("compacts only saved board feedback while retaining its localized status", () => {
++  useWorkspace.setState({ currentBoardId: "compact-board" });
++  beginSave("compact-board", "document", async () => {}).success();
++  render(<I18nProvider locale="ko"><SaveFeedback compactSaved /></I18nProvider>);
++  expect(screen.getByText("이 기기에 저장됨").className).toContain("sr-only sm:not-sr-only");
++  expect(screen.getByRole("status").textContent).toContain("이 기기에 저장됨");
++});

@@ -1,0 +1,25 @@
+"use client";
+import { useEffect, useState } from "react";
+import { Breadcrumb } from "@/components/workspace/Breadcrumb";
+import { SaveFeedback } from "@/components/workspace/SaveFeedback";
+import { BaselineSaveFeedback } from "./BaselineSaveFeedback";
+import { ViewToggle } from "@/components/workspace/table/ViewToggle";
+import { AccountMenu } from "@/components/auth/AccountMenu";
+import { OfflineBadge } from "@/components/presence/OfflineBadge";
+import { ShareControlMount } from "@/components/share/ShareControlMount";
+import { useWorkspace } from "@/state/workspace";
+import { SYSTEM_BOARD_ID } from "@/state/boardIds";
+import { beginSave } from "@/state/saveFeedback";
+export default function QA(){
+const [ready,setReady]=useState(false);
+useEffect(()=>{ const timer=setInterval(()=>{
+useWorkspace.setState({currentBoardId:"qa-header",boards:[{id:"qa-header",name:"긴 보드 이름으로 저장 상태와 상단 경로의 겹침 확인하기",parentBoardId:SYSTEM_BOARD_ID,createdAt:0,updatedAt:0}]});
+beginSave("qa-header","document",async()=>{}).success();setReady(true);},1000);return ()=>clearInterval(timer);
+},[]);
+const before=typeof location!=="undefined"&&location.search.includes("before");
+return ready?<main className="h-dvh w-screen bg-background">
+<div data-workspace-editor-header data-testid="workspace-controls" className="fixed top-3 right-3 z-[var(--z-panel)] flex max-w-[calc(100vw-24px)] flex-wrap items-center justify-end gap-2">
+{before?<BaselineSaveFeedback/>:<SaveFeedback compactSaved/>}<OfflineBadge/><ShareControlMount/><ViewToggle/><AccountMenu/>
+</div><div data-workspace-editor-header className="fixed top-16 left-3 max-w-[calc(100vw-24px)] sm:top-3 sm:max-w-[calc(100vw-300px)] z-[var(--z-panel)]"><Breadcrumb/></div>
+<p className="fixed bottom-6 left-3 text-xs">QA fixture · actual product header classes · HEAD baseline / dirty product</p></main>:null;
+}

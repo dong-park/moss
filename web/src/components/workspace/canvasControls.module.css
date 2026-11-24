@@ -1,0 +1,59 @@
+.dock[data-compact="true"] > button {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.zoom[data-compact="true"] {
+  right: max(12px, env(safe-area-inset-right, 0px));
+}
+
+.zoom[data-compact="true"] button {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.moreMenu {
+  z-index: var(--z-modal);
+  width: min(240px, calc(100vw - 24px));
+  max-height: min(var(--radix-dropdown-menu-content-available-height), calc(100dvh - 24px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  background: var(--gradient-paper);
+  box-shadow: var(--shadow-card);
+}
+
+.cardActions { position: absolute; z-index: 42; display: flex; gap: 4px; padding: 4px; border: 1px solid var(--color-border); border-radius: 12px; background: var(--color-bg); box-shadow: var(--shadow-card); }
+.cardActions button { min-width: 88px; min-height: 44px; padding: 0 12px; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer; color: var(--color-text); }
+.cardActions button:first-child { background: var(--color-active-bg); color: var(--color-active-fg); }
+
+/* Touch has no hover; keep the explicit editor entry visible and tappable. */
+@media (hover: none), (pointer: coarse) {
+  .cardExpand {
+    opacity: 1;
+    min-width: calc(44px * var(--zoom-inv, 1));
+    min-height: calc(44px * var(--zoom-inv, 1));
+  }
+}
+
+.zoom[data-compact="true"] { max-width: calc(100vw - 24px); box-sizing: border-box; flex-wrap: wrap; }
+.zoom[data-compact="true"][data-selected="true"] { display: none; }
+.dock[data-compact="true"] { max-width: calc(100vw - 16px); }
+
+/* Compact labels share the icon touch target; desktop keeps its hover tooltip. */
+.dock[data-compact="true"] > button[data-dock-id] {
+  height: 48px !important;
+}
+.dock[data-compact="true"] > button[data-dock-id] > span:first-child {
+  width: 28px !important;
+  height: 28px !important;
+  flex-shrink: 0;
+}
+.dock[data-compact="true"] [data-dock-label="true"] {
+  position: static;
+  padding: 2px 0 0;
+  background: transparent;
+  line-height: 14px;
+}

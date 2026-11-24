@@ -41,6 +41,7 @@ import { t } from "@/i18n";
 
 /** n10 작업 4 — 공유 보드에서 아직 업로드/다운로드가 안 끝난 첨부의 자리표시자. */
 const UPLOADING_LABEL = t("collab.attachment.uploading");
+const UPLOAD_FAILED_LABEL = t("collab.attachment.failed");
 
 /** 이 모듈이 다루는 블록 — 이미지는 opfsImagePlugin(실제 스키마 노드)이 그린다. */
 export type ParagraphBlock = Exclude<Block, { type: "image" }>;
@@ -203,9 +204,9 @@ function watchAttachmentState(
 ): void {
   // P2-2: object URL이 필요 없으므로 상태만 조회한다(URL을 만들었다 버리지 않는다).
   void resolveAttachmentState(ref).then((state) => {
-    if (state === "pending") {
-      row.setAttribute("data-moss-attachment-state", "pending");
-      label.textContent = UPLOADING_LABEL;
+    if (state === "pending" || state === "failed") {
+      row.setAttribute("data-moss-attachment-state", state);
+      label.textContent = state === "pending" ? UPLOADING_LABEL : UPLOAD_FAILED_LABEL;
       return;
     }
     row.removeAttribute("data-moss-attachment-state");

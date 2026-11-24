@@ -1,0 +1,13 @@
+$ eslint
+
+/home/dongpark/.goat/worktrees/feat-ux-review-save-sta-2d11b7bb8811d3c8/review-ux-integration-r-94db46f22de1394d/web/src/components/workspace/__tests__/Dock.linkTodoPhoto.test.tsx
+  2:37  warning  'waitFor' is defined but never used  @typescript-eslint/no-unused-vars
+
+/home/dongpark/.goat/worktrees/feat-ux-review-save-sta-2d11b7bb8811d3c8/review-ux-integration-r-94db46f22de1394d/web/src/components/workspace/cards/__tests__/photoContent.test.tsx
+  19:1  warning  Unused eslint-disable directive (no problems were reported from 'import/first')
+
+/home/dongpark/.goat/worktrees/feat-ux-review-save-sta-2d11b7bb8811d3c8/review-ux-integration-r-94db46f22de1394d/web/src/state/exportStore.ts
+  52:47  warning  'scope' is defined but never used  @typescript-eslint/no-unused-vars
+
+✖ 3 problems (0 errors, 3 warnings)
+  0 errors and 1 warning potentially fixable with the `--fix` option.

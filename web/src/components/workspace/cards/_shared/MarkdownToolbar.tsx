@@ -12,7 +12,7 @@
  * ───────────────────────────────────────────────────────────── */
 
 import { useInstance } from "@milkdown/react";
-import { useRef, type ChangeEvent } from "react";
+import { useId, useRef, useState, type ChangeEvent } from "react";
 import { callCommand, insert } from "@milkdown/utils";
 import {
   toggleStrongCommand,
@@ -33,10 +33,12 @@ import type { Translator } from "@/i18n";
 import { makeAttachmentFilename } from "@/state/db/opfs";
 import { useToasts } from "@/state/notifications";
 import { storeAttachment } from "@/state/share/attachments";
+import { IMAGE_ACCEPT, MAX_IMAGE_BYTES, SUPPORTED_IMAGE_TYPES } from "@/state/attachmentLimits";
+import { AttachmentInputGuidance } from "../../AttachmentInputGuidance";
 import { useWorkspace } from "@/state/workspace";
 
 /** 이미지 삽입 가드 — imagePaste와 동일 기준(10MB). */
-const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+
 
 type Action = (ctx: Parameters<ReturnType<typeof callCommand>>[0]) => void;
 
@@ -156,6 +158,10 @@ export function MarkdownToolbar() {
   const push = useToasts((s) => s.push);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const items = buildItems(t);
+  const guidanceId = useId();
+  const [saving, setSaving] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const picking = useRef(false);
 
   const run = (action: Action) => {
     if (loading) return;
@@ -169,15 +175,18 @@ export function MarkdownToolbar() {
   const onPickImage = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = ""; // 같은 파일 재선택 허용
-    if (!file || loading) return;
-    if (!file.type.startsWith("image/")) {
-      push({ tone: "warn", title: `지원하지 않는 이미지 형식이에요: ${file.type || "알 수 없음"}` });
+    if (!file || loading || picking.current) return;
+    if (!SUPPORTED_IMAGE_TYPES.has(file.type)) {
+      push({ tone: "warn", title: t("reviewGuidance.attachment.unsupported", { type: file.type || "—" }) });
       return;
     }
     if (file.size > MAX_IMAGE_BYTES) {
-      push({ tone: "warn", title: `이미지가 너무 커요 (최대 ${MAX_IMAGE_BYTES / (1024 * 1024)}MB).` });
+      push({ tone: "warn", title: t("reviewGuidance.attachment.imageTooBig", { mb: MAX_IMAGE_BYTES / (1024 * 1024) }) });
       return;
     }
+    setFailed(false);
+    picking.current = true;
+    setSaving(true);
     try {
       const ref = await storeAttachment(
         useWorkspace.getState().currentBoardId,
@@ -187,8 +196,9 @@ export function MarkdownToolbar() {
       const src = ref.replace(/^opfs:/, "opfs://"); // 마크다운 URL 스킴
       getEditor().action(callCommand(insertImageCommand.key, { src, alt: file.name }));
     } catch {
-      push({ tone: "warn", title: "이미지를 저장하지 못했어요." });
-    }
+      setFailed(true);
+      push({ tone: "warn", title: t("reviewGuidance.attachment.failed") });
+    } finally { picking.current = false; setSaving(false); }
   };
 
   return (
@@ -225,6 +235,8 @@ export function MarkdownToolbar() {
         type="button"
         aria-label={t("workspace.memoEditor.toolbar.image")}
         title={t("workspace.memoEditor.toolbar.image")}
+        aria-describedby={guidanceId}
+        disabled={saving || loading}
         data-toolbar-btn="image"
         onMouseDown={(e) => e.preventDefault()}
         onClick={() => fileInputRef.current?.click()}
@@ -232,10 +244,16 @@ export function MarkdownToolbar() {
       >
         🖼
       </button>
+      <details className="basis-full text-xs text-text-soft">
+        <summary className="cursor-pointer">{t("reviewGuidance.attachment.details")}</summary>
+        <AttachmentInputGuidance kind="image" location="toolbar" id={guidanceId} />
+      </details>
+      {failed && <p role="alert" className="text-xs">{t("reviewGuidance.attachment.failed")}</p>}
+      {saving && <p role="status" className="text-xs">{t("reviewGuidance.attachment.saving")}</p>}
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/*"
+        accept={IMAGE_ACCEPT}
         className="hidden"
         onChange={onPickImage}
       />

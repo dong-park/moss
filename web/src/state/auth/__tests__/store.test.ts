@@ -28,6 +28,9 @@ function fakeApi(overrides: Partial<AuthApi> = {}): AuthApi {
     refresh: vi.fn(async (): Promise<AuthSession> => {
       throw new AuthRequestError("refresh 401", 401);
     }),
+    requestPasswordReset: vi.fn(async () => {}),
+    confirmPasswordReset: vi.fn(async () => undefined),
+    logout: vi.fn(async () => undefined),
     previewInvite: vi.fn(async () => ({ boardName: "이번 주 기획", ownerName: "동환" })),
     acceptInvite: vi.fn(async (): Promise<BoardSummary> => ({
       id: "b1",
@@ -39,13 +42,11 @@ function fakeApi(overrides: Partial<AuthApi> = {}): AuthApi {
   };
 }
 
-const googleIdToken = vi.fn(async () => "google-id-token");
 
 beforeEach(async () => {
   await deleteAuthDatabase();
   resetAuthStore();
-  googleIdToken.mockClear();
-  configureAuth({ now: () => NOW, googleIdToken });
+  configureAuth({ now: () => NOW });
 });
 
 afterEach(() => {
@@ -128,20 +129,26 @@ describe("auth/store", () => {
   test("loginWithGoogle이 토큰을 저장하고 authenticated", async () => {
     const api = fakeApi();
     configureAuth({ api });
-    const user = await useAuth.getState().loginWithGoogle();
+    const user = await useAuth.getState().loginWithGoogle("google-id-token");
     expect(user.name).toBe("동환");
-    expect(googleIdToken).toHaveBeenCalledTimes(1);
     expect(api.googleLogin).toHaveBeenCalledWith("google-id-token");
     expect(useAuth.getState().status).toBe("authenticated");
     expect(await loadSession()).not.toBeNull();
   });
 
+  test("loginWithGoogle은 버전을 주면 동의 버전을 api에 넘긴다", async () => {
+    const api = fakeApi();
+    configureAuth({ api });
+    await useAuth.getState().loginWithGoogle("google-id-token", "v1");
+    expect(api.googleLogin).toHaveBeenCalledWith("google-id-token", "v1");
+  });
+
   test("signupWithEmail이 세션을 저장하고 authenticated", async () => {
     const api = fakeApi();
     configureAuth({ api });
-    const user = await useAuth.getState().signupWithEmail("a@x.com", "secret123", "동환");
+    const user = await useAuth.getState().signupWithEmail("a@x.com", "secret123", "동환", "v1");
     expect(user.name).toBe("동환");
-    expect(api.signup).toHaveBeenCalledWith("a@x.com", "secret123", "동환");
+    expect(api.signup).toHaveBeenCalledWith("a@x.com", "secret123", "동환", "v1");
     expect(useAuth.getState().status).toBe("authenticated");
     expect(await loadSession()).not.toBeNull();
   });
@@ -208,6 +215,22 @@ describe("auth/store", () => {
     await pending;
 
     expect(useAuth.getState().session).toBeNull();
+    expect(useAuth.getState().status).toBe("anonymous");
+    expect(await loadSession()).toBeNull();
+  });
+
+  test("로그아웃이 서버에 리프레시 토큰을 보내고, 서버가 죽어도 로컬 세션은 지운다", async () => {
+    const logout = vi.fn(async () => {
+      throw new TypeError("network");
+    });
+    configureAuth({ api: fakeApi({ logout }) });
+    const session = sessionWith(NOW / 1000 + 600, NOW / 1000 + 600);
+    useAuth.setState({ session, user: session.user, status: "authenticated" });
+    await saveSession(session);
+
+    await useAuth.getState().logout();
+
+    expect(logout).toHaveBeenCalledWith(session.refreshToken);
     expect(useAuth.getState().status).toBe("anonymous");
     expect(await loadSession()).toBeNull();
   });

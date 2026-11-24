@@ -7,6 +7,7 @@ import {
   readConnections,
   readNotes,
   transactLocal,
+  UNTRACKED_ORIGIN,
   type BoardDocHandle,
 } from "@/state/ydoc";
 import { SYSTEM_BOARD_ID } from "@/state/workspace";
@@ -329,7 +330,8 @@ async function migrateBoardDoc(
       for (const connection of connections) {
         putConnection(handle.doc, connection);
       }
-    });
+      // cmd-z-undo: 이전은 사용자 동작이 아니다 — 열린 보드 문서에 써도 cmd+z 기록에 넣지 않는다.
+    }, UNTRACKED_ORIGIN);
   } finally {
     await destroyHandle(handle, perDocMs);
   }

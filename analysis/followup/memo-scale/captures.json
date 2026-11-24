@@ -1,0 +1,50 @@
+[
+  {
+    "name": "after-read",
+    "measurement": {
+      "width": 390,
+      "height": 844,
+      "dpr": 2,
+      "text": "49%",
+      "aria": "현재 배율 49%. 100%로 전환",
+      "zoom": "0.486111"
+    },
+    "screenshot": "after-read.png"
+  },
+  {
+    "name": "after-edit",
+    "measurement": {
+      "width": 390,
+      "height": 844,
+      "dpr": 2,
+      "text": "100%",
+      "aria": "현재 배율 100%. 화면에 맞추기로 전환",
+      "zoom": "1"
+    },
+    "screenshot": "after-edit.png"
+  },
+  {
+    "name": "before-read",
+    "measurement": {
+      "width": 390,
+      "height": 844,
+      "dpr": 2,
+      "text": "100%",
+      "aria": null,
+      "zoom": "0.486111"
+    },
+    "screenshot": "before-read.png"
+  },
+  {
+    "name": "before-edit",
+    "measurement": {
+      "width": 390,
+      "height": 844,
+      "dpr": 2,
+      "text": "49%",
+      "aria": null,
+      "zoom": "1"
+    },
+    "screenshot": "before-edit.png"
+  }
+]

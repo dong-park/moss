@@ -1,0 +1,116 @@
+{
+  "surface": "Ego touch emulation with mouse hover precondition",
+  "before": {
+    "source": {
+      "x": 200,
+      "y": 216.5
+    },
+    "target": {
+      "x": 200.99999237060547,
+      "y": 451.5
+    },
+    "hit": {
+      "tag": "SPAN",
+      "handle": "bottom"
+    },
+    "lineCount": 0,
+    "world": "translate(0px, 0px) scale(1)"
+  },
+  "after": {
+    "lineCount": 0,
+    "world": "translate(0px, 0px) scale(1)",
+    "events": [
+      {
+        "type": "pointerdown",
+        "pointer": "touch",
+        "trusted": true,
+        "tag": "SPAN",
+        "handle": "bottom",
+        "x": 200,
+        "y": 216.5
+      },
+      {
+        "type": "pointermove",
+        "pointer": "touch",
+        "trusted": true,
+        "tag": "SPAN",
+        "handle": "bottom",
+        "x": 200.125,
+        "y": 245.875
+      },
+      {
+        "type": "pointermove",
+        "pointer": "touch",
+        "trusted": true,
+        "tag": "SPAN",
+        "handle": "bottom",
+        "x": 200.25,
+        "y": 275.25
+      },
+      {
+        "type": "pointermove",
+        "pointer": "touch",
+        "trusted": true,
+        "tag": "SPAN",
+        "handle": "bottom",
+        "x": 200.375,
+        "y": 304.625
+      },
+      {
+        "type": "pointermove",
+        "pointer": "touch",
+        "trusted": true,
+        "tag": "SPAN",
+        "handle": "bottom",
+        "x": 200.5,
+        "y": 334
+      },
+      {
+        "type": "pointermove",
+        "pointer": "touch",
+        "trusted": true,
+        "tag": "SPAN",
+        "handle": "bottom",
+        "x": 200.625,
+        "y": 363.375
+      },
+      {
+        "type": "pointermove",
+        "pointer": "touch",
+        "trusted": true,
+        "tag": "SPAN",
+        "handle": "bottom",
+        "x": 200.75,
+        "y": 392.75
+      },
+      {
+        "type": "pointermove",
+        "pointer": "touch",
+        "trusted": true,
+        "tag": "SPAN",
+        "handle": "bottom",
+        "x": 200.875,
+        "y": 422.125
+      },
+      {
+        "type": "pointermove",
+        "pointer": "touch",
+        "trusted": true,
+        "tag": "SPAN",
+        "handle": "bottom",
+        "x": 201,
+        "y": 451.5
+      },
+      {
+        "type": "pointerup",
+        "pointer": "touch",
+        "trusted": true,
+        "tag": "SPAN",
+        "handle": "bottom",
+        "x": 201,
+        "y": 451.5
+      }
+    ]
+  },
+  "screenshot": "/tmp/moss-mobile-repro-20261111/ego-connection-touch.png"
+}

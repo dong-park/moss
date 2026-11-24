@@ -59,15 +59,14 @@ export function DockDragPreview() {
   if (drag.face || isTextbox || isFrame) {
     const w = drag.face === "photo" ? PHOTO_DEFAULT_WIDTH : widthForKind(kindForTool(drag.toolId));
     const body = isFrame ? (
-      // 메모판 Content와 같은 9-slice 화이트보드 — 놓으면 생길 빈 판 그대로.
+      // 메모판 Content와 같은 선택 파랑 1px 선 — 놓으면 생길 빈 판 그대로.
       <div
         style={{
           width: FRAME_DEFAULT_WIDTH,
           height: FRAME_DEFAULT_HEIGHT,
           boxSizing: "border-box",
-          borderStyle: "solid",
-          borderWidth: 18,
-          borderImage: 'url("/cards/v2/whiteboard.png") 50 fill / 18px stretch',
+          border: "1px solid var(--color-accent-blue)",
+          borderRadius: 4,
         }}
       />
     ) : drag.face === "photo" ? (
@@ -129,7 +128,8 @@ export function DockDragPreview() {
   );
   const width = baseW * scale;
   const height = baseH * scale;
-  const imageSrc = `/cards/v2/${kind}.png`;
+  // 파일함은 2026-10-18 macOS 오마주 SVG(닫힌 폴더)를 쓴다.
+  const imageSrc = kind === "board" ? "/cards/v2/mac/board.svg" : `/cards/v2/${kind}.png`;
   const backgroundSize = "contain";
 
   return (

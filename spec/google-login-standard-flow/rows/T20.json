@@ -1,0 +1,17 @@
+{
+  "id": "T20",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": [],
+  "kind": "task",
+  "title": "오프라인으로 열었다가 연결이 돌아오면 Google 버튼이 뜬다",
+  "given": "오프라인으로 로그인 화면을 열어 Google 칸이 흐린 자리표시다",
+  "when": "연결이 돌아온다",
+  "then": "새로고침 없이 Google 버튼이 뜨고 누를 수 있다. 오프라인 안내 문구는 사라진다. 확인: 단위 테스트에서 온라인 이벤트 뒤 스크립트를 1번 다시 받고 renderButton이 불린다."
+}

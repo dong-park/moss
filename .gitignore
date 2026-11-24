@@ -10,3 +10,14 @@ node_modules/
 
 # local secrets for docker compose
 .env
+
+# database dumps from scripts/backup.sh
+backups/
+
+# Python deployer bytecode and private local rehearsal output
+__pycache__/
+*.pyc
+rehearsal-input.json
+evidence.json
+public-config.json
+.claude/worktrees/

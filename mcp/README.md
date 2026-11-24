@@ -20,14 +20,15 @@ moss의 사용자 데이터는 브라우저 IndexedDB(Dexie)에만 산다 — No
 | `ping` | 브리지 연결 상태 + 현재 보드 id |
 | `notes_list` | 현재 보드의 카드 목록 |
 | `notes_get` | id로 카드 단건 조회 |
-| `notes_create` | text 메모 생성(`blocks[]`로 이미지·녹음·파일·링크 본문 블록; `width`/`height`) |
+| `notes_create` | text 메모 생성(`title` 앞면 제목, `blocks[]`로 이미지·녹음·파일·링크 본문 블록; `width`/`height`) |
 | `notes_create_link_preview` | URL의 OG(제목·요약·썸네일)로 미리보기 메모 생성 |
 | `notes_create_image` | 이미지를 본문 블록으로 넣은 메모 생성(path 또는 dataBase64 → OPFS 저장) |
+| `photos_create` | 사진 카드 생성(앞면이 사진, 원본 비율, 큰 사진은 긴 변 1600px로 줄임) |
 | `notes_create_audio` | 녹음을 본문 블록으로 넣은 메모 생성(audio/*, OPFS) |
 | `notes_create_file` | 파일을 본문 블록으로 넣은 메모 생성(임의 타입, OPFS) |
 | `notes_create_comment` | 코멘트(주석) 카드 생성(author/time 메타) |
 | `notes_create_board` | 함(서브캔버스 funnel) 카드 + 빈 서브 보드 생성 |
-| `notes_update` | 카드 본문 교체 |
+| `notes_update` | 카드 본문·제목·위치·크기 교체(준 항목만) |
 | `notes_delete` | 카드 삭제 |
 | `boards_list` | 사용자 보드 목록 + 현재 보드 id |
 | `boards_create` | 새 보드 생성(그 보드로 전환) |
@@ -35,7 +36,9 @@ moss의 사용자 데이터는 브라우저 IndexedDB(Dexie)에만 산다 — No
 | `boards_delete` | 보드 삭제 |
 | `boards_switch` | 현재 보드 전환(이후 `notes_*`가 이 보드 기준) |
 | `connections_list` | 연결 목록(noteId 필터 가능) |
-| `connections_create` | 두 노트 사이 수동 연결 생성 |
+| `connections_create` | 두 노트 사이 연결선 생성(라벨, 붙는 변 선택). 현재 보드면 바로 그려진다 |
+| `map_create` | 생각 지도: 중심-갈래-세부 나무와 관계선을 받아 마인드맵으로 배치해 메모·연결선을 한 번에 만든다 |
+| `map_groups` | 주제별 메모판에 메모를 격자로 놓고 상태를 색으로(확정 연두·할 일 분홍·확인 필요 보라), 판을 넘는 관계만 선으로 잇는다 |
 | `connections_delete` | 연결 삭제 |
 
 > ⚠️ 메모 본문은 **720px 고정 컬럼**이라 카드가 좁으면 우측이 잘린다. 제목/요약이 긴 글은
@@ -50,11 +53,11 @@ moss의 사용자 데이터는 브라우저 IndexedDB(Dexie)에만 산다 — No
 > WebKit(WKWebView/pharos webview/Safari)에서는 실패한다(moss 전반의 webview 한계).
 > connections는 캔버스에 렌더되지 않는 데이터(현재 AI 파이프라인이 사용).
 
-### AI (HTTP — dev 서버만 필요, 브라우저 불필요)
+### AI (브리지 경유 — moss 탭과 로그인 필요)
 
 | 도구 | 라우트 |
 |---|---|
-| `ai_embed` | `POST /api/ai/embed` |
+| `ai_embed` | `POST /api/ai/embed` (탭의 로그인 세션으로 호출) |
 | `ai_summarize` | `POST /api/ai/summarize` (kind: flow/cluster/rhythm) |
 | `ai_connection_label` | `POST /api/ai/connection-label` |
 | `ai_preview` | `GET /api/preview` — same-origin 가드 때문에 **브리지 경유**(moss 탭 필요) |
@@ -70,8 +73,10 @@ moss의 사용자 데이터는 브라우저 IndexedDB(Dexie)에만 산다 — No
 | `dev_read_doc` | 레포 내 문서 읽기(경로 가드) |
 | `dev_list_docs` | 주요 문서/스펙 목록 |
 
-> **요약**: 데이터·`ai_preview`는 moss 탭(브리지)이 필요하고, `ai_embed/summarize/connection_label`은
-> dev 서버 HTTP만, `dev_*`는 서버 없이도 동작한다.
+> **요약**: 데이터·`ai_*`는 moss 탭(브리지)이 필요하고, `dev_*`는 서버 없이도 동작한다.
+> AI 라우트는 로그인이 필요하다. `ai_embed/summarize/connection_label`은 탭이 가진 로그인 세션으로
+> 호출하며 토큰은 도구 인자·로그·결과에 나오지 않는다. 탭이 없으면 "실행 중인 moss 탭이 브리지에
+> 접속하지 않았습니다" 오류가 나고, 탭이 로그아웃 상태면 `embed 401` 처럼 상태 코드 오류가 난다.
 
 ## 실행
 

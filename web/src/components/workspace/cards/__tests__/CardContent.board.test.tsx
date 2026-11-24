@@ -23,10 +23,10 @@ describe("BoardCardContent · 마닐라 폴더", () => {
     expect(container.querySelector("img")).toBeNull();
     expect(
       container.querySelector("[data-board-back]")?.getAttribute("style"),
-    ).toContain("/cards/v2/board-back.png");
+    ).toContain("/cards/v2/mac/board-back.svg");
     expect(
       container.querySelector("[data-board-front]")?.getAttribute("style"),
-    ).toContain("/cards/v2/board-front.png");
+    ).toContain("/cards/v2/mac/board-front.svg");
   });
 
   it("이름이 없으면 '이름 없는 캔버스' 대신 '이름 없는 파일함'을 보여준다", () => {
@@ -50,7 +50,7 @@ describe("BoardCardContent · 마닐라 폴더", () => {
     });
     const name = container.querySelector("[data-board-name]");
     expect(name?.textContent).toBe("이름 없는 파일함");
-    expect(name?.getAttribute("style")).toContain("rgba(60, 52, 36, 0.48)");
+    expect(name?.getAttribute("style")).toContain("rgba(23, 58, 99, 0.5)");
     expect(container.textContent).not.toContain("이름 없는 캔버스");
   });
 
@@ -111,7 +111,7 @@ describe("BoardCardContent · 마닐라 폴더", () => {
     expect(container.querySelector("[data-board-papers-tint]")).toBeNull();
     expect(
       container.querySelector("[data-board-papers]")?.getAttribute("style"),
-    ).toContain("board-papers-low.png");
+    ).toContain("board-papers-low.svg");
   });
 
   it("드롭 대상이면 앞판이 살짝 내려가 함이 벌어진 느낌을 준다", () => {

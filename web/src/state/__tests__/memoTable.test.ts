@@ -18,6 +18,7 @@ import {
 import * as memoSearch from "@/state/memoSearch";
 import * as cardPersist from "@/state/cardPersist";
 import { useStorage } from "@/state/storage";
+import { EMPTY_LINK_CONTENT } from "@/state/linkContent";
 import { useToasts } from "@/state/notifications";
 import { useWorkspace, SYSTEM_BOARD_ID, type Card } from "@/state/workspace";
 import { getDB, resetDB, type Board, type Note } from "@/state/db/schema";
@@ -27,6 +28,47 @@ import {
 } from "@/state/db/liveSync";
 
 let originalStorage: PropertyDescriptor | undefined;
+
+it("a table disposed during a read ignores that read's late completion", async () => {
+  await useStorage.getState().init();
+  let finish!: (notes: Note[]) => void;
+  const load = vi.spyOn(useStorage.getState(), "loadAllNotes").mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  try {
+    const pending = useMemoTable.getState().ensureLoaded();
+    await vi.waitFor(() => expect(load).toHaveBeenCalled());
+    useMemoTable.getState().dispose();
+    finish([mkNote({ id: "late-result" })]);
+    await pending;
+    expect(useMemoTable.getState()).toMatchObject({ loading: false, loaded: false, notes: [] });
+  } finally { load.mockRestore(); }
+});
+
+it("failed table load remains retryable without claiming a successful load", async () => {
+  await useStorage.getState().init();
+  const load = vi.spyOn(useStorage.getState(), "loadAllNotes").mockRejectedValueOnce(new Error("read failed"));
+  try {
+    await useMemoTable.getState().ensureLoaded();
+    expect(useMemoTable.getState()).toMatchObject({ loading: false, loaded: false });
+    expect(useMemoTable.getState().loadError).toBeTruthy();
+    await useMemoTable.getState().reload();
+    expect(useMemoTable.getState()).toMatchObject({ loading: false, loaded: true, loadError: null });
+  } finally { load.mockRestore(); }
+});
+
+it("table entry flushes the latest debounced content instead of leaving a link as an empty memo", async () => {
+  await useStorage.getState().init();
+  await useStorage.getState().saveNote(mkNote({ id: "late-link" }));
+  useWorkspace.setState({ currentBoardId: SYSTEM_BOARD_ID });
+  cardPersist.schedulePersist("late-link", async () => {
+    await useStorage.getState().saveNote({ id: "late-link", content: EMPTY_LINK_CONTENT });
+  });
+  try {
+    await useMemoTable.getState().ensureLoaded();
+    const row = buildMemoRows(useMemoTable.getState().notes, [], "기본 보드").find(row => row.id === "late-link");
+    expect(row?.type).toBe("link");
+    expect(row?.preview).toBe("주소를 입력하세요");
+  } finally { cardPersist.cancelPersist("late-link"); }
+});
 
 function mkNote(over: Partial<Note> & { id: string }): Note {
   return {
@@ -599,4 +641,108 @@ describe("FEAT-photo-card — 표 행", () => {
     const rows = buildMemoRows([photo("p", "")], [], "시스템");
     expect(rows).toHaveLength(0);
   });
+});
+
+
+describe("review table — presentation never writes stored fields", () => {
+  it("retains empty rows and derives distinct types, empty labels and titles", () => {
+    const notes = [mkNote({id:"memo"}), mkNote({id:"todo", content:"- [ ] "}), mkNote({id:"link", content:"<!-- moss-link-empty -->"})];
+    const before = JSON.stringify(notes);
+    const rows = buildMemoRows(notes, [], "System");
+    expect(rows.map(r => r.displayTitle)).toEqual(["빈 메모", "할 일을 추가하세요", "주소를 입력하세요"]);
+    expect(rows.map(r => r.typeLabel)).toEqual(["메모", "할 일", "링크"]);
+    expect(rows.every(r => r.empty)).toBe(true);
+    expect(rows.every(r => r.title === "")).toBe(true);
+    expect(JSON.stringify(notes)).toBe(before);
+    for (const q of ["빈 메모", "할 일을 추가하세요", "주소를 입력하세요"]) expect(applySearch(rows, q)).toHaveLength(1);
+    expect(applySearch(rows, "moss-link-empty")).toEqual([]);
+  });
+
+  it("shows todo progress and the first useful line without raw checkbox syntax", () => {
+    const [row] = buildMemoRows([mkNote({id:"todo", content:"- [x] Buy milk\n- [ ] Walk"})], [], "System");
+    expect(row.displayTitle).toBe("Buy milk");
+    expect(row.preview).toContain("완료 1/2");
+    expect(row.preview).not.toMatch(/\[[ x]\]/);
+    expect(row.empty).toBe(false);
+  });
+
+  it("does not call title-only, attached, drawn or checked cards empty", () => {
+    const rows = buildMemoRows([
+      mkNote({id:"title", title:"A title"}),
+      mkNote({id:"file", content:'[report](opfs://report "moss-file")'}),
+      mkNote({id:"ink", overlay:JSON.stringify({paths:[[{x:1,y:1}]]})}),
+      mkNote({id:"checked", content:"- [x] "}),
+    ], [], "System");
+    expect(rows.every(r => !r.empty)).toBe(true);
+    expect(rows.map(r => r.displayTitle).every(Boolean)).toBe(true);
+  });
+
+  it("uses the stored title for editing and sorting despite derived display titles", () => {
+    const rows = buildMemoRows([mkNote({id:"untitled", content:"Alpha\nSecond"}), mkNote({id:"named", title:"Zulu"})], [], "System");
+    expect(rows[0].displayTitle).toBe("Alpha");
+    expect(rows[0].title).toBe("");
+    expect(applySort(rows, {key:"title",dir:"asc"}).map(r => r.id)).toEqual(["named","untitled"]);
+  });
+});
+
+
+it("review table and canvas search share authored and semantic matching", () => {
+  const notes = [
+    mkNote({id:"empty"}),
+    mkNote({id:"todo", content:"- [x] Read\n- [ ] Write"}),
+    mkNote({id:"url", content:'[Example](https://example.com/path "moss-link")'}),
+    mkNote({id:"link-title", content:"<!-- moss-link-empty -->", title:"HELLO"}),
+    mkNote({id:"ink", overlay:JSON.stringify({paths:[[{x:1,y:2}]]})}),
+    mkNote({id:"code", content:"```html\n<!-- moss-link-empty -->\n```"}),
+  ];
+  const rows = buildMemoRows(notes, [], "System");
+  for (const query of ["빈 메모", "할 일", "완료 1/2", "example.com", "hello", "주소를 입력하세요", "손그림", "moss-link-empty"]) {
+    const tableIds = applySearch(rows, query).map(r => r.id).sort();
+    const canvasIds = memoSearch.searchMemos(notes as Card[], query).map(r => r.id).sort();
+    expect(tableIds, query).toEqual(canvasIds);
+    expect(tableIds.length, query).toBeGreaterThan(0);
+  }
+});
+
+
+it("review reset restores every default and discards pending input on reset and dispose", () => {
+  vi.useFakeTimers();
+  try {
+    useWorkspace.setState({currentBoardId:"current"});
+    const state = useMemoTable.getState();
+    state.setBoardFilter("all");
+    state.setIncludeSubboards(false);
+    state.setFrameFilter(["frame"]);
+    state.setHasAttachment(true);
+    state.setQuery("old");
+    state.setQueryInput("pending");
+    state.resetFilters();
+    vi.advanceTimersByTime(151);
+    const reset = useMemoTable.getState();
+    expect({boardFilter:reset.boardFilter,includeSubboards:reset.includeSubboards,frameFilter:reset.frameFilter,hasAttachment:reset.hasAttachment,query:reset.query}).toEqual(defaultFilters("current"));
+    expect(reset.queryInput).toBe("");
+    reset.setQueryInput("after unmount");
+    reset.dispose();
+    vi.advanceTimersByTime(151);
+    expect(useMemoTable.getState().query).toBe("");
+    expect(useMemoTable.getState().queryInput).toBe("");
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("review captioned photo trash uses the existing reversible attachment lifecycle", async () => {
+  await setup();
+  const photo = mkNote({id:"reversible-photo",kind:"photo",content:"Caption",attachmentRef:"opfs:review-photo",title:"Photo"});
+  await getDB().notes.put(photo);
+  await useMemoTable.getState().ensureLoaded();
+  useMemoTable.getState().setSelectedIds(new Set([photo.id]));
+  await useMemoTable.getState().trashSelected();
+  expect(await getDB().notes.get(photo.id)).toBeUndefined();
+  expect((await getDB().trash.get(photo.id))?.note.attachmentRef).toBe(photo.attachmentRef);
+  await useToasts.getState().toasts.at(-1)!.action!.onClick();
+  const restored = await getDB().notes.get(photo.id);
+  expect(restored?.attachmentRef).toBe(photo.attachmentRef);
+  expect(restored?.content).toBe(photo.content);
+  expect(restored?.kind).toBe("photo");
 });

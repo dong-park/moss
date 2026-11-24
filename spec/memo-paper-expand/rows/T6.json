@@ -1,0 +1,17 @@
+{
+  "id": "T6",
+  "kind": "task",
+  "title": "Esc·종이 밖 클릭·✕로 닫는다",
+  "given": "메모를 펼쳤고 제목 입력줄에 앞뒤 공백이 든 제목을 쳤다",
+  "when": "Esc를 누른다. 다시 열어 종이 밖 어두운 곳을 클릭한다. 다시 열어 ✕를 누른다",
+  "then": "세 방법 모두 창이 닫히고 expandedCardId가 null이다. 닫을 때 제목 앞뒤 공백이 지워진 채 카드에 남는다. 본문 편집은 닫기 직전 내용이 카드에 남는다. 확인: MemoExpand.test.tsx 닫기 케이스 + 브라우저 수동",
+  "confidence": "high",
+  "reversible": true,
+  "status": "끝남",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

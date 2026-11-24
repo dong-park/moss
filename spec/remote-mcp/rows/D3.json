@@ -1,0 +1,41 @@
+{
+  "id": "D3",
+  "confidence": "high",
+  "reversible": true,
+  "status": "끝남",
+  "blocks": [
+    "n3"
+  ],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": [
+    "2026-10-18 D3 → A (사용자, 시트에서)",
+    "2026-10-18 user.answer 반영: A"
+  ],
+  "kind": "decision",
+  "title": "OAuth 클라이언트 등록은 어떤 방식으로 받을까",
+  "given": "Claude·ChatGPT·Cursor가 커넥터로 붙는다",
+  "when": "클라이언트가 처음 인가를 요청한다",
+  "then": "지원하는 클라이언트 종류가 갈린다. 우선순위는 Claude, ChatGPT, Cursor 순으로 확인한다.",
+  "options": [
+    {
+      "key": "A",
+      "label": "동적 클라이언트 등록(DCR)과 클라이언트 ID 메타데이터 문서를 둘 다 받는다",
+      "why": "MCP 사양 최신판과 기존 클라이언트를 모두 덮는다. 구현이 조금 늘어난다"
+    },
+    {
+      "key": "B",
+      "label": "DCR만 받는다",
+      "why": "대부분의 클라이언트가 붙고 구현이 가장 쉽다"
+    },
+    {
+      "key": "C",
+      "label": "메타데이터 문서만 받는다",
+      "why": "사양이 권하는 쪽이나 아직 안 따르는 클라이언트가 있다"
+    }
+  ],
+  "recommend": "A",
+  "why": "클라이언트 사정을 실연결로 확인하기 전엔 둘 다 열어 두는 편이 안전하다."
+}

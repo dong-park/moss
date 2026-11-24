@@ -3,6 +3,12 @@ import type { Board, Note } from "../db/schema";
 import { decodeFrameContent } from "../frameContent";
 import JSZip from "jszip";
 
+/** 배경 이미지 파일 확장자. ref(opfs:<id>.<ext>)에서 읽고 없으면 빈 값. */
+function refExtension(ref: string): string {
+  const m = /\.([A-Za-z0-9]+)$/.exec(ref);
+  return m ? `.${m[1]!.toLowerCase()}` : "";
+}
+
 export interface MarkdownExportContext {
   notes: Note[];
   boards: Board[];
@@ -122,6 +128,7 @@ export function markdownZipPath(
 export async function exportMarkdownZip(
   notes: Note[],
   boards: Board[],
+  attachments: Map<string, Blob> = new Map(),
 ): Promise<Blob> {
   const exportNotes = notes.filter(
     (n) =>
@@ -134,11 +141,25 @@ export async function exportMarkdownZip(
   const ctx = buildMarkdownExportContext(notes, boards);
   const zip = new JSZip();
   const usedNames = new Map<string, Set<string>>();
+  const usedBackgrounds = new Set<string>();
 
   for (const note of exportNotes) {
     const path = markdownZipPath(note, ctx, usedNames);
     const { content } = noteToMarkdown(note, ctx);
     zip.file(path, content);
+    // 판 배경 이미지는 판 이름 폴더에 _background.<확장자>로 둔다.
+    const blob = note.kind === "frame" && note.attachmentRef ? attachments.get(note.attachmentRef) : undefined;
+    if (blob) {
+      const slash = path.lastIndexOf("/");
+      const folder = `${path.slice(0, slash)}/${slugify(ctx.frameNameById.get(note.id) ?? "")}`;
+      const ext = refExtension(note.attachmentRef!);
+      // 이름이 같거나 빈 판은 폴더를 나눠 쓴다 — 배경끼리 덮어쓰지 않게 판 id 앞 6자를 붙인다.
+      let bgPath = `${folder}/_background${ext}`;
+      if (usedBackgrounds.has(bgPath)) bgPath = `${folder}/_background-${note.id.slice(0, 6)}${ext}`;
+      usedBackgrounds.add(bgPath);
+      // 이미 압축된 이미지는 다시 DEFLATE하지 않는다.
+      zip.file(bgPath, blob, { compression: "STORE" });
+    }
   }
 
   return zip.generateAsync({ type: "blob", compression: "DEFLATE" });

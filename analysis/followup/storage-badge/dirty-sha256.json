@@ -1,0 +1,5 @@
+{
+  "web/src/components/workspace/SaveFeedback.tsx": "bd54eb359fca24cb4fb56257e44b26435a24347a656dd98efa9537e2db0dc2fa",
+  "web/src/components/workspace/WorkspaceShell.tsx": "c06b327fc5a0ed3cddb26fa5aead838ad42f8b2f6a7416667afa66afe84ec929",
+  "web/src/components/workspace/__tests__/SaveFeedback.test.tsx": "36ddba47d0f0f12af8a025d600361bc446bfba83f6e9e05d2df57293090f9ac4"
+}

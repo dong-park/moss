@@ -96,13 +96,25 @@ function rotatable(kind: string): boolean {
   return kind === "text" || kind === "board" || kind === "textbox";
 }
 
+type TiltCard = { id: string; kind: string; rotation?: number };
+
+/** 저장된 기울기가 있는가(메모판 제외). 있으면 사진처럼 원래 안 기우는 카드도 기운다. */
+function hasStoredTilt(card: TiltCard): boolean {
+  return card.kind !== "frame" && typeof card.rotation === "number" && card.rotation !== 0;
+}
+
+/** 카드 고유 각도 — 저장된 기울기가 있으면 그 값, 없으면 id 해시 각도. */
+export function cardTilt(card: TiltCard): number {
+  return hasStoredTilt(card) ? card.rotation! : cardRotationDeg(card.id, card.kind);
+}
+
 /** 들지 않은 상태의 transform. 기울일 수 없는 kind(메모판 등)는 undefined(무변화). */
-export function memoBaseTransform(card: {
-  id: string;
-  kind: string;
-}): string | undefined {
-  if (!rotatable(card.kind)) return undefined;
-  const deg = cardRotationDeg(card.id, card.kind);
+export function memoBaseTransform(
+  card: TiltCard,
+  penMode: boolean,
+): string | undefined {
+  if (!rotatable(card.kind) && !hasStoredTilt(card)) return undefined;
+  const deg = penMode ? 0 : cardTilt(card);
   return `rotate(${formatDeg(deg)}deg)`;
 }
 
@@ -113,15 +125,17 @@ export function memoBaseTransform(card: {
  * FEAT-frame-feel T1: 메모판(frame)은 기울이지도 키우지도 않는다 — 들면 그림자만
  * 깊어진다(AC-1). transform을 주지 않아(undefined) 무게는 그림자가 낸다.
  */
-export function memoLiftedTransform(card: {
-  id: string;
-  kind: string;
-}): string | undefined {
+export function memoLiftedTransform(
+  card: TiltCard,
+  penMode: boolean,
+): string | undefined {
   if (card.kind === "frame") return undefined;
   // FEAT-text-tool: textbox는 회전 0 — 들 때도 기울이지 않고 살짝 뜨기만 한다.
   // FEAT-photo-card: 사진도 회전 0(spec §경계 조건 "사진 카드는 기울이지 않는다").
-  if (card.kind === "photo") return "scale(1.03)";
+  // 단, 저장된 기울기가 있는 사진(손으로 붙인 벽)은 그 각도를 지킨다.
+  if (card.kind === "photo" && !hasStoredTilt(card)) return "scale(1.03)";
   const deg =
-    (rotatable(card.kind) ? cardRotationDeg(card.id, card.kind) : 0) - CARD_LIFT_DEG;
+    (penMode || (!rotatable(card.kind) && !hasStoredTilt(card)) ? 0 : cardTilt(card)) -
+    CARD_LIFT_DEG;
   return `scale(1.03) rotate(${formatDeg(deg)}deg)`;
 }

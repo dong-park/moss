@@ -1,0 +1,15 @@
+{
+  "active": "BUTTON",
+  "viewport": 752.5714111328125,
+  "world": "translate(-597.273px, 0px) scale(1)",
+  "lines": 1,
+  "actions": "연결할 카드를 누르세요취소",
+  "handles": [],
+  "cards": [
+    {
+      "id": "c-mwcaiiz3-3",
+      "width": "240px",
+      "selected": "none"
+    }
+  ]
+}

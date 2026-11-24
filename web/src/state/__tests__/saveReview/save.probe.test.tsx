@@ -1,0 +1,20 @@
+import {it,expect,vi,afterEach} from 'vitest';
+import {useStorage} from '@/state/storage';
+import {getDB,resetDB} from '@/state/db/schema';
+import {beginSave,boardSavePhase,useSaveFeedback,retryBoardSave} from '@/state/saveFeedback';
+import {destroyBoardDocs} from '@/state/ydoc/activeDoc';
+afterEach(async()=>{vi.restoreAllMocks();await destroyBoardDocs();await resetDB();useSaveFeedback.setState({boards:{}});});
+it('a successful title-only write cannot cover a failed body mirror write',async()=>{
+ const db=getDB();await db.open();
+ await useStorage.getState().saveNote({id:'probe-mirror',boardId:'probe-board',content:'old body'});
+ beginSave('probe-board','document',async()=>{}).success();
+ const put=vi.spyOn(db.notes,'put').mockImplementationOnce(()=>{throw Error('quota');});
+ await expect(useStorage.getState().saveNote({id:'probe-mirror',boardId:'probe-board',content:'LATEST body'})).rejects.toThrow('quota');
+ put.mockRestore();
+ expect(boardSavePhase(useSaveFeedback.getState().boards['probe-board'])).toBe('error');
+ await useStorage.getState().updateNoteTitle('probe-mirror','new title');
+ await vi.waitFor(()=>expect(boardSavePhase(useSaveFeedback.getState().boards['probe-board'])).toBe('saved'));
+ await retryBoardSave('probe-board');
+ const note=await db.notes.get('probe-mirror');
+ expect({body:note?.content,phase:boardSavePhase(useSaveFeedback.getState().boards['probe-board'])}).toEqual({body:'LATEST body',phase:'saved'});
+});

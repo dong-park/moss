@@ -1,0 +1,17 @@
+{
+  "id": "T4",
+  "confidence": "mid",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": [],
+  "kind": "task",
+  "title": "MCP로 쓴 메모의 색·글자 크기가 새로고침 뒤에도 남는다",
+  "given": "에이전트가 색과 글자 크기를 정해 메모를 만들었다",
+  "when": "사용자가 브라우저를 새로고침한다",
+  "then": "메모가 같은 색과 크기로 보인다. 과거 필드 누락 사고(collab-port)가 되풀이되지 않는다."
+}

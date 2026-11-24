@@ -1,0 +1,14 @@
+{
+  "id": "T16",
+  "kind": "task",
+  "title": "지운 판을 되돌리면 판, 멤버 소속, 배경 사진이 돌아온다",
+  "given": "배경 사진이 있고 멤버 메모 2개가 든 판 F를 지웠다. 멤버 2개는 제자리에 남고 소속이 풀렸다",
+  "when": "cmd+z를 1번 누른다",
+  "then": "F가 같은 자리에 보이고 배경 사진이 그려진다. 멤버 2개가 다시 F에 속한다. 휴지통 개수는 그대로다. 확인: vitest로 readNote(F), 멤버 frameId, 배경 파일이 저장소에 남아 있음을 본다. frameBackground.test.ts 패턴",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {"answer": "", "fix": ""},
+  "log": []
+}

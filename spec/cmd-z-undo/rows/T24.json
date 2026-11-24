@@ -1,0 +1,20 @@
+{
+  "id": "T24",
+  "kind": "task",
+  "title": "되돌린 뒤 카드를 원래 값으로 다시 바꿔도 저장된다",
+  "given": "메모 A의 색을 pink에서 blue로 바꾼 뒤 cmd+z로 pink에 돌려놓았다. 색 바꾸기는 setMemoColor에서 persistCardDebounced 쓰기 경로를 탄다",
+  "when": "A의 색을 다시 blue로 바꾸고 새로고침한다. 따로 기준값 맞추기 보정을 뺀 코드로 같은 순서를 돌린다",
+  "then": "새로고침 뒤 A는 blue다. 보정을 뺀 코드에서는 이 테스트가 실패한다. 확인: vitest로 flushAll 뒤 readNote(A)의 색을 본다",
+  "confidence": "mid",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": [
+    "2026-11-10 리뷰 1바퀴 F14 반영: 드래그 대신 색 바꾸기로 기준값 경로를 시험",
+    "2026-11-10 리뷰 2바퀴 G6 반영: 메모 색을 MEMO_COLORS 값으로"
+  ]
+}

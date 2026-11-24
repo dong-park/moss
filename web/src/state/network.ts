@@ -11,6 +11,7 @@ export function useOnlineStatus(): boolean {
   const [online, setOnline] = useState(true);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- hydration 불일치를 피하려고 마운트 뒤에 맞춘다
     setOnline(navigator.onLine !== false);
     const on = () => setOnline(true);
     const off = () => setOnline(false);

@@ -3,9 +3,11 @@
 import { useState } from "react";
 import { useT } from "@/i18n/Provider";
 import type { Translator } from "@/i18n";
-import { AuthRequestError, GoogleUnavailableError, useAuth } from "@/state/auth";
+import { AuthRequestError, useAuth } from "@/state/auth";
+import { termsVersion } from "@/state/auth/terms";
 import { useOnlineStatus } from "@/state/network";
-import { GoogleButton } from "./GoogleButton";
+import { GoogleSlot, type GoogleSlotStatus } from "./GoogleSlot";
+import { TermsCheckbox } from "./TermsCheckbox";
 
 type Mode = "closed" | "login" | "signup";
 type FieldErrors = { email?: string; password?: string; name?: string };
@@ -48,6 +50,7 @@ function errorMessage(err: unknown, t: Translator): string {
     if (err.status === 401) return err.message || t("collab.auth.email.loginFailed");
     if (err.status === 409) return err.message || t("collab.auth.email.conflict");
     if (err.status === 429) return err.message || t("collab.auth.email.rateLimited");
+    if (err.status === 503) return err.message || t("collab.auth.email.failed");
     if (err.status === 400) return err.message || t("collab.auth.email.failed");
   }
   return t("collab.auth.email.failed");
@@ -60,28 +63,19 @@ function errorMessage(err: unknown, t: Translator): string {
 export function LoginActions() {
   const t = useT();
   const online = useOnlineStatus();
-  const [busy, setBusy] = useState(false);
+  // 메일 요청 중. Google 요청과 같은 요청 잠금을 쓴다.
+  const [mailBusy, setMailBusy] = useState(false);
+  const [google, setGoogle] = useState<GoogleSlotStatus>({ locked: false, hideMail: false });
   const [mode, setMode] = useState<Mode>("closed");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
+  const [accepted, setAccepted] = useState(false);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
-  const [googleError, setGoogleError] = useState<string | null>(null);
 
-  const handleLogin = async () => {
-    setBusy(true);
-    setGoogleError(null);
-    try {
-      await useAuth.getState().loginWithGoogle();
-    } catch (err) {
-      // 실패를 삼키면 버튼이 아무 일도 안 하는 것처럼 보인다.
-      setGoogleError(
-        err instanceof GoogleUnavailableError ? err.message : t("collab.auth.email.failed"),
-      );
-      setBusy(false);
-    }
-  };
+  const locked = mailBusy || google.locked;
+  const disabled = locked || !online;
 
   const switchMode = (next: Mode) => {
     setMode(next);
@@ -91,36 +85,34 @@ export function LoginActions() {
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!online) return;
+    if (!online || locked) return;
     const found = validate(mode, email, password, name, t);
     setErrors(found);
     setFormError(null);
     if (Object.keys(found).length > 0) return;
-    setBusy(true);
+    if (mode === "signup" && !accepted) {
+      setFormError(t("collab.auth.email.termsRequired"));
+      return;
+    }
+    setMailBusy(true);
     try {
       if (mode === "signup") {
-        await useAuth.getState().signupWithEmail(email.trim(), password, name.trim());
+        await useAuth.getState().signupWithEmail(email.trim(), password, name.trim(), termsVersion());
       } else {
         await useAuth.getState().loginWithEmail(email.trim(), password);
       }
     } catch (err) {
       setFormError(errorMessage(err, t));
-      setBusy(false);
+      setMailBusy(false);
     }
   };
 
-  const disabled = busy || !online;
 
   return (
     <>
-      <GoogleButton onClick={handleLogin} disabled={disabled} />
-      {googleError && (
-        <p role="alert" className="mt-1.5 text-[11px] text-[#c0392b]">
-          {googleError}
-        </p>
-      )}
+      <GoogleSlot online={online} mailBusy={mailBusy} onStatus={setGoogle} />
 
-      {mode === "closed" ? (
+      {google.hideMail ? null : mode === "closed" ? (
         <button
           type="button"
           onClick={() => switchMode("login")}
@@ -171,7 +163,7 @@ export function LoginActions() {
           </div>
 
           {mode === "signup" && (
-            <div>
+          <div>
               <label htmlFor="moss-auth-name" className="text-[11px] text-[#8e8e93]">
                 {t("collab.auth.email.nameLabel")}
               </label>
@@ -192,6 +184,8 @@ export function LoginActions() {
             </div>
           )}
 
+          {mode === "signup" && <TermsCheckbox accepted={accepted} onChange={setAccepted} />}
+
           {formError && (
             <p role="alert" className="text-[11px] text-[#c0392b]">
               {formError}
@@ -210,7 +204,7 @@ export function LoginActions() {
 
           <button
             type="button"
-            onClick={() => switchMode(mode === "signup" ? "login" : "signup")}
+            onClick={() => switchMode(mode === "login" ? "signup" : "login")}
             className="w-full text-center text-[11px] text-[#2c2e33] underline"
           >
             {mode === "signup"

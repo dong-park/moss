@@ -13,11 +13,11 @@ import { memoTint } from "../../memoVariety"; // FEAT-memo-variety 색조
 import type { CardContentProps } from "../_shared/types";
 import { memoFace } from "./face";
 import { TodoFace } from "./TodoFace";
+import { LinkFace } from "./LinkFace";
 import { LinkInputFace } from "./LinkInputFace";
-import { LinkPreviewAction } from "./LinkPreviewAction";
 
 // 종이 사진. 색조 층 mask도 같은 파일이어야 종이 바깥 투명부에 색이 안 칠해진다.
-const MEMO_PAPER = 'url("/cards/v2/text.png") 0 0 / 100% 100% no-repeat';
+export const MEMO_PAPER = 'url("/cards/v2/text.png") 0 0 / 100% 100% no-repeat';
 
 /* ─────────────────────────────────────────────────────────────
  * 글(포스트잇) 카드 — Milkdown 인라인 에디터.
@@ -77,8 +77,7 @@ export function TextCardContent({ card, editing, onCommitEdit }: CardContentProp
     onCommitEdit();
   };
 
-  // 본문·백링크는 앞면에서 빠졌다 — 메모 창이 맡는다. 마카 획 overlay는 껍데기
-  // (DraggableCard → StickyStrokeLayer)가 이 카드 박스 위에 얹는다.
+  // 펜 overlay(DrawingLayer)·본문·백링크는 앞면에서 빠졌다 — 메모 창이 맡는다.
   const setExpandedCard = useWorkspace((s) => s.setExpandedCard);
 
   // FEAT-sticky-redesign n5: 앞면에서 이미지·블록 막대를 누르면 메모 창을 연다.
@@ -106,21 +105,9 @@ export function TextCardContent({ card, editing, onCommitEdit }: CardContentProp
     if (editing && face.t === "link") onCommitEdit();
   }, [editing, face.t, onCommitEdit]);
   if (face.t === "link") {
-    return (
-      <div className="moss-card-face" data-memo-face="link">
-        <div className="card face link">
-          <small>
-            <span className="fav" style={{ background: "#6a6c72" }}>
-              {face.site[0]?.toUpperCase()}
-            </span>
-            {face.site}
-          </small>
-          <p>{face.title}</p>
-          <LinkPreviewAction cardId={card.id} url={face.url} title={face.title} />
-        </div>
-      </div>
-    );
+    return <LinkFace cardId={card.id} face={face} />;
   }
+
   if (face.t === "linkEmpty") {
     return <LinkInputFace cardId={card.id} editing={editing} onCommitEdit={onCommitEdit} />;
   }
@@ -167,8 +154,13 @@ export function TextCardContent({ card, editing, onCommitEdit }: CardContentProp
         }}
       />
       {/* 2026-09-22 사용자 결정: 메모지 앞면은 제목 하나만 정가운데에 보여준다.
-        * 본문·백링크는 더블클릭으로 여는 메모 창이 맡는다. 마카 획은 껍데기가 위에 얹는다. */}
-      <div className="absolute inset-0 flex items-center justify-center">
+        * 본문·펜 overlay·백링크는 더블클릭으로 여는 메모 창이 맡는다. */}
+      {/* 제목 글자 크기가 카드 폭(cqw)을 따르도록 크기 컨테이너로 둔다. */}
+      <div
+        data-memo-front-title=""
+        className="absolute inset-0 flex items-center justify-center"
+        style={{ containerType: "inline-size" }}
+      >
         <MemoTitleRow
           title={card.title ?? ""}
           editable={editing}

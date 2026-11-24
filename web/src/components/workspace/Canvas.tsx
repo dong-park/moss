@@ -6,10 +6,15 @@ import {
   SYSTEM_BOARD_ID,
   widthForKind,
   PHOTO_DEFAULT_WIDTH,
+  runAsUserAction,
+  zoomTier,
 } from "@/state/workspace";
 import { useToasts } from "@/state/notifications";
 import { useT } from "@/i18n/Provider";
+import { useTouchCanvas } from "./touchCanvas";
 import { DraggableCard } from "./DraggableCard";
+import { MobileCardActions } from "./MobileCardActions";
+import { CardPrivacyControl } from "./CardPrivacyControl";
 import {
   DragGhostLayer,
   RemoteCursorsLayer,
@@ -36,6 +41,7 @@ import { ConnectorLayer } from "./connectors/ConnectorLayer";
 import { ConnectionHandlesLayer } from "./connectors/ConnectionHandles";
 import { isUrlOnly } from "@/state/cardContent";
 import { createLinkMemo } from "./linkMemo";
+import { handleUndoKeyDown, isTypingTarget, isUndoZKey } from "./undoKeys";
 import { serializeBlock } from "@/state/blocks";
 import {
   DROP_STACK_OFFSET_PX,
@@ -96,6 +102,7 @@ export function Canvas() {
   const cards = useWorkspace((s) => s.cards);
   const currentBoardId = useWorkspace((s) => s.currentBoardId);
   const wallStrokeCount = useWallStrokeCount();
+  useTouchCanvas(canvasRef, currentBoardId);
   const boardTransitioning = useWorkspace((s) => s.boardTransitioning);
   const viewport = useWorkspace((s) => s.viewport);
   const selectedIds = useWorkspace((s) => s.selectedIds);
@@ -257,12 +264,18 @@ export function Canvas() {
           const py = (ch / 2 - v.y) / v.scale - 20;
           // 저장·크기 읽기는 병렬, 카드는 드롭처럼 24px씩 비켜 쌓는다.
           const photos = await Promise.all(imageFiles.map((f) => storePhoto(f)));
-          let i = 0;
-          for (const photo of photos) {
-            if (!photo) continue; // 거부된 사진은 자리를 차지하지 않는다.
-            addPhotoAt(px + i * DROP_STACK_OFFSET_PX, py + i * DROP_STACK_OFFSET_PX, photo);
-            i += 1;
-          }
+          // cmd-z-undo 웨이브 3: 붙여넣기 한 번에 놓인 사진은 모두 기록 1단계.
+          runAsUserAction(
+            () => {
+              let i = 0;
+              for (const photo of photos) {
+                if (!photo) continue; // 거부된 사진은 자리를 차지하지 않는다.
+                addPhotoAt(px + i * DROP_STACK_OFFSET_PX, py + i * DROP_STACK_OFFSET_PX, photo);
+                i += 1;
+              }
+            },
+            { creates: true },
+          );
         })();
         return;
       }
@@ -336,9 +349,16 @@ export function Canvas() {
           i += 1;
           continue;
         }
-        const id = addCardAt("text", wx, wy);
-        setEditing(null);
-        setContent(id, block);
+        // cmd-z-undo 웨이브 3: 파일 하나의 메모 만들기·채우기는 기록 1단계.
+        const id = runAsUserAction(
+          () => {
+            const created = addCardAt("text", wx, wy);
+            setEditing(null);
+            setContent(created, block);
+            return created;
+          },
+          { creates: true },
+        );
         if (useWorkspace.getState().currentBoardId === SYSTEM_BOARD_ID) {
           createdOnSystemBoard.push(id);
         }
@@ -365,10 +385,8 @@ export function Canvas() {
 
   /* ─ Space + Delete/Backspace 키 처리 ─ */
   useEffect(() => {
-    const isTyping = () => {
-      const el = document.activeElement as HTMLElement | null;
-      return !!el?.matches("input, textarea, [contenteditable='true']");
-    };
+    // 입력칸 판정은 undoKeys의 규칙 하나를 쓴다(코드 리뷰 웨이브 2 F5).
+    const isTyping = () => isTypingTarget(document.activeElement);
 
     const onDown = (e: KeyboardEvent) => {
       // FEAT-connectors: 연결 드래그 중이면 이 핸들러가 Escape를 먼저 잡아 부모 보드로
@@ -395,6 +413,10 @@ export function Canvas() {
       }
       // wall-marker n6: 벽 획을 끌어 옮기는 중 Esc는 제자리로(묶음은 남는다, T19). 옮기는 중이 아니고
       // 묶음만 있으면 Esc가 묶음을 푼다 — 부모 캔버스로 올라가지 않는다.
+      if (handleUndoKeyDown(e)) {
+        e.preventDefault();
+        return;
+      }
       if (e.key === "Escape" && !editingId && !isTyping()) {
         if (wallInputRef.current?.cancelMove()) {
           e.preventDefault();
@@ -697,6 +719,7 @@ export function Canvas() {
     <div
       ref={canvasRef}
       data-canvas-root="true"
+      data-space-pan={spaceDown || undefined}
       onMouseDownCapture={onMouseDownCapture}
       onMouseDown={onMouseDown}
       onDoubleClick={onDoubleClick}
@@ -708,31 +731,26 @@ export function Canvas() {
       onMouseMove={onCanvasMouseMove}
       onDragOver={onCanvasDragOver}
       onDrop={onCanvasDrop}
-      className={`relative h-full overflow-hidden bg-bg ${cursorClass}`}
-      // wall-marker n2: 마카·천을 들면 포인터를 그 모양으로(inline이 class를 덮음).
-      // 태블릿 두 번 탭이 브라우저 확대로 새지 않게 — 팬·핀치는 그대로 둔다(FEAT-first-wall T4).
-      // wall-marker n4: 든 동안엔 손가락이 획이다 — 브라우저 스크롤·확대가 포인터를 끊지 않게
-      // touch-action을 끄고, 두 손가락 줌·팬은 벽 획 레이어가 맡는다(T12).
-      style={
-        heldTool
-          ? { cursor: heldToolCursor(heldTool), touchAction: "none" }
-          : { touchAction: "manipulation" }
-      }
+      className={`relative h-full overflow-clip bg-bg ${cursorClass}`}
+      style={{
+        touchAction: "none",
+        ...(heldTool ? { cursor: heldToolCursor(heldTool) } : {}),
+      }}
     >
       {/* world layer — viewport transform 적용. 사용자 카드는 항상 렌더한다.
           FEAT-boards AC-4: 보드 전환 시 200ms ease-out fade. */}
       <div
         data-canvas-world="true"
         data-board-transitioning={boardTransitioning ? "true" : "false"}
+        data-zoom-tier={zoomTier(viewport.scale)}
         className="absolute left-0 top-0 origin-top-left transition-opacity duration-200 ease-out"
         style={{
           transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.scale})`,
           transformOrigin: "0 0",
+          // 화면 크기를 고정할 요소(판 선·이름표, 메모 제목)가 곱해 쓰는 줌의 역수.
+          "--zoom-inv": 1 / viewport.scale,
           willChange: "transform, opacity",
           opacity: boardTransitioning ? 0 : 1,
-          // FEAT-frame-skins §8: 줌·팬 중 칸 배경은 React로 다시 그리지 않는다.
-          // 이름표 크기는 이 변수만으로 바뀐다 — 화면 11px 하한 역보정에 쓴다.
-          "--frame-zoom": String(viewport.scale),
         } as CSSProperties}
       >
         {/* wall-marker n4: 벽 획 — 연결선과 카드 아래(D5). 월드 변환 안이라 보드 좌표 그대로 깐다. */}
@@ -753,7 +771,7 @@ export function Canvas() {
         <RemoteCursorsLayer />
       </div>
 
-      {/* 빈 벽 힌트 — 모든 벽 공통: 메모도 마카 획도 없을 때만. 하나라도 생기면 숨고, 다시 비면 돌아온다. */}
+      <CardPrivacyControl />
       {isWallEmpty(cards, wallStrokeCount) && (
         <div
           className="pointer-events-none absolute inset-0 transition-opacity duration-200 ease-out"
@@ -800,6 +818,7 @@ export function Canvas() {
       <TrashPanel />
 
       <ZoomBar />
+      <MobileCardActions canvasRef={canvasRef} />
     </div>
   );
 }

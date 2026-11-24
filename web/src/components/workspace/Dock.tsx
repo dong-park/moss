@@ -1,6 +1,12 @@
 "use client";
 
 import Image from "next/image";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import { useCompactControls } from "./useCompactControls";
+import { useTouchControls } from "./useTouchControls";
+import { useMobileCanvas, linkUrl } from "./mobileCanvas";
+import { MobileCardControls } from "./MobileCardControls";
+import styles from "./canvasControls.module.css";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   motion,
@@ -19,7 +25,7 @@ import {
 import { useT } from "@/i18n/Provider";
 import { layout } from "@/design/tokens";
 import { PANEL_WIDTH as SIGNALS_PANEL_WIDTH } from "@/components/signals/SignalsPanel";
-import { PHOTO_DEFAULT_WIDTH } from "@/state/workspace";
+import { PHOTO_DEFAULT_WIDTH, runAsUserAction } from "@/state/workspace";
 import { EMPTY_LINK_CONTENT } from "./linkMemo";
 import { MarkerTray } from "./MarkerTray";
 
@@ -82,6 +88,7 @@ type DockItem = {
 };
 
 const DOCK_ITEMS: DockItem[] = [
+  // 2026-10-18 macOS 오마주 아이콘. sw.js가 /icons/를 SWR로 내주므로 mac/ 아래 새 이름을 쓴다.
   { toolId: "frame", icon: "/icons/dock/mac/board.svg", labelKey: "workspace.tool.frame", draggable: true },
   { toolId: "text", icon: "/icons/dock/mac/memo.svg", labelKey: "capture.tool.text", draggable: true },
   { toolId: "todo", icon: "/icons/dock/mac/todo.svg", labelKey: "workspace.tool.todo", draggable: true },
@@ -142,6 +149,7 @@ export function Dock({
   const createSubcanvasAtViewportCenter = useWorkspace((s) => s.createSubcanvasAtViewportCenter);
   const addPhotoAt = useWorkspace((s) => s.addPhotoAt);
   const setEditing = useWorkspace((s) => s.setEditing);
+  const setExpandedCard = useWorkspace((s) => s.setExpandedCard);
   const setContent = useWorkspace((s) => s.setContent);
   /** 링크 주소 입력칸 — 열렸으면 놓을 자리(없으면 화면 가운데). */
   /** 사진 파일 창을 연 뒤 고른 사진을 놓을 자리(없으면 화면 가운데). */
@@ -150,6 +158,13 @@ export function Dock({
   // 2026-09-19 사용자 결정: 시그널스 진입점 임시 숨김 — 버튼 복원 시 함께 되살린다.
   // const pushToast = useToasts((s) => s.push);
 
+  const compact = useCompactControls();
+  const touchControls = useTouchControls();
+  const selected = useWorkspace((s) => s.selectedIds.length === 1 ? s.cards.find((c) => c.id === s.selectedIds[0]) : undefined);
+  const controlsBlocked = useWorkspace((s) => s.penMode || !!s.expandedCardId || (!!s.editingId && (!selected || linkUrl(selected) === null)));
+  useEffect(() => { if (!touchControls) useMobileCanvas.getState().close(); }, [touchControls]);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const createdFromMenu = useRef(false);
   const dockRef = useRef<HTMLDivElement>(null);
   const [canvasWidth, setCanvasWidth] = useState(FALLBACK_VIEWPORT_WIDTH);
   const [reducedMotion, setReducedMotion] = useState(false);
@@ -202,6 +217,7 @@ export function Dock({
       // 레이아웃이 바뀌면 캐시한 버튼 중심은 무효 — 다음 move에서 다시 잰다.
       centersValidRef.current = false;
       setCanvasWidth(window.innerWidth);
+      setMoreOpen(false);
     };
     // 하이드레이션 첫 렌더는 서버와 같은 폴백을 쓴다 — 실측값은 여기(커밋 후)에서 반영.
     onResize();
@@ -241,7 +257,7 @@ export function Dock({
   const effectiveCanvasWidth = signalsOpen ? canvasWidth - SIGNALS_PANEL_WIDTH : canvasWidth;
   // §4: 캔버스가 좁으면(<360px) hover 추적 자체를 끈다(이름표도 없음).
   // 동작 줄이기(prefers-reduced-motion)는 hover는 추적하되 크기 확대만 끈다(이름표는 유지).
-  const hoverTrackingEnabled = effectiveCanvasWidth >= MIN_MAGNIFY_CANVAS_WIDTH;
+  const hoverTrackingEnabled = !compact && effectiveCanvasWidth >= MIN_MAGNIFY_CANVAS_WIDTH;
   const sizingEnabled = hoverTrackingEnabled && !reducedMotion;
 
   /**
@@ -320,18 +336,30 @@ export function Dock({
 
   /** 도크 전용 버튼 — `at`이 있으면 끌어 놓은 월드 좌표, null이면 화면 가운데. */
   function createDockOnly(toolId: DockOnlyId, at: { x: number; y: number } | null) {
+    // cmd-z-undo 웨이브 3: 버튼 한 번 = 생성 1단계(앞면 본문 포함). 편집 묶음은 그 뒤 열린다.
     if (toolId === "todo") {
-      const id = at ? addCardAt("text", at.x, at.y) : addCardAtViewportCenter("text");
-      // 빈 항목 하나로 할 일 앞면을 띄우고 카드에서 바로 적는다(TodoFace가 제목에 포커스).
-      setContent(id, "- [ ] ");
-      setEditing(id);
+      runAsUserAction(
+        () => {
+          const id = at ? addCardAt("text", at.x, at.y) : addCardAtViewportCenter("text");
+          // 빈 항목 하나로 할 일 앞면을 띄우고 카드에서 바로 적는다(TodoFace가 제목에 포커스).
+          setContent(id, "- [ ] ");
+          setEditing(id);
+        },
+        { creates: true },
+      );
       return;
     }
     if (toolId === "linkMemo") {
-      // 빈 링크 카드 — 카드 안 입력칸에 주소를 넣는다(LinkInputFace가 포커스).
-      const id = at ? addCardAt("text", at.x, at.y) : addCardAtViewportCenter("text");
-      setContent(id, EMPTY_LINK_CONTENT);
-      setEditing(id);
+      runAsUserAction(
+        () => {
+          // 빈 링크 카드 — 카드 안 입력칸에 주소를 넣는다(LinkInputFace가 포커스).
+          const id = at ? addCardAt("text", at.x, at.y) : addCardAtViewportCenter("text");
+          setContent(id, EMPTY_LINK_CONTENT);
+          if (touchControls) useMobileCanvas.getState().editLink(id);
+          else setEditing(id);
+        },
+        { creates: true },
+      );
       return;
     }
     // 빈 사진 카드 — 카드의 "사진 고르기"를 눌러 파일 창을 연다.
@@ -379,7 +407,8 @@ export function Dock({
         return;
       }
 
-      addCardAt(toolId as ToolId, wx, wy);
+      const id = addCardAt(toolId as ToolId, wx, wy);
+      if (compact && toolId === "text") setExpandedCard(id, "edit");
       // 임시 숨김(2026-09-22 사용자 결정): 시스템 보드에 메모를 놓을 때 뜨던
       // "이 메모는 무소속이에요 / 새 프로젝트" 토스트. 되돌리려면 주석을 푼다.
       // const newCardId = addCardAt(toolId, wx, wy);
@@ -399,7 +428,7 @@ export function Dock({
       // }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- createDockOnly는 스토어 액션·ref만 쓴다
-    [addCardAt, addFrameAt, createSubcanvas],
+    [addCardAt, addFrameAt, createSubcanvas, touchControls, compact, setExpandedCard],
   );
 
   /**
@@ -415,7 +444,8 @@ export function Dock({
         return;
       }
       if (toolId === "text") {
-        addCardAtViewportCenter("text");
+        const id = addCardAtViewportCenter("text");
+        if (compact) setExpandedCard(id, "edit");
         return;
       }
       // FEAT-text-tool: 클릭/Enter로도 화면 가운데에 텍스트 생성(§8 접근성).
@@ -432,7 +462,7 @@ export function Dock({
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- createDockOnly는 스토어 액션·ref만 쓴다
-    [addCardAtViewportCenter, addFrameAtViewportCenter, createSubcanvasAtViewportCenter],
+    [addCardAtViewportCenter, addFrameAtViewportCenter, createSubcanvasAtViewportCenter, touchControls, compact, setExpandedCard],
   );
 
   const LABELS: Record<string, string> = {
@@ -451,6 +481,8 @@ export function Dock({
    * 2단계 리뷰 P1-1: layout.dock.width(고정 토큰) 대신 dockWidth(실측)로 계산 —
    * 버튼 슬롯이 평상시 iconBase(40px)이고 hover로만 커지므로 실제 폭은 토큰의
    * 근사치일 뿐이다. */
+  if (touchControls && selected && !controlsBlocked) return compact ? null : <MobileCardControls compact={compact} />;
+
   let centerX = effectiveCanvasWidth / 2;
   const rightEdge = effectiveCanvasWidth - RIGHT_TOOLBAR_RESERVED;
   if (centerX + dockWidth / 2 > rightEdge) {
@@ -462,6 +494,9 @@ export function Dock({
   return (
     <motion.div
       ref={dockRef}
+      data-canvas-control="dock"
+      data-compact={compact}
+      data-mobile-more-open={compact && moreOpen}
       role="toolbar"
       aria-label={t("workspace.dock.label")}
       onMouseEnter={() => {
@@ -474,19 +509,24 @@ export function Dock({
         mouseX.set(Infinity);
         centersValidRef.current = false;
       }}
-      className="fixed z-[var(--z-panel)] flex items-center gap-1 rounded-full px-3"
+      className={`${styles.dock} fixed z-[var(--z-panel)] flex items-center gap-1 rounded-[22px] px-3`}
       style={{
-        left: dockLeft,
-        bottom: layout.dock.bottomMargin,
+        left: compact ? "50%" : dockLeft,
+        translate: compact ? "-50% 0" : undefined,
+        bottom: `calc(${layout.dock.bottomMargin}px + env(safe-area-inset-bottom, 0px))`,
         height: layout.dock.height,
-        background: "var(--gradient-paper)",
-        boxShadow: "var(--shadow-card)",
+        // macOS 독 오마주 — 반투명 유리.
+        background: "linear-gradient(rgba(255,255,255,0.86), rgba(255,255,255,0.7))",
+        backdropFilter: "blur(24px) saturate(180%)",
+        WebkitBackdropFilter: "blur(24px) saturate(180%)",
+        boxShadow:
+          "inset 0 0 0 0.5px rgba(255,255,255,0.8), inset 0 1px 0 rgba(255,255,255,0.9), 0 0 0 0.5px rgba(0,0,0,0.12), 0 12px 36px rgba(20,30,60,0.16)",
         x: shiftX,
       }}
     >
       <MarkerTray />
 
-      {DOCK_ITEMS.filter((item) => item.draggable).map((item) => (
+      {DOCK_ITEMS.filter((item) => item.draggable && (!compact || ["text", "todo", "photo"].includes(item.toolId))).map((item) => (
         <DockButton
           key={item.toolId}
           item={item}
@@ -494,7 +534,8 @@ export function Dock({
           mouseX={mouseX}
           centers={centers}
           registerSize={registerSize}
-          showLabel={hoveredId === item.toolId}
+          showLabel={compact || hoveredId === item.toolId}
+          description={t(`reviewCanvas.descriptions.${item.toolId}`)}
           reducedMotion={reducedMotion}
           onDragStart={(screenX, screenY) =>
             setDockDrag({ toolId: previewToolOf(item.toolId), face: previewFaceOf(item.toolId), screenX, screenY })
@@ -507,6 +548,41 @@ export function Dock({
           onClick={() => createAtCenter(item.toolId)}
         />
       ))}
+
+      {compact && (
+        <DropdownMenu.Root open={moreOpen} onOpenChange={setMoreOpen} modal={false}>
+          <DropdownMenu.Trigger asChild>
+            <button type="button" aria-label={t("workspace.dock.more")}
+              className="flex h-11 w-11 items-center justify-center rounded-lg text-2xl focus-visible:outline-2 focus-visible:outline-accent-blue">
+              ⋯
+            </button>
+          </DropdownMenu.Trigger>
+          <DropdownMenu.Portal>
+            <DropdownMenu.Content side="top" align="center" sideOffset={12} collisionPadding={12}
+              aria-label={t("workspace.dock.more")}
+              onCloseAutoFocus={(event) => {
+                // A created card owns focus; Escape/outside dismissal returns to More.
+                if (createdFromMenu.current) event.preventDefault();
+                createdFromMenu.current = false;
+              }}
+              className={styles.moreMenu}>
+              {/* Extra tools create at viewport center; primary tools retain drag/drop. */}
+              {DOCK_ITEMS.filter(item => item.draggable && !["text", "todo", "photo"].includes(item.toolId)).map(item => (
+                <DropdownMenu.Item key={item.toolId}
+                  aria-label={LABELS[item.labelKey]}
+                  className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg px-3 outline-none data-[highlighted]:bg-[color:var(--color-hover)]"
+                  onSelect={() => { createdFromMenu.current = true; createAtCenter(item.toolId); }}>
+                  <Image src={item.icon} alt="" width={32} height={32} unoptimized draggable={false} />
+                  <span className="flex min-w-0 flex-col gap-0.5">
+                    <span>{LABELS[item.labelKey]}</span>
+                    <small className="text-[11px] leading-relaxed text-text-muted">{t(`reviewCanvas.descriptions.${item.toolId}`)}</small>
+                  </span>
+                </DropdownMenu.Item>
+              ))}
+            </DropdownMenu.Content>
+          </DropdownMenu.Portal>
+        </DropdownMenu.Root>
+      )}
 
       {/* FEAT-trash: 독 맨 끝 휴지통 — 클릭하면 패널, 메모가 있으면 점 배지. */}
       <DockButton
@@ -550,6 +626,7 @@ function DockButton({
   centers,
   registerSize,
   showLabel,
+  description,
   reducedMotion,
   pressed,
   badge,
@@ -568,6 +645,7 @@ function DockButton({
   centers: MotionValue<Centers>;
   registerSize: (id: DockToolId, mv: MotionValue<number> | null) => void;
   showLabel: boolean;
+  description?: string;
   reducedMotion: boolean;
   pressed?: boolean;
   /** FEAT-trash: 점 배지 — 휴지통에 메모가 있을 때. */
@@ -581,6 +659,7 @@ function DockButton({
   onClick: () => void;
 }) {
   const draggedRef = useRef(false);
+  const [focused, setFocused] = useState(false);
   const id = item.toolId;
   // 목표 크기: 커서·중심 MotionValue에서 파생. 실제 크기: 스프링. 둘 다 React 렌더 밖에서 돈다.
   const target = useTransform(() => {
@@ -663,10 +742,13 @@ function DockButton({
       data-dock-id={item.toolId}
       onMouseDown={handleMouseDown}
       onClick={handleClick}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
+      title={description ? `${label} · ${description}` : label}
       aria-label={label}
       aria-pressed={pressed}
       className={[
-        "group relative flex flex-col items-center justify-center outline-none",
+        "group relative flex flex-col items-center justify-center outline-none focus-visible:rounded-lg focus-visible:outline-2 focus-visible:outline-accent-blue",
         // FEAT-trash-drag: 드롭 대상 강조 — 연두 배경(브레드크럼 드롭 강조와 같은 색).
         dropTarget ? "rounded-full bg-accent-lime/30" : "",
       ].join(" ")}
@@ -691,7 +773,7 @@ function DockButton({
           height: size,
           filter: pressed
             ? "drop-shadow(0 4px 8px rgba(0,0,0,0.18))"
-            : "drop-shadow(0 1px 2px rgba(0,0,0,0.08))",
+            : "drop-shadow(0 1px 1px rgba(0,0,0,0.14)) drop-shadow(0 3px 5px rgba(0,0,0,0.1))",
         }}
       >
         <Image
@@ -713,8 +795,8 @@ function DockButton({
           style={{ background: "var(--color-accent-blue)" }}
         />
       )}
-      {showLabel && (
-        <span className="absolute -bottom-1 whitespace-nowrap text-[11px] leading-none text-text-muted">
+      {(showLabel || focused) && (
+        <span data-dock-label="true" className="pointer-events-none absolute -top-6 whitespace-nowrap rounded bg-bg/95 px-1.5 py-1 text-[11px] leading-none text-text">
           {label}
         </span>
       )}

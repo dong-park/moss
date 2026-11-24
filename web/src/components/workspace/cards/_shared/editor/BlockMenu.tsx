@@ -34,7 +34,8 @@ import { useToasts } from "@/state/notifications";
 import { storeFileBlock, storeImageBlock } from "@/components/workspace/canvasCapture";
 import { makeAttachmentFilename } from "@/state/db/opfs";
 import { serializeBlock } from "@/state/blocks";
-import { MAX_ATTACHMENT_BYTES } from "@/state/attachmentLimits";
+import { AttachmentInputGuidance } from "../../../AttachmentInputGuidance";
+import { IMAGE_ACCEPT, MAX_ATTACHMENT_BYTES } from "@/state/attachmentLimits";
 import { storeAttachment } from "@/state/share/attachments";
 import { useWorkspace } from "@/state/workspace";
 
@@ -52,6 +53,9 @@ export function BlockMenu() {
   const push = useToasts((s) => s.push);
   const [loading, getEditor] = useInstance();
 
+  const [saving, setSaving] = useState(false);
+  const [saveFailed, setSaveFailed] = useState(false);
+  const savingRef = useRef(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [linkOpen, setLinkOpen] = useState(false);
@@ -102,7 +106,17 @@ export function BlockMenu() {
       const tr = state.tr.insert(insertPos, parsedDoc.content);
       view.dispatch(tr.scrollIntoView());
       cursorPosRef.current = null;
+      // cmd-z-undo: 넣은 뒤 편집기에 포커스를 돌린다 — 포커스가 밖에 있으면 cmd+z가 편집기
+      // 기록에 닿지 않는다. 메모 창이 열려 있어 캔버스 cmd+z도 막혀 아무것도 안 된다.
+      view.focus();
     });
+  };
+
+  /** 대화상자가 닫힐 때 포커스를 메뉴 버튼(사라졌을 수 있다) 대신 편집기로 보낸다. */
+  const focusEditorOnClose = (e: Event) => {
+    e.preventDefault();
+    if (loading) return;
+    getEditor().action((ctx: Ctx) => ctx.get(editorViewCtx).focus());
   };
 
   /* ── 마운트 해제 정리(리뷰 P1-1: 마이크 누수) ───────────────────
@@ -129,22 +143,19 @@ export function BlockMenu() {
     };
   }, []);
 
-  /* ── 이미지 ─────────────────────────────────────────────────── */
-  const onPickImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const onPick = async (e: React.ChangeEvent<HTMLInputElement>, kind: "image" | "file") => {
     const file = e.target.files?.[0];
     e.target.value = "";
-    if (!file) return;
-    const md = await storeImageBlock(file);
-    if (md) insertBlockMarkdown(md);
-  };
-
-  /* ── 파일 ───────────────────────────────────────────────────── */
-  const onPickFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
-    const md = await storeFileBlock(file);
-    if (md) insertBlockMarkdown(md);
+    if (!file || loading || savingRef.current) return;
+    savingRef.current = true;
+    setSaving(true);
+    setSaveFailed(false);
+    try {
+      const md = await (kind === "image" ? storeImageBlock(file) : storeFileBlock(file));
+      if (md) insertBlockMarkdown(md);
+      else setSaveFailed(true);
+    } catch { setSaveFailed(true); }
+    finally { savingRef.current = false; setSaving(false); }
   };
 
   /* ── 링크 ───────────────────────────────────────────────────── */
@@ -247,14 +258,16 @@ export function BlockMenu() {
 
   return (
     <>
+      {saving && <p role="status" className="text-xs">{t("reviewGuidance.attachment.saving")}</p>}
+      {saveFailed && <p role="alert" className="text-xs">{t("reviewGuidance.attachment.failed")}</p>}
       <input
         ref={imageInputRef}
         type="file"
-        accept="image/*"
+        accept={IMAGE_ACCEPT}
         className="hidden"
-        onChange={(e) => void onPickImage(e)}
+        onChange={(e) => void onPick(e, "image")}
       />
-      <input ref={fileInputRef} type="file" className="hidden" onChange={(e) => void onPickFile(e)} />
+      <input ref={fileInputRef} type="file" className="hidden" onChange={(e) => void onPick(e, "file")} />
 
       <DropdownMenu.Root>
         <DropdownMenu.Trigger asChild>
@@ -271,13 +284,16 @@ export function BlockMenu() {
           <DropdownMenu.Content
             align="start"
             sideOffset={6}
-            className="z-[var(--z-panel)] min-w-40 rounded-lg border border-border bg-bg p-1 shadow-card-lift"
+            className="z-[var(--z-panel)] w-80 max-w-[calc(100vw-16px)] max-h-[70dvh] overflow-y-auto rounded-lg border border-border bg-bg p-1 shadow-card-lift"
           >
             <DropdownMenu.Item
+              disabled={saving || loading}
               className={itemClass}
               onSelect={() => imageInputRef.current?.click()}
             >
-              {t("workspace.memoEditor.blockMenu.image")}
+              <div>{t("workspace.memoEditor.blockMenu.image")}
+                <AttachmentInputGuidance kind="image" />
+              </div>
             </DropdownMenu.Item>
             <DropdownMenu.Item className={itemClass} onSelect={openLinkDialog}>
               {t("workspace.memoEditor.blockMenu.link")}
@@ -286,10 +302,13 @@ export function BlockMenu() {
               {t("workspace.memoEditor.blockMenu.audio")}
             </DropdownMenu.Item>
             <DropdownMenu.Item
+              disabled={saving || loading}
               className={itemClass}
               onSelect={() => fileInputRef.current?.click()}
             >
-              {t("workspace.memoEditor.blockMenu.file")}
+              <div>{t("workspace.memoEditor.blockMenu.file")}
+                <AttachmentInputGuidance kind="attachment" />
+              </div>
             </DropdownMenu.Item>
           </DropdownMenu.Content>
         </DropdownMenu.Portal>
@@ -302,6 +321,7 @@ export function BlockMenu() {
           <Dialog.Content
             className="fixed left-1/2 top-1/2 z-[var(--z-modal)] w-80 -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-bg p-3 shadow-card-lift focus:outline-none"
             aria-describedby={undefined}
+            onCloseAutoFocus={focusEditorOnClose}
           >
             <Dialog.Title className="mb-2 text-sm font-semibold text-text">
               {t("workspace.memoEditor.blockMenu.linkDialogTitle")}
@@ -360,6 +380,7 @@ export function BlockMenu() {
           <Dialog.Content
             className="fixed left-1/2 top-1/2 z-[var(--z-modal)] w-72 -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-bg p-3 shadow-card-lift focus:outline-none"
             aria-describedby={undefined}
+            onCloseAutoFocus={focusEditorOnClose}
           >
             <Dialog.Title className="mb-2 text-sm font-semibold text-text">
               {t("workspace.memoEditor.blockMenu.audioDialogTitle")}

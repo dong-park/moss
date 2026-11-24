@@ -7,6 +7,8 @@ export interface JwtClaims {
   sub?: string;
   typ?: string;
   boardId?: string;
+  /** Google ID 토큰의 메일 주소. 표시용이다. */
+  email?: string;
 }
 
 function base64UrlDecode(segment: string): string {

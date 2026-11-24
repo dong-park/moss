@@ -14,7 +14,9 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { MossBridge, MossNotConnectedError } from "./bridge.ts";
 import { aiEmbed, aiSummarize, aiConnectionLabel, type SummarizeKind } from "./ai.ts";
-import { resolveImageInput, resolveMediaInput, fetchImageAsBase64 } from "./image.ts";
+import { resolveImageInput, resolveMediaInput, fetchImageAsBase64, preparePhoto } from "./image.ts";
+import { layoutMindmap } from "./mindmap.ts";
+import { layoutGroups } from "./groups.ts";
 import {
   devTest,
   devLint,
@@ -118,6 +120,9 @@ server.registerTool(
  * base64+mimeType로 정규화하고, link는 url/title 그대로 브리지에 넘긴다.
  * 브리지가 `serializeBlock`으로 본문 블록을 만든다(문법·이스케이프 단일 출처).
  */
+/** 연결선이 카드에 붙는 변. */
+const sideSchema = z.enum(["top", "right", "bottom", "left"]);
+
 const bridgeBlockSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("image"),
@@ -181,6 +186,10 @@ server.registerTool(
       "본문(text 메모)을 만들고 id를 반환한다. 이미지·녹음·파일·링크는 blocks[]로 넣으면 본문 블록이 된다. boardId를 주면 그 보드에 직접 생성한다(현재 보드면 화면 즉시 렌더, 다른 보드면 전환 시 보임). 생략 시 현재 보드.",
     inputSchema: {
       content: z.string().optional().describe("본문 마크다운(코드·체크리스트·인용 포함)."),
+      title: z
+        .string()
+        .optional()
+        .describe("제목 한 줄(80자까지). 메모지 앞면에는 제목만 보이고 본문은 메모 창에서 보인다."),
       boardId: z.string().optional().describe('대상 보드 id 또는 "system"(생략 시 현재 보드)'),
       x: z.number().optional().describe("월드 좌표 x (기본 40)"),
       y: z.number().optional().describe("월드 좌표 y (기본 40)"),
@@ -195,19 +204,22 @@ server.registerTool(
         .describe(
           "본문에 박을 블록들(이미지·녹음·파일·링크). placeholder로 {{이름}} 자리에 넣고, 없으면 끝에 붙인다. 블록이 있으면 width 기본 720.",
         ),
+      color: z.enum(["blue", "lime", "purple", "pink"]).optional().describe("메모 색(생략 시 기본 노랑)"),
     },
   },
-  async ({ content, boardId, x, y, width, height, blocks }) =>
+  async ({ content, title, boardId, x, y, width, height, blocks, color }) =>
     attempt(async () => {
       const resolved = blocks ? await resolveBridgeBlocks(blocks) : undefined;
       return bridge.call("notes.create", {
         content,
+        title,
         boardId,
         x,
         y,
         width,
         height,
         blocks: resolved,
+        color,
       });
     }),
 );
@@ -262,13 +274,20 @@ server.registerTool(
 server.registerTool(
   "notes_update",
   {
-    description: "기존 카드의 본문을 교체한다(보드 무관, id로). 현재 보드면 화면 반영.",
+    description:
+      "기존 카드의 본문·제목·위치·크기를 바꾼다(보드 무관, id로). 준 항목만 바뀐다. title을 빈 문자열로 주면 제목이 지워진다. 메모는 정사각형이라 width를 주면 height도 같이 맞는다. 현재 보드면 화면 반영.",
     inputSchema: {
       id: z.string().describe("카드 id"),
-      content: z.string().describe("새 본문(마크다운)"),
+      content: z.string().optional().describe("새 본문(마크다운)"),
+      title: z.string().optional().describe("새 제목 한 줄(80자까지). 빈 문자열이면 제목 지우기"),
+      x: z.number().optional().describe("월드 좌표 x"),
+      y: z.number().optional().describe("월드 좌표 y"),
+      width: z.number().optional().describe("카드 폭(px)"),
+      height: z.number().optional().describe("카드 높이(px). 메모는 무시하고 폭에 맞춘다"),
     },
   },
-  async ({ id, content }) => viaBridge("notes.update", { id, content }),
+  async ({ id, content, title, x, y, width, height }) =>
+    viaBridge("notes.update", { id, content, title, x, y, width, height }),
 );
 
 server.registerTool(
@@ -447,7 +466,8 @@ server.registerTool(
 server.registerTool(
   "boards_delete",
   {
-    description: "보드를 삭제한다(시스템 보드 불가). 현재 보드였으면 시스템 보드로 복귀.",
+    description:
+      "보드를 삭제한다(시스템 보드 불가). 보드에 있던 메모는 지워지지 않고 시스템 보드로 옮겨진다 — 다시 그리려고 지울 때는 메모를 먼저 notes_delete로 지운다. 현재 보드였으면 시스템 보드로 복귀.",
     inputSchema: { id: z.string().describe("보드 id") },
   },
   async ({ id }) => viaBridge("boards.delete", { id }),
@@ -482,10 +502,250 @@ server.registerTool(
       sourceNoteId: z.string().describe("출발 노트 id"),
       targetNoteId: z.string().describe("도착 노트 id"),
       label: z.string().optional().describe("연결 라벨(선택)"),
+      sourceSide: sideSchema.optional().describe("출발 카드에서 선이 나가는 변(생략 시 상대 쪽 변)"),
+      targetSide: sideSchema.optional().describe("도착 카드에서 선이 닿는 변(생략 시 상대 쪽 변)"),
     },
   },
-  async ({ sourceNoteId, targetNoteId, label }) =>
-    viaBridge("connections.create", { sourceNoteId, targetNoteId, label }),
+  async ({ sourceNoteId, targetNoteId, label, sourceSide, targetSide }) =>
+    viaBridge("connections.create", { sourceNoteId, targetNoteId, label, sourceSide, targetSide }),
+);
+
+/* ── 생각 지도: 중심-갈래-세부 나무 + 갈래 사이 연결을 한 번에 그린다 ── */
+
+/** 상태 → 메모 색. 정보(info)는 기본 노랑. */
+const STATUS_COLOR = { done: "lime", todo: "pink", check: "purple", info: undefined } as const;
+
+/** 로컬 사진 파일 하나로 사진 카드를 만든다. fit이 있으면 그 정사각형 칸 안에 비율을 지켜 가운데 놓는다. */
+async function createPhotoCard(
+  path: string,
+  at: { x: number; y: number },
+  opts: { width?: number; fit?: number; caption?: string; boardId?: string } = {},
+  rotation?: number,
+) {
+  const p = await preparePhoto(path);
+  const ratio = p.width > 0 && p.height > 0 ? p.height / p.width : 1;
+  let { x, y } = at;
+  let width = opts.width;
+  if (opts.fit !== undefined) {
+    width = ratio > 1 ? opts.fit / ratio : opts.fit;
+    x += (opts.fit - width) / 2;
+    y += (opts.fit - width * ratio) / 2;
+  }
+  return (await bridge.call("photos.create", {
+    boardId: opts.boardId,
+    dataBase64: p.dataBase64,
+    mimeType: p.mimeType,
+    naturalW: p.width,
+    naturalH: p.height,
+    x: Math.round(x),
+    y: Math.round(y),
+    width: width !== undefined ? Math.round(width) : undefined,
+    caption: opts.caption,
+    rotation,
+  })) as { id: string };
+}
+
+server.registerTool(
+  "photos_create",
+  {
+    description:
+      "로컬 사진 파일로 사진 카드를 만든다. 메모 본문 속 이미지와 달리 사진 자체가 보드에 보인다(앞면이 사진). 큰 사진은 긴 변 1600px로 줄여 올린다. 현재 보드에만 만든다. 메모판 안에 놓으면 판에 들어간다.",
+    inputSchema: {
+      path: z.string().describe("로컬 이미지 파일 경로"),
+      x: z.number().optional(),
+      y: z.number().optional(),
+      width: z.number().optional().describe("카드 폭(기본 240). 높이는 원본 비율"),
+      caption: z.string().optional().describe("사진 아래 캡션 한 줄"),
+      boardId: z.string().optional().describe("현재 보드여야 한다"),
+    },
+  },
+  async ({ path, x, y, width, caption, boardId }) =>
+    attempt(() => createPhotoCard(path, { x: x ?? 40, y: y ?? 40 }, { width, caption, boardId })),
+);
+
+server.registerTool(
+  "map_groups",
+  {
+    description:
+      "주제별로 묶어 정리한다. 주제(group)마다 메모판 하나를 만들고 그 안에 메모를 격자로 놓는다. photos를 주면 메모 뒤 칸에 사진 카드로 놓는다. 메모 색은 상태를 뜻한다(done=연두 확정, todo=분홍 할 일, check=보라 확인 필요, info=노랑). 선은 links로 준 관계만 긋는다 — 같은 판 안의 관계는 판이 이미 말하므로 판을 넘는 관계에만 쓴다. 대상 보드로 전환한 뒤 그린다. 반환은 key→id.",
+    inputSchema: {
+      boardId: z.string().optional().describe("대상 보드 id(생략 시 현재 보드). 다른 보드면 전환한다"),
+      origin: z.object({ x: z.number(), y: z.number() }).optional(),
+      center: z
+        .object({ title: z.string(), content: z.string().optional() })
+        .optional()
+        .describe("맨 위 가운데 제목 메모(선택)"),
+      groups: z
+        .array(
+          z.object({
+            key: z.string(),
+            name: z.string().describe("메모판 이름"),
+            notes: z
+              .array(
+                z.object({
+                  key: z.string(),
+                  title: z.string().describe("앞면 제목 한 줄"),
+                  content: z.string().optional().describe("본문 마크다운(창에서 보인다)"),
+                  status: z.enum(["done", "todo", "check", "info"]).optional().describe("기본 info"),
+                }),
+              )
+              .default([]),
+            photos: z
+              .array(z.object({ path: z.string(), caption: z.string().optional() }))
+              .optional()
+              .describe("판 안 메모 뒤에 놓을 사진(로컬 경로). 앞면에 사진이 보이는 사진 카드가 된다"),
+          }),
+        )
+        .min(1),
+      links: z
+        .array(z.object({ from: z.string(), to: z.string(), label: z.string().optional() }))
+        .optional()
+        .describe("메모 key끼리의 관계선"),
+      noteCols: z.number().int().min(1).max(5).optional().describe("판 안 한 줄 메모 수(기본 3)"),
+      groupCols: z.number().int().min(1).max(6).optional().describe("한 줄 판 수(기본 3)"),
+      style: z
+        .enum(["grid", "wall"])
+        .optional()
+        .describe("grid=줄 맞춘 판(기본), wall=손으로 붙인 벽(메모·사진을 ±2° 기울이고 살짝 흩뜨림)"),
+    },
+  },
+  async ({ boardId, origin, center, groups, links, noteCols, groupCols, style }) =>
+    attempt(async () => {
+      const wall = style === "wall";
+      const L = layoutGroups(
+        {
+          hasCenter: center !== undefined,
+          groups: groups.map((g) => ({
+            key: g.key,
+            notes: [...g.notes.map((n) => n.key), ...(g.photos ?? []).map((_, i) => `${g.key}#photo${i}`)],
+          })),
+        },
+        {
+          origin,
+          noteCols,
+          groupCols,
+          ...(wall ? { jitter: { pos: 12, rot: 2, group: 30 }, groupGapX: 180, groupGapY: 200 } : {}),
+        },
+      );
+      const noteKeys = new Set(groups.flatMap((g) => g.notes.map((n) => n.key)));
+      for (const l of links ?? []) {
+        if (!noteKeys.has(l.from) || !noteKeys.has(l.to)) throw new Error(`links에 없는 key: ${l.from}→${l.to}`);
+      }
+      // 판은 현재 보드에만 만들 수 있다 — 대상 보드로 먼저 전환한다.
+      if (boardId) await bridge.call("boards.switch", { id: boardId });
+      const ids: Record<string, string> = {};
+      if (center && L.center) {
+        const r = (await bridge.call("notes.create", {
+          title: center.title, content: center.content ?? "", ...L.center,
+          ...(wall ? { rotation: -1 } : {}),
+        })) as { id: string };
+        ids.center = r.id;
+      }
+      for (const g of groups) {
+        const f = L.frames[g.key]!;
+        const r = (await bridge.call("frames.create", { name: g.name, ...f })) as { id: string };
+        ids[g.key] = r.id;
+        // 판을 먼저 만들어야 그 안에 놓인 메모가 판 소속이 된다.
+        for (const n of g.notes) {
+          const p = L.notes[n.key]!;
+          const m = (await bridge.call("notes.create", {
+            title: n.title,
+            content: n.content ?? "",
+            color: STATUS_COLOR[n.status ?? "info"],
+            x: p.x, y: p.y, width: p.width, rotation: p.rotation,
+          })) as { id: string };
+          ids[n.key] = m.id;
+        }
+        for (const [i, ph] of (g.photos ?? []).entries()) {
+          const cell = L.notes[`${g.key}#photo${i}`]!;
+          const r = await createPhotoCard(ph.path, cell, { fit: cell.width, caption: ph.caption }, cell.rotation);
+          ids[`${g.key}#photo${i}`] = r.id;
+        }
+      }
+      for (const l of links ?? []) {
+        await bridge.call("connections.create", { sourceNoteId: ids[l.from], targetNoteId: ids[l.to], label: l.label });
+      }
+      const photos = groups.reduce((s, g) => s + (g.photos?.length ?? 0), 0);
+      return { ids, frames: groups.length, notes: noteKeys.size, photos, connections: links?.length ?? 0 };
+    }),
+);
+
+server.registerTool(
+  "map_create",
+  {
+    description:
+      "생각을 지도로 정리한다. 중심 노드 하나(parent 없음)에서 갈래와 세부를 parent로 잇는 나무를 주면, 마인드맵처럼 좌우로 펼쳐 메모와 연결선을 함께 만든다. 나무 밖의 관계(근거·기한·영향 등)는 links로 이어 라벨을 단다. 메모 앞면에는 title만 보이고 content는 메모 창에서 보인다. 반환은 key→메모 id.",
+    inputSchema: {
+      boardId: z.string().optional().describe('대상 보드 id 또는 "system"(생략 시 현재 보드)'),
+      layout: z.enum(["mindmap", "tree"]).optional().describe("mindmap=좌우로 펼침(기본), tree=오른쪽으로만"),
+      origin: z.object({ x: z.number(), y: z.number() }).optional().describe("중심 메모 좌상단 월드 좌표(기본 40,40)"),
+      size: z.number().optional().describe("메모 한 변(기본 240, 중심은 320)"),
+      nodes: z
+        .array(
+          z.object({
+            key: z.string().describe("이 호출 안에서 쓰는 노드 이름(links·parent가 가리킨다)"),
+            title: z.string().describe("메모 앞면 제목 한 줄"),
+            content: z.string().optional().describe("메모 본문 마크다운(창에서 보인다)"),
+            parent: z.string().optional().describe("부모 노드 key. 중심 노드만 생략"),
+            edgeLabel: z.string().optional().describe("부모→이 노드 선의 라벨"),
+            blocks: z.array(bridgeBlockSchema).optional().describe("본문 블록(이미지 등), notes_create와 같다"),
+          }),
+        )
+        .min(1),
+      links: z
+        .array(z.object({ from: z.string(), to: z.string(), label: z.string().optional() }))
+        .optional()
+        .describe("나무 밖의 관계선(노드 key끼리)"),
+    },
+  },
+  async ({ boardId, layout, origin, size, nodes, links }) =>
+    attempt(async () => {
+      const { nodes: placed, edges } = layoutMindmap(nodes, {
+        layout,
+        origin,
+        size,
+        rootSize: size !== undefined ? Math.round(size * 4 / 3) : undefined,
+      });
+      const byKey = new Map(nodes.map((n) => [n.key, n]));
+      for (const l of links ?? []) {
+        if (!byKey.has(l.from) || !byKey.has(l.to)) throw new Error(`links에 없는 key: ${l.from}→${l.to}`);
+      }
+      const ids = new Map<string, string>();
+      for (const p of placed) {
+        const n = byKey.get(p.key)!;
+        const blocks = n.blocks ? await resolveBridgeBlocks(n.blocks) : undefined;
+        const r = (await bridge.call("notes.create", {
+          content: n.content ?? "",
+          title: n.title,
+          boardId,
+          x: p.x,
+          y: p.y,
+          width: p.size,
+          blocks,
+        })) as { id: string };
+        ids.set(p.key, r.id);
+      }
+      let connections = 0;
+      for (const e of edges) {
+        await bridge.call("connections.create", {
+          sourceNoteId: ids.get(e.from),
+          targetNoteId: ids.get(e.to),
+          sourceSide: e.sourceSide,
+          targetSide: e.targetSide,
+          label: byKey.get(e.to)!.edgeLabel,
+        });
+        connections++;
+      }
+      for (const l of links ?? []) {
+        await bridge.call("connections.create", {
+          sourceNoteId: ids.get(l.from),
+          targetNoteId: ids.get(l.to),
+          label: l.label,
+        });
+        connections++;
+      }
+      return { nodes: Object.fromEntries(ids), connections };
+    }),
 );
 
 server.registerTool(
@@ -497,7 +757,7 @@ server.registerTool(
   async ({ id }) => viaBridge("connections.delete", { id }),
 );
 
-/* ── T6: AI 도구 (HTTP → 실행 중 moss dev 서버) ──────────────── */
+/* ── T6: AI 도구 (브리지 → moss 탭의 로그인 세션 → AI 라우트) ──────────────── */
 
 server.registerTool(
   "ai_embed",
@@ -505,7 +765,7 @@ server.registerTool(
     description: "텍스트 배치를 임베딩 벡터로 변환한다(POST /api/ai/embed). 1~50개.",
     inputSchema: { texts: z.array(z.string().min(1)).min(1).max(50).describe("임베딩할 텍스트들") },
   },
-  async ({ texts }) => attempt(() => aiEmbed(texts)),
+  async ({ texts }) => attempt(() => aiEmbed(texts, { bridge })),
 );
 
 server.registerTool(
@@ -517,7 +777,7 @@ server.registerTool(
       kind: z.enum(["flow", "cluster", "rhythm"]).describe("요약 종류"),
     },
   },
-  async ({ texts, kind }) => attempt(() => aiSummarize(texts, kind as SummarizeKind)),
+  async ({ texts, kind }) => attempt(() => aiSummarize(texts, kind as SummarizeKind, { bridge })),
 );
 
 server.registerTool(
@@ -529,7 +789,7 @@ server.registerTool(
       textB: z.string().min(1).max(4000).describe("두 번째 텍스트"),
     },
   },
-  async ({ textA, textB }) => attempt(() => aiConnectionLabel(textA, textB)),
+  async ({ textA, textB }) => attempt(() => aiConnectionLabel(textA, textB, { bridge })),
 );
 
 server.registerTool(

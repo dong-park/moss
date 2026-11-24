@@ -1,0 +1,23 @@
+{
+  "surface": "Ego touch emulation, not real device",
+  "folder": "c-mwc66bn3-2",
+  "a": "c-mwc6794q-3",
+  "b": "c-mwc67aqp-4",
+  "url": "https://moss.dongpark.dev/b/8de50389-8f34-4590-9347-23d9dee4ea3e",
+  "before": {
+    "id": "c-mwc67aqp-4",
+    "readonly": false,
+    "active": "BODY",
+    "resize": 0,
+    "input": {
+      "x": 200.7139663696289,
+      "y": 462.248779296875
+    }
+  },
+  "after": {
+    "active": "INPUT",
+    "label": "링크",
+    "readonly": false
+  },
+  "screenshot": "/tmp/moss-mobile-repro-20261111/ego-link-retap.png"
+}

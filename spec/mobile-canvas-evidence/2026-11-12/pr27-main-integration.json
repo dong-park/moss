@@ -1,0 +1,43 @@
+{
+  "codeHead": "281ae7e",
+  "webTree": "7f317ec11c8391b8115fcefbac0ea17e55297ff1",
+  "client": "Ego Chromium mobile/touch emulation; local 127.0.0.1:3310; not physical Android or production authentication",
+  "viewport": {
+    "width": 411,
+    "height": 752
+  },
+  "memo": {
+    "firstRenderEditCount": 1,
+    "existingTitleSaved": true,
+    "newMemoOpenedEditorImmediately": true,
+    "newTitleVisibleAfterDoneAndFit": true,
+    "note": "New memo was initially outside the rendered viewport; Fit All made the persisted title visible."
+  },
+  "link": {
+    "genericEditCount": 0,
+    "urlAfterCancel": "https://example.com/pr27"
+  },
+  "connectionResize": {
+    "source": "local merged code 281ae7e; Ego mobile/touch emulation",
+    "duringConnect": {
+      "move": false,
+      "genericEdit": false
+    },
+    "before": {
+      "move": false,
+      "width": "240px",
+      "world": "translate(0px, 0px) scale(1)",
+      "x": 329.97747802734375,
+      "y": 450.6753692626953
+    },
+    "after": {
+      "width": "270px",
+      "world": "translate(0px, 0px) scale(1)",
+      "lines": 1
+    }
+  },
+  "cleanup": {
+    "removedOwnedCards": 4,
+    "confirmation": "Owned QA cards removed: 4. Remaining matches: 0."
+  }
+}

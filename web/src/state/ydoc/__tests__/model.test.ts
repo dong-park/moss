@@ -68,6 +68,26 @@ describe("Y.Map ↔ 행 타입 변환", () => {
     expect(got.mediaType).toBe("image/png");
   });
 
+  it("판 행의 attachmentRef·mediaType·content(bg)가 왕복한다", () => {
+    const frame = fullNote({
+      id: "frame-1",
+      kind: "frame",
+      frameId: undefined,
+      attachmentRef: "opfs:bg.png",
+      mediaType: "image/png",
+      content: JSON.stringify({ name: "회고", bg: { w: 800, h: 400 } }),
+    });
+    const doc = new Y.Doc();
+    const map = noteToYMap(frame);
+    notesMap(doc).set(frame.id, map);
+
+    const got = yMapToNote(map);
+    expect(got.kind).toBe("frame");
+    expect(got.attachmentRef).toBe("opfs:bg.png");
+    expect(got.mediaType).toBe("image/png");
+    expect(JSON.parse(got.content).bg).toEqual({ w: 800, h: 400 });
+  });
+
   it("Note 선택 필드가 없으면 키도 없다", () => {
     const note = fullNote({
       boardId: null,

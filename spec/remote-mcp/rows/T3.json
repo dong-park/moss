@@ -1,0 +1,17 @@
+{
+  "id": "T3",
+  "confidence": "mid",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": [],
+  "kind": "task",
+  "title": "웹과 sync가 같은 문서 모델을 쓴다",
+  "given": "모델 정의가 공용 패키지에 있다",
+  "when": "웹 번들과 sync 서버를 빌드한다",
+  "then": "두 곳 모두 같은 패키지를 가져오고 필드 목록은 한 곳에만 있다. 확인: web과 sync에서 같은 필드 목록 테스트 통과."
+}

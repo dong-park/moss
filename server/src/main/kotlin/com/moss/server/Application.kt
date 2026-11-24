@@ -6,7 +6,10 @@ import com.moss.server.auth.TokenService
 import com.moss.server.auth.authRoutes
 import com.moss.server.auth.installAuthRateLimits
 import com.moss.server.boards.BoardRepository
+import com.moss.server.boards.SignupPolicy
 import com.moss.server.boards.boardRoutes
+import com.moss.server.boards.mcpFileRoutes
+import com.moss.server.oauth.oauthRoutes
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
@@ -63,7 +66,11 @@ fun Application.mossModule(
             refreshTtlSeconds = config.refreshTtlSeconds,
             boardTtlSeconds = config.boardTokenTtlSeconds,
         ),
-        repo = BoardRepository(config.maxMembersPerBoard, config.maxBoardFileBytes),
+        repo = BoardRepository(
+            config.maxMembersPerBoard,
+            config.maxBoardFileBytes,
+            signupPolicy = SignupPolicy(config.accountCap, config.termsVersion),
+        ),
         googleVerifier = googleVerifier,
         syncClose = SyncCloseClient(config.syncInternalUrl, config.syncInternalSecret),
         fileStore = FileStore(java.nio.file.Path.of(config.filesDir)),
@@ -73,7 +80,7 @@ fun Application.mossModule(
         json(Json { ignoreUnknownKeys = true; encodeDefaults = true })
     }
     install(CallLogging) { level = Level.INFO }
-    installAuthRateLimits()
+    installAuthRateLimits(config.trustedProxyHops)
     install(CORS) {
         config.allowedOrigins.forEach { origin ->
             val (scheme, host) = origin.split("://", limit = 2)
@@ -110,7 +117,10 @@ fun Application.mossModule(
 
     routing {
         get("/health") { call.respond(HttpStatusCode.OK, HealthResponse("ok")) }
+        deploymentRoutes(dataSource, config.syncInternalSecret)
         authRoutes(server)
         boardRoutes(server)
+        mcpFileRoutes(server)
+        oauthRoutes(server)
     }
 }

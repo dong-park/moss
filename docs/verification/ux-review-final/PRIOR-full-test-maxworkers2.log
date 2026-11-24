@@ -1,0 +1,190 @@
+$ vitest run "--maxWorkers=2"
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - ESM syntax in a file loaded as CommonJS (vitest.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v4.1.12 /home/dongpark/.goat/worktrees/feat-ux-review-save-sta-2d11b7bb8811d3c8/review-ux-integration-r-94db46f22de1394d/web
+
+ ❯ src/components/workspace/__tests__/MobileCardControls.test.tsx (12 tests | 12 failed) 305ms
+   × selected mobile link offers explicit open/edit and selecting it leaves the keyboard closed 80ms
+   × touching the target in connection mode connects without selecting or opening it 28ms
+   × dragging while choosing a connection target pans without connecting 18ms
+   × connection target controls cannot activate through the compatibility click 15ms
+   × mouse input can finish an explicit mobile connection mode on hybrid devices 17ms
+   × keeps numeric resize controls above the mobile keyboard 17ms
+   × numeric input reflects the clamped width even when the card is already at its limit 20ms
+   × link actions keep URL editing as the only edit entry while retaining explicit movement 17ms
+   × hides the floating move action during 연결 17ms
+   × hides the floating move action during 크기 15ms
+   × hides the floating move action during 주소 수정 26ms
+   × main memo edit remains singular and enters the explicit edit mode 35ms
+ ❯ src/components/workspace/__tests__/ZoomBar.test.tsx (8 tests | 1 failed) 233ms
+   × keeps the tablet zoom row above the full dock and restores desktop placement on resize 50ms
+stderr | src/components/workspace/__tests__/undo.review3.test.tsx > 자동 측정은 자기 칸만 기록 밖으로 쓴다 > 글상자 왼쪽 핸들로 폭을 줄이면 cmd+z 1번에 폭과 x가 함께 돌아간다
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+
+stderr | src/components/workspace/__tests__/undo.review3.test.tsx > 자동 측정은 자기 칸만 기록 밖으로 쓴다 > 글상자 왼쪽 핸들로 폭을 줄이면 cmd+z 1번에 폭과 x가 함께 돌아간다
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+Invalid access: Add Yjs type to a document before reading data.
+
+ ❯ src/components/workspace/__tests__/undo.review3.test.tsx (25 tests | 1 failed) 26300ms
+     × 글상자 왼쪽 핸들로 폭을 줄이면 cmd+z 1번에 폭과 x가 함께 돌아간다 57ms
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 14 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/components/workspace/__tests__/MobileCardControls.test.tsx > selected mobile link offers explicit open/edit and selecting it leaves the keyboard closed
+ FAIL  src/components/workspace/__tests__/MobileCardControls.test.tsx > touching the target in connection mode connects without selecting or opening it
+ FAIL  src/components/workspace/__tests__/MobileCardControls.test.tsx > dragging while choosing a connection target pans without connecting
+ FAIL  src/components/workspace/__tests__/MobileCardControls.test.tsx > connection target controls cannot activate through the compatibility click
+ FAIL  src/components/workspace/__tests__/MobileCardControls.test.tsx > mouse input can finish an explicit mobile connection mode on hybrid devices
+ FAIL  src/components/workspace/__tests__/MobileCardControls.test.tsx > keeps numeric resize controls above the mobile keyboard
+ FAIL  src/components/workspace/__tests__/MobileCardControls.test.tsx > numeric input reflects the clamped width even when the card is already at its limit
+ FAIL  src/components/workspace/__tests__/MobileCardControls.test.tsx > link actions keep URL editing as the only edit entry while retaining explicit movement
+ FAIL  src/components/workspace/__tests__/MobileCardControls.test.tsx > hides the floating move action during 연결
+ FAIL  src/components/workspace/__tests__/MobileCardControls.test.tsx > hides the floating move action during 크기
+ FAIL  src/components/workspace/__tests__/MobileCardControls.test.tsx > hides the floating move action during 주소 수정
+ FAIL  src/components/workspace/__tests__/MobileCardControls.test.tsx > main memo edit remains singular and enters the explicit edit mode
+Error: [vitest] No "useStackedZoomControls" export is defined on the "../useCompactControls" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+vi.mock(import("../useCompactControls"), async (importOriginal) => {
+  const actual = await importOriginal()
+  return {
+    ...actual,
+    // your mocked methods
+  }
+})
+
+ ❯ ZoomBar src/components/workspace/ZoomBar.tsx:15:19
+     13|   const t = useT();
+     14|   const compact = useCompactControls();
+     15|   const stacked = useStackedZoomControls();
+       |                   ^
+     16|   const scale = useWorkspace((s) => s.viewport.scale);
+     17|   const setScale = useWorkspace((s) => s.setScale);
+ ❯ Object.react_stack_bottom_frame node_modules/react-dom/cjs/react-dom-client.development.js:25904:20
+ ❯ renderWithHooks node_modules/react-dom/cjs/react-dom-client.development.js:7662:22
+ ❯ updateFunctionComponent node_modules/react-dom/cjs/react-dom-client.development.js:10166:19
+ ❯ beginWork node_modules/react-dom/cjs/react-dom-client.development.js:11778:18
+ ❯ runWithFiberInDEV node_modules/react-dom/cjs/react-dom-client.development.js:874:13
+ ❯ performUnitOfWork node_modules/react-dom/cjs/react-dom-client.development.js:17641:22
+ ❯ workLoopSync node_modules/react-dom/cjs/react-dom-client.development.js:17469:41
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/14]⎯
+
+ FAIL  src/components/workspace/__tests__/ZoomBar.test.tsx > keeps the tablet zoom row above the full dock and restores desktop placement on resize
+AssertionError: expected 'calc(84px + env(0px * , * safe-area-i…' to be 'calc(84px + env(safe-area-inset-botto…' // Object.is equality
+
+Expected: "calc(84px + env(safe-area-inset-bottom, 0px))"
+Received: "calc(84px + env(0px * , * safe-area-inset-bottom))"
+
+ ❯ src/components/workspace/__tests__/ZoomBar.test.tsx:32:31
+     30|     const { container } = wrap();
+     31|     const zoom = container.querySelector<HTMLElement>('[data-canvas-co…
+     32|     expect(zoom.style.bottom).toBe(`calc(${zoomBottom}px + env(safe-ar…
+       |                               ^
+     33|     act(() => { window.innerWidth = 1280; window.dispatchEvent(new Eve…
+     34|     expect(zoom.style.bottom).toBe("calc(20px + env(safe-area-inset-bo…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/14]⎯
+
+ FAIL  src/components/workspace/__tests__/undo.review3.test.tsx > 자동 측정은 자기 칸만 기록 밖으로 쓴다 > 글상자 왼쪽 핸들로 폭을 줄이면 cmd+z 1번에 폭과 x가 함께 돌아간다
+Error: `Tooltip` must be used within `TooltipProvider`
+ ❯ useContext node_modules/@radix-ui/react-context/src/create-context.tsx:158:12
+ ❯ Tooltip node_modules/@radix-ui/react-tooltip/src/tooltip.tsx:165:26
+ ❯ Object.react_stack_bottom_frame node_modules/react-dom/cjs/react-dom-client.development.js:25904:20
+ ❯ renderWithHooks node_modules/react-dom/cjs/react-dom-client.development.js:7662:22
+ ❯ updateFunctionComponent node_modules/react-dom/cjs/react-dom-client.development.js:10166:19
+ ❯ beginWork node_modules/react-dom/cjs/react-dom-client.development.js:11778:18
+ ❯ runWithFiberInDEV node_modules/react-dom/cjs/react-dom-client.development.js:874:13
+ ❯ performUnitOfWork node_modules/react-dom/cjs/react-dom-client.development.js:17641:22
+ ❯ workLoopSync node_modules/react-dom/cjs/react-dom-client.development.js:17469:41
+ ❯ renderRootSync node_modules/react-dom/cjs/react-dom-client.development.js:17450:11
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/14]⎯
+
+
+ Test Files  3 failed | 234 passed (237)
+      Tests  14 failed | 2064 passed | 8 skipped (2086)
+   Start at  02:12:18
+   Duration  278.44s (transform 6.39s, setup 55.26s, import 18.48s, tests 298.31s, environment 149.51s)
+
+error: script "test" exited with code 1
+===TEST_MW2_EXIT=1===

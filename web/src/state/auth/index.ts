@@ -10,8 +10,10 @@ export {
   type AuthApi,
 } from "./api";
 export {
+  attachGoogleSignIn,
+  GoogleClientIdMissingError,
   GoogleUnavailableError,
-  requestGoogleIdToken,
+  loadGis,
 } from "./googleIdentity";
 export {
   configureAuth,

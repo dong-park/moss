@@ -1,0 +1,30 @@
+{
+  "active": "BODY",
+  "viewport": 752.5714111328125,
+  "world": "translate(0px, 0px) scale(1)",
+  "lines": 1,
+  "actions": "−+조절 종료",
+  "handles": [
+    {
+      "dir": "e",
+      "x": 255.98744201660156,
+      "y": 147.55027770996094,
+      "w": 48.02513122558594,
+      "h": 48.02511215209961
+    }
+  ],
+  "cards": [
+    {
+      "id": "c-mwcaiiys-1",
+      "width": "240px",
+      "selected": "rgba(79, 124, 243, 0.45) solid 2px",
+      "face": "linkEmpty"
+    },
+    {
+      "id": "c-mwcaiiz0-2",
+      "width": "240px",
+      "selected": "none",
+      "face": "link"
+    }
+  ]
+}

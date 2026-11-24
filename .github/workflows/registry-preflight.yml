@@ -1,0 +1,30 @@
+name: registry-preflight
+# Operator diagnostic. With only this repository's ephemeral GITHUB_TOKEN (packages: read), runs the same
+# `publish.py registry` proof the release build runs before any push: the three fixed packages
+# ghcr.io/dong-park/moss-deploy-{web,server,sync} must return package metadata (HTTP 200, no redirect) that is
+# private, owned by dong-park and linked to dong-park/moss (repository id 1383130341), and must deny anonymous reads.
+# Metadata only: no registry login, no image pull/build/push, no attestation, no deployment, no production access.
+# Failures print one fixed `Rejected:` reason; the token, response bodies and exception details are never printed.
+on:
+  push:
+    branches: [fix/private-ghcr-releases]
+  workflow_dispatch:
+permissions:
+  contents: read
+  packages: read
+concurrency:
+  group: registry-preflight-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  registry:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Prove fixed GHCR packages are private and repository-linked (metadata only)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 scripts/deploy/publish.py registry

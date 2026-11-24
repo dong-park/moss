@@ -28,6 +28,8 @@ export class AuthRequestError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    /** 서버 오류 본문의 `error` 코드(예: quota_exceeded, too_large). 본문에 없으면 undefined. */
+    readonly code?: string,
   ) {
     super(message);
     this.name = "AuthRequestError";
@@ -51,10 +53,16 @@ export class InviteFullError extends Error {
 }
 
 export interface AuthApi {
-  googleLogin(idToken: string): Promise<AuthSession>;
-  signup(email: string, password: string, name: string): Promise<AuthSession>;
+  /** `termsVersion`은 신규가입 동의일 때만 보낸다. 기존 계정 로그인에는 필요 없다. */
+  googleLogin(idToken: string, termsVersion?: string): Promise<AuthSession>;
+  signup(email: string, password: string, name: string, termsVersion: string): Promise<AuthSession>;
   login(email: string, password: string): Promise<AuthSession>;
+  /** 계정이 없어도 성공한다. 원문 토큰은 응답에 없다. */
+  requestPasswordReset(email: string): Promise<void>;
+  confirmPasswordReset(token: string, password: string): Promise<void>;
   refresh(refreshToken: string): Promise<AuthSession>;
+  /** 서버가 이 리프레시 토큰만 폐기한다. 네트워크가 죽어도 호출자는 로컬 세션을 지운다. */
+  logout(refreshToken: string): Promise<void>;
   previewInvite(token: string): Promise<InvitePreview>;
   acceptInvite(token: string, accessToken: string): Promise<BoardSummary>;
 }
@@ -64,32 +72,79 @@ export interface AuthApi {
  * 문구를 그대로 쓰고, 없으면(비JSON·프록시 오류) null을 돌려준다 — 호출자가 상태 코드별
  * 기본 문구를 살릴 수 있게 한다. "/auth/login 401" 같은 기계 문구를 만들지 않는다.
  */
-export async function readErrorMessage(res: Response): Promise<string | null> {
+/** Ktor 오류 본문 `{error, message}`를 읽는다. 본문이 JSON이 아니면 둘 다 없다. */
+export async function readErrorBody(res: Response): Promise<{ code?: string; message?: string }> {
   try {
-    const body = (await res.json()) as { message?: unknown };
-    if (typeof body?.message === "string" && body.message) return body.message;
+    const body = (await res.json()) as { error?: unknown; message?: unknown };
+    return {
+      code: typeof body?.error === "string" && body.error ? body.error : undefined,
+      message: typeof body?.message === "string" && body.message ? body.message : undefined,
+    };
   } catch {
     // 본문이 JSON이 아니면 서버 문구 없음.
+    return {};
   }
-  return null;
 }
+
+export async function readErrorMessage(res: Response): Promise<string | null> {
+  return (await readErrorBody(res)).message ?? null;
+}
+
+/** 제한 시간을 넘겨 끊긴 요청의 `AuthRequestError.code`. status는 0이다. */
+export const REQUEST_TIMEOUT_CODE = "timeout";
+/** Google 로그인 요청 제한. 끊긴 요청이 서버에서 끝났어도 다시 보내면 기존 계정으로 로그인된다. */
+export const GOOGLE_LOGIN_TIMEOUT_MS = 15_000;
 
 async function postJson<T>(
   path: string,
   body: unknown,
   accessToken?: string,
+  timeoutMs?: number,
 ): Promise<T> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
-  const res = await fetch(`${apiBaseUrl()}${path}`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    throw new AuthRequestError((await readErrorMessage(res)) ?? "", res.status);
+  // 제한 시간은 선택이다. 주지 않으면 fetch 옵션에 signal 자체를 넣지 않는다.
+  const controller = timeoutMs ? new AbortController() : null;
+  let timedOut = false;
+  let expire: (() => void) | undefined;
+  const deadline = controller
+    ? new Promise<never>((_resolve, reject) => {
+        expire = () => reject(new AuthRequestError("", 0, REQUEST_TIMEOUT_CODE));
+      })
+    : null;
+  // 마감을 아무도 기다리지 않을 때 처리 안 된 거절로 남지 않게 한다.
+  deadline?.catch(() => {});
+  const timer = controller
+    ? setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+        expire?.();
+      }, timeoutMs)
+    : undefined;
+  // 제한은 본문을 다 읽을 때까지 건다. 헤더 뒤 본문이 멈춰도 abort와 마감이 본문 읽기를 끊는다.
+  function within<R>(work: Promise<R>): Promise<R> {
+    return deadline ? Promise.race([work, deadline]) : work;
   }
-  return (await res.json()) as T;
+  try {
+    const res = await within(
+      fetch(`${apiBaseUrl()}${path}`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+        ...(controller ? { signal: controller.signal } : {}),
+      }),
+    );
+    if (!res.ok) {
+      const { code, message } = await within(readErrorBody(res));
+      throw new AuthRequestError(message ?? "", res.status, code);
+    }
+    return (await within(res.json())) as T;
+  } catch (err) {
+    if (timedOut) throw new AuthRequestError("", 0, REQUEST_TIMEOUT_CODE);
+    throw err;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 function mapInviteStatus(err: unknown): Error {
@@ -100,11 +155,50 @@ function mapInviteStatus(err: unknown): Error {
 }
 
 export const realAuthApi: AuthApi = {
-  googleLogin: (idToken) => postJson<AuthSession>("/auth/google", { idToken }),
-  signup: (email, password, name) =>
-    postJson<AuthSession>("/auth/signup", { email, password, name }),
+  googleLogin: (idToken, termsVersion) =>
+    postJson<AuthSession>(
+      "/auth/google",
+      termsVersion ? { idToken, termsAccepted: true, termsVersion } : { idToken },
+      undefined,
+      GOOGLE_LOGIN_TIMEOUT_MS,
+    ),
+  signup: (email, password, name, termsVersion) =>
+    postJson<AuthSession>("/auth/signup", { email, password, name, termsAccepted: true, termsVersion }),
   login: (email, password) => postJson<AuthSession>("/auth/login", { email, password }),
+  requestPasswordReset: async (email) => {
+    const res = await fetch(`${apiBaseUrl()}/auth/password/reset-request`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
+    if (!res.ok) {
+      const { code, message } = await readErrorBody(res);
+      throw new AuthRequestError(message ?? "", res.status, code);
+    }
+  },
+  confirmPasswordReset: async (token, password) => {
+    const res = await fetch(`${apiBaseUrl()}/auth/password/reset`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token, password }),
+    });
+    if (!res.ok) {
+      const { code, message } = await readErrorBody(res);
+      throw new AuthRequestError(message ?? "", res.status, code);
+    }
+  },
   refresh: (refreshToken) => postJson<AuthSession>("/auth/refresh", { refreshToken }),
+  logout: async (refreshToken) => {
+    const res = await fetch(`${apiBaseUrl()}/auth/logout`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshToken }),
+    });
+    if (!res.ok) {
+      const { code, message } = await readErrorBody(res);
+      throw new AuthRequestError(message ?? "", res.status, code);
+    }
+  },
   previewInvite: async (token) => {
     try {
       return await postJson<InvitePreview>("/invites/preview", { token });

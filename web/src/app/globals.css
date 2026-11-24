@@ -12,6 +12,8 @@
   --color-panel: #ffffff;
   --color-border: #dadbde;
   --color-border-strong: #c3c5ca;
+  /* PZ-3: 메모판 선 — 배경 #ebecee 위에서 보이는 진하기. */
+  --color-frame-line: #aeb2ba;
   --color-text: #2c2e33;
   --color-text-muted: #6a6c72;
   --color-text-soft: #9a9ca2;
@@ -441,4 +443,36 @@ body {
 .moss-md .ProseMirror li[data-item-type="task"][data-checked="true"] > p {
   color: var(--color-text-muted);
   text-decoration: line-through;
+}
+
+/* ─────────────────────────────────────────────────────────────
+ * PZ: 줌 구간 표시 정책. Canvas world 레이어가 data-zoom-tier(near·mid·far)와
+ * --zoom-inv(1/배율)를 단다. 카드는 줌 때문에 다시 렌더하지 않고 이 규칙만 바뀐다.
+ * ───────────────────────────────────────────────────────────── */
+[data-frame-line] {
+  --frame-fill: rgba(255, 255, 255, 0.45);
+}
+[data-zoom-tier="far"] [data-frame-line] {
+  --frame-fill: rgba(255, 255, 255, 0.7);
+}
+[data-zoom-tier="far"] [data-frame-label] {
+  font-size: 16px;
+  font-weight: 800;
+}
+/* 보통·멀리: 메모 제목과 함 이름이 화면 기준 이 크기 밑으로 작아지지 않는다.
+ * 멀리서도 제목을 그대로 보여 준다(회색 줄 대신 글자, 2026-10-18 사용자 결정). */
+[data-zoom-tier="mid"] {
+  --memo-title-floor: 10px;
+  --board-name-floor: 10px;
+}
+[data-zoom-tier="far"] {
+  --memo-title-floor: 13px;
+  --board-name-floor: 13px;
+}
+
+/* The compact More menu owns this space until Radix closes it. */
+body:has([data-mobile-more-open="true"]) [data-canvas-control="zoom"][data-compact="true"],
+[data-mobile-more-open="true"] [data-dock-label="true"] {
+  visibility: hidden;
+  pointer-events: none;
 }

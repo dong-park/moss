@@ -1,4 +1,5 @@
 import { embedTexts } from "@/server/ai/embed";
+import { guardAiRequest } from "../guard";
 
 /**
  * POST /api/ai/embed (FEAT-ai-pipeline §6).
@@ -16,6 +17,9 @@ export const dynamic = "force-dynamic";
 const MAX_BATCH = 50;
 
 export async function POST(req: Request) {
+  const denied = await guardAiRequest(req);
+  if (denied) return denied;
+
   let payload: unknown;
   try {
     payload = await req.json();

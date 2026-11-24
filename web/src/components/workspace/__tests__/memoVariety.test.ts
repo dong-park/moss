@@ -121,3 +121,18 @@ describe("FEAT-memo-variety · 색조", () => {
     }
   });
 });
+describe("저장된 기울기(손으로 붙인 벽)", () => {
+  it("저장된 값이 있으면 그 각도, 없으면 id 해시 각도", async () => {
+    const { cardTilt, cardRotationDeg, memoBaseTransform, memoLiftedTransform } = await import("../memoVariety");
+    expect(cardTilt({ id: "m1", kind: "text", rotation: -1.7 })).toBe(-1.7);
+    expect(cardTilt({ id: "m1", kind: "text" })).toBe(cardRotationDeg("m1", "text"));
+    // 사진은 원래 안 기울지만, 저장된 값이 있으면 기운다.
+    expect(memoBaseTransform({ id: "p", kind: "photo" }, false)).toBeUndefined();
+    expect(memoBaseTransform({ id: "p", kind: "photo", rotation: 2.3 }, false)).toBe("rotate(2.3deg)");
+    expect(memoLiftedTransform({ id: "p", kind: "photo" }, false)).toBe("scale(1.03)");
+    expect(memoLiftedTransform({ id: "p", kind: "photo", rotation: 2.3 }, false)).toBe("scale(1.03) rotate(0.8deg)");
+    // 펜 모드와 메모판은 그대로 0.
+    expect(memoBaseTransform({ id: "m", kind: "text", rotation: 3 }, true)).toBe("rotate(0deg)");
+    expect(memoBaseTransform({ id: "f", kind: "frame", rotation: 3 }, false)).toBeUndefined();
+  });
+});

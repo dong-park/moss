@@ -1,0 +1,14 @@
+{
+  "id": "T10",
+  "kind": "task",
+  "title": "펜 모드에서 그린 획 전부가 펜 모드를 나온 뒤 캔버스 기록 1단계가 된다",
+  "given": "메모 Y에 펜 모드로 획 3개를 긋고 펜 모드를 나왔다",
+  "when": "캔버스에서 cmd+z를 1번 누르고 이어서 cmd+shift+z를 1번 누른다",
+  "then": "cmd+z 1번에 획 3개가 모두 사라진다. cmd+shift+z 1번에 획 3개가 다시 보인다. 확인: vitest로 readNote(Y).overlay를 본다. 펜 획이 문서에 쓰이는 시점은 T1에서 확인한다",
+  "confidence": "low",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {"answer": "", "fix": ""},
+  "log": []
+}

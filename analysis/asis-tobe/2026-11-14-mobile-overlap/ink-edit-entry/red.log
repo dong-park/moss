@@ -1,0 +1,36 @@
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - ESM syntax in a file loaded as CommonJS (vitest.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v4.1.12 /Users/donghwan/.goat/desktop/worktrees/moss/fix-mobile-overlap-clip-eb95b6628722ac61/web
+
+ ❯ src/components/workspace/cards/__tests__/MemoExpand.test.tsx (31 tests | 1 failed) 678ms
+   × starts compact ink editing at full size 15ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/components/workspace/cards/__tests__/MemoExpand.test.tsx > starts compact ink editing at full size
+AssertionError: expected null to be 'false' // Object.is equality
+
+- Expected:
+"false"
+
++ Received:
+null
+
+ ❯ src/components/workspace/cards/__tests__/MemoExpand.test.tsx:428:93
+    426|   useWorkspace.getState().setExpandedCard('c1');
+    427|   wrap(<MemoExpandDialog />);
+    428|   expect(screen.getByTestId('expanded-editor-wrap').getAttribute('data…
+       |                                                                                             ^
+    429|   fireEvent.click(screen.getByRole('button', { name: '편집' }));
+    430|   expect(screen.getByTestId('expanded-editor-wrap').getAttribute('data…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 30 passed (31)
+   Start at  13:37:03
+   Duration  3.50s (transform 802ms, setup 685ms, import 1.11s, tests 678ms, environment 891ms)
+

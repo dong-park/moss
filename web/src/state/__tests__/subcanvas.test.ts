@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   __internal,
+  __trashIdleForTest,
   SYSTEM_BOARD_ID,
   useWorkspace,
   type Card,
@@ -402,6 +403,69 @@ describe("moveCardToBoard (함 밖으로 내보내기)", () => {
   });
 });
 
+/* 회귀: 드래그 중 moveCard가 예약한 300ms 디바운스 저장이 파일함 이동의
+ * boardId를 옛 보드로 덮어써 새로고침 시 카드가 바깥 캔버스에 되살아나던 버그.
+ * 이동 함수가 saveNote 전에 flushCard로 대기 저장을 확정해야 한다. */
+describe("moveCardTo* 와 디바운스 persist 경쟁 (회귀)", () => {
+  it("moveCard 직후 moveCardToSubcanvas — 늦은 디바운스가 boardId를 되돌리지 않는다", async () => {
+    useWorkspace.setState({
+      currentBoardId: "P",
+      boards: [
+        { id: "P", parentBoardId: null },
+        { id: "C", parentBoardId: "P" },
+      ] as Board[],
+      cards: [
+        {
+          id: "H",
+          kind: "board",
+          x: 0,
+          y: 0,
+          width: 200,
+          content: "",
+          boardRef: "C",
+        },
+        { id: "t1", kind: "text", x: 10, y: 10, width: 200, content: "x" },
+      ] as Card[],
+    });
+    await useStorage.getState().init();
+
+    // 드래그: moveCard가 바깥 보드(P)로 디바운스 저장 예약.
+    useWorkspace.getState().moveCard("t1", 220, 330);
+    // 놓기: 파일함 서브 보드(C)로 즉시 이동 저장.
+    await useWorkspace.getState().moveCardToSubcanvas("t1", "H");
+    // 예약된 디바운스가 발화할 시간을 충분히 준다.
+    await new Promise((r) => setTimeout(r, 350));
+
+    const note = await getDB().notes.get("t1");
+    expect(note?.boardId).toBe("C"); // 옛 보드 P로 되돌아가지 않는다.
+    expect(note?.x).toBe(220); // 대기 중이던 좌표 편집은 보존된다(flush).
+    expect(note?.y).toBe(330);
+  });
+
+  it("moveCard 직후 moveCardToBoard — 늦은 디바운스가 boardId를 되돌리지 않는다", async () => {
+    useWorkspace.setState({
+      currentBoardId: "C",
+      boards: [
+        { id: "P", parentBoardId: null },
+        { id: "C", parentBoardId: "P" },
+      ] as Board[],
+      cards: [
+        { id: "t1", kind: "text", x: 10, y: 10, width: 200, content: "x" },
+      ] as Card[],
+    });
+    await useStorage.getState().init();
+
+    useWorkspace.getState().moveCard("t1", 220, 330);
+    await useWorkspace.getState().moveCardToBoard("t1", "P");
+    await new Promise((r) => setTimeout(r, 350));
+
+    const note = await getDB().notes.get("t1");
+    expect(note?.boardId).toBe("P");
+    expect(note?.x).toBe(220);
+    expect(note?.y).toBe(330);
+  });
+});
+
 describe("함 카드 cascade 삭제", () => {
   it("함을 지우면 서브 보드 + 그 안 카드까지 함께 삭제된다", async () => {
     await useStorage.getState().init();
@@ -508,7 +572,7 @@ describe("함 삭제 5초 undo (#1)", () => {
     ).toBe(true);
   });
 
-  it("blob 삭제는 undo 만료까지 연기 — 삭제 직후엔 purge 안 하고, clear(포기) 시 purge", async () => {
+  it("blob 삭제는 undo 만료까지 연기 — 삭제 직후엔 안 지우고, clear(포기) 시 파일 규칙으로 지운다", async () => {
     await useStorage.getState().init();
     await useWorkspace.getState().createBoard("부모");
     const funnelId = useWorkspace.getState().createSubcanvas(0, 0);
@@ -517,20 +581,35 @@ describe("함 삭제 5초 undo (#1)", () => {
     await waitFor(() =>
       useWorkspace.getState().boards.some((b) => b.id === childRef),
     );
+    // 서브 보드 안 사진 메모 — 미러 행만 가리킨다.
+    await useStorage.getState().saveNote({
+      id: "photo-in-child",
+      boardId: childRef,
+      kind: "photo",
+      attachmentRef: "opfs:child.png",
+      mediaType: "image/png",
+    });
 
-    const purgeSpy = vi.spyOn(useStorage.getState(), "purgeAttachments");
+    const purged: string[] = [];
+    const purgeSpy = vi
+      .spyOn(useStorage.getState(), "purgeAttachments")
+      .mockImplementation(async (notes) => {
+        for (const n of notes) if (n.attachmentRef) purged.push(n.attachmentRef);
+      });
 
     useWorkspace.getState().selectOne(funnelId);
     useWorkspace.getState().removeSelected();
     await waitFor(() => useWorkspace.getState().pendingSubcanvasUndo !== null);
+    await __trashIdleForTest();
 
-    // 삭제 직후: blob purge는 아직 호출되지 않아야 한다(undo 창 동안 보존).
-    expect(purgeSpy).not.toHaveBeenCalled();
+    // 삭제 직후: undo 창 동안 스냅샷이 파일을 쥔다(웨이브 5 리뷰 W5-1).
+    expect(purged).toEqual([]);
 
-    // 포기(×) → 보류 blob 정리 호출 + 스냅샷 비움
+    // 포기(×) → 스냅샷 비움, 아무도 안 가리키는 파일을 지운다.
     useWorkspace.getState().clearSubcanvasUndo();
-    expect(purgeSpy).toHaveBeenCalledTimes(1);
     expect(useWorkspace.getState().pendingSubcanvasUndo).toBeNull();
+    await __trashIdleForTest();
+    expect(purged).toEqual(["opfs:child.png"]);
 
     purgeSpy.mockRestore();
   });

@@ -2,12 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
+import { SaveFeedback } from "./SaveFeedback";
 import { Canvas } from "@/components/workspace/Canvas";
 import { MemoTable } from "@/components/workspace/table/MemoTable";
 import { ViewToggle } from "@/components/workspace/table/ViewToggle";
 import { Breadcrumb } from "@/components/workspace/Breadcrumb";
 import { SubcanvasUndoToast } from "@/components/workspace/SubcanvasUndoToast";
 import { MemoExpandDialog } from "@/components/workspace/cards/MemoExpandDialog";
+import { MemberDeleteConfirmDialog } from "@/components/workspace/MemberDeleteConfirmDialog";
 import { Dock } from "@/components/workspace/Dock";
 import { DockDragPreview } from "@/components/workspace/DockDragPreview";
 import { ShortcutsBinder } from "@/components/workspace/ShortcutsBinder";
@@ -19,6 +21,7 @@ import { AuthBootstrap } from "@/components/auth/AuthBootstrap";
 import { AuthSessionOverlay } from "@/components/auth/SessionExpiredCard";
 import { WorkspaceGate } from "@/components/auth/WorkspaceGate";
 import { CollabSession } from "@/components/collab/CollabSession";
+import { UploadChoiceDialog } from "@/components/collab/UploadChoiceDialog";
 import { ShareControlMount } from "@/components/share/ShareControlMount";
 import { AccountMenu } from "@/components/auth/AccountMenu";
 import { OfflineBadge } from "@/components/presence/OfflineBadge";
@@ -29,6 +32,7 @@ import {
 } from "@/state/boardAccess";
 import { BoardAccessCard } from "./BoardAccessCard";
 import { StorageFailureNotice } from "./StorageFailureNotice";
+import { navigateAfterMemoClose } from "./cards/memoHistory";
 
 /** `/b/<id>` 경로에서 보드 id를 뽑는다. `/`거나 그 밖의 경로면 undefined. */
 export function parseBoardId(pathname: string | null | undefined): string | undefined {
@@ -67,7 +71,7 @@ export function RouteBoardSync({ boardId }: { boardId: string }) {
       if (typeof window === "undefined") return;
       const target = `/b/${id}`;
       if (window.location.pathname === target) return;
-      window.history.pushState(null, "", target);
+      navigateAfterMemoClose(() => window.history.pushState(null, "", target));
     });
     return () => setBoardNavigator(null);
   }, []);
@@ -169,8 +173,8 @@ export function WorkspaceShell() {
 
   return (
     // FEAT-sticky-redesign n8: 사이드바 DOM 제거 — 캔버스가 화면 왼쪽 끝부터 시작한다(AC-1).
-    <main className="grid h-screen w-screen grid-cols-1 grid-rows-1">
-      {/* FEAT-onboarding-routes n2: 세션 복원은 게이트와 별개로 뒤에서 조용히 돈다. */}
+    <main className="grid h-dvh w-screen grid-cols-1 grid-rows-1">
+      {/* 세션 복원은 게이트 밖에서 항상 돈다. 로그인은 공유할 때만 묻는다. */}
       <AuthBootstrap />
       <WorkspaceGate>
         {bootstrapFailed ? (
@@ -178,20 +182,24 @@ export function WorkspaceShell() {
         ) : boardId ? (
           <>
             <RouteBoardSync boardId={boardId} />
-            {isCanvas ? <Canvas /> : <MemoTable />}
-            {/* FEAT-collab-auth n7: 우상단 오프라인 표시 + 공유 아이콘.
-                FEAT-memo-table-view AC-1: 캔버스 ↔ 표 토글도 같은 줄에 둔다. */}
-            <div className="fixed top-3 right-3 z-[var(--z-panel)] flex items-center gap-2">
-              <OfflineBadge />
-              <ShareControlMount />
-              <ViewToggle />
-              <AccountMenu />
+            <div className={isCanvas ? "contents" : "flex min-h-0 flex-col"}>
+              <div data-workspace-editor-header data-testid="workspace-controls" className={isCanvas
+                ? "fixed top-3 right-3 z-[var(--z-panel)] flex max-w-[calc(100vw-24px)] flex-wrap items-center justify-end gap-2"
+                : "flex shrink-0 flex-wrap items-center justify-end gap-2 border-b border-border p-3 [&_button]:min-h-11 [&_button]:min-w-11"}>
+                <SaveFeedback compactSaved />
+                <OfflineBadge />
+                <ShareControlMount />
+                <ViewToggle />
+                <AccountMenu />
+              </div>
+              {isCanvas ? <Canvas /> : <MemoTable />}
             </div>
             <CollabSession />
+            <UploadChoiceDialog />
             {isCanvas && (
               <>
                 {/* FEAT-subcanvas: 서브 캔버스 경로 — 캔버스 좌상단 고정 오버레이(중첩 시에만 렌더). */}
-                <div className="fixed top-3 left-3 z-[var(--z-panel)]">
+                <div data-workspace-editor-header className="fixed top-16 left-3 max-w-[calc(100vw-24px)] sm:top-3 sm:max-w-[calc(100vw-300px)] z-[var(--z-panel)]">
                   <Breadcrumb />
                 </div>
                 <Dock
@@ -205,6 +213,7 @@ export function WorkspaceShell() {
             <AICallPreview />
             <SignalsPanel open={signalsOpen} onClose={() => setSignalsOpen(false)} />
             <MemoExpandDialog />
+            <MemberDeleteConfirmDialog />
             {/* FEAT-subcanvas: 함 삭제 5초 undo 토스트 (position: fixed bottom-center). */}
             <SubcanvasUndoToast />
             <ExportModal />

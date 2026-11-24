@@ -3,30 +3,46 @@ import type { Board, Connection, Note, StrokePoint, WallStroke } from "@/state/d
 import {
   MAX_STROKE_POINTS,
   MAX_STROKE_POINTS_CHARS,
-  MAX_WALL_STROKES,
   isBoardCoord,
 } from "@/state/marker/limits";
 import { resolveMarkerColor, resolveMarkerWidth } from "@/state/marker/tokens";
-import { transactLocal } from "./origin";
+import {
+  BOARD_FIELDS,
+  CONNECTION_FIELDS,
+  CONNECTIONS_MAP,
+  FILES_MAP,
+  META_MAP,
+  NOTE_FIELDS,
+  NOTES_MAP,
+  readFields,
+  writeFields,
+} from "@moss/doc-model";
+import { transactLocal, type WriteOrigin } from "./origin";
+
+export const STROKES_MAP = "strokes";
+
+export function strokesMap(doc: Y.Doc): Y.Map<Y.Map<unknown>> {
+  return doc.getMap<Y.Map<unknown>>(STROKES_MAP);
+}
+const STROKE_KEYS: Record<keyof WallStroke, true> = {
+  id: true, boardId: true, points: true, color: true, width: true,
+  createdAt: true, updatedAt: true,
+};
+const STROKE_FIELDS = Object.keys(STROKE_KEYS);
+export { MAX_STROKE_POINTS };
 
 /**
  * FEAT-collab-auth n1 — 보드 Yjs 문서 구조 (D3).
  *
- * 보드 1개 = Y.Doc 1개. 최상위 Y.Map:
+ * 보드 1개 = Y.Doc 1개. 최상위 Y.Map 3개:
  * - `notes`: note.id → 메모 필드 Y.Map
  * - `connections`: connection.id → 연결선 필드 Y.Map
- * - `strokes`: stroke.id → 벽 획 필드 Y.Map (wall-marker n1 — 획 하나 = 한 행)
- * - `meta`: 보드 필드 (제목·색 등)
+ * - `meta`: 보드 필드 (제목·색·손글씨 레이어 등)
  *
  * 필드 값은 schema.ts의 Dexie 행 타입과 1:1로 왕복한다. 다만 메모 본문은
  * Y.Text가 아니라 문자열 필드다 — 문자 단위 병합은 Milkdown 연동이 필요해
  * 이번 범위 밖(spec §14).
  */
-export const NOTES_MAP = "notes";
-export const CONNECTIONS_MAP = "connections";
-export const META_MAP = "meta";
-/** wall-marker n1 (D1=A): 벽 획. 획 하나 = 한 항목이라 동시에 그어도 서로 덮어쓰지 않는다. */
-export const STROKES_MAP = "strokes";
 /**
  * FEAT-collab-auth n10 — 첨부 로컬 참조 → 서버 fileId 매핑.
  *
@@ -35,7 +51,8 @@ export const STROKES_MAP = "strokes";
  * 받는 쪽은 맵에 fileId가 생기면 서버에서 내려받아 OPFS에 같은 이름으로 캐시한다.
  * 값이 아직 없으면 '올리는 중' 자리표시자다.
  */
-export const FILES_MAP = "files";
+
+export { NOTES_MAP, CONNECTIONS_MAP, META_MAP, FILES_MAP };
 
 /**
  * 기기 로컬 필드는 문서에 쓰지 않는다 — 보드를 여는 사람마다 값이 달라서
@@ -45,34 +62,12 @@ export type SharedNote = Omit<Note, "lastVisitedAt">;
 /** n9: `remote`(이 기기가 서버에서 받아온 공유 보드인지)도 기기 로컬 — 문서에 쓰지 않는다. */
 export type SharedBoard = Omit<Board, "lastOpenedAt" | "remote">;
 
-// Record<keyof T, true>라서 스키마에 필드가 늘면 여기서 컴파일 에러가 난다.
-const NOTE_KEYS: Record<keyof SharedNote, true> = {
-  id: true, boardId: true, kind: true, x: true, y: true, width: true, height: true,
-  rotation: true, content: true, attachmentRef: true, mediaType: true, color: true,
-  overlay: true, frameId: true, title: true, aiOptOut: true, createdAt: true, updatedAt: true,
-  textSize: true, autoWidth: true,
-};
-const CONNECTION_KEYS: Record<keyof Connection, true> = {
-  id: true, sourceNoteId: true, targetNoteId: true, source: true, status: true, label: true,
-  createdAt: true, sourceSide: true, targetSide: true,
-};
-// 벽 획의 `points`는 문서에서 JSON 문자열 하나다 — readFields가 원시값만 통과시키고, 획은
-// 만든 뒤 점이 바뀌지 않아(옮기기는 통째 교체) 점 단위 병합이 필요 없다.
-const STROKE_KEYS: Record<keyof WallStroke, true> = {
-  id: true, boardId: true, points: true, color: true, width: true,
-  createdAt: true, updatedAt: true,
-};
-const BOARD_KEYS: Record<keyof SharedBoard, true> = {
-  id: true, name: true, isSystem: true, templateId: true, parentBoardId: true, createdAt: true,
-  updatedAt: true, wallMaterial: true,
-};
-const NOTE_FIELDS = Object.keys(NOTE_KEYS);
-const CONNECTION_FIELDS = Object.keys(CONNECTION_KEYS);
-const BOARD_FIELDS = Object.keys(BOARD_KEYS);
-const STROKE_FIELDS = Object.keys(STROKE_KEYS);
-
-// 상한은 state/marker/limits가 소유한다(쓰는 쪽과 같은 값). 기존 import 경로를 위해 다시 내보낸다.
-export { MAX_STROKE_POINTS };
+// 필드 목록은 @moss/doc-model에만 있다. 스키마에 필드가 늘어 목록에서 빠지면 아래가 컴파일 에러가 난다.
+type MissingFields<T, L extends readonly string[]> = Exclude<keyof T, L[number]>;
+const _noteComplete: MissingFields<SharedNote, typeof NOTE_FIELDS> extends never ? true : never = true;
+const _connectionComplete: MissingFields<Connection, typeof CONNECTION_FIELDS> extends never ? true : never = true;
+const _boardComplete: MissingFields<SharedBoard, typeof BOARD_FIELDS> extends never ? true : never = true;
+void [_noteComplete, _connectionComplete, _boardComplete];
 
 export function toSharedNote(note: Note): SharedNote {
   const shared: Partial<Note> = { ...note };
@@ -85,37 +80,6 @@ export function toSharedBoard(board: Board): SharedBoard {
   delete shared.lastOpenedAt;
   delete shared.remote;
   return shared as SharedBoard;
-}
-
-/** undefined 필드는 키를 만들지 않는다 — 왕복 시 없는 키가 undefined로 돌아온다. */
-function writeFields(map: Y.Map<unknown>, source: object, fields: readonly string[]): void {
-  const record = source as Record<string, unknown>;
-  for (const field of fields) {
-    const value = record[field];
-    if (value === undefined) {
-      if (map.has(field)) map.delete(field);
-    } else if (map.get(field) !== value) {
-      // 같은 값을 다시 set하면 Yjs는 새 Item을 쌓는다 — 저장량·동기화량이 는다.
-      map.set(field, value);
-    }
-  }
-}
-
-function readFields<T>(map: Y.Map<unknown>, fields: readonly string[]): T {
-  const out: Record<string, unknown> = {};
-  for (const field of fields) {
-    const value = map.get(field);
-    // 원격 peer가 비원시 값(Y 타입·객체)을 넣어도 스토어로 흘리지 않는다. 스키마 필드는 전부 원시값이다.
-    if (isPrimitive(value)) out[field] = value;
-  }
-  return out as T;
-}
-
-const PRIMITIVE_TYPES = new Set(["string", "number", "boolean"]);
-
-// null은 통과한다 — boardId 같은 스키마 필드가 null을 쓴다.
-function isPrimitive(value: unknown): boolean {
-  return value === null || PRIMITIVE_TYPES.has(typeof value);
 }
 
 /** id가 문자열이 아니면 불완전한 항목이다 — 읽기에서 건너뛴다. */
@@ -140,10 +104,6 @@ export function notesMap(doc: Y.Doc): Y.Map<Y.Map<unknown>> {
 
 export function connectionsMap(doc: Y.Doc): Y.Map<Y.Map<unknown>> {
   return doc.getMap<Y.Map<unknown>>(CONNECTIONS_MAP);
-}
-
-export function strokesMap(doc: Y.Doc): Y.Map<Y.Map<unknown>> {
-  return doc.getMap<Y.Map<unknown>>(STROKES_MAP);
 }
 
 export function metaMap(doc: Y.Doc): Y.Map<unknown> {
@@ -190,14 +150,14 @@ export function yMapToBoard(map: Y.Map<unknown>): SharedBoard {
 
 /** 메모 하나를 전부 쓴다(생성·일괄 갱신). 로컬 origin 트랜잭션.
  * SharedNote도 받는다 — 문서는 lastVisitedAt(기기 로컬)을 쓰지 않는다. */
-export function putNote(doc: Y.Doc, note: Note | SharedNote): void {
+export function putNote(doc: Y.Doc, note: Note | SharedNote, origin?: WriteOrigin): void {
   transactLocal(doc, () => {
     const notes = notesMap(doc);
     const existing = notes.get(note.id);
     const map = existing ?? new Y.Map<unknown>();
     writeFields(map, note, NOTE_FIELDS);
     if (!existing) notes.set(note.id, map);
-  });
+  }, origin);
 }
 
 /**
@@ -209,6 +169,7 @@ export function updateNoteField<K extends keyof SharedNote>(
   noteId: string,
   field: K,
   value: SharedNote[K],
+  origin?: WriteOrigin,
 ): void {
   transactLocal(doc, () => {
     const notes = notesMap(doc);
@@ -217,7 +178,7 @@ export function updateNoteField<K extends keyof SharedNote>(
     if (!map) return;
     if (value === undefined) map.delete(field);
     else if (map.get(field) !== value) map.set(field, value);
-  });
+  }, origin);
 }
 
 /**
@@ -229,6 +190,7 @@ export function updateNoteFields(
   doc: Y.Doc,
   noteId: string,
   fields: Partial<SharedNote>,
+  origin?: WriteOrigin,
 ): void {
   transactLocal(doc, () => {
     const map = notesMap(doc).get(noteId);
@@ -240,13 +202,13 @@ export function updateNoteFields(
         map.set(field, value);
       }
     }
-  });
+  }, origin);
 }
 
-export function deleteNote(doc: Y.Doc, noteId: string): void {
+export function deleteNote(doc: Y.Doc, noteId: string, origin?: WriteOrigin): void {
   transactLocal(doc, () => {
     notesMap(doc).delete(noteId);
-  });
+  }, origin);
 }
 
 export function readNote(doc: Y.Doc, noteId: string): SharedNote | undefined {
@@ -261,20 +223,20 @@ export function readNotes(doc: Y.Doc): SharedNote[] {
 
 /* ── 연결선 ────────────────────────────────────────────────────── */
 
-export function putConnection(doc: Y.Doc, connection: Connection): void {
+export function putConnection(doc: Y.Doc, connection: Connection, origin?: WriteOrigin): void {
   transactLocal(doc, () => {
     const connections = connectionsMap(doc);
     const existing = connections.get(connection.id);
     const map = existing ?? new Y.Map<unknown>();
     writeFields(map, connection, CONNECTION_FIELDS);
     if (!existing) connections.set(connection.id, map);
-  });
+  }, origin);
 }
 
-export function deleteConnection(doc: Y.Doc, connectionId: string): void {
+export function deleteConnection(doc: Y.Doc, connectionId: string, origin?: WriteOrigin): void {
   transactLocal(doc, () => {
     connectionsMap(doc).delete(connectionId);
-  });
+  }, origin);
 }
 
 export function readConnections(doc: Y.Doc): Connection[] {
@@ -287,7 +249,52 @@ export function readConnection(doc: Y.Doc, connectionId: string): Connection | u
   return hasId(map) ? yMapToConnection(map) : undefined;
 }
 
-/* ── 벽 획 (wall-marker n1) ────────────────────────────────────── */
+/* ── 보드 메타 ─────────────────────────────────────────────────── */
+
+/** 보드 필드를 전부 쓴다. 보드당 문서 1개라 meta Y.Map 하나를 채운다. */
+export function putBoard(doc: Y.Doc, board: Board, origin?: WriteOrigin): void {
+  transactLocal(doc, () => {
+    writeFields(metaMap(doc), board, BOARD_FIELDS);
+  }, origin);
+}
+
+export function updateMetaField<K extends keyof SharedBoard>(
+  doc: Y.Doc,
+  field: K,
+  value: SharedBoard[K],
+  origin?: WriteOrigin,
+): void {
+  transactLocal(doc, () => {
+    const meta = metaMap(doc);
+    if (value === undefined) meta.delete(field);
+    else meta.set(field, value);
+  }, origin);
+}
+
+export function readBoard(doc: Y.Doc): SharedBoard {
+  return yMapToBoard(metaMap(doc));
+}
+
+/* ── 첨부 파일 매핑 (n10) ──────────────────────────────────────── */
+
+/** 로컬 참조(`opfs:<file>`)에 서버 fileId를 적는다. 업로드 성공 때만 부른다. */
+export function setDocFile(
+  doc: Y.Doc,
+  localRef: string,
+  fileId: string,
+  origin?: WriteOrigin,
+): void {
+  transactLocal(doc, () => {
+    const files = filesMap(doc);
+    if (files.get(localRef) !== fileId) files.set(localRef, fileId);
+  }, origin);
+}
+
+/** 로컬 참조에 매인 서버 fileId. 아직 업로드 전이거나 실패면 undefined. */
+export function readDocFile(doc: Y.Doc, localRef: string): string | undefined {
+  const value = filesMap(doc).get(localRef);
+  return typeof value === "string" && value ? value : undefined;
+}
 
 function parseStrokePoints(raw: unknown): StrokePoint[] {
   if (typeof raw !== "string" || raw.length > MAX_STROKE_POINTS_CHARS) return [];
@@ -416,40 +423,3 @@ export function readStrokes(doc: Y.Doc): WallStroke[] {
 /* ── 보드 메타 ─────────────────────────────────────────────────── */
 
 /** 보드 필드를 전부 쓴다. 보드당 문서 1개라 meta Y.Map 하나를 채운다. */
-export function putBoard(doc: Y.Doc, board: Board): void {
-  transactLocal(doc, () => {
-    writeFields(metaMap(doc), board, BOARD_FIELDS);
-  });
-}
-
-export function updateMetaField<K extends keyof SharedBoard>(
-  doc: Y.Doc,
-  field: K,
-  value: SharedBoard[K],
-): void {
-  transactLocal(doc, () => {
-    const meta = metaMap(doc);
-    if (value === undefined) meta.delete(field);
-    else meta.set(field, value);
-  });
-}
-
-export function readBoard(doc: Y.Doc): SharedBoard {
-  return yMapToBoard(metaMap(doc));
-}
-
-/* ── 첨부 파일 매핑 (n10) ──────────────────────────────────────── */
-
-/** 로컬 참조(`opfs:<file>`)에 서버 fileId를 적는다. 업로드 성공 때만 부른다. */
-export function setDocFile(doc: Y.Doc, localRef: string, fileId: string): void {
-  transactLocal(doc, () => {
-    const files = filesMap(doc);
-    if (files.get(localRef) !== fileId) files.set(localRef, fileId);
-  });
-}
-
-/** 로컬 참조에 매인 서버 fileId. 아직 업로드 전이거나 실패면 undefined. */
-export function readDocFile(doc: Y.Doc, localRef: string): string | undefined {
-  const value = filesMap(doc).get(localRef);
-  return typeof value === "string" && value ? value : undefined;
-}

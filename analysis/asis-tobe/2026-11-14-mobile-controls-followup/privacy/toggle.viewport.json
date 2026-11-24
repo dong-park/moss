@@ -1,0 +1,16 @@
+{
+  "status": "ok",
+  "value": {
+    "toolIcon": {
+      "_tag": "website",
+      "pageUrl": "http://localhost:3197/privacy-qa"
+    },
+    "safety": {
+      "possibleCommit": true,
+      "retryClass": "never",
+      "writeStatus": "committed",
+      "code": "write_committed"
+    },
+    "value": "{\"checked\":false,\"text\":\"개인정보 · AI 허용이 카드 AI 처리 제외선택한 카드 한 개에 적용해요. 편집·크기·공유 설정은 바뀌지 않아요.\"}"
+  }
+}

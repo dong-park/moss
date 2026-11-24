@@ -8,6 +8,8 @@ import {
   type CSSProperties,
   type KeyboardEvent,
 } from "react";
+import * as Dialog from "@radix-ui/react-dialog";
+import styles from "./memoTable.module.css";
 import { useT } from "@/i18n/Provider";
 import { useWorkspace } from "@/state/workspace";
 import { systemBoardName } from "@/state/systemBoardName";
@@ -15,6 +17,7 @@ import {
   useMemoTable,
   buildMemoRows,
   deriveFromBase,
+  tableTrashTargetIds,
   type MemoRow,
   type MemoSortKey,
 } from "@/state/memoTable";
@@ -34,6 +37,7 @@ import { isCommitEnter, useImeSafeBlur } from "../ime";
  * ───────────────────────────────────────────────────────────── */
 
 const ROW_H = 36;
+const COMPACT_ROW_H = 96;
 const OVERSCAN = 8;
 const MIN_WIDTH = 1080;
 const COLS =
@@ -60,7 +64,17 @@ function fmtDate(ts: number): string {
 
 export function MemoTable() {
   const t = useT();
+  const [compact, setCompact] = useState(false);
+  useEffect(() => {
+    const update = () => setCompact(window.innerWidth < 768);
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
+  const rowHeight = compact ? COMPACT_ROW_H : ROW_H;
   const notes = useMemoTable((s) => s.notes);
+  const loadError = useMemoTable((s) => s.loadError);
+  const loading = useMemoTable((s) => s.loading);
   const boards = useMemoTable((s) => s.boards);
   const sort = useMemoTable((s) => s.sort);
   const boardFilter = useMemoTable((s) => s.boardFilter);
@@ -115,6 +129,10 @@ export function MemoTable() {
     [baseRows, boards, filters, sort],
   );
 
+  const trashTargets = useMemo(() => tableTrashTargetIds(notes, selectedIds), [notes, selectedIds]);
+  const visibleIds = new Set(rows.map(row => row.id));
+  const hiddenSelectionCount = [...selectedIds].filter(id => !visibleIds.has(id)).length;
+
   /* ─ 가상화: 고정 행 높이 윈도. jsdom처럼 높이 0이면 전체 렌더(테스트 친화). ─ */
   const scrollRef = useRef<HTMLDivElement>(null);
   const [viewportH, setViewportH] = useState(0);
@@ -134,10 +152,10 @@ export function MemoTable() {
   }, []);
 
   const renderAll = viewportH <= 0;
-  const start = renderAll ? 0 : Math.max(0, Math.floor(scrollTop / ROW_H) - OVERSCAN);
+  const start = renderAll ? 0 : Math.max(0, Math.min(rows.length - 1, Math.floor(scrollTop / rowHeight)) - OVERSCAN);
   const count = renderAll
     ? rows.length
-    : Math.ceil(viewportH / ROW_H) + OVERSCAN * 2;
+    : Math.ceil(viewportH / rowHeight) + OVERSCAN * 2;
   const end = Math.min(rows.length, start + count);
   const visible = rows.slice(start, end);
 
@@ -175,7 +193,7 @@ export function MemoTable() {
       const a = Math.min(lastIndexRef.current, index);
       const b = Math.max(lastIndexRef.current, index);
       const next = new Set(selectedIds);
-      for (let i = a; i <= b; i++) next.add(rows[i].id);
+      for (let i = a; i <= b && i < rows.length; i++) next.add(rows[i].id);
       setSelectedIds(next);
     } else {
       toggleSelected(rowId);
@@ -193,7 +211,7 @@ export function MemoTable() {
 
   useEffect(() => {
     lastIndexRef.current = null;
-  }, [sort]);
+  }, [sort, filters]);
 
   /* ─ 키보드 탐색(§8) ─ */
   const [focusIndex, setFocusIndex] = useState(-1);
@@ -202,8 +220,8 @@ export function MemoTable() {
   const ensureRowVisible = (index: number) => {
     const el = scrollRef.current;
     if (!el) return;
-    const top = index * ROW_H;
-    const bottom = top + ROW_H;
+    const top = index * rowHeight;
+    const bottom = top + rowHeight;
     if (top < el.scrollTop) {
       el.scrollTop = top;
     } else if (bottom > el.scrollTop + el.clientHeight) {
@@ -212,7 +230,7 @@ export function MemoTable() {
   };
 
   const onGridKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (editingId) return;
+    if (editingId || (e.target !== e.currentTarget && (e.target as HTMLElement).closest("button, input, select, summary, [role=dialog]"))) return;
     if (e.key === "ArrowDown") {
       e.preventDefault();
       const next = Math.min(rows.length - 1, focusIndex + 1);
@@ -236,16 +254,24 @@ export function MemoTable() {
   const emptySearch = isEmpty && query.trim() !== "";
 
   return (
-    <div className="flex h-full flex-col bg-bg">
-      <MemoTableToolbar />
+    <div className={`flex min-h-0 flex-1 flex-col bg-bg ${styles.table}`} aria-busy={loading}>
+      <MemoTableToolbar resultCount={rows.length} />
+      {loadError && <div className="flex flex-wrap items-center gap-3 border-b border-border p-3 text-xs">
+        <p role="alert">{loadError}</p>
+        <button type="button" disabled={loading} className="min-h-11 underline" onClick={() => void useMemoTable.getState().reload()}>{t("reviewTable.retry")}</button>
+      </div>}
 
       {selectedIds.size > 0 && (
-        <div className="flex items-center gap-3 border-b border-border bg-accent-lime/10 px-3 py-1.5 text-xs text-text">
+        <div className={` ${styles.selection} flex flex-wrap items-center gap-3 border-b border-border bg-accent-lime/10 px-3 py-1.5 text-xs text-text`}>
           <span className="font-medium">
             {t("workspace.table.selection.count", { count: selectedIds.size })}
           </span>
+          <span>{t("reviewTable.selectionScope", { count: trashTargets.length, hidden: hiddenSelectionCount })}</span>
+          <span className="text-text-soft">{t("reviewTable.selectionPolicy")}</span>
           <button
             type="button"
+            disabled={trashTargets.length === 0}
+            title={t("reviewTable.trashCount", { count: trashTargets.length })}
             onClick={() => void trashSelected()}
             className="cursor-pointer rounded-md border border-border px-2 py-0.5 hover:bg-panel"
           >
@@ -271,8 +297,8 @@ export function MemoTable() {
         aria-rowcount={rows.length}
         tabIndex={0}
       >
-        <div style={{ minWidth: MIN_WIDTH }}>
-          <div
+        <div style={{ minWidth: compact ? 0 : MIN_WIDTH }}>
+          {!compact && <div
             role="row"
             className="sticky top-0 z-20 border-b border-border bg-bg"
             style={gridStyle}
@@ -303,18 +329,48 @@ export function MemoTable() {
               sort={sort}
               onSort={setSort}
             />
-          </div>
+          </div>}
 
           {!isEmpty && (
             <div
               className="relative"
-              style={{ height: rows.length * ROW_H }}
+              style={{ height: rows.length * rowHeight }}
               role="rowgroup"
             >
               {visible.map((row, i) => {
                 const index = start + i;
                 const selected = selectedIds.has(row.id);
                 const focused = focusIndex === index;
+                if (compact) return (
+                  <div key={row.id} role="row" aria-selected={selected}
+                    data-testid="memo-table-row"
+                    className={`${styles.compactRow} absolute left-0 w-full border-b border-border text-text ${selected ? "bg-accent-lime/10" : ""} ${focused ? "ring-1 ring-inset ring-accent-blue" : ""}`}
+                    style={{ top: index * rowHeight, height: rowHeight }}>
+                    <div role="gridcell">
+                      <label className={styles.selectTarget}>
+                        <input type="checkbox" checked={selected}
+                          aria-label={row.displayTitle}
+                          onClick={(e) => handleToggle(index, row.id, e.shiftKey)}
+                          onChange={() => {}} />
+                      </label>
+                    </div>
+                    <div role="gridcell" className="min-w-0">
+                      <button type="button" className={styles.openMemo}
+                        aria-label={row.preview === row.displayTitle ? row.displayTitle : `${row.displayTitle} ${row.preview || "—"}`}
+                        onClick={() => void openMemo(row.id)}>
+                        <span className="flex min-w-0 items-center gap-2 font-medium">
+                          <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: memoTint(row.id, row.color) }} aria-hidden />
+                          <span className="truncate">{row.displayTitle}</span>
+                        </span>
+                        <span className="block truncate text-xs text-text-soft"><span className={styles.typeBadge}>{row.typeLabel}</span> {row.preview !== row.displayTitle && <Preview row={row} />}</span>
+                        <span className="block truncate text-xs text-text-muted">{row.boardPath}</span>
+                      </button>
+                    </div>
+                    <div role="gridcell">
+                      <MemoDetails row={row} onCanvas={() => void openCardOnCanvas(row.id)} />
+                    </div>
+                  </div>
+                );
                 return (
                   <div
                     key={row.id}
@@ -329,8 +385,8 @@ export function MemoTable() {
                     ].join(" ")}
                     style={{
                       ...gridStyle,
-                      top: index * ROW_H,
-                      height: ROW_H,
+                      top: index * rowHeight,
+                      height: rowHeight,
                     }}
                   >
                     {/* 선택 */}
@@ -343,7 +399,7 @@ export function MemoTable() {
                         type="checkbox"
                         checked={selected}
                         aria-label={
-                          row.title || t("workspace.table.untitled")
+                          row.displayTitle
                         }
                         onClick={(e) => {
                           e.stopPropagation();
@@ -367,7 +423,7 @@ export function MemoTable() {
                     {/* 제목 — 인라인 편집 */}
                     <div
                       role="gridcell"
-                      className="flex items-center px-2"
+                      className="flex min-w-0 items-center px-2"
                       onClick={(e) => {
                         e.stopPropagation();
                         beginEdit(row);
@@ -397,12 +453,13 @@ export function MemoTable() {
                           className="w-full rounded border border-accent-blue bg-bg px-1 py-0.5 text-xs outline-none"
                         />
                       ) : row.title ? (
-                        <span className="truncate">{row.title}</span>
+                        <span className="truncate">{row.displayTitle}</span>
                       ) : (
                         <span className="truncate text-text-muted">
-                          {t("workspace.table.untitled")}
+                          {row.displayTitle}
                         </span>
                       )}
+                      {editingId !== row.id && <span className={styles.typeBadge}>{row.typeLabel}</span>}
                     </div>
 
                     {/* 본문 미리보기 */}
@@ -451,7 +508,7 @@ export function MemoTable() {
                           e.stopPropagation();
                           void openCardOnCanvas(row.id);
                         }}
-                        className="pointer-events-auto rounded-md border border-border bg-bg px-2 py-0.5 text-[11px] text-text-soft opacity-0 shadow-card transition-opacity hover:text-text group-hover:opacity-100"
+                        className="pointer-events-auto rounded-md border border-border bg-bg px-2 py-0.5 text-[11px] text-text-soft opacity-0 shadow-card transition-opacity hover:text-text group-hover:opacity-100 focus:opacity-100"
                       >
                         {t("workspace.table.action.viewOnCanvas")}
                       </button>
@@ -541,5 +598,34 @@ function Preview({ row }: { row: MemoRow }) {
       </mark>
       {row.preview.slice(m.start + m.length)}
     </span>
+  );
+}
+
+function MemoDetails({ row, onCanvas }: { row: MemoRow; onCanvas: () => void }) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  return (
+    <Dialog.Root open={open} onOpenChange={setOpen}>
+      <Dialog.Trigger asChild>
+        <button type="button" className={styles.detailsTrigger}
+          aria-label={t("workspace.table.action.detailsFor", { title: row.displayTitle })}>⋯</button>
+      </Dialog.Trigger>
+      <Dialog.Portal>
+        <Dialog.Overlay className={styles.overlay} />
+        <Dialog.Content className={styles.details} aria-describedby={undefined}>
+          <Dialog.Title className="break-words text-base font-medium">{row.displayTitle}</Dialog.Title>
+          <dl className={styles.metadata}>
+            <dt>{t("reviewTable.typeHeading")}</dt><dd>{row.typeLabel}</dd>
+            <dt>{t("workspace.table.column.board")}</dt><dd>{row.boardPath}</dd>
+            <dt>{t("workspace.table.column.frame")}</dt><dd>{row.frameName || "—"}</dd>
+            <dt>{t("workspace.table.column.attachments")}</dt><dd>{BADGE_ORDER.map(b => `${b.icon} ${row.badgeCounts[b.key]}`).join(" · ")}</dd>
+            <dt>{t("workspace.table.column.createdAt")}</dt><dd>{fmtDate(row.createdAt)}</dd>
+            <dt>{t("workspace.table.column.updatedAt")}</dt><dd>{fmtDate(row.updatedAt)}</dd>
+          </dl>
+          <button type="button" onClick={() => { setOpen(false); onCanvas(); }} className="w-full rounded-md border border-border">{t("workspace.table.action.viewOnCanvas")}</button>
+          <Dialog.Close className="mt-2 w-full rounded-md border border-border">{t("workspace.memoEditor.close")}</Dialog.Close>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }

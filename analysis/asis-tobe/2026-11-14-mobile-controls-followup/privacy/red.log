@@ -1,0 +1,38 @@
+$ vitest run src/components/workspace/__tests__/CardPrivacyControl.test.tsx
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - ESM syntax in a file loaded as CommonJS (vitest.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v4.1.12 /Users/donghwan/.goat/desktop/worktrees/moss/fix-mobile-overlap-clip-eb95b6628722ac61/web
+
+ ❯ src/components/workspace/__tests__/CardPrivacyControl.test.tsx (5 tests | 1 failed) 120ms
+   × toolbar panel escapes clipping ancestors and preserves toggle, Escape and outside dismissal 11ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/components/workspace/__tests__/CardPrivacyControl.test.tsx > toolbar panel escapes clipping ancestors and preserves toggle, Escape and outside dismissal
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ src/components/workspace/__tests__/CardPrivacyControl.test.tsx:62:45
+     60|   fireEvent.click(trigger);
+     61|   const checkbox = screen.getByRole("checkbox");
+     62|   expect(view.container.contains(checkbox)).toBe(false);
+       |                                             ^
+     63|   fireEvent.pointerDown(checkbox);
+     64|   fireEvent.click(checkbox);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 4 passed (5)
+   Start at  16:40:30
+   Duration  1.36s (transform 272ms, setup 479ms, import 30ms, tests 120ms, environment 628ms)
+
+error: script "test" exited with code 1

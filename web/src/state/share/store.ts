@@ -185,6 +185,7 @@ export interface ShareState {
   phaseByBoard: Record<string, SharePhase>;
 
   startShare(boardId: string, boardName: string, options?: StartShareOptions): Promise<void>;
+  registerBoard(boardId: string, boardName: string): Promise<void>;
   reissueInvite(boardId: string): Promise<void>;
   removeMember(boardId: string, userId: string): Promise<void>;
   unshare(boardId: string): Promise<void>;
@@ -420,6 +421,38 @@ export const useShare = create<ShareState>((set) => ({
     } finally {
       startingBoards.delete(boardId);
       startLock?.release();
+    }
+  },
+
+  registerBoard: async (boardId, boardName) => {
+    if (startingBoards.has(boardId)) return;
+    startingBoards.add(boardId);
+    set((s) => ({
+      busyByBoard: { ...s.busyByBoard, [boardId]: true },
+      errorByBoard: { ...s.errorByBoard, [boardId]: null },
+    }));
+    try {
+      const session = await useAuth.getState().ensureSession();
+      const summary = await deps.api.share(boardId, boardName.trim() || UNNAMED_BOARD, session.accessToken);
+      set((s) => {
+        const prev = s.byBoard[boardId];
+        return {
+          busyByBoard: { ...s.busyByBoard, [boardId]: false },
+          byBoard: {
+            ...s.byBoard,
+            [boardId]: { ...prev, inviteToken: prev?.inviteToken ?? null, status: "shared", role: summary.role },
+          },
+        };
+      });
+      deps.onBoardShared?.(boardId);
+    } catch (err) {
+      set((s) => ({
+        busyByBoard: { ...s.busyByBoard, [boardId]: false },
+        errorByBoard: { ...s.errorByBoard, [boardId]: messageOf(err) },
+      }));
+      throw err;
+    } finally {
+      startingBoards.delete(boardId);
     }
   },
 

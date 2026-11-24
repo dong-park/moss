@@ -338,7 +338,7 @@ describe("FEAT-trash · storage", () => {
 
     const db = createDB(name);
     await db.open();
-    expect(db.verno).toBe(6);
+    expect(db.verno).toBe(7);
     expect((await db.notes.get("n1"))?.id).toBe("n1");
     expect(await db.boards.get("b1")).toBeDefined();
     db.close();

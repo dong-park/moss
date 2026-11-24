@@ -538,6 +538,33 @@ describe("FEAT-boards · 보드 store", () => {
     });
   });
 
+  it("setCurrentBoard — 동시에 두 번 바꾸면 나중 요청이 이긴다", async () => {
+    const idA = await useWorkspace.getState().createBoard("A");
+    await waitFade();
+    const idB = await useWorkspace.getState().createBoard("B");
+    await waitFade();
+    await useWorkspace.getState().setCurrentBoard(SYSTEM_BOARD_ID);
+    await waitFade();
+    // A 전환을 늦게 끝나게 만든 뒤(보드 확인을 50ms 늦춤) B로 바꾼다. 늦게 끝난 A가 B를 덮으면 안 된다.
+    const realLoadBoards = useStorage.getState().loadBoards;
+    let first = true;
+    useStorage.setState({
+      loadBoards: async () => {
+        if (first) {
+          first = false;
+          await new Promise((r) => setTimeout(r, 50));
+        }
+        return realLoadBoards();
+      },
+    });
+    const a = useWorkspace.getState().setCurrentBoard(idA);
+    const b = useWorkspace.getState().setCurrentBoard(idB);
+    await Promise.all([a, b]);
+    useStorage.setState({ loadBoards: realLoadBoards });
+    await waitFade();
+    expect(useWorkspace.getState().currentBoardId).toBe(idB);
+  });
+
   it("setCurrentBoard — 한계 밖 viewport는 범위로 clamp (AC-5)", async () => {
     const idA = await useWorkspace.getState().createBoard("A");
     await waitFade();
@@ -777,18 +804,22 @@ describe("FEAT-trash · 삭제 경로와 복구", () => {
     vi.restoreAllMocks();
   });
 
-  it("remove — 메모는 trashNote로 간다", async () => {
-    const trashSpy = vi.spyOn(useStorage.getState(), "trashNote");
+  // cmd-z-undo 웨이브 4 리뷰(W4-1): 캔버스 삭제는 지우기 직전 보드 문서 값으로 휴지통에 넣는다
+  // (undoTrash.trashNotesFromDoc). storage.trashNote 호출 대신 휴지통 행과 영구 삭제 안 함을 본다.
+  it("remove — 메모는 휴지통으로 간다(영구 삭제 아님)", async () => {
+    const purgeSpy = vi.spyOn(useStorage.getState(), "purgeTrash");
     const id = useWorkspace.getState().addCardAt("text", 0, 0);
     await new Promise((r) => setTimeout(r, 10));
 
     useWorkspace.getState().remove(id);
 
-    expect(trashSpy).toHaveBeenCalledWith(id);
+    await vi.waitFor(async () => expect(await getDB().trash.get(id)).toBeDefined());
+    expect(await getDB().notes.get(id)).toBeUndefined();
+    expect(purgeSpy).not.toHaveBeenCalled();
   });
 
-  it("removeSelected — 선택된 메모 전부 한 번의 trashNotes로 간다", async () => {
-    const trashSpy = vi.spyOn(useStorage.getState(), "trashNotes");
+  it("removeSelected — 선택된 메모 전부 휴지통으로 간다(영구 삭제 아님)", async () => {
+    const purgeSpy = vi.spyOn(useStorage.getState(), "purgeTrash");
     const a = useWorkspace.getState().addCardAt("text", 0, 0);
     const b = useWorkspace.getState().addCardAt("text", 10, 10);
     await new Promise((r) => setTimeout(r, 10));
@@ -796,8 +827,11 @@ describe("FEAT-trash · 삭제 경로와 복구", () => {
     useWorkspace.getState().selectMany([a, b]);
     useWorkspace.getState().removeSelected();
 
-    expect(trashSpy).toHaveBeenCalledTimes(1);
-    expect(trashSpy).toHaveBeenCalledWith([a, b]);
+    await vi.waitFor(async () =>
+      expect((await getDB().trash.toArray()).map((e) => e.id).sort()).toEqual([a, b].sort()),
+    );
+    expect(await getDB().notes.bulkGet([a, b])).toEqual([undefined, undefined]);
+    expect(purgeSpy).not.toHaveBeenCalled();
   });
 
   it("remove — 함 카드는 cascade로 가고 trashNote를 타지 않는다 (AC-2)", async () => {

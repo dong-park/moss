@@ -1,0 +1,86 @@
+[
+  {
+    "width": 390,
+    "height": 844,
+    "dpr": 2,
+    "checked": false,
+    "button": "개인정보 · AI 허용",
+    "panel": {
+      "x": 12,
+      "y": 641.046875,
+      "width": 240,
+      "height": 118.953125,
+      "top": 641.046875,
+      "right": 252,
+      "bottom": 760,
+      "left": 12
+    },
+    "portalBody": true,
+    "checkbox": {
+      "x": 24.25,
+      "y": 666.421875,
+      "width": 18.75,
+      "height": 18.75,
+      "top": 666.421875,
+      "right": 43,
+      "bottom": 685.171875,
+      "left": 24.25
+    }
+  },
+  {
+    "width": 390,
+    "height": 844,
+    "dpr": 2,
+    "checked": true,
+    "button": "개인정보 · AI 제외",
+    "panel": {
+      "x": 12,
+      "y": 641.046875,
+      "width": 240,
+      "height": 118.953125,
+      "top": 641.046875,
+      "right": 252,
+      "bottom": 760,
+      "left": 12
+    },
+    "portalBody": true,
+    "checkbox": {
+      "x": 24.25,
+      "y": 666.421875,
+      "width": 18.75,
+      "height": 18.75,
+      "top": 666.421875,
+      "right": 43,
+      "bottom": 685.171875,
+      "left": 24.25
+    }
+  },
+  {
+    "width": 390,
+    "height": 844,
+    "dpr": 2,
+    "checked": false,
+    "button": "개인정보 · AI 허용",
+    "panel": {
+      "x": 12,
+      "y": 641.046875,
+      "width": 240,
+      "height": 118.953125,
+      "top": 641.046875,
+      "right": 252,
+      "bottom": 760,
+      "left": 12
+    },
+    "portalBody": true,
+    "checkbox": {
+      "x": 24.25,
+      "y": 666.421875,
+      "width": 18.75,
+      "height": 18.75,
+      "top": 666.421875,
+      "right": 43,
+      "bottom": 685.171875,
+      "left": 24.25
+    }
+  }
+]

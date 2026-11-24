@@ -1,0 +1,47 @@
+{
+  "head": "2794991",
+  "viewport": {
+    "width": 390,
+    "height": 844,
+    "devicePixelRatio": 2
+  },
+  "png": {
+    "width": 780,
+    "height": 1688
+  },
+  "fixture": "fixture.tsx.txt",
+  "open": {
+    "zoomVisibility": "hidden",
+    "zoomProgrammaticFocusExcluded": true,
+    "minusPoint": {
+      "x": 110.625,
+      "y": 734.25,
+      "hit": "div[data-canvas-root]"
+    },
+    "dockLabels": {
+      "메모": "hidden",
+      "할 일": "hidden",
+      "사진": "hidden"
+    }
+  },
+  "escape": {
+    "focus": "더 보기",
+    "zoomVisibility": "visible",
+    "dockLabels": "visible"
+  },
+  "interaction": {
+    "selected": "텍스트",
+    "result": "텍스트 입력 textbox active; empty-state removed"
+  },
+  "cleanup": {
+    "reloadFixture": true,
+    "cards": 0,
+    "emptyState": true,
+    "ownedServer3016Stopped": true,
+    "temporaryRouteRemoved": true
+  },
+  "limitations": [
+    "Tab traversal not separately exercised",
+    "in-memory fixture emitted Yjs unattached-type warnings; persistence not validated"
+  ]
+}

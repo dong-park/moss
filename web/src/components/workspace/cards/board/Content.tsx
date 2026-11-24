@@ -4,7 +4,6 @@ import { useEffect, useRef } from "react";
 import { useWorkspace } from "@/state/workspace";
 import { useT } from "@/i18n/Provider";
 import type { Card } from "@/state/workspace";
-import { isCommitEnter, useImeSafeBlur } from "../../ime";
 
 /* ─────────────────────────────────────────────────────────────
  * FEAT-subcanvas / FEAT-sticky-redesign — "파일함" 카드. 더블클릭하면 boardRef
@@ -21,10 +20,11 @@ import { isCommitEnter, useImeSafeBlur } from "../../ime";
  * 더블클릭 진입은 DraggableCard.onDoubleClick이 담당한다.
  * ───────────────────────────────────────────────────────────── */
 
-const BACK = 'url("/cards/v2/board-back.png") 0 0 / 100% 100% no-repeat';
-const FRONT = 'url("/cards/v2/board-front.png") 0 0 / 100% 100% no-repeat';
+// 2026-10-18 macOS 오마주(Finder 블루 폴더) — 같은 640×514 비율의 SVG 레이어.
+const BACK = 'url("/cards/v2/mac/board-back.svg") 0 0 / 100% 100% no-repeat';
+const FRONT = 'url("/cards/v2/mac/board-front.svg") 0 0 / 100% 100% no-repeat';
 const PAPERS = (state: "low" | "high") =>
-  `url("/cards/v2/board-papers-${state}.png") 0 0 / 100% 100% no-repeat`;
+  `url("/cards/v2/mac/board-papers-${state}.svg") 0 0 / 100% 100% no-repeat`;
 
 /** 개수 → 삐져나온 종이 상태. 0장은 종이 없음. 4장 이상은 두툼한 high. */
 function paperState(count: number): "low" | "high" | null {
@@ -62,14 +62,6 @@ export function BoardCardContent({
   const slip = paperState(count);
   const name = rawName || t("cards.board.unnamed");
   const countLabel = count > 99 ? "99+" : t("cards.board.shortCount", { count });
-  // 한글 조합 중 blur면 확정된 글자로 이름을 바꾼다(T11).
-  const onNameBlur = useImeSafeBlur<HTMLInputElement>((e) => {
-    const next = e.currentTarget.value.trim();
-    if (next !== rawName && card.boardRef) {
-      void useWorkspace.getState().renameBoard(card.boardRef, next);
-    }
-    onCommitEdit?.();
-  });
   return (
     <article
       className="relative h-full w-full"
@@ -118,15 +110,21 @@ export function BoardCardContent({
           onDoubleClick={(e) => e.stopPropagation()}
           onKeyDown={(e) => {
             e.stopPropagation();
-            if (isCommitEnter(e)) e.currentTarget.blur();
+            if (e.key === "Enter") e.currentTarget.blur();
             if (e.key === "Escape") {
               e.currentTarget.value = rawName;
               e.currentTarget.blur();
             }
           }}
-          onBlur={onNameBlur}
-          className="absolute rounded-md bg-white/80 text-center font-semibold text-[#3b3426] outline-none"
-          style={{ left: "10%", top: "47%", width: "80%", fontSize: "clamp(10px, 7.5cqw, 22px)" }}
+          onBlur={(e) => {
+            const next = e.currentTarget.value.trim();
+            if (next !== rawName && card.boardRef) {
+              void useWorkspace.getState().renameBoard(card.boardRef, next);
+            }
+            onCommitEdit?.();
+          }}
+          className="absolute rounded-md bg-white/80 text-center font-semibold text-[#173a63] outline-none"
+          style={{ left: "10%", top: "47%", width: "80%", fontSize: "clamp(12px, 10cqw, 30px)" }}
         />
       ) : (
       <span
@@ -134,9 +132,10 @@ export function BoardCardContent({
         title={name}
         className="pointer-events-none absolute overflow-hidden text-center font-semibold leading-snug"
         style={{
-          left: "10%", top: "47%", width: "80%", maxHeight: "29%",
-          fontSize: "clamp(10px, 7.5cqw, 22px)",
-          color: rawName ? "#3b3426" : "rgba(60,52,36,0.48)",
+          left: "10%", top: "47%", width: "80%", maxHeight: "46%",
+          // 폴더 폭에 맞춰 커지고, 멀리 줌에서는 화면 기준 하한(--board-name-floor)을 지킨다.
+          fontSize: "max(clamp(12px, 10cqw, 30px), calc(var(--board-name-floor, 0px) * var(--zoom-inv, 1)))",
+          color: rawName ? "#173a63" : "rgba(23,58,99,0.5)",
           display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: 2,
         }}
       >
@@ -146,11 +145,16 @@ export function BoardCardContent({
       {/* 탭의 흰 라벨판에는 개수만. */}
       <span
         data-board-count
-        className="pointer-events-none absolute flex items-center justify-center overflow-hidden whitespace-nowrap font-semibold text-[#3b3426]"
+        title={t("reviewCanvas.memoCount", { count })}
+        aria-label={t("reviewCanvas.memoCount", { count })}
+        className="pointer-events-none absolute flex items-center justify-center overflow-hidden whitespace-nowrap font-semibold text-[#173a63]"
         style={{ left: "8%", top: "4.5%", width: "25%", height: "8%", fontSize: "clamp(8px, 4.5cqw, 10px)" }}
       >
         {countLabel}
       </span>
+      {count === 0 && !editing && <span data-board-empty-hint className="pointer-events-none absolute left-1/2 top-[90%] w-max max-w-[180%] -translate-x-1/2 text-center text-[11px] text-text-muted">
+        {t("reviewCanvas.folderEmpty")}
+      </span>}
       </div>
     </article>
   );

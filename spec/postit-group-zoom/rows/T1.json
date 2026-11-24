@@ -1,0 +1,17 @@
+{
+  "id": "T1",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": [],
+  "kind": "task",
+  "title": "메모 앞면이 예전 종이 포스트잇으로 보인다",
+  "given": "색이 다른 메모 몇 장이 캔버스에 있다",
+  "when": "사용자가 캔버스를 본다",
+  "then": "메모는 말린 모서리 종이 사진 위에 옅은 색조로 보인다. 도크 아이콘은 지금 SVG 그대로다."
+}

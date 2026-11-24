@@ -2,21 +2,33 @@ package com.moss.server.boards
 
 import com.moss.server.Boards
 import com.moss.server.ConflictException
+import com.moss.server.ConsentRequiredException
+import com.moss.server.GoneException
+import com.moss.server.PasswordResets
+import com.moss.server.RefreshInvalidations
+import com.moss.server.RevokedRefreshTokens
+import com.moss.server.UnauthorizedException
+import com.moss.server.SignupClosedException
+import com.moss.server.SignupPolicyLock
 import com.moss.server.Files
 import com.moss.server.GoogleUser
 import com.moss.server.Invites
 import com.moss.server.Members
+import com.moss.server.QuotaExceededException
 import com.moss.server.Users
 import com.moss.server.dbQuery
 import com.moss.server.newId
+import com.moss.server.oauth.revokeUserGrantsInTx
 import org.jetbrains.exposed.sql.JoinType
 import org.jetbrains.exposed.sql.SortOrder
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.inList
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.deleteWhere
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.lessEq
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.insertIgnore
+import org.jetbrains.exposed.sql.upsert
 import org.jetbrains.exposed.sql.select
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.sum
@@ -45,15 +57,21 @@ data class InvitePreview(val boardName: String, val ownerName: String)
 enum class JoinResult { JOINED, ALREADY_MEMBER, FULL, MISSING }
 
 /** Outcome of [BoardRepository.saveFile]; each carries its own compensation. */
-enum class SaveFileResult { ACCEPTED, QUOTA_EXCEEDED, BOARD_MISSING }
+enum class SaveFileResult { ACCEPTED, QUOTA_EXCEEDED, USER_QUOTA_EXCEEDED, BOARD_MISSING }
+
+/** 한 사용자가 소유한 보드 수와 첨부 합계(바이트). 파일함도 보드로 센다. */
+data class UserUsage(val boards: Int, val fileBytes: Long)
 
 object InviteTokens {
     private val random = SecureRandom()
 
-    fun generate(): String {
+    fun generate(): String = next()
+
+    /** 테스트가 원문을 알 수 있게 바꾼다. 응답에는 원문을 넣지 않는다. */
+    var next: () -> String = {
         val bytes = ByteArray(32)
         random.nextBytes(bytes)
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
+        Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
     }
 
     fun hash(raw: String): String {
@@ -62,34 +80,77 @@ object InviteTokens {
     }
 }
 
+/** 클라이언트가 보낸 명시적 동의. 동의 시각은 서버가 기록한다. */
+data class SignupConsent(val version: String)
+
+/** 신규가입 정책. [termsVersion]이 null이면 신규가입만 닫는다. */
+data class SignupPolicy(
+    val accountCap: Long = com.moss.server.AppConfig.DEFAULT_ACCOUNT_CAP,
+    val termsVersion: String? = null,
+) {
+    /** 동의 값과 버전이 정책과 맞아야 통과한다. 닫힌 상태는 동의보다 먼저 알린다. */
+    fun requireConsent(consent: SignupConsent?) {
+        val current = termsVersion ?: throw SignupClosedException("지금은 새 계정을 받을 수 없어요")
+        if (consent == null) throw ConsentRequiredException("약관에 동의해야 가입할 수 있어요")
+        if (consent.version != current) throw ConsentRequiredException("약관이 바뀌었어요. 다시 확인하고 동의해 주세요")
+    }
+}
+
 class BoardRepository(
     private val maxMembersPerBoard: Int,
     private val maxBoardFileBytes: Long = DEFAULT_MAX_BOARD_FILE_BYTES,
+    private val maxBoardsPerUser: Int = DEFAULT_MAX_BOARDS_PER_USER,
+    private val maxUserFileBytes: Long = DEFAULT_MAX_USER_FILE_BYTES,
+    val signupPolicy: SignupPolicy = SignupPolicy(),
 ) {
 
-    suspend fun upsertUser(google: GoogleUser): UserRow = dbQuery {
-        val existing = Users.selectAll().where { Users.googleSub eq google.sub }.singleOrNull()
-        if (existing != null) {
-            val id = existing[Users.id]
-            val avatar = google.avatar
-            Users.update({ Users.id eq id }) {
-                it[name] = google.name
-                if (avatar != null) it[Users.avatar] = avatar
-            }
-            UserRow(id, google.sub, google.name, avatar ?: existing[Users.avatar])
-        } else {
-            val id = newId()
-            // Concurrent logins for a brand-new google_sub may race on the unique index;
-            // ignore the loser's insert and read back the winner's row.
-            Users.insertIgnore {
-                it[Users.id] = id
-                it[googleSub] = google.sub
-                it[name] = google.name
-                it[avatar] = google.avatar
-                it[createdAt] = System.currentTimeMillis()
-            }
-            val row = Users.selectAll().where { Users.googleSub eq google.sub }.single()
-            UserRow(row[Users.id], row[Users.googleSub], row[Users.name], row[Users.avatar])
+    /**
+     * Google 로그인. 기존 계정은 상한과 동의 없이 그대로 로그인한다.
+     * 신규 계정은 가입 잠금 안에서 다시 조회한 뒤 동의·상한을 확인하고 만든다.
+     */
+    suspend fun upsertUser(google: GoogleUser, consent: SignupConsent? = null): UserRow = dbQuery {
+        val existing = findGoogle(google.sub)
+        if (existing != null) return@dbQuery refreshGoogle(existing, google)
+        lockSignup()
+        // 잠금을 기다리는 동안 같은 sub의 다른 요청이 계정을 만들었을 수 있다.
+        val raced = findGoogle(google.sub)
+        if (raced != null) return@dbQuery refreshGoogle(raced, google)
+        signupPolicy.requireConsent(consent)
+        requireCapacity()
+        val id = newId()
+        val now = System.currentTimeMillis()
+        Users.insert {
+            it[Users.id] = id
+            it[googleSub] = google.sub
+            it[name] = google.name
+            it[avatar] = google.avatar
+            it[createdAt] = now
+            it[termsVersion] = consent!!.version
+            it[termsAcceptedAt] = now
+        }
+        UserRow(id, google.sub, google.name, google.avatar)
+    }
+
+    private fun findGoogle(sub: String) = Users.selectAll().where { Users.googleSub eq sub }.singleOrNull()
+
+    private fun refreshGoogle(existing: org.jetbrains.exposed.sql.ResultRow, google: GoogleUser): UserRow {
+        val id = existing[Users.id]
+        val avatar = google.avatar
+        Users.update({ Users.id eq id }) {
+            it[name] = google.name
+            if (avatar != null) it[Users.avatar] = avatar
+        }
+        return UserRow(id, google.sub, google.name, avatar ?: existing[Users.avatar])
+    }
+
+    /** 신규가입 경로가 모두 거치는 행 잠금. 트랜잭션이 끝나면 풀린다. */
+    private fun lockSignup() {
+        SignupPolicyLock.selectAll().where { SignupPolicyLock.id eq 1.toShort() }.forUpdate().single()
+    }
+
+    private fun requireCapacity() {
+        if (Users.selectAll().count() >= signupPolicy.accountCap) {
+            throw SignupClosedException("지금은 새 계정을 받을 수 없어요", "signup_capacity")
         }
     }
 
@@ -100,16 +161,28 @@ class BoardRepository(
 
     /**
      * D4~D7: 메일 가입 계정 생성. 저장 전에 이메일은 정규화되어 있어야 한다(D2).
+     * 가입 잠금 안에서 동의와 전체 계정 수 상한을 확인하고 같은 트랜잭션에서 만든다.
      * 고유 인덱스 충돌은 insertIgnore로 잡아 409로 알린다 — 동시 가입 경쟁에도 계정은 하나만 생긴다.
      */
-    suspend fun createEmailUser(email: String, passwordHash: String, name: String): UserRow = dbQuery {
+    suspend fun createEmailUser(
+        email: String,
+        passwordHash: String,
+        name: String,
+        consent: SignupConsent?,
+    ): UserRow = dbQuery {
+        lockSignup()
+        signupPolicy.requireConsent(consent)
+        requireCapacity()
         val id = newId()
+        val now = System.currentTimeMillis()
         val inserted = Users.insertIgnore {
             it[Users.id] = id
             it[Users.email] = email
             it[Users.passwordHash] = passwordHash
             it[Users.name] = name
-            it[createdAt] = System.currentTimeMillis()
+            it[createdAt] = now
+            it[termsVersion] = consent!!.version
+            it[termsAcceptedAt] = now
         }.insertedCount
         if (inserted == 0) throw ConflictException("이미 가입된 메일이에요")
         UserRow(id, null, name, null)
@@ -124,6 +197,86 @@ class BoardRepository(
             UserRow(row[Users.id], row[Users.googleSub], row[Users.name], row[Users.avatar]),
             hash,
         )
+    }
+
+    /**
+     * 비밀번호 재설정 토큰을 만든다. 원문은 반환만 하고 해시만 저장한다.
+     * 비밀번호가 없는 계정은 null이다. 같은 계정의 아직 안 쓴 토큰은 바로 무효가 된다.
+     */
+    suspend fun createPasswordReset(email: String, now: Long, ttlMillis: Long): String? = dbQuery {
+        // 사용자 행을 잠근다. 동시에 온 요청이 서로의 새 토큰을 못 보고 둘 다 살아남지 않게 한다.
+        val row = Users.selectAll().where { Users.email eq email }.forUpdate().singleOrNull()
+            ?: return@dbQuery null
+        if (row[Users.passwordHash] == null) return@dbQuery null
+        val userId = row[Users.id]
+        PasswordResets.update({ (PasswordResets.userId eq userId) and PasswordResets.usedAt.isNull() }) {
+            it[usedAt] = now
+        }
+        val raw = InviteTokens.generate()
+        PasswordResets.insert {
+            it[tokenHash] = InviteTokens.hash(raw)
+            it[PasswordResets.userId] = userId
+            it[expiresAt] = now + ttlMillis
+            it[createdAt] = now
+        }
+        raw
+    }
+
+    /**
+     * 재설정 토큰으로 비밀번호를 바꾼다. 만료됐거나 이미 쓴 토큰은 거부한다.
+     * 확인과 해시 교체와 사용 표시를 한 트랜잭션에서 끝낸다.
+     */
+    suspend fun consumePasswordReset(rawToken: String, newPasswordHash: String, now: Long) = dbQuery {
+        val row = PasswordResets.selectAll()
+            .where { PasswordResets.tokenHash eq InviteTokens.hash(rawToken) }
+            .forUpdate()
+            .singleOrNull() ?: throw GoneException("재설정 링크가 유효하지 않아요")
+        if (row[PasswordResets.usedAt] != null || row[PasswordResets.expiresAt] <= now) {
+            throw GoneException("재설정 링크가 유효하지 않아요")
+        }
+        val userId = row[PasswordResets.userId]
+        Users.update({ Users.id eq userId }) { it[passwordHash] = newPasswordHash }
+        PasswordResets.update({ PasswordResets.tokenHash eq row[PasswordResets.tokenHash] }) {
+            it[usedAt] = now
+        }
+        RefreshInvalidations.upsert {
+            it[RefreshInvalidations.userId] = userId
+            it[invalidBefore] = now
+        }
+        revokeUserGrantsInTx(userId, now)
+    }
+
+    /** 비밀번호를 바꾼 시각 이전에 발급한 리프레시 토큰이면 갱신을 거부한다. */
+    suspend fun requireRefreshIssuedAfterReset(userId: UUID, issuedAtMillis: Long) = dbQuery {
+        val row = RefreshInvalidations.selectAll()
+            .where { RefreshInvalidations.userId eq userId }
+            .singleOrNull() ?: return@dbQuery
+        if (issuedAtMillis < row[RefreshInvalidations.invalidBefore]) {
+            throw UnauthorizedException("로그인이 취소됐어요")
+        }
+    }
+
+    /**
+     * 로그아웃한 리프레시 토큰의 jti 해시를 남긴다. 원문은 저장하지 않는다.
+     * 같은 토큰을 다시 폐기해도 한 행이다. 이미 만료된 폐기 기록은 지운다.
+     */
+    suspend fun revokeRefresh(userId: UUID, jti: String, expiresAtMillis: Long, now: Long) = dbQuery {
+        RevokedRefreshTokens.deleteWhere { RevokedRefreshTokens.expiresAt lessEq now }
+        RevokedRefreshTokens.insertIgnore {
+            it[jtiHash] = InviteTokens.hash(jti)
+            it[RevokedRefreshTokens.userId] = userId
+            it[expiresAt] = expiresAtMillis
+            it[revokedAt] = now
+        }
+    }
+
+    /** 폐기된 리프레시 토큰이면 갱신을 거부한다. 만료된 기록은 폐기와 같지 않다. */
+    suspend fun requireRefreshActive(jti: String, now: Long) = dbQuery {
+        val row = RevokedRefreshTokens.selectAll()
+            .where { RevokedRefreshTokens.jtiHash eq InviteTokens.hash(jti) }
+            .singleOrNull() ?: return@dbQuery
+        if (row[RevokedRefreshTokens.expiresAt] <= now) return@dbQuery
+        throw UnauthorizedException("로그인이 취소됐어요")
     }
 
     suspend fun board(boardId: String): BoardRow? = dbQuery {
@@ -152,6 +305,7 @@ class BoardRepository(
     suspend fun shareSubBoard(boardId: String, parentId: String, name: String) = dbQuery {
         val root = rootIn(parentId)
         val ownerId = Boards.selectAll().where { Boards.id eq root }.single()[Boards.ownerId]
+        ensureRoomForNewBoard(boardId, ownerId)
         Boards.insertIgnore {
             it[id] = boardId
             it[Boards.ownerId] = ownerId
@@ -167,6 +321,7 @@ class BoardRepository(
      * it silently keeps the first row (callers re-read ownership afterwards).
      */
     suspend fun shareBoard(boardId: String, ownerId: UUID, name: String): BoardRow = dbQuery {
+        ensureRoomForNewBoard(boardId, ownerId)
         val now = System.currentTimeMillis()
         Boards.insertIgnore {
             it[id] = boardId
@@ -182,6 +337,12 @@ class BoardRepository(
         }
         BoardRow(boardId, ownerId, name)
     }
+
+    /** 소유자의 보드 수와 첨부 합계. 상한 안내와 새 보드 만들기 사전 확인이 쓴다. */
+    suspend fun usageOf(ownerId: UUID): UserUsage = dbQuery { usageIn(ownerId) }
+
+    val boardLimit: Int get() = maxBoardsPerUser
+    val fileBytesLimit: Long get() = maxUserFileBytes
 
     suspend fun renameBoard(boardId: String, name: String) {
         dbQuery { Boards.update({ Boards.id eq boardId }) { it[Boards.name] = name } }
@@ -345,6 +506,10 @@ class BoardRepository(
         val total = Files.size.sum()
         val used = Files.select(total).where { Files.boardId eq boardId }.single()[total] ?: 0L
         if (used + size > maxBoardFileBytes) return@dbQuery SaveFileResult.QUOTA_EXCEEDED
+        // 사용자 합계 — 보드 소유자 계정으로 센다. 사용자 행을 잠가 다른 보드의 동시 업로드가 같이 통과하지 못하게 한다.
+        val owner = Boards.selectAll().where { Boards.id eq boardId }.single()[Boards.ownerId]
+        Users.selectAll().where { Users.id eq owner }.forUpdate().singleOrNull()
+        if (usageIn(owner).fileBytes + size > maxUserFileBytes) return@dbQuery SaveFileResult.USER_QUOTA_EXCEEDED
         Files.insert {
             it[id] = fileId
             it[Files.boardId] = boardId
@@ -354,6 +519,30 @@ class BoardRepository(
             it[createdAt] = System.currentTimeMillis()
         }
         SaveFileResult.ACCEPTED
+    }
+
+    private fun usageIn(ownerId: UUID): UserUsage {
+        val boards = Boards.selectAll().where { Boards.ownerId eq ownerId }.count().toInt()
+        val total = Files.size.sum()
+        val bytes = Files.join(Boards, JoinType.INNER, Files.boardId, Boards.id)
+            .select(total).where { Boards.ownerId eq ownerId }.single()[total] ?: 0L
+        return UserUsage(boards, bytes)
+    }
+
+    /**
+     * 새 보드 행을 만들기 전에 사용자 상한을 확인한다. 이미 있는 보드의 재등록(멱등)은 통과한다.
+     * 사용자 행을 잠가 같은 사용자의 동시 등록이 상한을 같이 넘지 못하게 한다.
+     */
+    private fun ensureRoomForNewBoard(boardId: String, ownerId: UUID) {
+        Users.selectAll().where { Users.id eq ownerId }.forUpdate().singleOrNull() ?: return
+        if (Boards.selectAll().where { Boards.id eq boardId }.count() > 0) return
+        val usage = usageIn(ownerId)
+        if (usage.boards >= maxBoardsPerUser) {
+            throw QuotaExceededException("보드는 ${maxBoardsPerUser}개까지 저장할 수 있어요")
+        }
+        if (usage.fileBytes >= maxUserFileBytes) {
+            throw QuotaExceededException("저장 용량(${formatBytes(maxUserFileBytes)})을 다 썼어요")
+        }
     }
 
     private fun rootIn(boardId: String): String {
@@ -370,5 +559,18 @@ class BoardRepository(
 
         /** D12: 500 MB per board. */
         const val DEFAULT_MAX_BOARD_FILE_BYTES: Long = 500L * 1024 * 1024
+
+        /** D2: 사용자당 보드 100개(파일함 포함). */
+        const val DEFAULT_MAX_BOARDS_PER_USER: Int = 100
+
+        /** D2: 사용자당 첨부 합계 1 GB. */
+        const val DEFAULT_MAX_USER_FILE_BYTES: Long = 1024L * 1024 * 1024
+
+        fun formatBytes(bytes: Long): String {
+            val gb = 1024L * 1024 * 1024
+            val mb = 1024L * 1024
+            return if (bytes >= gb && bytes % gb == 0L) "${bytes / gb}GB" else "${bytes / mb}MB"
+        }
     }
 }
+

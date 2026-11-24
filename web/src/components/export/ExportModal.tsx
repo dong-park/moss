@@ -36,6 +36,8 @@ export function ExportModal() {
 
   useEffect(() => {
     if (!open) return;
+    // 창을 열 때 입력을 기본값으로 초기화한다. effect 안 setState가 의도다.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 창 열림 신호에 맞춰 폼 상태를 초기화
     setError(null);
     setScope(defaults?.scope ?? "all");
     setFormat("moss");

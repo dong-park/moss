@@ -16,13 +16,27 @@ describe("internal close endpoint", () => {
   let revoked: string[];
   let kicked: Array<{ boardId: string; userId: string }>;
   let closed = 0;
+  let sha: string | undefined;
+  let built: string | undefined;
+  let ready: boolean;
+  let dbFails: boolean;
 
   beforeEach(async () => {
     revoked = [];
     kicked = [];
     closed = 0;
+    sha = "a".repeat(40);
+    built = sha;
+    ready = true;
+    dbFails = false;
     server = await startInternalServer({
       port: 0,
+      deployment: {
+        sha: () => sha,
+        buildSha: () => built,
+        ready: () => ready,
+        checkDatabase: async () => { if (dbFails) throw new Error("db down"); },
+      },
       secret: TEST_INTERNAL_SECRET,
       revokeBoard: async (boardId) => {
         revoked.push(boardId);
@@ -46,6 +60,50 @@ describe("internal close endpoint", () => {
       headers: secret === null ? {} : { [INTERNAL_SECRET_HEADER]: secret },
     });
   }
+
+  test("deployment probe requires existing internal secret", async () => {
+    expect((await fetch(`${base}/deployment`)).status).toBe(401);
+    expect((await fetch(`${base}/deployment`, { headers: { [INTERNAL_SECRET_HEADER]: "wrong" } })).status).toBe(401);
+  });
+  test("deployment checks revision, live DB, and accepting state on every request", async () => {
+    const probe = () => fetch(`${base}/deployment`, { headers: { [INTERNAL_SECRET_HEADER]: TEST_INTERNAL_SECRET } });
+    const response = await probe();
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toContain("no-store");
+    expect(await response.json()).toEqual({ status: "ready", sha });
+    for (const value of [undefined, "", "abc", "g".repeat(40), "a".repeat(40) + "\n"]) {
+      sha = value;
+      expect((await probe()).status).toBe(503);
+    }
+    sha = "a".repeat(40);
+    sha = "b".repeat(40);
+    expect((await probe()).status).toBe(503);
+    sha = "a".repeat(40);
+    built = undefined;
+    expect((await probe()).status).toBe(503);
+    built = "a".repeat(40);
+    dbFails = true;
+    expect((await probe()).status).toBe(503);
+    dbFails = false;
+    ready = false;
+    expect((await probe()).status).toBe(503);
+  });
+  test("unversioned manual build is ready only without any revision and with a live DB", async () => {
+    const probe = () => fetch(`${base}/deployment`, { headers: { [INTERNAL_SECRET_HEADER]: TEST_INTERNAL_SECRET } });
+    sha = undefined;
+    built = undefined;
+    const response = await probe();
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ status: "unversioned" });
+    sha = "a".repeat(40);
+    expect((await probe()).status).toBe(503);
+    sha = undefined;
+    dbFails = true;
+    expect((await probe()).status).toBe(503);
+    dbFails = false;
+    ready = false;
+    expect((await probe()).status).toBe(503);
+  });
 
   test("POST /internal/close/{boardId} revokes the board", async () => {
     closed = 3;
