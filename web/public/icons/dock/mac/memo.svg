@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+<defs>
+<linearGradient id="note" x1="20%" y1="0%" x2="80%" y2="100%"><stop offset="0" stop-color="#fff3a6"/><stop offset=".35" stop-color="#ffe783"/><stop offset=".8" stop-color="#f9d75e"/><stop offset="1" stop-color="#f0c94a"/></linearGradient>
+<linearGradient id="glue" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c99a1f" stop-opacity=".22"/><stop offset="1" stop-color="#c99a1f" stop-opacity="0"/></linearGradient>
+<linearGradient id="curl" x1="100%" y1="100%" x2="40%" y2="40%"><stop offset="0" stop-color="#fffbe0"/><stop offset=".45" stop-color="#f6df8a"/><stop offset="1" stop-color="#d9b13c"/></linearGradient>
+<linearGradient id="lift" x1="100%" y1="100%" x2="55%" y2="55%"><stop offset="0" stop-color="#6b4d07" stop-opacity=".35"/><stop offset="1" stop-color="#6b4d07" stop-opacity="0"/></linearGradient>
+<radialGradient id="light" cx="22%" cy="14%" r="85%"><stop stop-color="#fff" stop-opacity=".45"/><stop offset=".6" stop-color="#fff" stop-opacity="0"/></radialGradient>
+<filter id="grain" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency=".9" numOctaves="2" seed="9" stitchTiles="stitch"/><feColorMatrix values="0 0 0 0 .55  0 0 0 0 .4  0 0 0 0 .05  0 0 0 .5 0"/></filter>
+<clipPath id="shape"><path d="M12 14a3 3 0 0 1 3-3h70a3 3 0 0 1 3 3v52L66 88H15a3 3 0 0 1-3-3z"/></clipPath>
+</defs>
+<g transform="rotate(-3 50 50)">
+<path d="M14 86c18 3 36 3 52 1l20-18" stroke="#3a2a00" stroke-opacity=".12" stroke-width="3" stroke-linecap="round"/>
+<path d="M12 14a3 3 0 0 1 3-3h70a3 3 0 0 1 3 3v52L66 88H15a3 3 0 0 1-3-3z" fill="url(#note)"/>
+<g clip-path="url(#shape)">
+<rect width="100" height="100" filter="url(#grain)" opacity=".18"/>
+<rect x="10" y="11" width="80" height="13" fill="url(#glue)"/>
+<rect width="100" height="100" fill="url(#light)"/>
+<path d="M88 50v16L66 88H50z" fill="url(#lift)" opacity=".55"/>
+</g>
+<g stroke="#8a6410" stroke-opacity=".55" stroke-width="3.6" stroke-linecap="round"><path d="M24 39c9-1.2 26-1.4 40-.6"/><path d="M24 52c11-1 30-1.1 47-.4"/><path d="M24 65c8-.8 18-.9 27-.5"/></g>
+<path d="M88 66L66 88c1-8 2.5-13.5 6.5-17.5S80 67 88 66z" fill="url(#curl)"/>
+<path d="M88 66L66 88c1-8 2.5-13.5 6.5-17.5S80 67 88 66z" stroke="#a87d17" stroke-opacity=".35" stroke-width=".6"/>
+<path d="M12.5 14a2.5 2.5 0 0 1 2.5-2.5h70a2.5 2.5 0 0 1 2.5 2.5" stroke="#fff" stroke-opacity=".75" stroke-width="1"/>
+<path d="M12 14a3 3 0 0 1 3-3h70a3 3 0 0 1 3 3v52L66 88H15a3 3 0 0 1-3-3z" stroke="#9c7310" stroke-opacity=".28" stroke-width=".7"/>
+</g>
+</svg>

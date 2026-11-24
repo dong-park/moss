@@ -11,7 +11,6 @@ import {
 } from "motion/react";
 import {
   kindForTool,
-  TEXT_GLYPH_ICON,
   useWorkspace,
   widthForKind,
   type ToolId,
@@ -83,17 +82,15 @@ type DockItem = {
 };
 
 const DOCK_ITEMS: DockItem[] = [
-  { toolId: "frame", icon: "/icons/dock/whiteboard.png", labelKey: "workspace.tool.frame", draggable: true },
-  { toolId: "text", icon: "/icons/dock/memo.png", labelKey: "capture.tool.text", draggable: true },
-  { toolId: "todo", icon: "/icons/sidebar/todo-v2.png", labelKey: "workspace.tool.todo", draggable: true },
-  { toolId: "linkMemo", icon: "/icons/sidebar/link-v2.png", labelKey: "workspace.tool.link", draggable: true },
-  { toolId: "photo", icon: "/icons/sidebar/image-v2.png", labelKey: "workspace.tool.photo", draggable: true },
-  // FEAT-text-tool §2/§7: 캔버스 평문 텍스트 — "T" 글리프 아이콘. 끌어놓기 생성.
-  { toolId: "textbox", icon: TEXT_GLYPH_ICON, labelKey: "workspace.tool.textbox", draggable: true },
-  { toolId: "board", icon: "/icons/dock/filebox-folder.png", labelKey: "workspace.tool.board", draggable: true },
+  { toolId: "frame", icon: "/icons/dock/mac/board.svg", labelKey: "workspace.tool.frame", draggable: true },
+  { toolId: "text", icon: "/icons/dock/mac/memo.svg", labelKey: "capture.tool.text", draggable: true },
+  { toolId: "todo", icon: "/icons/dock/mac/todo.svg", labelKey: "workspace.tool.todo", draggable: true },
+  { toolId: "linkMemo", icon: "/icons/dock/mac/link.svg", labelKey: "workspace.tool.link", draggable: true },
+  { toolId: "photo", icon: "/icons/dock/mac/photo.svg", labelKey: "workspace.tool.photo", draggable: true },
+  { toolId: "textbox", icon: "/icons/dock/mac/text.svg", labelKey: "workspace.tool.textbox", draggable: true },
+  { toolId: "board", icon: "/icons/dock/mac/folder.svg", labelKey: "workspace.tool.board", draggable: true },
   { toolId: "signals", icon: "/icons/sidebar/signals-v2.png", labelKey: "signals.sidebar.label", draggable: false },
-  // FEAT-trash: 독 맨 끝 휴지통 — 클릭 전용(카드를 끌어 위에 놓으면 버린다, FEAT-trash-drag).
-  { toolId: "trash", icon: "/icons/sidebar/trash-v2.png", labelKey: "workspace.tool.trash", draggable: false },
+  { toolId: "trash", icon: "/icons/dock/mac/trash.svg", labelKey: "workspace.tool.trash", draggable: false },
 ];
 
 /**
