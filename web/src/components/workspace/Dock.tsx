@@ -487,7 +487,6 @@ export function Dock({
         x: shiftX,
       }}
     >
-      {/* wall-marker n2 (D11=A): 독 왼쪽에 마카 4개와 천. 휴대폰 크기에선 스스로 안 그린다. */}
       <MarkerTray />
 
       {DOCK_ITEMS.filter((item) => item.draggable).map((item) => (

@@ -1,7 +1,7 @@
 "use client";
 
 import { useWorkspace } from "@/state/workspace";
-import { isMarkerHeld } from "@/state/marker/heldTool";
+import { isClothHeld, isMarkerHeld } from "@/state/marker/heldTool";
 import {
   MARKER_COLORS,
   MARKER_COLOR_VALUE,
@@ -25,8 +25,11 @@ export function MarkerPanel() {
   const heldTool = useWorkspace((s) => s.heldTool);
   const markerWidth = useWorkspace((s) => s.markerWidth);
   const holdMarker = useWorkspace((s) => s.holdMarker);
+  const holdCloth = useWorkspace((s) => s.holdCloth);
+  const releaseTool = useWorkspace((s) => s.releaseTool);
   const setMarkerWidth = useWorkspace((s) => s.setMarkerWidth);
   const heldColor = isMarkerHeld(heldTool) ? heldTool.color : null;
+  const clothHeld = isClothHeld(heldTool);
 
   const colorLabels: Record<MarkerColor, string> = {
     black: t("workspace.marker.color.black"),
@@ -63,7 +66,7 @@ export function MarkerPanel() {
               aria-checked={selected}
               aria-label={colorLabels[c]}
               title={colorLabels[c]}
-              onClick={() => holdMarker(c)}
+              onClick={() => (heldColor === c ? releaseTool() : holdMarker(c))}
               className="h-6 w-6 cursor-pointer rounded-full transition-transform hover:scale-110"
               style={{
                 background: MARKER_COLOR_VALUE[c],
@@ -112,7 +115,18 @@ export function MarkerPanel() {
         })}
       </div>
 
-      <div className="mt-3 border-t border-border pt-2 text-[11px] leading-snug text-text-muted">
+      <button
+        type="button"
+        aria-label={t("workspace.marker.cloth")}
+        aria-pressed={clothHeld}
+        onClick={() => (clothHeld ? releaseTool() : holdCloth())}
+        className="mt-3 w-full cursor-pointer rounded-lg border border-border px-2 py-1.5 text-left text-[12px] text-text"
+        style={{ boxShadow: clothHeld ? "inset 0 0 0 1.5px var(--color-text, #1f2430)" : "none" }}
+      >
+        {t("workspace.marker.cloth")}
+      </button>
+
+      <div className="mt-2 text-[11px] leading-snug text-text-muted">
         {t("workspace.marker.panel.erase")}
       </div>
     </div>
