@@ -1,0 +1,19 @@
+{
+  "id": "T15",
+  "kind": "task",
+  "title": "손글씨 폰트를 moss가 직접 싣는다",
+  "given": "공유하지 않은 벽을 연다. 네트워크 탭을 연 채다",
+  "when": "포스트잇, 메모판 이름표, 재질 카드 이름처럼 손글씨 폰트가 쓰이는 화면을 본다",
+  "then": "손글씨는 Nanum Pen Script로 그려진다. fonts.googleapis.com이나 fonts.gstatic.com으로 가는 요청은 0건이다. 오프라인에서 새로 열어도 손글씨가 기본 글꼴로 바뀌지 않는다. 확인: 소스에서 두 도메인 grep 결과 0줄 + 실브라우저 네트워크 탭.",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": [
+    "2026-10-11 DAG 브리프에서 추가: 손글씨 폰트 자체 호스팅은 glass-surface 몫"
+  ]
+}

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useT } from "@/i18n/Provider";
 import { fillLinkMemo } from "../../linkMemo";
+import { useImeSafeBlur } from "../../ime";
 
 /**
  * 빈 링크 카드 앞면 (spec/card-faces.md) — 도크 링크 버튼이 만든다. 카드 안 입력칸을 눌러
@@ -19,6 +20,11 @@ export function LinkInputFace({ cardId, editing, onCommitEdit }: { cardId: strin
   useEffect(() => {
     if (editing) inputRef.current?.focus();
   }, [editing]);
+
+  // 한글 조합 중 blur면 조합이 끝난 뒤 편집을 끝낸다 — 글자가 확정되기 전에 칸이 닫히지 않는다(T11).
+  const onBlur = useImeSafeBlur<HTMLInputElement>(() => {
+    if (editing) onCommitEdit();
+  });
 
   return (
     <div className="moss-card-face" data-memo-face="linkEmpty">
@@ -50,9 +56,7 @@ export function LinkInputFace({ cardId, editing, onCommitEdit }: { cardId: strin
             onKeyDown={(e) => {
               if (e.key === "Escape") e.currentTarget.blur();
             }}
-            onBlur={() => {
-              if (editing) onCommitEdit();
-            }}
+            onBlur={onBlur}
           />
         </form>
         {invalid && <small role="alert">{t("workspace.tool.linkInvalid")}</small>}

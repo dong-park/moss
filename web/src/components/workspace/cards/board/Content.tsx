@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { useWorkspace } from "@/state/workspace";
 import { useT } from "@/i18n/Provider";
 import type { Card } from "@/state/workspace";
+import { isCommitEnter, useImeSafeBlur } from "../../ime";
 
 /* ─────────────────────────────────────────────────────────────
  * FEAT-subcanvas / FEAT-sticky-redesign — "파일함" 카드. 더블클릭하면 boardRef
@@ -61,6 +62,14 @@ export function BoardCardContent({
   const slip = paperState(count);
   const name = rawName || t("cards.board.unnamed");
   const countLabel = count > 99 ? "99+" : t("cards.board.shortCount", { count });
+  // 한글 조합 중 blur면 확정된 글자로 이름을 바꾼다(T11).
+  const onNameBlur = useImeSafeBlur<HTMLInputElement>((e) => {
+    const next = e.currentTarget.value.trim();
+    if (next !== rawName && card.boardRef) {
+      void useWorkspace.getState().renameBoard(card.boardRef, next);
+    }
+    onCommitEdit?.();
+  });
   return (
     <article
       className="relative h-full w-full"
@@ -109,19 +118,13 @@ export function BoardCardContent({
           onDoubleClick={(e) => e.stopPropagation()}
           onKeyDown={(e) => {
             e.stopPropagation();
-            if (e.key === "Enter") e.currentTarget.blur();
+            if (isCommitEnter(e)) e.currentTarget.blur();
             if (e.key === "Escape") {
               e.currentTarget.value = rawName;
               e.currentTarget.blur();
             }
           }}
-          onBlur={(e) => {
-            const next = e.currentTarget.value.trim();
-            if (next !== rawName && card.boardRef) {
-              void useWorkspace.getState().renameBoard(card.boardRef, next);
-            }
-            onCommitEdit?.();
-          }}
+          onBlur={onNameBlur}
           className="absolute rounded-md bg-white/80 text-center font-semibold text-[#3b3426] outline-none"
           style={{ left: "10%", top: "47%", width: "80%", fontSize: "clamp(10px, 7.5cqw, 22px)" }}
         />

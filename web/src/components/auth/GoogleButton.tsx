@@ -9,9 +9,12 @@ import { useT } from "@/i18n/Provider";
 export function GoogleButton({
   onClick,
   disabled = false,
+  label,
 }: {
   onClick: () => void;
   disabled?: boolean;
+  /** 기본 문구 대신 쓸 글자. 공유 시트의 "Google로 로그인하고 공유"처럼 목적이 다른 자리에서 준다. */
+  label?: string;
 }) {
   const t = useT();
   return (
@@ -19,7 +22,7 @@ export function GoogleButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      aria-label={t("collab.auth.googleAria")}
+      aria-label={label ?? t("collab.auth.googleAria")}
       className="mx-auto mt-4 flex w-full items-center justify-center gap-2 rounded-[10px] bg-[#1d1d1f] px-4 py-2.5 text-[13px] font-medium text-white disabled:opacity-60"
     >
       <span
@@ -30,7 +33,7 @@ export function GoogleButton({
             "conic-gradient(#ea4335 0 25%, #fbbc05 0 50%, #34a853 0 75%, #4285f4 0)",
         }}
       />
-      {t("collab.auth.google")}
+      {label ?? t("collab.auth.google")}
     </button>
   );
 }

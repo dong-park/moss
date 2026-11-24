@@ -22,6 +22,7 @@ import { layout } from "@/design/tokens";
 import { PANEL_WIDTH as SIGNALS_PANEL_WIDTH } from "@/components/signals/SignalsPanel";
 import { PHOTO_DEFAULT_WIDTH } from "@/state/workspace";
 import { EMPTY_LINK_CONTENT } from "./linkMemo";
+import { MarkerTray } from "./MarkerTray";
 
 /** 드래그로 인정하기 위한 최소 이동 거리 — 단순 클릭과 구분. */
 const DRAG_THRESHOLD = 4;
@@ -90,7 +91,6 @@ const DOCK_ITEMS: DockItem[] = [
   // FEAT-text-tool §2/§7: 캔버스 평문 텍스트 — "T" 글리프 아이콘. 끌어놓기 생성.
   { toolId: "textbox", icon: TEXT_GLYPH_ICON, labelKey: "workspace.tool.textbox", draggable: true },
   { toolId: "board", icon: "/icons/dock/filebox-folder.png", labelKey: "workspace.tool.board", draggable: true },
-  { toolId: "pen", icon: "/icons/sidebar/draw-v2.png", labelKey: "workspace.tool.pen", draggable: false },
   { toolId: "signals", icon: "/icons/sidebar/signals-v2.png", labelKey: "signals.sidebar.label", draggable: false },
   // FEAT-trash: 독 맨 끝 휴지통 — 클릭 전용(카드를 끌어 위에 놓으면 버린다, FEAT-trash-drag).
   { toolId: "trash", icon: "/icons/sidebar/trash-v2.png", labelKey: "workspace.tool.trash", draggable: false },
@@ -150,9 +150,7 @@ export function Dock({
   /** 사진 파일 창을 연 뒤 고른 사진을 놓을 자리(없으면 화면 가운데). */
   // 무소속 토스트와 함께 임시 숨김(2026-09-22).
   // const promoteCardToNewBoard = useWorkspace((s) => s.promoteCardToNewBoard);
-  // 2026-09-19 사용자 결정: 펜·시그널스 진입점 임시 숨김 — 버튼 복원 시 함께 되살린다.
-  // const penMode = useWorkspace((s) => s.penMode);
-  // const togglePenMode = useWorkspace((s) => s.togglePenMode);
+  // 2026-09-19 사용자 결정: 시그널스 진입점 임시 숨김 — 버튼 복원 시 함께 되살린다.
   // const pushToast = useToasts((s) => s.push);
 
   const dockRef = useRef<HTMLDivElement>(null);
@@ -448,7 +446,6 @@ export function Dock({
     "workspace.tool.photo": t("workspace.tool.photo"),
     "workspace.tool.textbox": t("workspace.tool.textbox"),
     "workspace.tool.board": t("workspace.tool.board"),
-    "workspace.tool.pen": t("workspace.tool.pen"),
     "signals.sidebar.label": t("signals.sidebar.label"),
     "workspace.tool.trash": t("workspace.tool.trash"),
   };
@@ -490,6 +487,9 @@ export function Dock({
         x: shiftX,
       }}
     >
+      {/* wall-marker n2 (D11=A): 독 왼쪽에 마카 4개와 천. 휴대폰 크기에선 스스로 안 그린다. */}
+      <MarkerTray />
+
       {DOCK_ITEMS.filter((item) => item.draggable).map((item) => (
         <DockButton
           key={item.toolId}
@@ -527,22 +527,10 @@ export function Dock({
       />
 
       {/*
-       * 2026-09-19 사용자 결정: 펜·시그널스 진입점 임시 숨김(삭제 아님).
-       * 되돌리려면 이 블록의 주석을 풀고, 위 penMode·togglePenMode selector와
-       * Dock의 onSignalsClick prop도 함께 복원한다.
+       * 2026-09-19 사용자 결정: 시그널스 진입점 임시 숨김(삭제 아님).
+       * 되돌리려면 이 블록의 주석을 풀고 Dock의 onSignalsClick prop도 함께 복원한다.
+       * (펜 버튼 자리는 wall-marker n2에서 왼쪽 마카 트레이가 대신한다.)
       <div className="mx-1 h-6 w-px bg-border" aria-hidden />
-
-      <DockButton
-        item={DOCK_ITEMS.find((i) => i.toolId === "pen")!}
-        label={LABELS["workspace.tool.pen"]}
-        mouseX={mouseX}
-        centers={centers}
-        registerSize={registerSize}
-        showLabel={hoveredId === "pen"}
-        reducedMotion={reducedMotion}
-        pressed={penMode}
-        onClick={() => togglePenMode()}
-      />
 
       <DockButton
         item={DOCK_ITEMS.find((i) => i.toolId === "signals")!}

@@ -18,6 +18,9 @@ import {
 import { newBoardId } from "@/state/boardIds";
 import { useStorage } from "@/state/storage";
 import { getDB, resetDB, DEFAULT_SETTINGS } from "@/state/db/schema";
+import { runBootstrap } from "@/components/notifications/StorageBootstrap";
+import { getOrOpenBoardDoc } from "@/state/ydoc/activeDoc";
+import { putNote } from "@/state/ydoc/model";
 
 /**
  * FEAT-onboarding-routes n3 — URL을 보드 전환의 원본으로 만든다 (D1·D2·D4·D8).
@@ -223,18 +226,110 @@ describe("RootBoardRedirect · /는 갈림길 (D4·AC-6)", () => {
       expect(replaceState).toHaveBeenCalledWith(null, "", `/b/${id}`),
     );
   });
+});
 
-  it("사용자 보드가 없으면 첫 보드 고르기를 보여 주고 replace하지 않는다 (n4 AC-5)", async () => {
-    const replaceState = vi.spyOn(window.history, "replaceState");
-    useWorkspace.setState({ boards: [], cards: [], bootstrapComplete: true });
-    render(
-      <I18nProvider locale="ko">
-        <RootBoardRedirect />
-      </I18nProvider>,
+/**
+ * first-wall n1 — 첫 실행은 기본 시스템 보드 하나, 메모 0장, 고르기 화면 없음 (T1·T5·T7·T8·T10).
+ * 부팅은 StorageBootstrap과 같은 runBootstrap을 타고, `/`는 실제 RootBoardRedirect를 렌더한다.
+ */
+function legacyNote(id: string, boardId: string, content = "") {
+  return {
+    id,
+    boardId,
+    kind: "text" as const,
+    x: 0,
+    y: 0,
+    width: 240,
+    height: 240,
+    rotation: 0,
+    content,
+    aiOptOut: false,
+    createdAt: 1,
+    updatedAt: 1,
+    lastVisitedAt: 1,
+  };
+}
+
+async function putLegacyNotes(boardId: string, ids: string[]) {
+  const handle = getOrOpenBoardDoc(boardId);
+  await handle.whenLoaded;
+  for (const id of ids) {
+    const note = legacyNote(id, boardId);
+    await getDB().notes.put(note);
+    putNote(handle.doc, note);
+  }
+}
+
+function mountRoot() {
+  return render(
+    <I18nProvider locale="ko">
+      <RootBoardRedirect />
+    </I18nProvider>,
+  );
+}
+
+describe("RootBoardRedirect · 첫 실행은 고르기 화면 없이 첫 벽 (first-wall n1)", () => {
+  it("빈 저장소: 대화상자 없이 시스템 보드로 가고 메모는 0장 (T1·T10)", async () => {
+    await useStorage.getState().init();
+    await runBootstrap();
+
+    mountRoot();
+
+    await waitFor(() =>
+      expect(window.location.pathname).toBe(`/b/${SYSTEM_BOARD_ID}`),
     );
-    await new Promise((r) => setTimeout(r, 20));
-    expect(replaceState).not.toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: "예제로 시작" })).toBeTruthy();
+    expect(screen.queryAllByRole("dialog")).toHaveLength(0);
+    expect(screen.queryByText("첫 보드를 골라 주세요")).toBeNull();
+    expect(useWorkspace.getState().boards).toHaveLength(1);
+    expect(useWorkspace.getState().cards).toHaveLength(0);
+  });
+
+  it("사용자 보드 0개 + 시스템 보드의 옛 시드 메모 3장: 고르기 없이 그 벽이 열리고 메모가 그대로다 (T8)", async () => {
+    await useStorage.getState().init();
+    await putLegacyNotes(SYSTEM_BOARD_ID, ["seed-todo", "seed-preview", "seed-empty"]);
+    await runBootstrap();
+
+    mountRoot();
+
+    await waitFor(() =>
+      expect(window.location.pathname).toBe(`/b/${SYSTEM_BOARD_ID}`),
+    );
+    expect(screen.queryAllByRole("dialog")).toHaveLength(0);
+    expect(useWorkspace.getState().boards.filter((b) => !b.isSystem)).toHaveLength(0);
+    expect(
+      useWorkspace.getState().cards.map((c) => c.id).sort(),
+    ).toEqual(["seed-empty", "seed-preview", "seed-todo"]);
+  });
+
+  it("시스템 보드에 메모를 쌓아 온 사용자: 마지막 벽이 그대로 열리고 메모 수가 늘지 않는다 (T7)", async () => {
+    await useStorage.getState().init();
+    await putLegacyNotes(SYSTEM_BOARD_ID, ["mine-1", "mine-2"]);
+    await runBootstrap();
+    const before = useWorkspace.getState().cards.length;
+
+    mountRoot();
+
+    await waitFor(() =>
+      expect(window.location.pathname).toBe(`/b/${SYSTEM_BOARD_ID}`),
+    );
+    expect(screen.queryAllByRole("dialog")).toHaveLength(0);
+    expect(before).toBe(2);
+    expect(useWorkspace.getState().cards).toHaveLength(before);
+  });
+
+  it("사용자 보드를 마지막으로 연 사용자: 그 보드로 간다 — 시스템 보드 메모는 건드리지 않는다 (T7)", async () => {
+    await useStorage.getState().init();
+    await putLegacyNotes(SYSTEM_BOARD_ID, ["mine-1"]);
+    await runBootstrap();
+    const id = await useWorkspace.getState().createBoard("A");
+    await useStorage.getState().saveBoard({ id, name: "A", isSystem: false, lastOpenedAt: Date.now() + 1000 });
+    useWorkspace.setState({ boards: await useStorage.getState().loadBoards() });
+
+    mountRoot();
+
+    await waitFor(() => expect(window.location.pathname).toBe(`/b/${id}`));
+    expect(screen.queryAllByRole("dialog")).toHaveLength(0);
+    expect((await getDB().notes.where("boardId").equals(SYSTEM_BOARD_ID).toArray()).map((n) => n.id)).toEqual(["mine-1"]);
   });
 });
 
@@ -280,8 +375,8 @@ describe("주소 → 보드 id (P1)", () => {
   });
 });
 
-describe("로그인 게이트와 /b/[boardId] 복귀 (AC-4)", () => {
-  it("로그인 전에는 온보딩만, 로그인 뒤 그 주소의 보드를 연다", async () => {
+describe("로그인 없이 /b/[boardId]를 연다 (local-promise T1)", () => {
+  it("로그인하지 않아도 그 주소의 보드를 열고 로그인 화면은 없다", async () => {
     await useStorage.getState().init();
     const id = await useWorkspace.getState().createBoard("A");
     useWorkspace.setState({
@@ -297,16 +392,30 @@ describe("로그인 게이트와 /b/[boardId] 복귀 (AC-4)", () => {
         </WorkspaceGate>
       </I18nProvider>,
     );
-    expect(screen.getByText("생각을 붙이면,\n연결이 보여요", { normalizer: (s) => s })).toBeTruthy();
 
-    // 로그인 완료 — 게이트가 워크스페이스로 바뀌고 URL의 보드가 열린다.
-    useAuth.setState({
-      status: "authenticated",
-      hydrated: true,
-      user: { id: "u1", name: "동환", avatar: null },
-    });
     await waitFor(() => expect(useWorkspace.getState().currentBoardId).toBe(id));
-    expect(screen.queryByText("생각을 붙이면,\n연결이 보여요", { normalizer: (s) => s })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Google 계정으로 로그인" })).toBeNull();
+    expect(useAuth.getState().status).toBe("anonymous");
+  });
+
+  it("세션 복원 전에도 그 주소의 보드를 연다 — 복원을 기다리지 않는다", async () => {
+    await useStorage.getState().init();
+    const id = await useWorkspace.getState().createBoard("A");
+    useWorkspace.setState({
+      currentBoardId: SYSTEM_BOARD_ID,
+      bootstrapComplete: true,
+    });
+    useAuth.setState({ status: "anonymous", hydrated: false });
+
+    render(
+      <I18nProvider locale="ko">
+        <WorkspaceGate>
+          <RouteBoardSync boardId={id} />
+        </WorkspaceGate>
+      </I18nProvider>,
+    );
+
+    await waitFor(() => expect(useWorkspace.getState().currentBoardId).toBe(id));
   });
 });
 

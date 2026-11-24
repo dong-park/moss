@@ -10,6 +10,7 @@ import { useT } from "@/i18n/Provider";
 import { useAutoFocusOnEdit } from "../_shared/useAutoFocusOnEdit";
 import type { CardContentProps } from "../_shared/types";
 import { TextStyleToolbar } from "./TextStyleToolbar";
+import { useImeSafeBlur } from "../../ime";
 import { TEXT_DEFAULT_COLOR } from "./style";
 
 /* ─────────────────────────────────────────────────────────────
@@ -85,6 +86,8 @@ export function TextboxCardContent({
     }
     onCommitEdit();
   };
+  // 한글 조합 중 blur면 확정된 글자로 저장한다(T11) — 비어 보여 카드가 지워지는 일도 막는다.
+  const onTextBlur = useImeSafeBlur<HTMLTextAreaElement>(() => commit());
 
   const textStyle: React.CSSProperties = {
     fontSize: sizePx,
@@ -136,7 +139,7 @@ export function TextboxCardContent({
           value={card.content}
           wrap={autoWidth ? "off" : "soft"}
           onChange={(e) => onChange(e.target.value)}
-          onBlur={commit}
+          onBlur={onTextBlur}
           onKeyDown={(e) => {
             if (e.key === "Escape") {
               e.preventDefault();

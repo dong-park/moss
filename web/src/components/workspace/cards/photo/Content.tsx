@@ -7,6 +7,7 @@ import { usePhotoUrl } from "./usePhotoUrl";
 import { useT } from "@/i18n/Provider";
 import { useAutoFocusOnEdit } from "../_shared/useAutoFocusOnEdit";
 import type { CardContentProps } from "../_shared/types";
+import { isCommitEnter, useImeSafeBlur } from "../../ime";
 
 /* ─────────────────────────────────────────────────────────────
  * FEAT-photo-card — 메모 종이 없이 사진 자체가 카드.
@@ -43,6 +44,8 @@ export function PhotoCardContent({
     if (next !== card.content) onChange(next);
     onCommitEdit();
   };
+  // 한글 조합 중 blur면 확정된 글자로 캡션을 저장한다(T11).
+  const onCaptionBlur = useImeSafeBlur<HTMLInputElement>((e) => commit(e.currentTarget.value));
 
   if (!card.attachmentRef) return <EmptyPhoto cardId={card.id} width={card.width} />;
 
@@ -85,7 +88,7 @@ export function PhotoCardContent({
               onDoubleClick={(e) => e.stopPropagation()}
               onKeyDown={(e) => {
                 e.stopPropagation();
-                if (e.key === "Enter") {
+                if (isCommitEnter(e)) {
                   e.preventDefault();
                   e.currentTarget.blur();
                 }
@@ -94,7 +97,7 @@ export function PhotoCardContent({
                   e.currentTarget.blur();
                 }
               }}
-              onBlur={(e) => commit(e.currentTarget.value)}
+              onBlur={onCaptionBlur}
               className="block w-full truncate border-none bg-transparent px-1.5 py-1 text-center text-xs text-text outline-none"
             />
           ) : (

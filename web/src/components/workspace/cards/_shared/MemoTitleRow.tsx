@@ -15,6 +15,7 @@
  * ───────────────────────────────────────────────────────────── */
 
 import { t } from "@/i18n";
+import { isCommitEnter, useImeSafeBlur } from "../../ime";
 import {
   MEMO_CONTENT_WIDTH,
   MEMO_TITLE_ROW_HEIGHT,
@@ -50,6 +51,8 @@ export function MemoTitleRow({
   /** blur 시 새 포커스 대상(relatedTarget) 전달 — 카드 스코프 blur 가드용(AC-3). */
   onBlur?: (relatedTarget: EventTarget | null) => void;
 }) {
+  // 한글 조합 중 blur면 조합이 끝난 뒤 알린다 — 제목이 확정된 글자로 저장된다(T11).
+  const handleBlur = useImeSafeBlur<HTMLInputElement>((e) => onBlur?.(e.relatedTarget));
   const centered = variant === "center";
   const style: React.CSSProperties = centered
     ? { width: "100%", height: MEMO_TITLE_ROW_HEIGHT, padding: "0 12px", textAlign: "center" }
@@ -92,9 +95,9 @@ export function MemoTitleRow({
       placeholder={placeholder ?? t("workspace.memo.title.placeholder")}
       aria-label={t("workspace.memo.title.label")}
       onChange={(e) => onCommit?.(e.target.value)}
-      onBlur={(e) => onBlur?.(e.relatedTarget)}
+      onBlur={handleBlur}
       onKeyDown={(e) => {
-        if (e.key === "Enter") {
+        if (isCommitEnter(e)) {
           e.preventDefault();
           onEnter?.();
         } else if (e.key === "ArrowDown") {

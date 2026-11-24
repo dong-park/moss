@@ -1,0 +1,17 @@
+{
+  "id": "T16",
+  "kind": "task",
+  "title": "옛 펜 화면 요소가 남아 있지 않다",
+  "given": "마카 트레이가 들어온 버전이다",
+  "when": "코드와 화면을 확인한다",
+  "then": "펜 모드 안내 배지와 펜 툴바가 화면에 나오지 않고, 독에 펜 버튼이 없다. 확인: `PenToolbar`·`PenModeHud` 참조 0개, `penMode` 상태 0개, 기존 펜 테스트가 마카 기준으로 옮겨져 전부 통과.",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

@@ -10,6 +10,7 @@ import {
 } from "react";
 import { useT } from "@/i18n/Provider";
 import { useWorkspace } from "@/state/workspace";
+import { systemBoardName } from "@/state/systemBoardName";
 import {
   useMemoTable,
   buildMemoRows,
@@ -19,6 +20,7 @@ import {
 } from "@/state/memoTable";
 import { memoTint } from "../memoVariety";
 import { MemoTableToolbar } from "./MemoTableToolbar";
+import { isCommitEnter, useImeSafeBlur } from "../ime";
 
 /* ─────────────────────────────────────────────────────────────
  * FEAT-memo-table-view — 전체 메모 표 본체(spec §6·§7·§8).
@@ -101,7 +103,7 @@ export function MemoTable() {
   // 기본 행(notes·boards 파생)은 여기에만 메모 — 검색 키 입력마다 5,000행을
   // 재생성하지 않는다(P1-6). 필터·검색·정렬은 그 위에서 파생한다.
   const baseRows = useMemo(
-    () => buildMemoRows(notes, boards, t("workspace.boardPicker.system")),
+    () => buildMemoRows(notes, boards, systemBoardName(boards, t)),
     [notes, boards, t],
   );
   const filters = useMemo(
@@ -157,6 +159,8 @@ export function MemoTable() {
     // draft를 인자로 넘겨 확정 — 스토어 title을 다시 읽지 않는다(P1-1).
     if (id) void commitTitle(id, draftRef.current);
   };
+  // 한글 조합 중 blur면 확정된 글자로 저장한다(T11).
+  const onTitleBlur = useImeSafeBlur<HTMLInputElement>(() => finishEdit());
   const cancelEdit = () => {
     const id = editingId;
     setEditingId(null);
@@ -222,7 +226,7 @@ export function MemoTable() {
     } else if (e.key === " " && focusIndex >= 0 && focusIndex < rows.length) {
       e.preventDefault();
       toggleSelected(rows[focusIndex].id);
-    } else if (e.key === "Enter" && focusIndex >= 0 && focusIndex < rows.length) {
+    } else if (isCommitEnter(e) && focusIndex >= 0 && focusIndex < rows.length) {
       e.preventDefault();
       void openMemo(rows[focusIndex].id);
     }
@@ -380,7 +384,7 @@ export function MemoTable() {
                             setTitle(row.id, e.target.value);
                           }}
                           onKeyDown={(e) => {
-                            if (e.key === "Enter") {
+                            if (isCommitEnter(e)) {
                               e.preventDefault();
                               finishEdit();
                             } else if (e.key === "Escape") {
@@ -388,7 +392,7 @@ export function MemoTable() {
                               cancelEdit();
                             }
                           }}
-                          onBlur={finishEdit}
+                          onBlur={onTitleBlur}
                           aria-label={t("workspace.memo.title.label")}
                           className="w-full rounded border border-accent-blue bg-bg px-1 py-0.5 text-xs outline-none"
                         />

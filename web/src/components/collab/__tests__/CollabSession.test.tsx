@@ -6,6 +6,7 @@ import { resetAuthStore, useAuth, type AuthSession } from "@/state/auth";
 import { configureCollab, resetCollabStore, useCollab } from "@/state/collab";
 import { configureMembership, resetMembershipDeps } from "@/state/membership";
 import { resetShareStore, useShare } from "@/state/share";
+import { restoreSharedFromDevice } from "@/state/share/store";
 import { useStorage } from "@/state/storage";
 import { useWorkspace, SYSTEM_BOARD_ID } from "@/state/workspace";
 
@@ -93,6 +94,69 @@ describe("CollabSession", () => {
     });
 
     await waitFor(() => expect(created[0].handle.destroy).toHaveBeenCalled());
+  });
+
+  it("G1: 다른 계정이 남긴 공유 기록으로는 이 계정의 토큰으로 연결하지 않는다", async () => {
+    const { factory, created } = makeFactory();
+    const fetchBoardToken = vi.fn(async () => ({ boardToken: "bt", expiresInSeconds: 3600 }));
+    configureCollab({
+      providerFactory: factory,
+      fetchBoardToken,
+      getBoardDoc: () => new Y.Doc(),
+      syncUrl: () => "ws://sync.test",
+      now: () => NOW,
+    });
+    useAuth.setState({
+      session,
+      user: session.user, // u1
+      status: "authenticated",
+      hydrated: true,
+      hydrating: false,
+    });
+    useWorkspace.setState({ currentBoardId: "b1" });
+    // 계정 A 가 이 기기에 남긴 공유 기록. 새로고침 뒤 B(u1)가 로그인한 상태다.
+    localStorage.setItem(
+      "moss:sharedBoards",
+      JSON.stringify({ userId: "A", boards: { b1: "editor" } }),
+    );
+    restoreSharedFromDevice();
+
+    render(<CollabSession />);
+    await new Promise((r) => setTimeout(r, 30));
+
+    expect(useShare.getState().byBoard.b1).toBeUndefined();
+    expect(fetchBoardToken).not.toHaveBeenCalled();
+    expect(created).toHaveLength(0);
+    localStorage.removeItem("moss:sharedBoards");
+  });
+
+  it("G1: 같은 계정의 기록이면 서버 목록 확인을 기다리지 않고 연결한다", async () => {
+    const { factory, created } = makeFactory();
+    configureCollab({
+      providerFactory: factory,
+      fetchBoardToken: async () => ({ boardToken: "bt", expiresInSeconds: 3600 }),
+      getBoardDoc: () => new Y.Doc(),
+      syncUrl: () => "ws://sync.test",
+      now: () => NOW,
+    });
+    useAuth.setState({
+      session,
+      user: session.user,
+      status: "authenticated",
+      hydrated: true,
+      hydrating: false,
+    });
+    useWorkspace.setState({ currentBoardId: "b1" });
+    localStorage.setItem(
+      "moss:sharedBoards",
+      JSON.stringify({ userId: "u1", boards: { b1: "editor" } }),
+    );
+    restoreSharedFromDevice();
+
+    render(<CollabSession />);
+
+    await waitFor(() => expect(created).toHaveLength(1));
+    localStorage.removeItem("moss:sharedBoards");
   });
 
   it("P2: 언마운트하면 provider를 destroy한다", async () => {

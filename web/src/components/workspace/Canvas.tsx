@@ -19,9 +19,16 @@ import { useCollab } from "@/state/collab";
 import { memoRotationDeg } from "./memoVariety";
 import { SystemBoard } from "./SystemBoard";
 import { SystemBoardEmpty } from "./cards/SystemBoardEmpty";
+import { isWallEmpty, useWallStrokeCount } from "./wallEmpty";
 import { ZoomBar } from "./ZoomBar";
-import { PenModeHud } from "./PenModeHud";
-import { PenToolbar } from "./PenToolbar";
+import { heldToolCursor } from "./markerCursor";
+import {
+  WALL_DRAW_DBLCLICK_GUARD_MS,
+  WallStrokeLayer,
+  type WallInput,
+} from "./WallStrokeLayer";
+import { wallStrokesTouching } from "./wallStrokeHit";
+import { strokeOwnerOf } from "@/state/marker/strokeOwner";
 import { MemoSearchLayer } from "./MemoSearchLayer";
 import { TrashPanel } from "./TrashPanel";
 import { useVirtualizedCards } from "./useVirtualizedCards";
@@ -48,10 +55,7 @@ const VIRTUALIZATION_TOAST_THRESHOLD = 200;
 
 const WHEEL_ZOOM_INTENSITY = 0.0015;
 const MARQUEE_THRESHOLD = 4; // px — 박스로 인식할 최소 드래그 거리
-
-/** FEAT-markdown-memo-pen: 펜 모드 커서 — 펜 모양 SVG. hotspot은 펜촉(좌하단). */
-const PEN_CURSOR =
-  "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath d='M3 21l3.5-1L17 9.5 14.5 7 4 17.5 3 21z' fill='%23333' stroke='white' stroke-width='1'/%3E%3Cpath d='M15 6.5l2.5 2.5 2-2a1.4 1.4 0 0 0 0-2l-.5-.5a1.4 1.4 0 0 0-2 0l-2 2z' fill='%234f7cf3' stroke='white' stroke-width='1'/%3E%3C/svg%3E\") 2 22, crosshair";
+const TEXT_PLACEMENT_DBLCLICK_GUARD_MS = 500; // T 배치 직후 이 시간 안의 dblclick은 무시
 
 interface Marquee {
   startX: number;
@@ -77,6 +81,8 @@ function rectsIntersect(
 
 export function Canvas() {
   const canvasRef = useRef<HTMLDivElement>(null);
+  // wall-marker n4: 벽 획 레이어가 내주는 포인터 입력 — root 이벤트를 그대로 건넨다.
+  const wallInputRef = useRef<WallInput>(null);
   const [spaceDown, setSpaceDown] = useState(false);
   const [panning, setPanning] = useState(false);
   const [marquee, setMarquee] = useState<Marquee | null>(null);
@@ -89,6 +95,7 @@ export function Canvas() {
 
   const cards = useWorkspace((s) => s.cards);
   const currentBoardId = useWorkspace((s) => s.currentBoardId);
+  const wallStrokeCount = useWallStrokeCount();
   const boardTransitioning = useWorkspace((s) => s.boardTransitioning);
   const viewport = useWorkspace((s) => s.viewport);
   const selectedIds = useWorkspace((s) => s.selectedIds);
@@ -99,10 +106,8 @@ export function Canvas() {
   const removeSelected = useWorkspace((s) => s.removeSelected);
   const panBy = useWorkspace((s) => s.panBy);
   const zoomAt = useWorkspace((s) => s.zoomAt);
-  const fitToCards = useWorkspace((s) => s.fitToCards);
-  // P2-4: 최초 fit 여부를 스토어가 들고 있다 — panToCard(programmatic 이동)와
-  // 경쟁하지 않는다(모듈 전역이던 기존 플래그 제거).
-  const canvasHasFitted = useWorkspace((s) => s.canvasHasFitted);
+  // P2-4: 이 벽의 화면을 이미 정했는지(viewSettledBoardIds)는 스토어가 들고 있다 —
+  // panToCard(programmatic 이동)와 경쟁하지 않는다. 아래 최초 fit 효과가 getState()로 읽는다.
   // FEAT-sticky-redesign n6: 파일 드롭 — 놓은 좌표에 블록 든 메모를 만든다.
   const addCardAt = useWorkspace((s) => s.addCardAt);
   // FEAT-photo-card: 이미지 드롭·붙여넣기는 메모 대신 사진 카드를 만든다.
@@ -114,11 +119,10 @@ export function Canvas() {
   // FEAT-text-tool AC-2: T 배치 모드 — 캔버스 클릭 지점에 textbox를 만든다.
   const textPlacementArmed = useWorkspace((s) => s.textPlacementArmed);
   const disarmTextPlacement = useWorkspace((s) => s.disarmTextPlacement);
-  // FEAT-markdown-memo-pen: 펜 모드 — 전역 커서 변경 + E/[/]/Esc 키.
-  const penMode = useWorkspace((s) => s.penMode);
-  const setPenMode = useWorkspace((s) => s.setPenMode);
-  const setPenTool = useWorkspace((s) => s.setPenTool);
-  const setPenWidth = useWorkspace((s) => s.setPenWidth);
+  // wall-marker n2: 손에 든 마카·천 — 벽 위 포인터 모양 + Esc 내려놓기·⌘Z 되돌리기.
+  const heldTool = useWorkspace((s) => s.heldTool);
+  const toolHeld = heldTool !== null;
+  const releaseTool = useWorkspace((s) => s.releaseTool);
   // FEAT-subcanvas: 선택이 없을 때 Esc → 부모 캔버스로 한 단계 위.
   const goToParent = useWorkspace((s) => s.goToParent);
   const pushToast = useToasts((s) => s.push);
@@ -149,10 +153,10 @@ export function Canvas() {
         y: c.y,
         width: c.width,
         height: c.height ?? c.width,
-        rotation: c.kind === "text" && !penMode ? memoRotationDeg(c.id) : 0,
+        rotation: c.kind === "text" ? memoRotationDeg(c.id) : 0,
       }));
     publishSelection(rects);
-  }, [cards, selectedIds, penMode, publishSelection]);
+  }, [cards, selectedIds, publishSelection]);
 
   useEffect(() => {
     const dragged = draggingId ? cards.find((c) => c.id === draggingId) : undefined;
@@ -164,9 +168,9 @@ export function Canvas() {
       noteId: dragged.id,
       x: dragged.x,
       y: dragged.y,
-      rotation: dragged.kind === "text" && !penMode ? memoRotationDeg(dragged.id) : 0,
+      rotation: dragged.kind === "text" ? memoRotationDeg(dragged.id) : 0,
     });
-  }, [cards, draggingId, penMode, publishDragging]);
+  }, [cards, draggingId, publishDragging]);
 
   /* ─ 캔버스 실측 위치·크기 추적 (ResizeObserver + window resize) ─ */
   useEffect(() => {
@@ -189,21 +193,26 @@ export function Canvas() {
     };
   }, []);
 
-  /* ─ 새로고침 직후 1회: 메모들이 화면에 꽉 차도록 포커싱 ─ */
-  const didFitRef = useRef(false);
+  /* ─ 벽을 불러온 직후 1회: 메모들이 화면에 꽉 차도록 포커싱 ─
+   * 판정은 벽(보드)마다 "불러온 직후" 한 번뿐이다. 불러왔을 때 비어 있었으면 그 벽에서는
+   * fit을 소진한 것으로 보고, 이후 사용자가 만든 카드로는 돌지 않는다(first-wall T4 —
+   * 첫 포스트잇이 누른 자리가 아니라 화면 가운데로 튀던 원인). 벽을 바꾸면 다시 판정한다.
+   * 단, 원격에서 처음 카드가 들어오면 스토어가 이 벽의 판정을 풀어 한 번 다시 맞춘다(W7).
+   * 판정 기록은 표↔캔버스 재마운트에도 남도록 스토어가 든다. */
+  const bootstrapComplete = useWorkspace((s) => s.bootstrapComplete);
   useEffect(() => {
-    if (didFitRef.current) return;
-    // 표에서 돌아온 재마운트·programmatic panToCard 이후면 이미 자리 잡았다 —
-    // 사용자가 보던/지정한 뷰포트를 보존한다(P2-4).
-    if (canvasHasFitted) {
-      didFitRef.current = true;
-      return;
-    }
-    if (cards.length === 0) return;
+    // 부팅 전의 빈 카드 목록은 "비어 있는 벽"이 아니라 "아직 못 불러온 벽"이다.
+    if (!bootstrapComplete) return;
     if (canvasRect.width <= 0 || canvasRect.height <= 0) return;
-    didFitRef.current = true;
-    fitToCards({ width: canvasRect.width, height: canvasRect.height });
-  }, [cards.length, canvasRect.width, canvasRect.height, fitToCards, canvasHasFitted]);
+    const st = useWorkspace.getState();
+    // 표에서 돌아온 재마운트·programmatic panToCard 이후면 이 벽은 이미 자리 잡았다 —
+    // 사용자가 보던/지정한 뷰포트를 보존한다(P2-4).
+    if (st.viewSettledBoardIds.includes(currentBoardId)) return;
+    st.markViewSettled(currentBoardId);
+    // 비어 있는 벽으로 불러왔다 — fit 소진. 뷰포트는 그대로 둔다.
+    if (st.cards.length === 0) return;
+    st.fitToCards({ width: canvasRect.width, height: canvasRect.height });
+  }, [bootstrapComplete, currentBoardId, cards.length, canvasRect.width, canvasRect.height]);
 
   /* ─ FEAT-canvas AC-3: 200 임계 도달 시 1회 안내 토스트 ─ */
   const toastFiredRef = useRef(false);
@@ -370,32 +379,32 @@ export function Canvas() {
         setSpaceDown(true);
         return;
       }
-      // FEAT-markdown-memo-pen: 펜 모드 키 — 다른 캔버스 키보다 우선.
-      if (penMode) {
+      // wall-marker n2: 마카·천을 든 동안의 키 — 다른 캔버스 키보다 우선.
+      // Esc는 내려놓고, ⌘Z·⇧⌘Z는 마카 기록만 되돌린다(D9=A). 글 입력칸 안의 ⌘Z는 입력칸 몫.
+      if (useWorkspace.getState().heldTool) {
         const mod = e.metaKey || e.ctrlKey;
         if (e.key === "Escape") {
           e.preventDefault();
-          setPenMode(false);
-        } else if (mod && (e.key === "z" || e.key === "Z")) {
-          // FEAT-pen-drawing-engine D3: 펜 그리기 undo/redo (스펙 AC-7).
+          releaseTool();
+        } else if (mod && (e.key === "z" || e.key === "Z") && !isTyping()) {
           e.preventDefault();
-          if (e.shiftKey) useWorkspace.getState().penRedo();
-          else useWorkspace.getState().penUndo();
-        } else if (mod && e.key === "Backspace") {
-          e.preventDefault();
-          useWorkspace.getState().penClear();
-        } else if (!mod && (e.key === "e" || e.key === "E")) {
-          e.preventDefault();
-          const cur = useWorkspace.getState().penTool;
-          setPenTool(cur === "pen" ? "eraser" : "pen");
-        } else if (e.key === "[") {
-          e.preventDefault();
-          setPenWidth(useWorkspace.getState().penWidth - 1);
-        } else if (e.key === "]") {
-          e.preventDefault();
-          setPenWidth(useWorkspace.getState().penWidth + 1);
+          if (e.shiftKey) useWorkspace.getState().markerRedo();
+          else useWorkspace.getState().markerUndo();
         }
-        return; // 펜 모드 중 삭제 등 다른 키 차단
+        return; // 든 동안 삭제 등 다른 캔버스 키 차단
+      }
+      // wall-marker n6: 벽 획을 끌어 옮기는 중 Esc는 제자리로(묶음은 남는다, T19). 옮기는 중이 아니고
+      // 묶음만 있으면 Esc가 묶음을 푼다 — 부모 캔버스로 올라가지 않는다.
+      if (e.key === "Escape" && !editingId && !isTyping()) {
+        if (wallInputRef.current?.cancelMove()) {
+          e.preventDefault();
+          return;
+        }
+        if (useWorkspace.getState().selectedWallStrokeIds.length > 0) {
+          e.preventDefault();
+          useWorkspace.getState().selectWallStrokes([]);
+          return;
+        }
       }
       if (editingId) return;
       if (isTyping()) return;
@@ -447,10 +456,7 @@ export function Canvas() {
     editingId,
     removeSelected,
     clearSelection,
-    penMode,
-    setPenMode,
-    setPenTool,
-    setPenWidth,
+    releaseTool,
     goToParent,
   ]);
 
@@ -506,6 +512,9 @@ export function Canvas() {
       el.removeEventListener("mousedown", onMouseDownCapture, true);
   }, [spaceDown, panBy]);
 
+  /** T 배치로 textbox를 만든 시각 — 같은 두 번 누르기가 포스트잇까지 만들지 않게 한다. */
+  const textPlacedAtRef = useRef(0);
+
   /* ─ FEAT-text-tool AC-2: 배치 모드는 capture 단계에서 잡는다 ─
    * 카드(메모판 포함)의 onMouseDown이 stopPropagation으로 버블을 막아, 판 위 클릭은
    * 버블 onMouseDown까지 오지 않는다. 배치 모드일 때만 capture에서 먼저 처리한다.
@@ -537,13 +546,37 @@ export function Canvas() {
     const wx = (e.clientX - rect.left - v.x) / v.scale;
     const wy = (e.clientY - rect.top - v.y) / v.scale;
     addCardAt("textbox", wx, wy);
+    textPlacedAtRef.current = Date.now();
     disarmTextPlacement();
+  };
+
+  /* ─ FEAT-first-wall n4: 빈 곳 두 번 누르기 → 그 자리에 기본 노랑 포스트잇 ─
+   * 카드·UI 위는 target이 캔버스 바탕이 아니라 걸러진다(마카 모드는 D7: 만들지 않는다).
+   * 색은 저장하지 않는다 — 빈 값이 기본 노랑이다. 빈 채로 떠나도 남긴다(D6). */
+  const onDoubleClick = (e: React.MouseEvent) => {
+    if (e.target !== e.currentTarget) return;
+    if (toolHeld || spaceDown || textPlacementArmed) return;
+    // 펜으로 방금 두 번 찍었다면(D5) 그건 점 두 개지 포스트잇 만들기가 아니다.
+    if (Date.now() - (wallInputRef.current?.lastDrawAt() ?? 0) < WALL_DRAW_DBLCLICK_GUARD_MS) return;
+    // 방금 T 배치로 만든 textbox 곁에서 같은 두 번 누르기가 포스트잇을 또 만들지 않는다.
+    if (Date.now() - textPlacedAtRef.current < TEXT_PLACEMENT_DBLCLICK_GUARD_MS) return;
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    e.preventDefault();
+    const v = useWorkspace.getState().viewport;
+    const wx = (e.clientX - rect.left - v.x) / v.scale;
+    const wy = (e.clientY - rect.top - v.y) / v.scale;
+    addCardAt("text", wx, wy);
   };
 
   /* ─ 빈 캔버스 좌클릭 → rubber-band 박스 시작 (modifier 없으면 선택 치환, 있으면 합집합) ─ */
   const onMouseDown = (e: React.MouseEvent) => {
     if (e.button !== 0) return;
     if (spaceDown) return;
+    // wall-marker n4: 마카·천을 들면 획의 주인이 있는 자리의 끌기는 고르기 상자가 아니라 획이다.
+    if (useWorkspace.getState().heldTool && strokeOwnerOf(e.target, e.currentTarget).kind !== "none") {
+      return;
+    }
     if (e.target !== e.currentTarget) return;
 
     const rect = canvasRef.current?.getBoundingClientRect();
@@ -583,8 +616,11 @@ export function Canvas() {
       const dist = Math.hypot(ex - sx, ey - sy);
 
       if (dist <= MARQUEE_THRESHOLD) {
-        // 단순 클릭 → modifier 없으면 선택 해제
-        if (!additive) clearSelection();
+        // 단순 클릭 → modifier 없으면 선택 해제(카드도, 고른 벽 획 묶음도)
+        if (!additive) {
+          clearSelection();
+          useWorkspace.getState().selectWallStrokes([]);
+        }
         setMarquee(null);
         window.removeEventListener("mousemove", onMove);
         window.removeEventListener("mouseup", onUp);
@@ -613,6 +649,21 @@ export function Canvas() {
         });
       }
       selectMany(hits, additive);
+
+      // wall-marker n6: 상자에 조금이라도 닿은 벽 획을 묶는다(카드 선택과 별개 묶음).
+      // 상자 좌표(화면)를 보드 좌표로 바꿔 획 경계 상자 → 점·선분 순으로 판정한다.
+      const ws = useWorkspace.getState();
+      const v = ws.viewport;
+      const boardBox = {
+        left: (boxL - v.x) / v.scale,
+        top: (boxT - v.y) / v.scale,
+        right: (boxL + boxW - v.x) / v.scale,
+        bottom: (boxT + boxH - v.y) / v.scale,
+      };
+      const wallHits = wallStrokesTouching(ws.wallStrokes, boardBox);
+      ws.selectWallStrokes(
+        additive ? [...ws.selectedWallStrokeIds, ...wallHits] : wallHits,
+      );
 
       setMarquee(null);
       window.removeEventListener("mousemove", onMove);
@@ -648,16 +699,30 @@ export function Canvas() {
       data-canvas-root="true"
       onMouseDownCapture={onMouseDownCapture}
       onMouseDown={onMouseDown}
+      onDoubleClick={onDoubleClick}
+      // wall-marker n4: 벽 획 입력 — 포스트잇 위·캔버스 UI 위인지는 레이어가 가린다.
+      onPointerDown={(e) => wallInputRef.current?.onPointerDown(e)}
+      onPointerMove={(e) => wallInputRef.current?.onPointerMove(e)}
+      onPointerUp={(e) => wallInputRef.current?.onPointerUp(e)}
+      onPointerCancel={(e) => wallInputRef.current?.onPointerCancel(e)}
       onMouseMove={onCanvasMouseMove}
       onDragOver={onCanvasDragOver}
       onDrop={onCanvasDrop}
       className={`relative h-full overflow-hidden bg-bg ${cursorClass}`}
-      // FEAT-markdown-memo-pen: 펜 모드면 전역 커서를 펜으로(inline이 class를 덮음).
-      style={penMode ? { cursor: PEN_CURSOR } : undefined}
+      // wall-marker n2: 마카·천을 들면 포인터를 그 모양으로(inline이 class를 덮음).
+      // 태블릿 두 번 탭이 브라우저 확대로 새지 않게 — 팬·핀치는 그대로 둔다(FEAT-first-wall T4).
+      // wall-marker n4: 든 동안엔 손가락이 획이다 — 브라우저 스크롤·확대가 포인터를 끊지 않게
+      // touch-action을 끄고, 두 손가락 줌·팬은 벽 획 레이어가 맡는다(T12).
+      style={
+        heldTool
+          ? { cursor: heldToolCursor(heldTool), touchAction: "none" }
+          : { touchAction: "manipulation" }
+      }
     >
       {/* world layer — viewport transform 적용. 사용자 카드는 항상 렌더한다.
           FEAT-boards AC-4: 보드 전환 시 200ms ease-out fade. */}
       <div
+        data-canvas-world="true"
         data-board-transitioning={boardTransitioning ? "true" : "false"}
         className="absolute left-0 top-0 origin-top-left transition-opacity duration-200 ease-out"
         style={{
@@ -670,6 +735,12 @@ export function Canvas() {
           "--frame-zoom": String(viewport.scale),
         } as CSSProperties}
       >
+        {/* wall-marker n4: 벽 획 — 연결선과 카드 아래(D5). 월드 변환 안이라 보드 좌표 그대로 깐다. */}
+        <WallStrokeLayer
+          ref={wallInputRef}
+          hostRef={canvasRef}
+          suspended={spaceDown || textPlacementArmed}
+        />
         {visibleCards.map((card) => (
           <DraggableCard key={card.id} card={card} />
         ))}
@@ -682,8 +753,8 @@ export function Canvas() {
         <RemoteCursorsLayer />
       </div>
 
-      {/* 빈 안내 — 시스템 보드 + 카드가 한 장도 없을 때만. 작업물이 있으면 안내가 가리지 않는다. */}
-      {currentBoardId === SYSTEM_BOARD_ID && cards.length === 0 && (
+      {/* 빈 벽 힌트 — 모든 벽 공통: 메모도 마카 획도 없을 때만. 하나라도 생기면 숨고, 다시 비면 돌아온다. */}
+      {isWallEmpty(cards, wallStrokeCount) && (
         <div
           className="pointer-events-none absolute inset-0 transition-opacity duration-200 ease-out"
           style={{ opacity: boardTransitioning ? 0 : 1 }}
@@ -723,9 +794,6 @@ export function Canvas() {
         />
       )}
 
-      {/* FEAT-pen-mode-ux: 펜 모드 가시화 — HUD(B1)·도구 툴바(B3). 둘 다 penMode ON일 때만 렌더. */}
-      <PenModeHud />
-      <PenToolbar />
       {/* FEAT-memo-fulltext-search (W4): 검색 박스 + 강조/dim 오버레이. */}
       <MemoSearchLayer />
       {/* FEAT-trash: 독 옆 휴지통 패널. */}

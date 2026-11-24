@@ -5,6 +5,22 @@
  * 모든 parse 함수는 빈 본문 또는 잘못된 JSON에 대해 graceful default를 반환한다 (AC-3).
  */
 
+import {
+  MAX_OVERLAY_CHARS,
+  MAX_OVERLAY_STROKES,
+  MAX_STROKE_POINTS,
+  isBoardCoord,
+  thinToMax,
+} from "./marker/limits";
+import {
+  DEFAULT_MARKER_COLOR,
+  DEFAULT_MARKER_WIDTH,
+  resolveMarkerColor,
+  resolveMarkerWidth,
+  type MarkerColor,
+  type MarkerWidth,
+} from "./marker/tokens";
+
 export interface ChecklistItem {
   id: string;
   text: string;
@@ -173,26 +189,85 @@ export interface HandwritingContent {
   paths: HandwritingPoint[][];
 }
 
-/** unknown → 손글씨 path 배열로 정제. 잘못된 점·빈 path는 제거. parseHandwriting·블록 환원이 공유. */
-export function coercePaths(raw: unknown): HandwritingPoint[][] {
+/**
+ * wall-marker n1 (D2=A): 색·굵기를 획마다 싣는 손글씨 획. 포스트잇 overlay가 쓴다.
+ * 색·굵기는 이름이다(`state/marker/tokens`). 옛 획은 색·굵기가 없어 검정·가는 선으로 읽힌다.
+ */
+export interface HandwritingStroke {
+  /**
+   * 획 id(W6). 없으면 옛 획이다 — 읽는 쪽이 [[identifyStrokes]]로 내용에서 id를 만든다. 되돌리기가
+   * "내가 더한 획·내가 지운 획"을 구분하는 기준이라 새 획은 항상 id를 싣고 쓴다.
+   */
+  id?: string;
+  points: HandwritingPoint[];
+  color: MarkerColor;
+  width: MarkerWidth;
+}
+
+/** 내용에서 만든 id의 접두사. 쓰지 않는다(옛 획의 바이트를 바꾸지 않는다). */
+const DERIVED_ID_PREFIX = "~";
+const MAX_STROKE_ID_LENGTH = 80;
+
+function coerceStrokeId(raw: unknown): string | undefined {
+  return typeof raw === "string" && raw.length > 0 && raw.length <= MAX_STROKE_ID_LENGTH
+    ? raw
+    : undefined;
+}
+
+function coercePoints(raw: unknown): HandwritingPoint[] {
   if (!Array.isArray(raw)) return [];
-  const paths: HandwritingPoint[][] = [];
-  for (const p of raw) {
-    if (!Array.isArray(p)) continue;
-    const pts: HandwritingPoint[] = [];
-    for (const pt of p) {
-      if (
-        pt &&
-        typeof pt === "object" &&
-        typeof (pt as { x?: unknown }).x === "number" &&
-        typeof (pt as { y?: unknown }).y === "number"
-      ) {
-        pts.push({ x: (pt as HandwritingPoint).x, y: (pt as HandwritingPoint).y });
+  const pts: HandwritingPoint[] = [];
+  for (const pt of raw) {
+    if (pts.length >= MAX_STROKE_POINTS) break; // 점 수 상한(W2)
+    // 유한하지 않거나 보드 한계 밖인 좌표는 버린다 — 원격 피어가 JSON `1e999`(Infinity)나 ±1e300을
+    // 넣어도 지우개·렌더가 멎지 않게 받는 자리에서 거른다.
+    if (
+      pt &&
+      typeof pt === "object" &&
+      isBoardCoord((pt as { x?: unknown }).x) &&
+      isBoardCoord((pt as { y?: unknown }).y)
+    ) {
+      pts.push({ x: (pt as HandwritingPoint).x, y: (pt as HandwritingPoint).y });
+    }
+  }
+  return pts;
+}
+
+/**
+ * unknown → 획 배열로 정제. 잘못된 점·빈 획은 제거한다.
+ * 한 획은 옛 형식(점 배열)이거나 새 형식(`{points, color?, width?}`)이다 — 둘 다 읽는다.
+ * 색·굵기가 없거나 모르는 이름이면 검정·가는 선이다.
+ */
+export function coerceStrokes(raw: unknown): HandwritingStroke[] {
+  if (!Array.isArray(raw)) return [];
+  const strokes: HandwritingStroke[] = [];
+  for (const entry of raw) {
+    if (strokes.length >= MAX_OVERLAY_STROKES) break; // 획 수 상한(W2)
+    if (Array.isArray(entry)) {
+      const points = coercePoints(entry);
+      if (points.length > 0) {
+        strokes.push({ points, color: DEFAULT_MARKER_COLOR, width: DEFAULT_MARKER_WIDTH });
+      }
+    } else if (entry && typeof entry === "object") {
+      const rec = entry as { id?: unknown; points?: unknown; color?: unknown; width?: unknown };
+      const points = coercePoints(rec.points);
+      if (points.length > 0) {
+        const id = coerceStrokeId(rec.id);
+        strokes.push({
+          ...(id ? { id } : {}),
+          points,
+          color: resolveMarkerColor(rec.color),
+          width: resolveMarkerWidth(rec.width),
+        });
       }
     }
-    if (pts.length > 0) paths.push(pts);
   }
-  return paths;
+  return strokes;
+}
+
+/** unknown → 손글씨 path 배열로 정제(점만). 새 형식 획도 점만 꺼낸다. parseHandwriting·블록 환원이 공유. */
+export function coercePaths(raw: unknown): HandwritingPoint[][] {
+  return coerceStrokes(raw).map((s) => s.points);
 }
 
 export function parseHandwriting(content: string): HandwritingContent {
@@ -206,8 +281,74 @@ export function parseHandwriting(content: string): HandwritingContent {
   }
 }
 
+/**
+ * 점만 직렬화한다 — 색·굵기를 싣지 않는다. 옛 호출부(블록·레거시 카드)용이다.
+ * 색·굵기가 있는 overlay는 [[serializeStrokes]]를 쓴다.
+ */
 export function serializeHandwriting(data: HandwritingContent): string {
   return JSON.stringify({ paths: data.paths });
+}
+
+/** overlay JSON → 획 배열(색·굵기 포함). 비었거나 깨졌으면 빈 배열. */
+export function parseStrokes(content: string): HandwritingStroke[] {
+  if (!content || content.length > MAX_OVERLAY_CHARS) return [];
+  try {
+    const v: unknown = JSON.parse(content);
+    if (!v || typeof v !== "object") return [];
+    return coerceStrokes((v as { paths?: unknown }).paths);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * 획 배열 → overlay JSON. 검정·가는 선인 획은 옛 형식(점 배열) 그대로 써서, 옛 데이터를
+ * 읽고 다시 써도 바이트가 달라지지 않는다. 그 밖의 획만 `{points, color, width}`로 쓴다.
+ */
+export function serializeStrokes(strokes: readonly HandwritingStroke[]): string {
+  // 읽는 쪽과 같은 상한을 쓰는 쪽에서도 지킨다 — 점은 솎고, 획이 너무 많으면 오래된 획부터 뺀다.
+  const bounded =
+    strokes.length > MAX_OVERLAY_STROKES ? strokes.slice(-MAX_OVERLAY_STROKES) : strokes;
+  const paths = bounded.map((s) => {
+    const points = thinToMax(s.points) as HandwritingPoint[];
+    // 내용에서 만든 id는 쓰지 않는다 — 옛 획은 읽고 다시 써도 바이트가 달라지지 않는다.
+    const id = s.id && !s.id.startsWith(DERIVED_ID_PREFIX) ? s.id : undefined;
+    return !id && s.color === DEFAULT_MARKER_COLOR && s.width === DEFAULT_MARKER_WIDTH
+      ? points
+      : { ...(id ? { id } : {}), points, color: s.color, width: s.width };
+  });
+  return JSON.stringify({ paths });
+}
+
+/** 내용(점·색·굵기)에서 32비트 FNV-1a 해시를 만든다. */
+function strokeContentHash(s: HandwritingStroke): string {
+  let h = 0x811c9dc5;
+  const feed = (str: string) => {
+    for (let i = 0; i < str.length; i++) {
+      h ^= str.charCodeAt(i);
+      h = Math.imul(h, 0x01000193);
+    }
+  };
+  feed(`${s.color}|${s.width}|`);
+  for (const p of s.points) feed(`${p.x},${p.y};`);
+  return (h >>> 0).toString(36);
+}
+
+/**
+ * id 없는 옛 획에 내용에서 만든 id(`~해시-n`)를 붙인다 — 같은 내용은 어느 기기에서나 같은 id다.
+ * 쓰지 않고 읽을 때만 붙이므로 overlay의 바이트는 그대로다. 같은 내용이 여럿이면 나온 순서로 n을 센다.
+ */
+export function identifyStrokes(
+  strokes: readonly HandwritingStroke[],
+): Array<HandwritingStroke & { id: string }> {
+  const seen = new Map<string, number>();
+  return strokes.map((s) => {
+    if (s.id) return s as HandwritingStroke & { id: string };
+    const h = strokeContentHash(s);
+    const n = seen.get(h) ?? 0;
+    seen.set(h, n + 1);
+    return { ...s, id: `${DERIVED_ID_PREFIX}${h}-${n}` };
+  });
 }
 
 /* ─────────────────── Mindmap ─────────────────── */

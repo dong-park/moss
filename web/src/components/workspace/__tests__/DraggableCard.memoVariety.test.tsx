@@ -36,13 +36,13 @@ function card(over: Partial<Card> = {}): Card {
   return { id: "c1", kind: "text", x: 0, y: 0, width: 300, content: "안녕", ...over };
 }
 
-function seed(cards: Card[], penMode = false) {
+function seed(cards: Card[], holdMarker = false) {
   useWorkspace.setState({
     cards,
     selectedIds: [],
     editingId: null,
     expandedCardId: null,
-    penMode,
+    heldTool: holdMarker ? { kind: "marker" as const, color: "blue" as const } : null,
     draggingId: null,
     draggingMulti: false,
     viewport: { x: 0, y: 0, scale: 1 },
@@ -68,7 +68,7 @@ describe("DraggableCard · memo variety", () => {
     seed([c]);
     const { container } = wrap(<DraggableCard card={c} />);
     const el = root(container, "c1");
-    expect(el.style.transform).toBe(memoBaseTransform(c, false));
+    expect(el.style.transform).toBe(memoBaseTransform(c));
     expect(el.style.transform).toContain(
       `rotate(${formatDeg(memoRotationDeg("c1"))}deg)`,
     );
@@ -86,22 +86,22 @@ describe("DraggableCard · memo variety", () => {
     seed([c]);
     const { container } = wrap(<DraggableCard card={c} />);
     const el = root(container, "c1");
-    const base = memoBaseTransform(c, false);
+    const base = memoBaseTransform(c);
 
     fireEvent.mouseDown(el, { button: 0, clientX: 0, clientY: 0 });
     fireEvent.mouseMove(window, { clientX: 20, clientY: 0 });
-    expect(el.style.transform).toBe(memoLiftedTransform(c, false));
+    expect(el.style.transform).toBe(memoLiftedTransform(c));
     expect(el.style.transform).toContain("scale(1.03)");
 
     fireEvent.mouseUp(window, { clientX: 20, clientY: 0 });
     expect(el.style.transform).toBe(base);
   });
 
-  it("AC-4: 펜 모드에서는 각도가 0이다", () => {
+  it("wall-marker D7: 마카를 들고 있어도 각도는 그대로다", () => {
     const c = card();
     seed([c], true);
     const { container } = wrap(<DraggableCard card={c} />);
-    expect(root(container, "c1").style.transform).toBe("rotate(0deg)");
+    expect(root(container, "c1").style.transform).toBe(memoBaseTransform(c));
   });
 
   it("FEAT-frame-feel AC-1: 메모판(frame)은 들지 않든 들든 transform이 없다", () => {
@@ -109,7 +109,7 @@ describe("DraggableCard · memo variety", () => {
     seed([f]);
     const { container } = wrap(<DraggableCard card={f} />);
     const el = root(container, "f1");
-    expect(memoBaseTransform(f, false)).toBeUndefined();
+    expect(memoBaseTransform(f)).toBeUndefined();
     expect(el.style.transform).toBe("");
 
     fireEvent.mouseDown(el, { button: 0, clientX: 0, clientY: 0 });

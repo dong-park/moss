@@ -1,0 +1,21 @@
+{
+  "id": "T1",
+  "kind": "task",
+  "title": "다른 앱 공유 시트에 moss가 보인다",
+  "given": "안드로이드 크롬에서 moss를 홈 화면에 추가했다",
+  "when": "브런치 글을 보다가 공유 버튼을 누른다",
+  "then": "공유 시트에 moss 아이콘과 'moss' 이름이 다른 앱들과 나란히 보인다",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [
+    "T2",
+    "T3",
+    "T4"
+  ],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

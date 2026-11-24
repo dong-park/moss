@@ -15,6 +15,7 @@ import {
 } from "@/state/workspace";
 import { useStorage } from "@/state/storage";
 import { getDB, resetDB, type Board } from "@/state/db/schema";
+import { runBootstrap } from "@/components/notifications/StorageBootstrap";
 import type { Translator } from "@/i18n";
 
 let originalStorage: PropertyDescriptor | undefined;
@@ -162,19 +163,35 @@ describe("FEAT-capture AC-2: ToolId → CardKind 10종 매핑", () => {
 });
 
 describe("workspace.loadFromStorage seed 흐름", () => {
-  it("첫 실행: 시드를 영속하고 installPromptShown=true 마킹", async () => {
+  it("첫 실행: 보드 1개(시스템)·메모 0장 — 시드도 예제도 심지 않는다", async () => {
     await useStorage.getState().init();
-    await useWorkspace.getState().loadFromStorage();
+    await runBootstrap();
 
-    const cards = useWorkspace.getState().cards;
-    expect(cards.map((c) => c.id).sort()).toEqual(
-      __internal.SEED_CARDS.map((c) => c.id).sort(),
-    );
-    expect(useStorage.getState().settings?.installPromptShown).toBe(true);
+    const { boards, cards, bootstrapComplete } = useWorkspace.getState();
+    expect(bootstrapComplete).toBe(true);
+    expect(boards).toHaveLength(1);
+    expect(boards[0].isSystem).toBe(true);
+    expect(boards[0].id).toBe(SYSTEM_BOARD_ID);
+    expect(cards).toHaveLength(0);
 
-    // DB에 실제로 영속됐는지 확인
-    const fromDB = await useStorage.getState().loadCards(null);
-    expect(fromDB).toHaveLength(__internal.SEED_CARDS.length);
+    // 저장소에도 한 장도 없다.
+    expect(await useStorage.getState().loadCards(null)).toHaveLength(0);
+    expect(await getDB().boards.count()).toBe(1);
+  });
+
+  it("두 탭이 동시에 첫 부팅을 해도 벽은 하나, 메모는 0장", async () => {
+    await useStorage.getState().init();
+    await Promise.all([runBootstrap(), runBootstrap()]);
+    await Promise.all([
+      useWorkspace.getState().loadFromStorage(),
+      useWorkspace.getState().loadFromStorage(),
+    ]);
+
+    expect(await getDB().boards.count()).toBe(1);
+    expect((await useStorage.getState().loadBoards()).filter((b) => b.isSystem)).toHaveLength(1);
+    expect(useWorkspace.getState().boards).toHaveLength(1);
+    expect(useWorkspace.getState().cards).toHaveLength(0);
+    expect(await useStorage.getState().loadCards(null)).toHaveLength(0);
   });
 
   it("두 번째 실행: 시드 재주입 안 함 — 사용자가 모두 지워도", async () => {
@@ -546,10 +563,31 @@ describe("FEAT-boards · 보드 store", () => {
     expect(useWorkspace.getState().boardTransitioning).toBe(false);
   });
 
-  it("renameBoard — 시스템 보드는 throw", async () => {
-    await expect(
-      useWorkspace.getState().renameBoard(SYSTEM_BOARD_ID, "x"),
-    ).rejects.toThrow();
+  it("renameBoard — 시스템 보드도 바꿀 수 있고 시스템 보드로 남는다", async () => {
+    await useStorage.getState().init();
+    await runBootstrap();
+    await useWorkspace.getState().renameBoard(SYSTEM_BOARD_ID, "이직 고민");
+
+    const row = await getDB().boards.get(SYSTEM_BOARD_ID);
+    expect(row?.name).toBe("이직 고민");
+    expect(row?.isSystem).toBe(true);
+    expect(await getDB().boards.count()).toBe(1);
+    expect(
+      useWorkspace.getState().boards.find((b) => b.id === SYSTEM_BOARD_ID)?.name,
+    ).toBe("이직 고민");
+
+    // 새로고침 흉내: 스토어를 비우고 저장소에서 다시 읽어도 같다.
+    useWorkspace.setState({ boards: [] });
+    await useWorkspace.getState().loadFromStorage();
+    expect(
+      useWorkspace.getState().boards.find((b) => b.id === SYSTEM_BOARD_ID)?.name,
+    ).toBe("이직 고민");
+  });
+
+  it("renameBoard — 시스템 보드 행이 없어도 isSystem으로 만들어 삭제 가드가 산다", async () => {
+    await useStorage.getState().init();
+    await useWorkspace.getState().renameBoard(SYSTEM_BOARD_ID, "내 생각");
+    expect((await getDB().boards.get(SYSTEM_BOARD_ID))?.isSystem).toBe(true);
   });
 
   it("renameBoard — DB·state 양쪽 반영", async () => {

@@ -96,18 +96,13 @@ function rotatable(kind: string): boolean {
   return kind === "text" || kind === "board" || kind === "textbox";
 }
 
-/** 각도 0으로 세워야 하는 상황(기울일 수 없는 kind 또는 펜 모드). */
-function rotationOff(kind: string, penMode: boolean): boolean {
-  return !rotatable(kind) || penMode;
-}
-
 /** 들지 않은 상태의 transform. 기울일 수 없는 kind(메모판 등)는 undefined(무변화). */
-export function memoBaseTransform(
-  card: { id: string; kind: string },
-  penMode: boolean,
-): string | undefined {
+export function memoBaseTransform(card: {
+  id: string;
+  kind: string;
+}): string | undefined {
   if (!rotatable(card.kind)) return undefined;
-  const deg = penMode ? 0 : cardRotationDeg(card.id, card.kind);
+  const deg = cardRotationDeg(card.id, card.kind);
   return `rotate(${formatDeg(deg)}deg)`;
 }
 
@@ -118,16 +113,15 @@ export function memoBaseTransform(
  * FEAT-frame-feel T1: 메모판(frame)은 기울이지도 키우지도 않는다 — 들면 그림자만
  * 깊어진다(AC-1). transform을 주지 않아(undefined) 무게는 그림자가 낸다.
  */
-export function memoLiftedTransform(
-  card: { id: string; kind: string },
-  penMode: boolean,
-): string | undefined {
+export function memoLiftedTransform(card: {
+  id: string;
+  kind: string;
+}): string | undefined {
   if (card.kind === "frame") return undefined;
   // FEAT-text-tool: textbox는 회전 0 — 들 때도 기울이지 않고 살짝 뜨기만 한다.
   // FEAT-photo-card: 사진도 회전 0(spec §경계 조건 "사진 카드는 기울이지 않는다").
   if (card.kind === "photo") return "scale(1.03)";
   const deg =
-    (rotationOff(card.kind, penMode) ? 0 : cardRotationDeg(card.id, card.kind)) -
-    CARD_LIFT_DEG;
+    (rotatable(card.kind) ? cardRotationDeg(card.id, card.kind) : 0) - CARD_LIFT_DEG;
   return `scale(1.03) rotate(${formatDeg(deg)}deg)`;
 }

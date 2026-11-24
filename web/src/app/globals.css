@@ -231,6 +231,27 @@ body {
   to { opacity: 1; transform: scale(1); }
 }
 
+/* KS-5 D5: 검색으로 날아온 포스트잇 반짝임 — 두 번 깜빡이고 1.2초 뒤 store가 걷는다.
+ * 색은 기존 검색 강조(rgba(79,124,243))를 쓴다. 줄인 모션이면 깜빡이지 않고 테두리만 보인다. */
+@keyframes moss-card-flash {
+  0% { opacity: 0; }
+  15% { opacity: 1; }
+  40% { opacity: 0.2; }
+  65% { opacity: 1; }
+  100% { opacity: 0; }
+}
+.moss-card-flash {
+  box-shadow:
+    0 0 0 2px rgba(79, 124, 243, 0.9),
+    0 0 16px 3px rgba(79, 124, 243, 0.45);
+  animation: moss-card-flash 1.2s ease-in-out 1 both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .moss-card-flash {
+    animation: none;
+  }
+}
+
 [data-state="open"][data-radix-tooltip-content],
 [data-state="open"][data-radix-dropdown-menu-content] {
   animation: moss-slide-down var(--duration-fast) var(--easing-out);
@@ -311,19 +332,8 @@ body {
 }
 
 /* ─────────────────────────────────────────────────────────────
- * 로그인 전 첫 화면 — 떠다니는 카드 배경 (FloatingCards.tsx)
+ * 카드 앞면 공통 모양 — 캔버스 메모·할 일·링크 앞면이 쓴다 (spec/card-faces.md)
  * ───────────────────────────────────────────────────────────── */
-.moss-float {
-  background: var(--color-bg) radial-gradient(var(--color-dot) 1px, transparent 1.2px) 0 0 / 24px 24px;
-}
-.moss-float .stage {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 1440px;
-  height: 900px;
-  transform: translate(-50%, -50%);
-}
 .moss-card-face .card {
   box-sizing: border-box;
   border-radius: 6px;
@@ -335,7 +345,6 @@ body {
   box-shadow: var(--shadow-card);
 }
 .moss-card-face .card p { margin: 0; }
-.moss-card-face .card.far { filter: blur(1.4px); opacity: 0.78; }
 .moss-card-face .yellow { background: var(--color-card-yellow); }
 .moss-card-face .blue { background: var(--color-card-blue); }
 .moss-card-face .lime { background: var(--color-card-lime); }
@@ -356,11 +365,7 @@ body {
 }
 .moss-card-face .check li.on { color: var(--color-text-muted); text-decoration: line-through; }
 .moss-card-face .check li.on::before { background: var(--color-text); border-color: var(--color-text); }
-.moss-card-face .photo { padding: 6px 6px 8px; }
-.moss-card-face .photo .ph { height: 118px; border-radius: 3px; }
-.moss-card-face .photo span { display: block; margin: 6px 4px 0; font-size: 12px; color: var(--color-text-muted); }
 .moss-card-face .link small,
-.moss-card-face .board small { display: block; font-size: 11px; color: var(--color-text-muted); }
 .moss-card-face .link p { margin-top: 3px; font-size: 13px; font-weight: 600; }
 .moss-card-face .link .fav {
   display: inline-grid;
@@ -374,13 +379,7 @@ body {
   font-weight: 700;
   vertical-align: -3px;
 }
-.moss-card-face .board .bd { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; height: 62px; margin-bottom: 8px; }
-.moss-card-face .board .bd i { border-radius: 3px; background: #efeae0; }
-.moss-card-face .board .bd i:nth-child(2) { background: var(--color-card-yellow); }
-.moss-card-face .board .bd i:nth-child(3) { background: var(--color-card-lime); }
-.moss-card-face .board b { font-size: 13px; }
-/* 캔버스 메모 앞면(spec/card-faces.md)도 같은 카드 모양을 쓴다 — 캔버스에선 카드 상자가 위치를 잡는다. */
-.moss-float .card { position: absolute; left: 0; top: 0; will-change: transform; }
+/* 캔버스에선 카드 상자가 위치를 잡는다. */
 .moss-card-face .card.face { position: relative; width: 100%; box-sizing: border-box; }
 /* 할 일 앞면(TodoFace) — 상자는 버튼, 글은 입력칸. 모양은 첫 화면 체크 카드와 같다. */
 .moss-card-face .check input { all: unset; flex: 1; min-width: 0; font: inherit; color: inherit; cursor: text; }
@@ -391,6 +390,10 @@ body {
 .moss-card-face .link input { all: unset; outline: none !important; box-shadow: none !important; display: block; width: 100%; margin-top: 3px; font-size: 13px; font-weight: 600; cursor: text; }
 .moss-card-face .link input::placeholder { color: var(--color-text-muted); font-weight: 400; }
 .moss-card-face .link [role="alert"] { margin-top: 4px; color: #c0392b; }
+/* 링크 앞면의 "미리보기 가져오기"(LinkPreviewAction) — 공유하지 않은 벽에서만 보인다. */
+.moss-card-face .link .preview-act { margin-top: 6px; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; }
+.moss-card-face .link .preview-act button { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--color-border, #d6d1c6); background: transparent; color: inherit; cursor: pointer; }
+.moss-card-face .link .preview-act button:disabled { opacity: 0.6; cursor: default; }
 /* 편집 전: 입력칸은 글자일 뿐 — 클릭은 줄(토글)·카드(드래그)로 간다. */
 .moss-card-face .check input[readonly] { pointer-events: none; cursor: inherit; }
 .moss-card-face .check li[data-todo-input] { cursor: pointer; }

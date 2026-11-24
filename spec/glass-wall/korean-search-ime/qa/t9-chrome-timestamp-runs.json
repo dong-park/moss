@@ -1,0 +1,199 @@
+{
+ "note": "Chrome for Testing 151 headless, CDP 합성 입력(Input.imeSetComposition/insertText/dispatchKeyEvent). 실제 macOS 입력기·Safari 아님. ts=event.timeStamp, now=핸들러(document capture)에서 performance.now(), d=now-ts. 로거는 임시 Ks6TempSeed(커밋 안 함).",
+ "runs": {
+  "idle-empty-wall": {
+   "log": [
+    "beforeinput ts=4952.7 now=4953.0 d=0.3 it=insertCompositionText",
+    "beforeinput ts=5022.7 now=5022.7 d=0.0 it=insertCompositionText",
+    "beforeinput ts=5089.4 now=5089.5 d=0.1 it=insertCompositionText",
+    "beforeinput ts=5164.4 now=5164.4 d=0.0 it=insertCompositionText",
+    "beforeinput ts=5238.8 now=5238.8 d=0.0 it=insertCompositionText",
+    "keydown ts=5314.5 now=5315.1 d=0.6 key=Process kc=229 comp=true",
+    "beforeinput ts=5317.8 now=5317.8 d=0.0 it=insertCompositionText",
+    "compositionend ts=5318.5 now=5318.6 d=0.1",
+    "keydown ts=5330.2 now=5330.9 d=0.7 key=Enter kc=13 comp=false"
+   ],
+   "val": "이직",
+   "url": "http://127.0.0.1:3000/b/fc792e4d-360a-4092-8b7a-fd3ec786662e"
+  },
+  "idle-big-wall-300": {
+   "log": [
+    "beforeinput ts=9798.7 now=9798.7 d=0.0 it=insertCompositionText",
+    "beforeinput ts=9872.2 now=9872.3 d=0.1 it=insertCompositionText",
+    "beforeinput ts=9945.7 now=9945.8 d=0.1 it=insertCompositionText",
+    "beforeinput ts=10015.0 now=10015.1 d=0.1 it=insertCompositionText",
+    "beforeinput ts=10090.0 now=10090.0 d=0.0 it=insertCompositionText",
+    "keydown ts=10162.9 now=10163.5 d=0.6 key=Process kc=229 comp=true",
+    "beforeinput ts=10166.7 now=10166.8 d=0.1 it=insertCompositionText",
+    "compositionend ts=10167.3 now=10167.4 d=0.1",
+    "keydown ts=10182.4 now=10182.7 d=0.3 key=Enter kc=13 comp=false"
+   ],
+   "val": "이직",
+   "url": "http://127.0.0.1:3000/b/fc792e4d-360a-4092-8b7a-fd3ec786662e"
+  },
+  "busy-0ms-big-wall-300": {
+   "log": [
+    "beforeinput ts=9825.8 now=9825.9 d=0.1 it=insertCompositionText",
+    "beforeinput ts=9897.7 now=9897.8 d=0.1 it=insertCompositionText",
+    "beforeinput ts=9969.6 now=9969.7 d=0.1 it=insertCompositionText",
+    "beforeinput ts=10040.8 now=10040.8 d=0.0 it=insertCompositionText",
+    "beforeinput ts=10112.1 now=10112.2 d=0.1 it=insertCompositionText",
+    "keydown ts=10185.9 now=10186.8 d=0.9 key=Process kc=229 comp=true",
+    "beforeinput ts=10197.1 now=10197.2 d=0.1 it=insertCompositionText",
+    "compositionend ts=10197.5 now=10197.6 d=0.1",
+    "keydown ts=10214.2 now=10214.4 d=0.2 key=Enter kc=13 comp=false"
+   ],
+   "dialog": true,
+   "val": "이직",
+   "url": "http://127.0.0.1:3000/b/fc792e4d-360a-4092-8b7a-fd3ec786662e"
+  },
+  "busy-60ms-big-wall-300": {
+   "log": [
+    "beforeinput ts=9810.7 now=9810.7 d=0.0 it=insertCompositionText",
+    "beforeinput ts=9885.3 now=9885.4 d=0.1 it=insertCompositionText",
+    "beforeinput ts=9953.9 now=9953.9 d=0.0 it=insertCompositionText",
+    "beforeinput ts=10025.8 now=10025.8 d=0.0 it=insertCompositionText",
+    "beforeinput ts=10098.3 now=10098.4 d=0.1 it=insertCompositionText",
+    "beforeinput ts=10228.5 now=10228.5 d=0.0 it=insertCompositionText",
+    "keydown ts=10187.5 now=10229.0 d=41.5 key=Process kc=229 comp=true",
+    "beforeinput ts=10230.9 now=10230.9 d=0.0 it=insertCompositionText",
+    "compositionend ts=10231.1 now=10231.1 d=0.0",
+    "keydown ts=10199.6 now=10231.1 d=31.5 key=Enter kc=13 comp=false"
+   ],
+   "dialog": true,
+   "val": "이직",
+   "url": "http://127.0.0.1:3000/b/fc792e4d-360a-4092-8b7a-fd3ec786662e"
+  },
+  "busy-90ms-big-wall-300": {
+   "log": [
+    "beforeinput ts=9831.5 now=9831.6 d=0.1 it=insertCompositionText",
+    "beforeinput ts=9903.9 now=9903.9 d=0.0 it=insertCompositionText",
+    "beforeinput ts=9974.7 now=9974.8 d=0.1 it=insertCompositionText",
+    "beforeinput ts=10050.9 now=10051.0 d=0.1 it=insertCompositionText",
+    "beforeinput ts=10118.5 now=10118.5 d=0.0 it=insertCompositionText",
+    "beforeinput ts=10280.4 now=10280.4 d=0.0 it=insertCompositionText",
+    "keydown ts=10207.6 now=10280.7 d=73.1 key=Process kc=229 comp=true",
+    "beforeinput ts=10282.4 now=10282.4 d=0.0 it=insertCompositionText",
+    "compositionend ts=10282.5 now=10282.6 d=0.1",
+    "keydown ts=10219.6 now=10282.6 d=63.0 key=Enter kc=13 comp=false"
+   ],
+   "dialog": true,
+   "val": "이직",
+   "url": "http://127.0.0.1:3000/b/fc792e4d-360a-4092-8b7a-fd3ec786662e"
+  },
+  "busy-120ms-big-wall-300": {
+   "log": [
+    "beforeinput ts=9825.6 now=9825.7 d=0.1 it=insertCompositionText",
+    "beforeinput ts=9897.4 now=9897.5 d=0.1 it=insertCompositionText",
+    "beforeinput ts=9971.3 now=9971.4 d=0.1 it=insertCompositionText",
+    "beforeinput ts=10043.2 now=10043.2 d=0.0 it=insertCompositionText",
+    "beforeinput ts=10117.6 now=10117.7 d=0.1 it=insertCompositionText",
+    "beforeinput ts=10309.4 now=10309.5 d=0.1 it=insertCompositionText",
+    "keydown ts=10210.1 now=10309.7 d=99.6 key=Process kc=229 comp=true",
+    "beforeinput ts=10311.7 now=10311.7 d=0.0 it=insertCompositionText",
+    "compositionend ts=10311.8 now=10311.8 d=0.0",
+    "keydown ts=10222.1 now=10311.9 d=89.8 key=Enter kc=13 comp=false"
+   ],
+   "dialog": true,
+   "val": "이직",
+   "url": "http://127.0.0.1:3000/b/fc792e4d-360a-4092-8b7a-fd3ec786662e"
+  },
+  "busy-150ms-big-wall-300": {
+   "log": [
+    "beforeinput ts=9840.9 now=9841.0 d=0.1 it=insertCompositionText",
+    "beforeinput ts=9910.3 now=9910.4 d=0.1 it=insertCompositionText",
+    "beforeinput ts=9983.2 now=9983.3 d=0.1 it=insertCompositionText",
+    "beforeinput ts=10052.7 now=10052.8 d=0.1 it=insertCompositionText",
+    "beforeinput ts=10119.2 now=10119.3 d=0.1 it=insertCompositionText",
+    "beforeinput ts=10343.0 now=10343.1 d=0.1 it=insertCompositionText",
+    "keydown ts=10213.3 now=10343.4 d=130.1 key=Process kc=229 comp=true",
+    "beforeinput ts=10345.9 now=10345.9 d=0.0 it=insertCompositionText",
+    "compositionend ts=10346.0 now=10346.0 d=0.0",
+    "keydown ts=10225.4 now=10346.0 d=120.6 key=Enter kc=13 comp=false"
+   ],
+   "dialog": false,
+   "url": "http://127.0.0.1:3000/b/fc792e4d-360a-4092-8b7a-fd3ec786662e"
+  },
+  "busy-400ms-big-wall-300": {
+   "log": [
+    "beforeinput ts=9838.7 now=9838.8 d=0.1 it=insertCompositionText",
+    "beforeinput ts=9910.6 now=9910.7 d=0.1 it=insertCompositionText",
+    "beforeinput ts=9983.1 now=9983.2 d=0.1 it=insertCompositionText",
+    "beforeinput ts=10056.8 now=10056.9 d=0.1 it=insertCompositionText",
+    "beforeinput ts=10131.3 now=10131.3 d=0.0 it=insertCompositionText",
+    "beforeinput ts=10604.5 now=10604.5 d=0.0 it=insertCompositionText",
+    "keydown ts=10224.5 now=10604.8 d=380.3 key=Process kc=229 comp=true",
+    "beforeinput ts=10607.8 now=10607.8 d=0.0 it=insertCompositionText",
+    "compositionend ts=10607.8 now=10607.9 d=0.1",
+    "keydown ts=10235.9 now=10607.9 d=372.0 key=Enter kc=13 comp=false"
+   ],
+   "dialog": false,
+   "url": "http://127.0.0.1:3000/b/fc792e4d-360a-4092-8b7a-fd3ec786662e"
+  },
+  "busy-120ms-big-wall-300-repeat": {
+   "log": [
+    "beforeinput ts=9837.1 now=9837.2 d=0.1 it=insertCompositionText",
+    "beforeinput ts=9901.8 now=9901.8 d=0.0 it=insertCompositionText",
+    "beforeinput ts=9975.6 now=9975.7 d=0.1 it=insertCompositionText",
+    "beforeinput ts=10045.2 now=10045.3 d=0.1 it=insertCompositionText",
+    "beforeinput ts=10118.3 now=10118.3 d=0.0 it=insertCompositionText",
+    "beforeinput ts=10312.2 now=10312.3 d=0.1 it=insertCompositionText",
+    "keydown ts=10206.6 now=10312.7 d=106.1 key=Process kc=229 comp=true",
+    "beforeinput ts=10316.3 now=10316.3 d=0.0 it=insertCompositionText",
+    "compositionend ts=10316.5 now=10316.5 d=0.0",
+    "keydown ts=10218.7 now=10316.6 d=97.9 key=Enter kc=13 comp=false"
+   ],
+   "dialog": true,
+   "val": "이직",
+   "url": "http://127.0.0.1:3000/b/fc792e4d-360a-4092-8b7a-fd3ec786662e"
+  },
+  "busy-130ms-big-wall-300-repeat": {
+   "log": [
+    "beforeinput ts=9842.1 now=9842.2 d=0.1 it=insertCompositionText",
+    "beforeinput ts=9915.1 now=9915.2 d=0.1 it=insertCompositionText",
+    "beforeinput ts=9985.1 now=9985.2 d=0.1 it=insertCompositionText",
+    "beforeinput ts=10057.6 now=10057.7 d=0.1 it=insertCompositionText",
+    "beforeinput ts=10128.0 now=10128.1 d=0.1 it=insertCompositionText",
+    "beforeinput ts=10328.3 now=10328.3 d=0.0 it=insertCompositionText",
+    "keydown ts=10218.9 now=10328.6 d=109.7 key=Process kc=229 comp=true",
+    "beforeinput ts=10332.3 now=10332.4 d=0.1 it=insertCompositionText",
+    "compositionend ts=10332.5 now=10332.5 d=0.0",
+    "keydown ts=10230.9 now=10332.6 d=101.7 key=Enter kc=13 comp=false"
+   ],
+   "dialog": false,
+   "url": "http://127.0.0.1:3000/b/fc792e4d-360a-4092-8b7a-fd3ec786662e"
+  },
+  "busy-140ms-big-wall-300-repeat": {
+   "log": [
+    "beforeinput ts=9831.6 now=9831.7 d=0.1 it=insertCompositionText",
+    "beforeinput ts=9896.9 now=9896.9 d=0.0 it=insertCompositionText",
+    "beforeinput ts=9970.1 now=9970.1 d=0.0 it=insertCompositionText",
+    "beforeinput ts=10036.3 now=10036.4 d=0.1 it=insertCompositionText",
+    "beforeinput ts=10109.4 now=10109.4 d=0.0 it=insertCompositionText",
+    "beforeinput ts=10319.7 now=10319.7 d=0.0 it=insertCompositionText",
+    "keydown ts=10196.1 now=10320.1 d=124.0 key=Process kc=229 comp=true",
+    "beforeinput ts=10325.0 now=10325.0 d=0.0 it=insertCompositionText",
+    "compositionend ts=10325.1 now=10325.1 d=0.0",
+    "keydown ts=10208.2 now=10325.2 d=117.0 key=Enter kc=13 comp=false"
+   ],
+   "dialog": false,
+   "url": "http://127.0.0.1:3000/b/fc792e4d-360a-4092-8b7a-fd3ec786662e"
+  },
+  "busy-150ms-big-wall-300-repeat": {
+   "log": [
+    "beforeinput ts=9834.0 now=9834.1 d=0.1 it=insertCompositionText",
+    "beforeinput ts=9906.5 now=9906.5 d=0.0 it=insertCompositionText",
+    "beforeinput ts=9979.8 now=9979.9 d=0.1 it=insertCompositionText",
+    "beforeinput ts=10053.2 now=10053.3 d=0.1 it=insertCompositionText",
+    "beforeinput ts=10121.1 now=10121.2 d=0.1 it=insertCompositionText",
+    "beforeinput ts=10335.3 now=10335.3 d=0.0 it=insertCompositionText",
+    "keydown ts=10202.2 now=10335.6 d=133.4 key=Process kc=229 comp=true",
+    "beforeinput ts=10340.4 now=10340.4 d=0.0 it=insertCompositionText",
+    "compositionend ts=10340.5 now=10340.5 d=0.0",
+    "keydown ts=10214.2 now=10340.7 d=126.5 key=Enter kc=13 comp=false"
+   ],
+   "dialog": false,
+   "url": "http://127.0.0.1:3000/b/fc792e4d-360a-4092-8b7a-fd3ec786662e"
+  }
+ }
+}

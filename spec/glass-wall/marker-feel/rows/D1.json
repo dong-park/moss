@@ -1,0 +1,38 @@
+{
+  "id": "D1",
+  "kind": "decision",
+  "title": "획마다 색·굵기를 어떻게 저장하나",
+  "given": "wall-marker의 획 저장 모델에 색과 굵기 칸이 들어간다",
+  "when": "재질별 보정이나 색 값 다듬기가 생긴다",
+  "then": "저장된 옛 그림이 새 값을 따라가는지가 갈린다",
+  "options": [
+    {
+      "key": "A",
+      "label": "이름으로 저장 — black·blue·red·green, thin·mid·thick",
+      "why": "재질마다 색을 보정하고, 색 값을 나중에 다듬어도 그림이 따라간다. 내보내기 파일도 읽기 쉽다"
+    },
+    {
+      "key": "B",
+      "label": "값으로 저장 — #2457b8, 6px",
+      "why": "단순하다. 하지만 재질별 보정이 안 되고, 값이 바뀌면 옛 그림과 새 그림 색이 갈린다"
+    }
+  ],
+  "recommend": "A",
+  "confidence": "high",
+  "reversible": false,
+  "status": "끝남",
+  "blocks": [
+    "T1",
+    "T2",
+    "T3",
+    "T18"
+  ],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": [
+    "2026-10-11 user.answer 반영: A",
+    "2026-10-11 D1 → A (사용자, 시트에서)"
+  ]
+}

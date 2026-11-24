@@ -1,0 +1,17 @@
+{
+  "id": "T5",
+  "kind": "task",
+  "title": "획 끝이 살짝 번진다",
+  "given": "보통 굵기로 직선 하나를 그었다",
+  "when": "100% 줌에서 획을 가까이 본다",
+  "then": "가장자리가 칼처럼 매끈하지 않고 살짝 부드럽게 퍼져 보인다. 획 끝은 둥글다. 그래도 글씨는 또렷이 읽힌다",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

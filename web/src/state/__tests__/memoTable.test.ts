@@ -81,7 +81,7 @@ afterEach(async () => {
     selectedIds: [],
     currentBoardId: SYSTEM_BOARD_ID,
     view: "canvas",
-    canvasHasFitted: false,
+    viewSettledBoardIds: [],
     tableReturnBoardId: null,
   });
   if (originalStorage) {
@@ -527,17 +527,17 @@ describe("memoTable store — 로드·편집·휴지통·실시간", () => {
       cards: [card],
       currentBoardId: "b1",
       viewport: { x: 0, y: 0, scale: 1 },
-      canvasHasFitted: false,
+      viewSettledBoardIds: [],
       selectedIds: [],
     });
 
     useWorkspace.getState().panToCard("n1");
-    expect(useWorkspace.getState().canvasHasFitted).toBe(true);
+    expect(useWorkspace.getState().viewSettledBoardIds).toContain("b1");
     expect(useWorkspace.getState().selectedIds).toEqual(["n1"]);
 
-    useWorkspace.setState({ canvasHasFitted: false });
+    useWorkspace.setState({ viewSettledBoardIds: [] });
     useWorkspace.getState().fitToCards({ width: 1000, height: 800 });
-    expect(useWorkspace.getState().canvasHasFitted).toBe(true);
+    expect(useWorkspace.getState().viewSettledBoardIds).toContain("b1");
   });
 
   it("D1: 캔버스에서 보기는 의도적 이동이라 복원하지 않는다", async () => {

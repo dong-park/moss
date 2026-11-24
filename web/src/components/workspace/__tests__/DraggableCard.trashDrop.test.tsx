@@ -52,7 +52,7 @@ function seed(cards: Card[], selectedIds: string[] = []) {
     selectedIds,
     editingId: null,
     expandedCardId: null,
-    penMode: false,
+    heldTool: null,
     draggingId: null,
     draggingMulti: false,
     dropTargetFunnelId: null,

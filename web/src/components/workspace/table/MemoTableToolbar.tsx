@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useT } from "@/i18n/Provider";
+import { systemBoardName } from "@/state/systemBoardName";
 import {
   useMemoTable,
   frameNameMap,
@@ -46,7 +47,7 @@ export function MemoTableToolbar() {
   }, [notes]);
 
   const boardOptions = [
-    { key: SYSTEM_BOARD_KEY, label: t("workspace.boardPicker.system") },
+    { key: SYSTEM_BOARD_KEY, label: systemBoardName(boards, t) },
     // 시스템 보드는 UUID 행으로 boards에도 있다 — 위 고정 항목과 겹치지 않게 뺀다.
     ...boards.filter((b) => b.id !== SYSTEM_BOARD_KEY).map((b) => ({
       key: b.id,

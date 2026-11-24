@@ -1,0 +1,17 @@
+{
+  "id": "T6",
+  "kind": "task",
+  "title": "창 아래에 무엇을 찾는지 안내가 늘 보인다",
+  "given": "검색 창이 열려 있다",
+  "when": "결과가 있든 없든 창을 본다",
+  "then": "창 맨 아래 회색 작은 글씨로 '초성·부분 일치 · 마카 글씨는 검색하지 않아요'가 보인다",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

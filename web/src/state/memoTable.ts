@@ -11,6 +11,7 @@ import { subscribeNoteChanges } from "./db/liveSync";
 import { cancelPersist } from "./cardPersist";
 import { useToasts } from "./notifications";
 import { t } from "@/i18n";
+import { systemBoardName } from "./systemBoardName";
 
 /* ─────────────────────────────────────────────────────────────
  * FEAT-memo-table-view — 전체 메모 표 뷰 상태·셀렉터.
@@ -333,7 +334,7 @@ export function deriveRows(
   boards: Board[],
   filters: MemoFilters,
   sort: MemoSort,
-  systemLabel: string = t("workspace.boardPicker.system"),
+  systemLabel: string = systemBoardName(boards),
 ): MemoRow[] {
   return deriveFromBase(
     buildMemoRows(notes, boards, systemLabel),

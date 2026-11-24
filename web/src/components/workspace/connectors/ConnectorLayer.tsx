@@ -5,6 +5,7 @@ import type { Connection } from "@/state/db/schema";
 import { cardCenter, useWorkspace, type Card } from "@/state/workspace";
 import { useT } from "@/i18n/Provider";
 import { ConnectorDraft } from "./ConnectorDraft";
+import { isCommitEnter, useImeSafeBlur } from "../ime";
 import {
   bezierMidpoint,
   connectorGeometry,
@@ -56,6 +57,10 @@ const ConnectionItem = memo(function ConnectionItem({
   const geo = connectorGeometry(source, sourceSide, target, targetSide);
   const d = geometryPath(geo);
   const m = bezierMidpoint(geo.p0, geo.c1, geo.c2, geo.p1);
+  // 한글 조합 중 blur면 확정된 글자로 라벨을 저장한다(T11).
+  const onLabelBlur = useImeSafeBlur<HTMLInputElement>(() =>
+    onBlur(connection.id, labelValue),
+  );
 
   return (
     <g data-connection-id={connection.id}>
@@ -104,10 +109,10 @@ const ConnectionItem = memo(function ConnectionItem({
             onDoubleClick={(e) => e.stopPropagation()}
             onKeyDown={(e) => {
               e.stopPropagation();
-              if (e.key === "Enter") onCommit(connection.id, labelValue);
+              if (isCommitEnter(e)) onCommit(connection.id, labelValue);
               else if (e.key === "Escape") onCancel();
             }}
-            onBlur={() => onBlur(connection.id, labelValue)}
+            onBlur={onLabelBlur}
             className="h-full w-full rounded-full border border-border bg-bg px-2 text-center text-xs text-text outline-none"
           />
         </foreignObject>

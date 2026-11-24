@@ -1,0 +1,17 @@
+{
+  "id": "T11",
+  "kind": "task",
+  "title": "닦기를 되돌린다",
+  "given": "천으로 한 번 길게 문질러 세 글자를 지웠다",
+  "when": "되돌리기를 누른다",
+  "then": "세 글자가 원래 진하기로 한 번에 돌아오고, 자국도 사라진다",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

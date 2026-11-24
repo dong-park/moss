@@ -1,0 +1,17 @@
+{
+  "id": "T7",
+  "kind": "task",
+  "title": "옛 사용자는 달라진 것을 느끼지 못한다",
+  "given": "기본 보드에 직접 만든 메모가 여러 장 있는 기존 사용자다",
+  "when": "moss를 연다",
+  "then": "마지막으로 연 벽이 그대로 열린다. 힌트·보드 고르기 화면이 뜨지 않는다. 예제 메모가 새로 생기지 않는다",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

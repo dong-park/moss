@@ -1,0 +1,17 @@
+{
+  "id": "T17",
+  "kind": "task",
+  "title": "코르크에서도 획이 읽힌다",
+  "given": "재질이 코르크다",
+  "when": "같은 획을 본다",
+  "then": "코르크 결 위에서 획이 조금 옅고 거칠게 보이지만 글씨는 읽힌다",
+  "confidence": "low",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

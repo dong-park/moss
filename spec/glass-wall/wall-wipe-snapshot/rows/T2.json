@@ -1,0 +1,17 @@
+{
+  "id": "T2",
+  "kind": "task",
+  "title": "닦기 확인에서 취소하면 아무것도 바뀌지 않는다",
+  "given": "내용이 있는 벽에서 닦기 확인 창이 떠 있다",
+  "when": "취소를 누르거나 Esc를 누른다",
+  "then": "벽은 그대로다. 사진첩에 새 사진이 생기지 않는다.",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

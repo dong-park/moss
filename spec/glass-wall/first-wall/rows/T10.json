@@ -1,0 +1,17 @@
+{
+  "id": "T10",
+  "kind": "task",
+  "title": "첫 실행 경로에 고르기 창이 0개다",
+  "given": "첫 보드 고르기 코드를 정리했다",
+  "when": "새 저장소로 첫 실행을 렌더하는 테스트를 돌리고 소스를 검색한다",
+  "then": "첫 실행 화면에 role=dialog 요소 0개. web/src에서 onboarding.firstBoard 키와 FirstBoardChooser 참조 0건. 확인: vitest 렌더 테스트 + grep -rn \"onboarding.firstBoard\\|FirstBoardChooser\" web/src",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

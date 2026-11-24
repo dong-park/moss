@@ -1,0 +1,39 @@
+{
+  "id": "D3",
+  "kind": "decision",
+  "title": "아이폰에서는 어떻게 보내나",
+  "given": "아이폰 사파리는 웹앱 공유 받기를 지원하지 않는다",
+  "when": "아이폰 사용자가 링크를 moss로 보내려 할 때",
+  "then": "아이폰에서 2초 붙이기를 이 티켓이 약속하는지가 갈린다",
+  "options": [
+    {
+      "key": "paste",
+      "label": "moss를 열면 '복사한 것 붙이기' 버튼이 뜬다",
+      "why": "공유 시트 대신 복사→moss 열기→한 번 누르기. 2초는 못 지키지만 앱 없이 된다"
+    },
+    {
+      "key": "shortcut",
+      "label": "아이폰 단축어를 내려받게 안내",
+      "why": "공유 시트에 뜨지만 설치 단계가 길고 깨지기 쉽다"
+    },
+    {
+      "key": "later",
+      "label": "이 티켓에서 빼고 네이티브 앱 때 한다",
+      "why": "범위가 줄지만 아이폰 사용자는 계속 카톡에 쌓는다"
+    }
+  ],
+  "recommend": "paste",
+  "confidence": "high",
+  "reversible": true,
+  "status": "끝남",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": [
+    "2026-10-11 D3 → paste (답 없음 · 추천대로)",
+    "2026-10-11 user.answer 반영: paste",
+    "2026-10-11 D3 → paste (사용자, 시트에서)"
+  ]
+}

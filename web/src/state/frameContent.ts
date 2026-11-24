@@ -7,7 +7,12 @@
  *
  * FEAT-frame-skins: 이름만이 아니라 스킨·칸 목록까지 담는다. DB 스키마는 그대로 두고
  * content JSON만 넓힌다. 스킨이 free여도 columns는 지우지 않고 보관한다(AC-3).
+ *
+ * glass-surface: 메모판 재질(`material`)도 스킨 옆 필드로 둔다. 스킨과 서로 독립이다 —
+ * 어느 쪽을 바꿔도 다른 쪽은 그대로다. 없거나 모르는 값은 코르크로 읽는다.
  */
+
+import { frameMaterialFor, isWallMaterialId, type WallMaterialId } from "./wallMaterials";
 
 export const FRAME_DEFAULT_NAME = "새 메모판";
 export const FRAME_NAME_MAX = 40;
@@ -34,6 +39,8 @@ export interface FrameContentJson {
   skin?: FrameSkinId;
   /** skin이 free여도 지우지 않고 보관한다. */
   columns?: FrameColumn[];
+  /** 메모판 재질. 없으면 코르크로 읽는다. */
+  material?: WallMaterialId;
 }
 
 /** 정규화를 마친 판 설정 — 화면·스토어가 쓰는 모양. columns는 항상 2~8개. */
@@ -41,6 +48,7 @@ export interface FrameConfig {
   name: string;
   skin: FrameSkinId;
   columns: FrameColumn[];
+  material: WallMaterialId;
 }
 
 /** 기본 칸 이름. AC-3의 "씨앗 / 자라는 중 / 묵힘". */
@@ -109,6 +117,7 @@ export function decodeFrameConfig(content: string): FrameConfig {
     name: normalizeName(raw.name),
     skin: raw.skin === "columns" ? "columns" : "free",
     columns: normalizeFrameColumns(raw.columns),
+    material: frameMaterialFor(raw.material).id,
   };
 }
 
@@ -129,5 +138,7 @@ export function encodeFrameContent(content: FrameContentJson | string = {}): str
   const out: FrameContentJson = { name: normalizeName(cfg.name) };
   if (cfg.skin === "columns" || cfg.skin === "free") out.skin = cfg.skin;
   if (cfg.columns !== undefined) out.columns = normalizeFrameColumns(cfg.columns);
+  // 알려진 재질만 담는다 — 깨진 값은 떨어져도 어차피 코르크로 읽힌다.
+  if (isWallMaterialId(cfg.material)) out.material = cfg.material;
   return JSON.stringify(out);
 }

@@ -8,6 +8,7 @@ import {
   type FrameColumn,
 } from "@/state/frameContent";
 import { useT } from "@/i18n/Provider";
+import { isCommitEnter, useImeSafeBlur } from "../../../ime";
 
 /* ─────────────────────────────────────────────────────────────
  * FEAT-frame-skins — 세로 칸 판의 배경 그림.
@@ -54,6 +55,8 @@ export const ColumnsSkin = memo(function ColumnsSkin({
     renameFrameColumn(frameId, editingId, draft);
     setEditingId(null);
   };
+  // 한글 조합 중 blur면 확정된 글자로 저장한다(T11).
+  const onNameBlur = useImeSafeBlur<HTMLInputElement>(() => commit());
 
   return (
     <div className="pointer-events-none absolute inset-0" data-frame-columns="true">
@@ -88,9 +91,9 @@ export const ColumnsSkin = memo(function ColumnsSkin({
                     onMouseDown={(e) => e.stopPropagation()}
                     onDoubleClick={(e) => e.stopPropagation()}
                     onChange={(e) => setDraft(e.target.value)}
-                    onBlur={commit}
+                    onBlur={onNameBlur}
                     onKeyDown={(e) => {
-                      if (e.key === "Enter") {
+                      if (isCommitEnter(e)) {
                         e.preventDefault();
                         commit();
                       } else if (e.key === "Escape") {

@@ -1,0 +1,17 @@
+{
+  "id": "T2",
+  "kind": "task",
+  "title": "고른 색으로 획이 그어진다",
+  "given": "패널에서 파랑을 골랐다",
+  "when": "벽에 선을 긋는다",
+  "then": "선이 파랑으로 그어진다. 앞서 검정으로 그은 선은 검정 그대로 남는다",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

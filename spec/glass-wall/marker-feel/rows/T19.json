@@ -1,0 +1,17 @@
+{
+  "id": "T19",
+  "kind": "task",
+  "title": "번짐을 켜도 그리기가 끊기지 않는다",
+  "given": "화면에 획 200개가 보이고 번짐이 켜져 있다",
+  "when": "데스크톱 Chrome에서 5초 동안 새 획을 긋는다",
+  "then": "그리는 동안 프레임 시간 p95 < 16.7ms. 확인: Chrome Performance 기록에서 Frames 구간 측정",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

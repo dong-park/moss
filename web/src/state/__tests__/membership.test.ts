@@ -21,7 +21,7 @@ import {
 } from "@/state/membership";
 import { useShare } from "@/state/share";
 import type { BoardMember, ShareApi } from "@/state/share";
-import { resetShareStore } from "@/state/share/store";
+import { resetShareStore, restoreSharedFromDevice } from "@/state/share/store";
 import { useStorage } from "@/state/storage";
 import { SYSTEM_BOARD_ID, encodeSubcanvas, useWorkspace } from "@/state/workspace";
 import { destroyBoardDocs, getOrOpenBoardDoc } from "@/state/ydoc/activeDoc";
@@ -243,6 +243,67 @@ describe("AC-14 · 오프라인 편집자를 내보낸 뒤", () => {
     expect(await db.notes.where("boardId").equals(boardId).count()).toBe(0);
     expect(await db.boards.get(boardId)).toBeUndefined();
     expect(useShare.getState().byBoard[boardId]).toBeUndefined();
+  });
+});
+
+describe("G1 · 계정을 바꾼 기기에서 남의 원격 사본을 지우지 않는다", () => {
+  const KEY = "moss:sharedBoards";
+
+  afterEach(() => localStorage.removeItem(KEY));
+
+  async function seedRemoteBoard(boardId: string) {
+    await useStorage.getState().init();
+    const db = getDB();
+    await db.boards.put(makeBoard(boardId, { remote: true }));
+    await db.notes.put(makeNote(`n-${boardId}`, boardId));
+    return db;
+  }
+
+  it("A가 남긴 공유 기록은 B의 서버 목록에 없어도 A의 원격 사본(오프라인 편집 포함)을 남긴다", async () => {
+    const db = await seedRemoteBoard("r1");
+    // A 의 기기 기록. 지금 로그인한 계정은 "me"(B)다. 새로고침한 상태를 만든다.
+    localStorage.setItem(KEY, JSON.stringify({ userId: "A", boards: { r1: "editor" } }));
+    restoreSharedFromDevice();
+    const deleteDoc = vi.fn(async () => {});
+    configureMembership({
+      api: fakeShareApi({ myBoards: vi.fn(async () => []) }),
+      deleteDoc,
+    });
+
+    await syncMyBoards();
+
+    expect(deleteDoc).not.toHaveBeenCalled();
+    expect(await db.boards.get("r1")).toBeDefined();
+    expect(await db.notes.where("boardId").equals("r1").count()).toBe(1);
+    expect(useShare.getState().byBoard.r1).toBeUndefined();
+  });
+
+  it("같은 계정의 기록이면 서버 목록에서 사라진 원격 사본을 지운다 (F2 유지)", async () => {
+    const db = await seedRemoteBoard("r1");
+    localStorage.setItem(KEY, JSON.stringify({ userId: "me", boards: { r1: "editor" } }));
+    restoreSharedFromDevice();
+    configureMembership({ api: fakeShareApi({ myBoards: vi.fn(async () => []) }) });
+
+    await syncMyBoards();
+
+    expect(await db.boards.get("r1")).toBeUndefined();
+    expect(await db.notes.where("boardId").equals("r1").count()).toBe(0);
+  });
+
+  it("확인되지 않은 항목은 서버 목록에 없어도 정리하지 않는다", async () => {
+    const db = await seedRemoteBoard("r1");
+    useShare.setState({
+      byBoard: {
+        r1: { status: "shared", inviteToken: null, role: "editor", unconfirmed: true },
+      },
+    });
+    const deleteDoc = vi.fn(async () => {});
+    configureMembership({ api: fakeShareApi({ myBoards: vi.fn(async () => []) }), deleteDoc });
+
+    await syncMyBoards();
+
+    expect(deleteDoc).not.toHaveBeenCalled();
+    expect(await db.boards.get("r1")).toBeDefined();
   });
 });
 

@@ -113,7 +113,7 @@ afterEach(async () => {
     cards: [],
     selectedIds: [],
     editingId: null,
-    penMode: false,
+    heldTool: null,
     dockDrag: null,
     trashOpen: false,
     trashCount: 0,
@@ -127,17 +127,31 @@ afterEach(async () => {
 });
 
 describe("AC-1: 독 버튼 (펜·시그널스 임시 숨김 + 휴지통)", () => {
-  // 2026-09-19 사용자 결정: 펜·시그널스 진입점 임시 숨김 — 복원 시 5개+구분선으로 되돌린다.
-  it("메모판·메모·파일함·휴지통 순서로 버튼이 있다(구분선 없음)", () => {
+  // 2026-09-19 사용자 결정: 시그널스 진입점 임시 숨김. 펜 자리는 wall-marker n2 마카 트레이가 쓴다.
+  it("마카 4개·천 다음에 메모판·메모·파일함·휴지통 순서로 버튼이 있다(구분선은 트레이 뒤 하나)", () => {
     renderDock();
     const toolbar = screen.getByRole("toolbar");
     expect(toolbar).toBeTruthy();
     const buttons = screen.getAllByRole("button");
     const labels = buttons.map((b) => b.getAttribute("aria-label"));
     // FEAT-text-tool: 메모 다음에 텍스트(T) 도구가 추가됐다.
-    expect(labels).toEqual(["메모판", "메모", "할 일", "링크", "사진", "텍스트", "파일함", "휴지통"]);
-    // 구분선 — 펜·시그널스와 함께 숨김.
-    expect(toolbar.querySelector("[aria-hidden]")).toBeNull();
+    expect(labels).toEqual([
+      "검정 마카",
+      "파랑 마카",
+      "빨강 마카",
+      "초록 마카",
+      "천 지우개",
+      "메모판",
+      "메모",
+      "할 일",
+      "링크",
+      "사진",
+      "텍스트",
+      "파일함",
+      "휴지통",
+    ]);
+    // 구분선은 트레이와 독 도구 사이 하나뿐이다(시그널스와 함께 숨겨 둔 구분선은 없다).
+    expect(toolbar.querySelectorAll(":scope > [aria-hidden]")).toHaveLength(1);
   });
 
   it("FEAT-trash: 휴지통 버튼을 누르면 패널 열림 상태가 된다", () => {
@@ -423,18 +437,30 @@ describe("AC-3: 독에서 끌어 만들기", () => {
   });
 });
 
-describe("AC-4: 독의 펜과 시그널스 (2026-09-19 임시 숨김)", () => {
-  // 펜·시그널스 진입점을 주석 처리로 숨겨 버튼이 DOM에 없다 — 복원 시 아래 둘을 되살린다.
-  it.skip("펜 버튼을 누르면 펜 모드가 켜지고 aria-pressed가 true다", () => {
+describe("wall-marker n2: 독 왼쪽의 마카 트레이 (D11=A)", () => {
+  it("독 안에 마카 4개와 천이 있고, 옛 펜 버튼은 없다", () => {
     renderDock();
-    const penBtn = screen.getByLabelText("펜");
-    expect(penBtn.getAttribute("aria-pressed")).toBe("false");
-    fireEvent.click(penBtn);
-    expect(useWorkspace.getState().penMode).toBe(true);
-    fireEvent.click(penBtn);
-    expect(useWorkspace.getState().penMode).toBe(false);
+    for (const name of ["검정", "파랑", "빨강", "초록"]) {
+      expect(screen.getByLabelText(`${name} 마카`)).toBeTruthy();
+    }
+    expect(screen.getByLabelText("천 지우개")).toBeTruthy();
+    expect(screen.queryByLabelText("펜")).toBeNull();
+    // 트레이와 독 도구가 한 선반(toolbar) 안에 있다.
+    const dock = screen.getByRole("toolbar", { name: "독" });
+    expect(dock.contains(screen.getByLabelText("파랑 마카"))).toBe(true);
+    expect(dock.contains(screen.getByLabelText("메모"))).toBe(true);
   });
 
+  it("독의 마카를 누르면 실제 스토어의 heldTool이 바뀐다", () => {
+    renderDock();
+    fireEvent.click(screen.getByLabelText("빨강 마카"));
+    expect(useWorkspace.getState().heldTool).toEqual({ kind: "marker", color: "red" });
+  });
+});
+
+describe("AC-4: 독의 시그널스 (2026-09-19 임시 숨김)", () => {
+  // 시그널스 진입점을 주석 처리로 숨겨 버튼이 DOM에 없다 — 복원 시 아래를 되살린다.
+  // (펜 버튼은 wall-marker n2에서 마카 트레이로 대체됐다 — MarkerTray.test.tsx)
   it.skip("시그널스 버튼을 누르면 onSignalsClick이 호출된다", () => {
     const onSignalsClick = vi.fn();
     renderDock({ onSignalsClick });

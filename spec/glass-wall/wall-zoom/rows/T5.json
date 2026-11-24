@@ -1,0 +1,17 @@
+{
+  "id": "T5",
+  "kind": "task",
+  "title": "벽 마카 획은 모든 거리에서 그 자리에 보인다",
+  "given": "벽에 마카로 쓴 덩어리 이름, 동그라미, 잇는 선이 있다 (wall-marker 이후)",
+  "when": "100%에서 25%로 물러난다",
+  "then": "이름과 동그라미와 선이 같은 자리에 그대로 보인다. 가는 획도 사라지지 않고 D4대로 보인다",
+  "confidence": "mid",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

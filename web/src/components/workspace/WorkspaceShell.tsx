@@ -22,13 +22,13 @@ import { CollabSession } from "@/components/collab/CollabSession";
 import { ShareControlMount } from "@/components/share/ShareControlMount";
 import { AccountMenu } from "@/components/auth/AccountMenu";
 import { OfflineBadge } from "@/components/presence/OfflineBadge";
-import { FirstBoardChooser } from "./FirstBoardChooser";
-import { needsFirstBoard, setBoardNavigator, useWorkspace } from "@/state/workspace";
+import { setBoardNavigator, useWorkspace } from "@/state/workspace";
 import {
   resolveBoardAccess,
   type BoardAccess,
 } from "@/state/boardAccess";
 import { BoardAccessCard } from "./BoardAccessCard";
+import { StorageFailureNotice } from "./StorageFailureNotice";
 
 /** `/b/<id>` 경로에서 보드 id를 뽑는다. `/`거나 그 밖의 경로면 undefined. */
 export function parseBoardId(pathname: string | null | undefined): string | undefined {
@@ -102,33 +102,26 @@ export function RouteBoardSync({ boardId }: { boardId: string }) {
   return null;
 }
 
-/** `/`는 화면이 아니라 갈림길이다 (D4). 로그인했으면 마지막으로 연 보드로 replace한다.
- * 뒤로 가기에도 `/`가 남지 않는다(AC-6). 사용자 보드가 하나도 없으면 첫 보드 고르기
- * 화면을 보여 준다(n4 D5-1, AC-5) — 기존 사용자는 시스템 보드 메모가 있어 뜨지 않는다(AC-7).
+/** `/`는 화면이 아니라 갈림길이다 (D4). 마지막으로 연 보드로 replace한다.
+ * 뒤로 가기에도 `/`가 남지 않는다(AC-6). 사용자 보드가 하나도 없어도 고르기 화면 없이
+ * 시스템 보드(첫 벽)로 보낸다 — 처음 온 사람은 아무것도 고르지 않고 빈 벽을 만난다.
  * P1: `router.replace` 대신 네이티브 replaceState — RSC 왕복과 워크스페이스 재마운트를 없앤다.
  */
 export function RootBoardRedirect() {
   const bootstrapComplete = useWorkspace((s) => s.bootstrapComplete);
   const migrationPending = useWorkspace((s) => s.migrationPending);
   const boards = useWorkspace((s) => s.boards);
-  const cards = useWorkspace((s) => s.cards);
-
-  const firstBoardNeeded =
-    bootstrapComplete && !migrationPending && needsFirstBoard(boards, cards);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (!bootstrapComplete || migrationPending) return;
-    // 첫 보드 고르기 화면이 떠 있으면 마지막 보드로 보내지 않는다.
-    if (needsFirstBoard(boards, cards)) return;
     const last = boards[0];
     if (!last) return;
     const target = `/b/${last.id}`;
     if (window.location.pathname === target) return;
     window.history.replaceState(null, "", target);
-  }, [bootstrapComplete, migrationPending, boards, cards]);
+  }, [bootstrapComplete, migrationPending, boards]);
 
-  if (firstBoardNeeded) return <FirstBoardChooser />;
   return null;
 }
 
@@ -163,7 +156,7 @@ export function useBoardIdFromPath(): string | undefined {
  * 공유한다. 보드 주소를 prop이 아니라 `usePathname`에서 파싱한다 — 네이티브 history로
  * 바뀐 경로도 서버 페이지 prop 재전달 없이 그대로 반영된다(P1, 오프라인 이동).
  * 경로에 보드 id가 없으면 `/` 갈림길(RootBoardRedirect)로 동작한다.
- * 로그인 게이트는 이 안에서 캔버스를 감싼다 — 로그인 전에는 캔버스·Dock이 보이지 않는다.
+ * 게이트는 로그인 여부와 상관없이 캔버스를 연다 — 로그인은 공유·초대 순간에만 묻는다.
  */
 export function WorkspaceShell() {
   const boardId = useBoardIdFromPath();
@@ -171,14 +164,18 @@ export function WorkspaceShell() {
   // FEAT-memo-table-view: 캔버스 ↔ 표. 표 모드에선 Canvas·Dock·캔버스 단축키를
   // 숨긴다(spec §4 — 표에서 캔버스 단축키가 먹지 않게).
   const isCanvas = useWorkspace((s) => s.view) === "canvas";
+  // first-wall n5: 저장소를 못 열면 빈 화면 대신 안내 + 다시 시도.
+  const bootstrapFailed = useWorkspace((s) => s.bootstrapFailed);
 
   return (
     // FEAT-sticky-redesign n8: 사이드바 DOM 제거 — 캔버스가 화면 왼쪽 끝부터 시작한다(AC-1).
     <main className="grid h-screen w-screen grid-cols-1 grid-rows-1">
-      {/* FEAT-onboarding-routes n2: 세션 복원은 게이트 밖에서 항상 돈다. */}
+      {/* FEAT-onboarding-routes n2: 세션 복원은 게이트와 별개로 뒤에서 조용히 돈다. */}
       <AuthBootstrap />
       <WorkspaceGate>
-        {boardId ? (
+        {bootstrapFailed ? (
+          <StorageFailureNotice />
+        ) : boardId ? (
           <>
             <RouteBoardSync boardId={boardId} />
             {isCanvas ? <Canvas /> : <MemoTable />}

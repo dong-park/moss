@@ -31,6 +31,21 @@ describe("Breadcrumb — 현재 보드 조각", () => {
     expect(screen.queryByText("공유")).toBeNull();
   });
 
+  it("첫 벽 조각은 '내 벽', 이름을 바꾸면 바뀐 이름이다", () => {
+    useWorkspace.setState({ boards, currentBoardId: "b1" });
+    const { unmount } = mount();
+    expect(screen.getByText("내 벽").closest("[data-crumb-board-id]")).toBeTruthy();
+    unmount();
+
+    useWorkspace.setState({
+      boards: boards.map((b) => (b.id === SYSTEM_BOARD_ID ? { ...b, name: "이직 고민" } : b)),
+      currentBoardId: "b1",
+    });
+    mount();
+    expect(screen.getByText("이직 고민").closest("[data-crumb-board-id]")).toBeTruthy();
+    expect(screen.queryByText("내 벽")).toBeNull();
+  });
+
   it("공유 보드면 이름 옆에 공유 표시를 붙인다", () => {
     useWorkspace.setState({ boards, currentBoardId: "b1" });
     useShare.setState({ byBoard: { b1: { status: "shared", inviteToken: null, role: "editor" } } });

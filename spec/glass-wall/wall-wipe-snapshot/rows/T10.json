@@ -1,0 +1,17 @@
+{
+  "id": "T10",
+  "kind": "task",
+  "title": "빈 벽에서는 닦기를 누를 수 없다",
+  "given": "마카 획도 포스트잇도 없는 빈 벽이다",
+  "when": "닦기 버튼을 본다",
+  "then": "닦기 버튼이 흐리게 보이고 눌러도 아무 일이 없다. 사진첩에 빈 사진이 생기지 않는다.",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

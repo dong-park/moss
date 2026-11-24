@@ -2,7 +2,14 @@ import { describe, expect, it } from "vitest";
 import { __internal, aspectForKind } from "@/state/workspace";
 import type { Note } from "@/state/db/schema";
 
-const { decodeNoteToCard, SEED_CARDS } = __internal;
+const { decodeNoteToCard } = __internal;
+
+// 옛 첫 실행 시드가 높이 없이 저장하던 모양 — 이미 사용자 저장소에 남아 있다.
+const LEGACY_FLAT_NOTES = [
+  { id: "seed-todo", kind: "text", width: 460, height: undefined },
+  { id: "seed-preview", kind: "text", width: 130, height: undefined },
+  { id: "seed-empty", kind: "text", width: 280, height: undefined },
+] as const;
 
 function note(over: Partial<Note>): Note {
   return {
@@ -26,9 +33,8 @@ describe("납작 메모 차단", () => {
     expect(decodeNoteToCard(note({ kind: "frame", width: 320, height: undefined, content: "{\"name\":\"판\"}" })).height).toBeUndefined();
   });
 
-  it("시드에 높이 없는 메모가 있어도 불러오기 경로가 채운다", () => {
-    const flat = SEED_CARDS.filter((c) => c.kind === "text" && c.height === undefined);
-    for (const c of flat) {
+  it("옛 시드처럼 높이 없는 메모가 저장소에 남아 있어도 불러오기 경로가 채운다", () => {
+    for (const c of LEGACY_FLAT_NOTES) {
       expect(decodeNoteToCard(note({ width: c.width, height: undefined })).height).toBeGreaterThan(0);
     }
   });

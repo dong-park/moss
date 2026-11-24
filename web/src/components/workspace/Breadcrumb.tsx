@@ -8,6 +8,7 @@ import {
 } from "@/state/workspace";
 import { useT } from "@/i18n/Provider";
 import { useShare } from "@/state/share";
+import { systemBoardName } from "@/state/systemBoardName";
 
 /**
  * FEAT-subcanvas — 서브 캔버스 경로 브레드크럼.
@@ -38,7 +39,7 @@ export function Breadcrumb() {
 
   const labelOf = (id: string, name: string) =>
     id === SYSTEM_BOARD_ID
-      ? t("workspace.boardPicker.system")
+      ? systemBoardName(boards, t)
       : name.trim() === ""
         ? t("cards.board.unnamed")
         : name;

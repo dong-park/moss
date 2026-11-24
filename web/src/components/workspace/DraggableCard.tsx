@@ -11,7 +11,9 @@ import {
   findOwningFrame,
   type Card,
 } from "@/state/workspace";
+import { systemBoardName } from "@/state/systemBoardName";
 import { CardContent } from "./cards/CardContent";
+import { StickyStrokeLayer, type StickyStrokeHandle } from "./StickyStrokeLayer";
 import { memoFace } from "./cards/text/face";
 import { isExpandable } from "./cards/_shared/expandable";
 import { ResizeHandles } from "./ResizeHandles";
@@ -30,6 +32,7 @@ import { AIOptOutBadge } from "@/components/privacy/AIOptOutBadge";
 import { ExpandIcon, LockIcon } from "@/components/icons";
 import { useT } from "@/i18n/Provider";
 import { nextTiltAngle } from "./dragTilt";
+import { strokeOwnerOfCard } from "@/state/marker/strokeOwner";
 
 const DRAG_THRESHOLD = 3; // px — 이 거리 넘으면 드래그로 인식
 
@@ -142,9 +145,8 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
   const currentBoardId = useWorkspace((s) => s.currentBoardId);
   // 드래그 grab/drop 손맛: 들어올린 카드에 lift 시각효과(scale/shadow/z).
   const setDragging = useWorkspace((s) => s.setDragging);
-  // FEAT-markdown-memo-pen: 펜 모드 — 드래그/편집 진입 차단 분기에 쓰인다.
-  // 펜 overlay 자체는 TextCardContent(컬럼 안)가 렌더한다.
-  const penMode = useWorkspace((s) => s.penMode);
+  // wall-marker n2: 마카·천을 들고 있으면 포스트잇을 끌거나 고칠 수 없다(T7).
+  const toolHeld = useWorkspace((s) => s.heldTool !== null);
   /**
    * 카드별 atomic selector — 자기 ID에 대한 boolean만 구독.
    * selectedIds 배열 전체를 구독하면 다른 카드 선택/해제 때마다 모든 카드가 리렌더.
@@ -170,6 +172,10 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
       s.draggingId === card.id ||
       (s.draggingMulti && s.selectedIds.includes(card.id)),
   );
+  // KS-5 D5: 검색으로 날아온 카드 — 시작 시각을 구독해 같은 카드를 다시 골라도 처음부터 반짝인다.
+  const flashStartedAt = useWorkspace((s) =>
+    s.flashCardId === card.id ? s.flashStartedAt : null,
+  );
   // FEAT-frame-feel T2: 놓으면 속하게 될 판 — 이 판에 강조 링을 켠다(boolean으로 좁혀 구독).
   const frameHighlighted = useWorkspace(
     (s) => card.kind === "frame" && s.dropTargetFrameId === card.id,
@@ -183,10 +189,10 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
       s.wobbleFrameId === card.frameId,
   );
   // FEAT-memo-variety: 메모 고유 각도·색조는 id 해시로 정해진다. 비메모는 무변화.
-  const baseTransform = memoBaseTransform(card, penMode);
-  const liftedTransform = memoLiftedTransform(card, penMode);
+  const baseTransform = memoBaseTransform(card);
+  const liftedTransform = memoLiftedTransform(card);
   // FEAT-drag-tilt: 흔들림이 얹힐 고유 각도. memoBaseTransform과 같은 규칙(메모·함).
-  const baseDeg = penMode ? 0 : cardRotationDeg(card.id, card.kind);
+  const baseDeg = cardRotationDeg(card.id, card.kind);
   const getScale = () => useWorkspace.getState().viewport.scale;
 
   /**
@@ -244,15 +250,6 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
   };
 
   /**
-   * FEAT-pen-mode-ux B2 (AC-2): 그릴 수 있는 곳 affordance.
-   * 펜 overlay(DrawingLayer)는 text 카드만 렌더하므로 text=그릴 수 있는 메모, 그 외=불가.
-   * 메모 카드는 호버 시 하이라이트로 "여기 그릴 수 있음"을 알리고, 비메모 카드 위에선
-   * 커서를 not-allowed로 바꿔 잘못된 그리기 시도를 막는다.
-   */
-  const penDrawable = penMode && card.kind === "text";
-  const penBlocked = penMode && card.kind !== "text";
-
-  /**
    * FEAT-eject: 서브캔버스(함) 안일 때만 노출할 "상위로 내보내기" 조상 목록.
    * computeBreadcrumb는 루트→현재 순 — 현재 보드를 뺀 조상들이 내보낼 수 있는 후보.
    * 비어 있으면(루트/시스템 보드) 우클릭 메뉴 자체를 렌더하지 않는다.
@@ -268,6 +265,8 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
    * 측정 실패(0) 대비 default 100을 두지만, 정상 흐름에선 첫 paint 전 실제 값으로 덮인다.
    */
   const containerRef = useRef<HTMLDivElement | null>(null);
+  // wall-marker n5: 안 들고 펜으로 그을 때(D5) 껍데기의 pointerdown을 포스트잇 획 레이어로 넘긴다.
+  const strokeRef = useRef<StickyStrokeHandle | null>(null);
   const [measuredHeight, setMeasuredHeight] = useState(100);
   // 메모(text)는 정사각형 아이덴티티 — 저장된 height와 무관하게 렌더 높이 = width.
   // (옛 IndexedDB의 직사각 메모까지 이 한 곳에서 덮는다.)
@@ -296,8 +295,8 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
     useWorkspace.getState().clearSnapCard();
     const el = containerRef.current;
     if (!el || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
-    playSnap(el, penMode ? 0 : cardRotationDeg(card.id, card.kind));
-  }, [snapNow, penMode, card.id, card.kind]);
+    playSnap(el, cardRotationDeg(card.id, card.kind));
+  }, [snapNow, card.id, card.kind]);
 
   const dragRef = useRef<{
     startX: number;
@@ -311,7 +310,7 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
   } | null>(null);
 
   const onMouseDown = (e: React.MouseEvent) => {
-    if (penMode) return; // 펜 모드: 드래그 대신 그리기 (DrawingLayer가 포인터 처리)
+    if (toolHeld) return; // 마카·천을 든 동안: 끌지 않는다(그리기·닦기가 포인터를 받는다)
     // 제목 입력 위에서 누르면 글자 선택·커서 이동이라 끌지 않는다. 앞면 본문은
     // 읽기 전용이므로 편집 중이어도 종이 아무 데나 잡아 카드를 끌 수 있다.
     if (editing && (e.target as HTMLElement).closest("[data-memo-title-input]")) return;
@@ -484,7 +483,7 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
     const liftKeyframe = () =>
       willTilt
         ? `scale(1.03) rotate(${formatDeg(baseDeg + tiltAngle)}deg)`
-        : (memoLiftedTransform(card, penMode) ?? "none");
+        : (memoLiftedTransform(card) ?? "none");
 
     /**
      * FEAT-drag-tilt T3: 놓으면 스프링으로 현재 각도에서 0도로 간다(2~3회 흔들림).
@@ -810,7 +809,7 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
           ? containerRef.current
           : document.querySelector<HTMLElement>(`[data-card-id="${id}"]`);
       if (!el) return;
-      const deg = penMode ? 0 : cardRotationDeg(id, target.kind);
+      const deg = cardRotationDeg(id, target.kind);
       playSnap(el, deg);
     };
 
@@ -958,7 +957,7 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
 
   const onDoubleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (penMode) return; // 펜 모드에선 편집 진입 안 함
+    if (toolHeld) return; // 마카·천을 든 동안엔 편집 진입 안 함
     // FEAT-subcanvas: 함 카드 더블클릭 → 서브 캔버스 진입.
     if (card.kind === "board") {
       void enterSubcanvas(card.id);
@@ -995,14 +994,20 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
     setEditing(card.id);
   };
 
+  // 마카 획의 주인 규칙은 strokeOwner 한 곳이다 — 포스트잇만 자기 획 레이어를 단다(W9).
+  const ownsStickyStrokes = strokeOwnerOfCard(card).kind === "sticky";
+
   const cardNode = (
     <div
       ref={containerRef}
+      onPointerDownCapture={
+        ownsStickyStrokes ? (e) => strokeRef.current?.begin(e) : undefined
+      }
       onMouseDown={onMouseDown}
       onDoubleClick={onDoubleClick}
       // FEAT-connectors: 연결 가능 카드 hover 시에만 연결점을 띄운다(AC-1).
       onMouseEnter={() => {
-        if (!penMode) useWorkspace.getState().setHoveredCard(card.id);
+        if (!toolHeld) useWorkspace.getState().setHoveredCard(card.id);
       }}
       onMouseLeave={() => {
         const ws = useWorkspace.getState();
@@ -1011,11 +1016,9 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
       data-card-id={card.id}
       className={[
         "group absolute select-none",
-        penMode
-          ? // 펜 모드: 메모는 전역 펜 커서 유지(그릴 수 있음), 비메모는 not-allowed(B2).
-            penBlocked
-            ? "cursor-not-allowed"
-            : ""
+        toolHeld
+          ? // 마카·천을 든 동안: 벽의 마카·천 포인터를 그대로 물려받는다.
+            ""
           : editing
             ? "cursor-text"
             : "cursor-grab active:cursor-grabbing",
@@ -1090,6 +1093,16 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
         onCommitEdit={() => setEditing(null)}
       />
 
+      {/* wall-marker n5: 포스트잇 위 마카 획 — 옛 메모 펜 획도 여기서 보인다. */}
+      {ownsStickyStrokes && (
+        <StickyStrokeLayer
+          card={card}
+          boxRef={containerRef}
+          height={cardHeight}
+          handleRef={strokeRef}
+        />
+      )}
+
       {/*
        * FEAT-frame-feel T2/D7: 넣기 강조 — 메모 한 장이 놓이면 속하게 될 판에 켜지는
        * 안쪽 3px 라임 링. border-image와 겹치지 않게 inset box-shadow로 그린다.
@@ -1105,25 +1118,26 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
       )}
 
       {/*
-       * FEAT-pen-mode-ux B2 (AC-2): 메모 카드 "그릴 수 있음" 하이라이트.
-       * 펜 모드에서 카드 위로 커서를 올리면(group-hover) 점선 링이 들떠 그릴 수 있음을 알린다.
-       * pointer-events-none이라 그리기(DrawingLayer)·드래그 가드를 가로막지 않는다.
+       * KS-5 T5/D5: 검색 결과로 날아온 카드의 반짝임 — 파란 테두리 빛이 두 번 깜빡이고
+       * 1.2초 뒤 store가 flashCardId를 지워 사라진다. 선택 outline은 그대로 남는다.
+       * key=시작 시각이라 같은 카드를 다시 골라도 애니메이션이 처음부터 돈다.
+       * pointer-events-none이라 드래그·편집을 가로막지 않는다.
        */}
-      {penDrawable && (
+      {flashStartedAt !== null && (
         <div
+          key={flashStartedAt}
           aria-hidden="true"
-          data-pen-drawable="true"
-          className="pointer-events-none absolute inset-0 z-[30] rounded-[8px] opacity-0 transition-opacity duration-150 group-hover:opacity-100"
-          style={{ boxShadow: "inset 0 0 0 2px rgba(79, 124, 243, 0.55)" }}
+          data-card-flash="true"
+          className="moss-card-flash pointer-events-none absolute inset-0 z-[30] rounded-[8px]"
         />
       )}
 
       {/*
        * FEAT-memo-expand: 메모(text) 카드 펼치기 버튼 — 호버 시 우상단에 노출.
-       * 클릭하면 모달로 크게 열린다. 펜 모드에선 숨김(그리기 방해 방지).
+       * 클릭하면 모달로 크게 열린다. 마카·천을 든 동안엔 숨김(그리기 방해 방지).
        * opacity로 호버 토글하되 키보드 포커스(focus-visible) 시에도 노출해 a11y 보장.
        */}
-      {isExpandable(card) && !faceCard && !(card.kind === "photo" && !card.attachmentRef) && !penMode && (
+      {isExpandable(card) && !faceCard && !(card.kind === "photo" && !card.attachmentRef) && !toolHeld && (
         <button
           type="button"
           onMouseDown={(e) => e.stopPropagation()}
@@ -1190,7 +1204,7 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
   const parent = ancestors[ancestors.length - 1];
   const crumbLabel = (id: string, name: string) =>
     id === SYSTEM_BOARD_ID
-      ? t("workspace.boardPicker.system")
+      ? systemBoardName(boards, t)
       : name.trim() === ""
         ? t("cards.board.unnamed")
         : name;
@@ -1198,7 +1212,7 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
 
   return (
     <ContextMenu.Root>
-      <ContextMenu.Trigger asChild disabled={editing || penMode}>
+      <ContextMenu.Trigger asChild disabled={editing || toolHeld}>
         {cardNode}
       </ContextMenu.Trigger>
       <ContextMenu.Portal>

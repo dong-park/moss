@@ -49,45 +49,45 @@ describe("FEAT-memo-variety · 각도", () => {
   it("AC-3: 0.8도 메모를 들면 원래 각도에서 1.5도 덜 기운다", () => {
     // pick-84의 해시 각도는 0.799…도 — formatDeg로 0.8이 된다.
     const card = { id: "pick-84", kind: "text" };
-    expect(memoBaseTransform(card, false)).toBe("rotate(0.8deg)");
-    expect(memoLiftedTransform(card, false)).toBe("scale(1.03) rotate(-0.7deg)");
+    expect(memoBaseTransform(card)).toBe("rotate(0.8deg)");
+    expect(memoLiftedTransform(card)).toBe("scale(1.03) rotate(-0.7deg)");
     // 손을 떼면(lift 해제) base transform으로 되돌아간다.
-    expect(memoBaseTransform(card, false)).toBe("rotate(0.8deg)");
+    expect(memoBaseTransform(card)).toBe("rotate(0.8deg)");
   });
 
-  it("AC-4: 펜 모드에서는 각도가 0이다", () => {
+  it("wall-marker D7: 마카를 들어도 메모는 기울어진 채다(각도에 손 든 도구가 끼지 않는다)", () => {
+    // 이전 펜 모드는 각도를 0으로 세웠다. 이제 transform은 카드만 보고 정해진다.
     const card = { id: "pick-84", kind: "text" };
-    expect(memoBaseTransform(card, true)).toBe("rotate(0deg)");
-    expect(memoLiftedTransform(card, true)).toBe("scale(1.03) rotate(-1.5deg)");
+    expect(memoBaseTransform(card)).toBe("rotate(0.8deg)");
+    expect(memoLiftedTransform(card)).toBe("scale(1.03) rotate(-0.7deg)");
+    expect(memoBaseTransform.length).toBe(1);
   });
 
   it("AC-5: 비메모는 들지 않으면 무변화, 들면 기존과 같은 값이다", () => {
     // 파일함(board)은 FEAT-filebox-manila부터 기울어진다 — 기울지 않는 비메모는 image 등.
     const image = { id: "i1", kind: "image" };
-    expect(memoBaseTransform(image, false)).toBeUndefined();
-    expect(memoLiftedTransform(image, false)).toBe("scale(1.03) rotate(-1.5deg)");
+    expect(memoBaseTransform(image)).toBeUndefined();
+    expect(memoLiftedTransform(image)).toBe("scale(1.03) rotate(-1.5deg)");
   });
 
   it("FEAT-frame-feel AC-1: 메모판은 들지 않든 들든 transform이 없다(무거운 들기)", () => {
     const frame = { id: "f1", kind: "frame" };
-    expect(memoBaseTransform(frame, false)).toBeUndefined();
-    expect(memoLiftedTransform(frame, false)).toBeUndefined();
+    expect(memoBaseTransform(frame)).toBeUndefined();
+    expect(memoLiftedTransform(frame)).toBeUndefined();
   });
 
-  it("파일함(board)은 메모보다 작은 상한(±1도) 안에서 기울고 펜 모드에서는 0이다", () => {
+  it("파일함(board)은 메모보다 작은 상한(±1도) 안에서 기울고 마카를 들어도 그대로다", () => {
     for (const id of randomIds(1000)) {
       const deg = cardRotationDeg(id, "board");
       expect(deg).toBeGreaterThanOrEqual(-BOARD_ROTATION_MAX_DEG);
       expect(deg).toBeLessThanOrEqual(BOARD_ROTATION_MAX_DEG);
     }
     const b = { id: "b1", kind: "board" };
-    expect(memoBaseTransform(b, false)).toBe(
+    expect(memoBaseTransform(b)).toBe(
       `rotate(${formatDeg(cardRotationDeg("b1", "board"))}deg)`,
     );
-    expect(memoBaseTransform(b, true)).toBe("rotate(0deg)");
-    expect(memoLiftedTransform(b, true)).toBe("scale(1.03) rotate(-1.5deg)");
     // 들면 고유 각도에서 CARD_LIFT_DEG만큼 더 기운다(메모와 같은 규칙).
-    expect(memoLiftedTransform(b, false)).toBe(
+    expect(memoLiftedTransform(b)).toBe(
       `scale(1.03) rotate(${formatDeg(cardRotationDeg("b1", "board") - CARD_LIFT_DEG)}deg)`,
     );
   });

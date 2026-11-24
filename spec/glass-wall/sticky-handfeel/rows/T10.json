@@ -1,0 +1,20 @@
+{
+  "id": "T10",
+  "kind": "task",
+  "title": "빈 벽을 두 번 누르면 그 자리에 새 포스트잇이 붙는다 (first-wall과 겹침)",
+  "given": "빈 벽이 보이고 마카를 들고 있지 않다",
+  "when": "포스트잇이 없는 곳을 두 번 누른다",
+  "then": "누른 자리에 노란 포스트잇이 착 붙고, 바로 글을 쓸 수 있게 커서가 깜빡인다",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [
+    "T11",
+    "T12"
+  ],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

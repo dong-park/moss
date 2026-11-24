@@ -20,7 +20,11 @@ export function CollabSession() {
   const boardId = useWorkspace((s) => s.currentBoardId);
   const authStatus = useAuth((s) => s.status);
   const userName = useAuth((s) => s.user?.name ?? null);
-  const shared = useShare((s) => s.byBoard[boardId]?.status === "shared");
+  // 기기에서 복원했고 주인 계정을 아직 모르는 항목은 연결하지 않는다.
+  const shared = useShare((s) => {
+    const info = s.byBoard[boardId];
+    return info?.status === "shared" && !info.unconfirmed;
+  });
   const revokedBoardId = useCollab((s) => s.revokedBoardId);
   const handledRevokedRef = useRef<string | null>(null);
 

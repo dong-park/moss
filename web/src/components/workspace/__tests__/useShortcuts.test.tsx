@@ -178,12 +178,12 @@ describe("FEAT-text-tool AC-2: T 배치 모드 단축키", () => {
     expect(useWorkspace.getState().textPlacementArmed).toBe(false);
   });
 
-  it("펜 모드 중 T는 무시", () => {
-    useWorkspace.setState({ penMode: true });
+  it("마카를 든 동안 T는 무시", () => {
+    useWorkspace.setState({ heldTool: { kind: "marker", color: "blue" } });
     render(<Mount />);
     fireEvent.keyDown(window, { key: "t", code: "KeyT" });
     expect(useWorkspace.getState().textPlacementArmed).toBe(false);
-    useWorkspace.setState({ penMode: false });
+    useWorkspace.setState({ heldTool: null });
   });
 
   it("선택된 메모가 있으면 T를 제목 편집에 양보한다 (P1-2)", () => {

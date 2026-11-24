@@ -1,0 +1,17 @@
+{
+  "id": "T9",
+  "kind": "task",
+  "title": "검색 창에서 한글을 조합하다 Enter를 쳐도 엉뚱한 결과로 가지 않는다",
+  "given": "macOS 한글 입력기로 검색 창에 '이지'까지 쳤고, '직'의 받침을 조합하는 중이다. Safari와 Chrome 둘 다에서 본다",
+  "when": "조합이 끝나기 전에 Enter를 누른다",
+  "then": "첫 Enter는 글자만 확정한다. 입력 칸은 '이직' 한 번이고 창은 그대로 열려 있다. Enter를 한 번 더 눌러야 골라진 결과로 날아간다",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

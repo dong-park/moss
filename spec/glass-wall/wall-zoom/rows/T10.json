@@ -1,0 +1,17 @@
+{
+  "id": "T10",
+  "kind": "task",
+  "title": "메모판 이름은 멀리서도 읽힌다",
+  "given": "이름이 있는 메모판에 포스트잇이 들어 있다",
+  "when": "멀리 단계로 물러난다",
+  "then": "메모판 이름이 화면에서 11px 이상으로 보인다. D3에서 정한 대로 개수가 함께 보인다",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

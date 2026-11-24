@@ -372,7 +372,7 @@ describe("startShare → 백필 트리거 (A)", () => {
       removeMember: vi.fn(async () => undefined),
       myBoards: vi.fn(async () => []),
     };
-    configureShare({ api, onBoardShared });
+    configureShare({ api, onBoardShared, uploadDoc: vi.fn(async () => {}) });
 
     await useShare.getState().startShare("b1", "보드");
     expect(onBoardShared).toHaveBeenCalledWith("b1");

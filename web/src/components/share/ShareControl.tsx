@@ -11,12 +11,15 @@ import {
   type MemberRole,
 } from "@/state/share";
 import { MemberAvatarRow } from "./MemberAvatar";
-import { ShareIcon } from "./ShareIcon";
 import { SharePopover } from "./SharePopover";
+import { ShareSheet } from "./ShareSheet";
+import { WallBadge } from "./WallBadge";
 
 export interface ShareControlProps {
   boardId: string;
   boardName: string;
+  /** 첫 벽(시스템 보드) — 공유하면 새 벽으로 옮겨 올라간다. 시트가 그 사실을 한 줄 더 알린다. */
+  firstWall?: boolean;
   /** awareness(n7)·계정 목록이 넘기는 참여자. 없으면 공유 시작 후 소유자만 보인다. */
   members?: BoardMember[];
   /** 현재 사용자의 역할. n9의 `/me/boards`가 넘기기 전까지는 소유자로 본다. */
@@ -28,12 +31,14 @@ export interface ShareControlProps {
 }
 
 /**
- * 시안 v3 ①~③ — 우상단 공유 아이콘·아바타·팝오버를 묶은 진입점.
- * 로그인은 공유를 시작할 때만 묻는다 (D8).
+ * 시안 06 — 우상단 배지(🔒/☁)와 "공유 ↗" 버튼, 아바타, 시트·팝오버를 묶은 진입점.
+ * 배지는 n2의 벽 공유 상태를 읽는다. 공유 전에는 가운데 시트가 서버에 올라간다는 사실을
+ * 알리고, 로그인은 그 시트의 주 버튼에서만 받는다. 공유가 시작된 뒤에는 팝오버가 열린다.
  */
 export function ShareControl({
   boardId,
   boardName,
+  firstWall = false,
   members,
   role: roleProp,
   onStartShare,
@@ -43,6 +48,7 @@ export function ShareControl({
   const role: MemberRole = roleProp ?? "editor";
   const t = useT();
   const [open, setOpen] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -52,11 +58,8 @@ export function ShareControl({
   const error = useShare((s) => s.errorByBoard[boardId] ?? null);
   const setBoardError = useShare((s) => s.setBoardError);
 
-  const session = useAuth((s) => s.session);
-  const authStatus = useAuth((s) => s.status);
   const user = useAuth((s) => s.user);
 
-  const authenticated = session !== null && authStatus !== "expired";
   const self: BoardMember | null = user
     ? { id: user.id, name: user.name, avatar: user.avatar, role }
     : null;
@@ -86,33 +89,25 @@ export function ShareControl({
   }, [open]);
 
   const toggle = () => {
+    // 아직 서버에 없는 벽은 시트가 먼저다. 공유 중(로그아웃 포함)이면 지금의 팝오버다.
+    if (status !== "shared") {
+      setSheetOpen(true);
+      return;
+    }
     if (error) setBoardError(boardId, null);
     setOpen((v) => !v);
   };
 
-  // n7: 서버 공유 행(멤버 포함)을 먼저 만든 뒤 업로드 훅을 부른다 — 보드 토큰
-  // 발급이 멤버 확인을 요구하므로 순서가 뒤집히면 연결이 403으로 실패한다.
-  const beginShare = useCallback(async () => {
-    try {
-      await useShare.getState().startShare(boardId, boardName);
-    } catch {
-      /* 오류 문구는 store.error가 들고 있다 */
-      return;
-    }
-    onStartShare?.(boardId);
-  }, [boardId, boardName, onStartShare]);
-
-  const handleGoogle = useCallback(async () => {
-    // 클릭 즉시 busy — 동의 창을 기다리는 동안 두 번 눌러도 공유가 두 번 시작되지 않는다.
-    useShare.getState().setBoardBusy(boardId, true);
-    try {
-      await useAuth.getState().loginWithGoogle();
-    } catch {
-      useShare.getState().setBoardBusy(boardId, false);
-      return;
-    }
-    await beginShare();
-  }, [boardId, beginShare]);
+  // 서버가 벽 내용을 받은 뒤 — 시트를 닫고 링크 복사 팝오버를 연다. n7: 업로드 훅은 서버 행이
+  // 만들어진 뒤에 부른다(보드 토큰 발급이 멤버 확인을 요구해 순서가 뒤집히면 403으로 실패한다).
+  const handleShared = useCallback(
+    (id: string) => {
+      setSheetOpen(false);
+      onStartShare?.(id);
+      setOpen(true);
+    },
+    [onStartShare],
+  );
 
   const handleCopy = useCallback(async () => {
     if (!invitePath) return;
@@ -154,29 +149,40 @@ export function ShareControl({
     <div ref={containerRef} className="relative flex items-center gap-3.5">
       {status === "shared" ? <MemberAvatarRow members={shownMembers} /> : null}
 
-      <button
-        type="button"
-        aria-label={t("collab.share.aria")}
-        aria-expanded={open}
-        onClick={toggle}
-        className="flex h-[34px] w-[34px] cursor-pointer items-center justify-center rounded-full bg-white/70 text-text shadow-[0_0_0_.5px_rgba(0,0,0,.08)] transition-colors hover:bg-white"
-      >
-        <ShareIcon />
-      </button>
+      <WallBadge
+        boardId={boardId}
+        action={
+          <button
+            type="button"
+            aria-label={t("collab.share.aria")}
+            aria-expanded={open}
+            onClick={toggle}
+            className="ml-1.5 cursor-pointer rounded-full bg-[#1f2430] px-2.5 py-[3px] text-[13px] font-semibold text-white transition-opacity hover:opacity-85"
+          >
+            {t("wall.share.button")}
+          </button>
+        }
+      />
 
-      {open ? (
+      {sheetOpen ? (
+        <ShareSheet
+          boardId={boardId}
+          boardName={boardName}
+          firstWall={firstWall}
+          onClose={() => setSheetOpen(false)}
+          onShared={handleShared}
+        />
+      ) : null}
+
+      {open && status === "shared" ? (
         <SharePopover
           boardName={boardName}
-          status={status}
           viewerRole={role}
           members={shownMembers}
           inviteUrl={invitePath}
-          authenticated={authenticated}
           busy={busy}
           error={error}
           copied={copied}
-          onGoogle={() => void handleGoogle()}
-          onStart={() => void beginShare()}
           onCopy={() => void handleCopy()}
           onReissue={handleReissue}
           onRemove={handleRemove}

@@ -2,7 +2,7 @@
 
 import { useT } from "@/i18n/Provider";
 import { useAuth } from "@/state/auth";
-import { LoginActions } from "./LoginOnboarding";
+import { LoginActions } from "./LoginActions";
 
 /**
  * 리프레시 토큰이 만료됐을 때 보드 위에 뜨는 로그인 카드 (AC-12).

@@ -1,0 +1,35 @@
+{
+  "id": "D8",
+  "kind": "decision",
+  "title": "빈 기본 보드 안내 상자를 어떻게 할까",
+  "given": "빈 기본 보드에는 '조금 더 머무르면 패턴이 보일 거예요' 안내 상자가 뜬다",
+  "when": "빈 첫 벽을 보여 준다",
+  "then": "기존 안내 상자를 힌트 한 줄로 바꿀지, 따로 둘지를 가른다",
+  "options": [
+    {
+      "key": "A",
+      "label": "SystemBoardEmpty 자리에 힌트 한 줄을 그리고 옛 문구 키를 지운다",
+      "why": "시안에는 상자가 없다. 옛 문구는 AI 재노출을 전제한 말이라 remove-ai 이후 맞지 않는다"
+    },
+    {
+      "key": "B",
+      "label": "새 힌트 컴포넌트를 따로 만들고 SystemBoardEmpty는 remove-ai에 맡긴다",
+      "why": "책임이 갈리지만 두 티켓이 같은 자리를 따로 고친다"
+    }
+  ],
+  "recommend": "A",
+  "confidence": "high",
+  "reversible": true,
+  "status": "끝남",
+  "blocks": [
+    "T1",
+    "T2"
+  ],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": [
+    "2026-10-11 D8 → A (답 없음 · 추천대로)"
+  ]
+}

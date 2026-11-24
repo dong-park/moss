@@ -1,0 +1,17 @@
+{
+  "id": "T13",
+  "kind": "task",
+  "title": "받을 벽이 하나도 없으면 새 벽을 만들어 붙인다",
+  "given": "moss를 깔고 벽을 한 번도 열지 않았다",
+  "when": "링크를 공유 시트에서 moss로 보낸다",
+  "then": "'내 벽'이라는 새 벽이 생기고 거기에 붙는다. 알림은 '✓ 벽에 붙였어요 · 내 벽'이다",
+  "confidence": "mid",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

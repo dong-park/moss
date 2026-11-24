@@ -4,7 +4,8 @@ import { I18nProvider } from "@/i18n/Provider";
 import { BoardPicker } from "@/components/workspace/BoardPicker";
 import { SYSTEM_BOARD_ID, useWorkspace } from "@/state/workspace";
 import { useStorage } from "@/state/storage";
-import { resetDB } from "@/state/db/schema";
+import { getDB, resetDB } from "@/state/db/schema";
+import { runBootstrap } from "@/components/notifications/StorageBootstrap";
 
 let originalStorage: PropertyDescriptor | undefined;
 
@@ -55,14 +56,69 @@ function mount() {
 }
 
 describe("FEAT-boards · BoardPicker", () => {
-  it("기본: 시스템 보드 이름과 시스템 노트가 트리거에 노출", async () => {
+  it("기본: 첫 실행 부팅 뒤 트리거에 '내 벽'이 노출되고 시스템 표시는 없다", async () => {
     await useStorage.getState().init();
-    await useWorkspace.getState().loadFromStorage();
+    await runBootstrap();
     mount();
 
-    expect(screen.getByLabelText("프로젝트 선택")).toBeTruthy();
-    expect(screen.getByText("홈")).toBeTruthy();
-    expect(screen.getByText("(시스템 프로젝트)")).toBeTruthy();
+    expect(screen.getByLabelText("프로젝트 선택").textContent).toContain("내 벽");
+    expect(screen.queryByText("(시스템 프로젝트)")).toBeNull();
+  });
+
+  it("시스템 벽 이름을 '이직 고민'으로 바꾸면 트리거·메뉴에 나오고 재로드 뒤에도 같다", async () => {
+    await useStorage.getState().init();
+    await runBootstrap();
+    mount();
+
+    fireEvent.doubleClick(screen.getByLabelText("프로젝트 선택"));
+    const input = screen.getByLabelText("프로젝트 이름 변경") as HTMLInputElement;
+    // 저장된 이름이 비어 있으므로 입력칸도 비어 시작한다 — 지울 글자가 없다.
+    expect(input.value).toBe("");
+    fireEvent.change(input, { target: { value: "이직 고민" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(screen.getByLabelText("프로젝트 선택").textContent).toContain("이직 고민");
+    expect(screen.queryByText("내 벽")).toBeNull();
+    expect((await getDB().boards.get(SYSTEM_BOARD_ID))?.name).toBe("이직 고민");
+
+    // 메뉴를 열어도 같은 이름이고, 시스템 행이 한 번 더 목록에 끼지 않는다.
+    const trigger = screen.getByLabelText("프로젝트 선택");
+    fireEvent.pointerDown(trigger, { button: 0, pointerType: "mouse" });
+    fireEvent.click(trigger);
+    expect(screen.getAllByText("이직 고민")).toHaveLength(2); // 트리거 + 메뉴 첫 항목
+
+    // 새로고침 흉내
+    useWorkspace.setState({ boards: [] });
+    await useWorkspace.getState().loadFromStorage();
+    await new Promise((r) => setTimeout(r, 30));
+    expect(screen.getAllByText("이직 고민").length).toBeGreaterThan(0);
+  });
+
+  it("이름을 비우고 저장하면 다시 '내 벽'으로 돌아온다", async () => {
+    await useStorage.getState().init();
+    await runBootstrap();
+    await useWorkspace.getState().renameBoard(SYSTEM_BOARD_ID, "임시");
+    mount();
+    expect(screen.getByLabelText("프로젝트 선택").textContent).toContain("임시");
+
+    fireEvent.doubleClick(screen.getByLabelText("프로젝트 선택"));
+    const input = screen.getByLabelText("프로젝트 이름 변경") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "   " } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(screen.getByLabelText("프로젝트 선택").textContent).toContain("내 벽");
+  });
+
+  it("시스템 벽은 이름을 바꿔도 삭제할 수 없다", async () => {
+    await useStorage.getState().init();
+    await runBootstrap();
+    await useWorkspace.getState().renameBoard(SYSTEM_BOARD_ID, "이직 고민");
+    await expect(
+      useWorkspace.getState().removeBoard(SYSTEM_BOARD_ID),
+    ).rejects.toThrow();
+    expect(await getDB().boards.get(SYSTEM_BOARD_ID)).toBeDefined();
   });
 
   it("사용자 보드 있을 때: 트리거에 보드 이름 표시, 빈 이름이면 placeholder", async () => {
@@ -92,11 +148,11 @@ describe("FEAT-boards · BoardPicker", () => {
     fireEvent.click(trigger);
 
     // Radix Portal로 메뉴가 렌더된 뒤 항목들이 노출돼야 함
-    // "홈"이 메뉴 안 + 트리거 외에 한 번 더 등장
-    const stays = screen.getAllByText("홈");
+    // "내 벽"이 메뉴 첫 항목으로 등장 — 시스템 배지는 더 이상 없다
+    const stays = screen.getAllByText("내 벽");
     expect(stays.length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("새 프로젝트 만들기")).toBeTruthy();
-    expect(screen.getByText("시스템")).toBeTruthy();
+    expect(screen.queryByText("시스템")).toBeNull();
   });
 
   it("새 보드 만들기 클릭 → TemplatePicker 열림, 템플릿 선택 시 보드 생성 (FEAT-templates 통합)", async () => {
@@ -126,13 +182,12 @@ describe("FEAT-boards · BoardPicker", () => {
     expect(created.templateId).toBe("free");
   });
 
-  it("트리거 더블클릭 → 인플레이스 편집 진입 (시스템 보드는 진입 차단)", async () => {
+  it("트리거 더블클릭 → 시스템 벽에서도 인플레이스 편집 진입", async () => {
     await useStorage.getState().init();
-    await useWorkspace.getState().loadFromStorage();
+    await runBootstrap();
     mount();
-    // 시스템 보드 상태에서 더블클릭 — input이 나타나면 안 됨
     fireEvent.doubleClick(screen.getByLabelText("프로젝트 선택"));
-    expect(screen.queryByLabelText("프로젝트 이름 변경")).toBeNull();
+    expect(screen.getByLabelText("프로젝트 이름 변경")).toBeTruthy();
   });
 
   it("사용자 보드에서 더블클릭 → input 노출, Enter로 저장", async () => {

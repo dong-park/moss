@@ -14,6 +14,7 @@ import type { CardContentProps } from "../_shared/types";
 import { memoFace } from "./face";
 import { TodoFace } from "./TodoFace";
 import { LinkInputFace } from "./LinkInputFace";
+import { LinkPreviewAction } from "./LinkPreviewAction";
 
 // 종이 사진. 색조 층 mask도 같은 파일이어야 종이 바깥 투명부에 색이 안 칠해진다.
 const MEMO_PAPER = 'url("/cards/v2/text.png") 0 0 / 100% 100% no-repeat';
@@ -76,7 +77,8 @@ export function TextCardContent({ card, editing, onCommitEdit }: CardContentProp
     onCommitEdit();
   };
 
-  // 펜 overlay(DrawingLayer)·본문·백링크는 앞면에서 빠졌다 — 메모 창이 맡는다.
+  // 본문·백링크는 앞면에서 빠졌다 — 메모 창이 맡는다. 마카 획 overlay는 껍데기
+  // (DraggableCard → StickyStrokeLayer)가 이 카드 박스 위에 얹는다.
   const setExpandedCard = useWorkspace((s) => s.setExpandedCard);
 
   // FEAT-sticky-redesign n5: 앞면에서 이미지·블록 막대를 누르면 메모 창을 연다.
@@ -114,6 +116,7 @@ export function TextCardContent({ card, editing, onCommitEdit }: CardContentProp
             {face.site}
           </small>
           <p>{face.title}</p>
+          <LinkPreviewAction cardId={card.id} url={face.url} title={face.title} />
         </div>
       </div>
     );
@@ -164,7 +167,7 @@ export function TextCardContent({ card, editing, onCommitEdit }: CardContentProp
         }}
       />
       {/* 2026-09-22 사용자 결정: 메모지 앞면은 제목 하나만 정가운데에 보여준다.
-        * 본문·펜 overlay·백링크는 더블클릭으로 여는 메모 창이 맡는다. */}
+        * 본문·백링크는 더블클릭으로 여는 메모 창이 맡는다. 마카 획은 껍데기가 위에 얹는다. */}
       <div className="absolute inset-0 flex items-center justify-center">
         <MemoTitleRow
           title={card.title ?? ""}

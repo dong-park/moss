@@ -64,24 +64,54 @@ export async function runBootstrap(budgetMs = MIGRATION_BOOT_BUDGET_MS): Promise
   useWorkspace.setState({ bootstrapComplete: true });
 }
 
+let booting: Promise<void> | null = null;
+
+/**
+ * storage init → 이전 → 워크스페이스 로드 → 브리지. 실패하면 `bootstrapFailed`를 올리고
+ * 로딩 표시(`migrationPending`)를 내린다 — 셸이 안내와 다시 시도 버튼을 그린다(first-wall n5).
+ * 성공하면 `bootstrapFailed`를 내린다. 진행 중이면 같은 약속을 돌려줘 부팅이 겹쳐 돌지 않는다.
+ * 다시 시도 버튼도 이 함수를 그대로 부른다.
+ */
+export function bootWorkspace(): Promise<void> {
+  if (booting) return booting;
+  booting = (async () => {
+    try {
+      await useStorage.getState().init();
+      await runBootstrap();
+      useWorkspace.setState({ bootstrapFailed: false });
+    } catch (err) {
+      console.warn("[moss] 저장소를 열지 못했어요", err);
+      useWorkspace.setState({
+        bootstrapFailed: true,
+        bootstrapComplete: false,
+        migrationPending: false,
+      });
+      return;
+    } finally {
+      booting = null;
+    }
+    // 브리지는 부팅이 끝난 뒤의 덤이다 — 실패해도 벽을 막지 않는다.
+    try {
+      startMossBridge();
+    } catch (err) {
+      console.warn("[moss] 데이터 브리지를 열지 못했어요", err);
+    }
+  })();
+  return booting;
+}
+
 /**
  * 앱 진입 시 storage init + workspace 로드 + quota 폴링을 시작한다.
  * NEXT_PUBLIC_MOSS_BRIDGE=1 이면 외부 MCP용 데이터 브리지도 함께 연다(멱등·게이트).
  */
 export function StorageBootstrap() {
   const initialized = useStorage((s) => s.initialized);
-  const init = useStorage((s) => s.init);
-  const loadFromStorage = useWorkspace((s) => s.loadFromStorage);
   const migrationPending = useWorkspace((s) => s.migrationPending);
 
   useEffect(() => {
     if (initialized) return;
-    void (async () => {
-      await init();
-      await runBootstrap();
-      startMossBridge();
-    })();
-  }, [initialized, init, loadFromStorage]);
+    void bootWorkspace();
+  }, [initialized]);
 
   useQuotaWatcher();
 

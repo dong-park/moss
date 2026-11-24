@@ -14,6 +14,8 @@ import {
   type Note,
   type NoteKind,
   type TextSize,
+  type StrokePoint,
+  type WallStroke,
 } from "./db/schema";
 import { migratedContent } from "./markdownMigration";
 import { enqueueEmbed as enqueueEmbedRaw } from "./ai/embeddingQueue";
@@ -48,9 +50,35 @@ import {
   readConnection,
   readConnections,
   readBoard,
+  readStroke,
+  readStrokes,
+  strokesMap,
+  applyStrokeChanges,
+  compareStrokeOrder,
   toSharedNote,
   type SharedNote,
 } from "./ydoc/model";
+import {
+  DEFAULT_MARKER_COLOR,
+  DEFAULT_MARKER_WIDTH,
+  resolveMarkerColor,
+  resolveMarkerWidth,
+} from "./marker/tokens";
+import type { MarkerColor, MarkerWidth } from "./marker/tokens";
+import {
+  isPhoneViewport,
+  MARKER_HISTORY_LIMIT,
+  type HeldTool,
+  type MarkerHistoryEntry,
+} from "./marker/heldTool";
+import { isWallInputBlocked } from "./marker/inputGate";
+import { enterMode } from "./marker/modes";
+import { redoStickyEdit, stickyEditEntry, undoStickyEdit } from "./marker/stickyHistory";
+import {
+  MAX_WALL_STROKES,
+  clampBoardCoord,
+  sanitizeStrokePoints,
+} from "./marker/limits";
 import { isRemoteTransaction, transactLocal } from "./ydoc/origin";
 import type { MemoColor } from "@/components/workspace/memoVariety";
 import {
@@ -79,16 +107,17 @@ import {
   type FrameSkinId,
 } from "./frameContent";
 import { clampFrameWidth } from "./frameSkins";
+import {
+  frameMaterialFor,
+  isWallMaterialId,
+  wallMaterialFor,
+  type WallMaterialId,
+} from "./wallMaterials";
 // FEAT-memo-fulltext-search (W4): 본문 평문 검색 — 셀렉터/액션이 위임.
 import { searchMemos as searchMemosImpl } from "./memoSearch";
 import { normalizeTitle, normalizeTitleTyping } from "./memoTitle";
 import { getTemplate } from "@/templates";
 import type { Translator } from "@/i18n";
-import {
-  PEN_MIN_WIDTH,
-  PEN_MAX_WIDTH,
-  PEN_DEFAULT_WIDTH,
-} from "@/components/workspace/cards/_shared/useDrawing";
 import {
   anchorPoint,
   nearestSide,
@@ -138,8 +167,6 @@ export type ToolId =
   | "line"
   | "board"
   | "column"
-  // FEAT-markdown-memo-pen: 펜 모드 토글 (드롭-캡처 아님).
-  | "pen"
   | "more"
   | "trash"
   // FEAT-sticky-redesign n7/n8: 메모판 — 독에서 끌어 addFrameAt으로 생성.
@@ -280,6 +307,20 @@ export interface PendingSubcanvasUndo {
   expiresAt: number;
 }
 
+/** wall-marker n1: 새 벽 획 입력 — id·보드·시각은 스토어가 채운다. */
+export interface NewWallStroke {
+  /** 주면 그 id로 만든다(지우개 쪼개기에서 다른 기기와 겹치지 않는 id를 미리 받은 경우). */
+  id?: string;
+  points: StrokePoint[];
+  color: MarkerColor;
+  width: MarkerWidth;
+  /**
+   * 주면 그 시각을 쌓임 자리로 쓴다 — 지우개 조각·되돌려 복원된 획이 원본의 자리를 이어받는다.
+   * 없으면 지금(맨 위)이다.
+   */
+  createdAt?: number;
+}
+
 export const MIN_SCALE = 0.5;
 export const MAX_SCALE = 1.1;
 
@@ -347,7 +388,6 @@ export const TEXT_GLYPH_ICON = `data:image/svg+xml,${encodeURIComponent(TEXT_GLY
  * FEAT-pen-drawing-engine: 펜 굵기 한계·기본값. 단일 소스는 [[useDrawing]]
  * (handwriting 카드와 메모 overlay 공통). 기존 import 경로 호환을 위해 재노출한다.
  */
-export { PEN_MIN_WIDTH, PEN_MAX_WIDTH, PEN_DEFAULT_WIDTH };
 
 /** 카드 PNG (/cards/v2/{kind}.png)의 trim된 종이 가로/세로 비율. resize는 이 비율을 강제한다. */
 const CARD_ASPECT_BY_KIND: Record<CardKind, number> = {
@@ -402,6 +442,17 @@ interface WorkspaceState {
    */
   connections: Connection[];
   /**
+   * wall-marker n1 (D1=A): 지금 벽의 벽 획. 획 하나 = 한 행이고, 원본은 보드 Y.Doc의
+   * `strokes` 맵이다(Dexie `strokes`는 미러). 그린 순서로 정렬돼 있다. 보드 좌표다.
+   */
+  wallStrokes: WallStroke[];
+  /**
+   * wall-marker n6: 고르기 상자로 묶인 벽 획 id. 카드 선택(selectedIds)과 별개 묶음이다 — 포스트잇
+   * 획은 포스트잇을 따라다니므로 여기 들어오지 않는다. 마카·천을 집으면 비워진다(불가능한 조합).
+   * 그 사이 지워진 획 id가 남아 있을 수 있어 읽는 쪽이 `wallStrokes`와 겹쳐 본다.
+   */
+  selectedWallStrokeIds: string[];
+  /**
    * FEAT-connectors: 선택된 연결선 id. 카드 선택(selectedIds)과 상호 배타 —
    * 한쪽을 고르면 다른 쪽은 비운다.
    */
@@ -435,6 +486,11 @@ interface WorkspaceState {
    * 이전이 끝난 뒤에만 보드를 열도록 하는 신호 — 이전 중 열면 빈/낡은 문서를 읽는다.
    */
   bootstrapComplete: boolean;
+  /**
+   * first-wall n5: 저장소 초기화·불러오기가 실패했는가. true면 셸이 빈 화면 대신
+   * 안내 한 줄과 다시 시도 버튼을 보여 준다. 부팅이 성공하면 false로 돌아온다.
+   */
+  bootstrapFailed: boolean;
   /** FEAT-memo-table-view: 현재 표시 모드. 기본 캔버스. */
   view: WorkspaceView;
   /**
@@ -444,12 +500,12 @@ interface WorkspaceState {
    */
   tableReturnBoardId: CurrentBoardId | null;
   /**
-   * FEAT-memo-table-view P2-4: 캔버스가 한 번이라도 자리 잡았는지(최초 fit 또는
-   * programmatic panToCard). 표↔캔버스 재마운트에서 최초 fit이 사용자가 보던/
-   * panToCard가 잡은 뷰포트를 덮지 않게 한다. 기존엔 Canvas 모듈 전역 플래그라
-   * panToCard와 경쟁했다.
+   * 이 벽에서 이미 화면(뷰포트)을 정했다 — 불러온 직후 최초 fit을 돌렸거나(빈 벽이면 돌릴 게
+   * 없어 소진), 검색 점프(panToCard)·fitToCards가 자리를 잡았다. 벽(보드) 단위다: 한 벽에서
+   * 정했다고 다른 벽의 최초 fit을 막지 않는다. 표↔캔버스 재마운트에서도 남도록 Canvas 로컬 ref가
+   * 아니라 스토어가 든다. 빈 벽으로 열려 소진됐어도 원격 카드가 처음 들어오면 풀린다(W7).
    */
-  canvasHasFitted: boolean;
+  viewSettledBoardIds: string[];
   /** TemplatePicker 모달 열림 상태 — Cmd+N / "+ 새 보드" 진입점이 공유. */
   templatePickerOpen: boolean;
   /**
@@ -487,11 +543,6 @@ interface WorkspaceState {
   navigateToBoard: (id: CurrentBoardId) => Promise<void>;
   createBoard: (name?: string) => Promise<string>;
   /**
-   * FEAT-onboarding-routes n4: "예제로 시작" — 예제 메모 3장이 든 새 보드를 만들고 이동한다.
-   * 첫 보드 고르기 화면(AC-5)에서 부른다.
-   */
-  createExampleBoard: (name?: string) => Promise<string>;
-  /**
    * FEAT-templates: 새 보드 생성 + 템플릿의 초기 카드 자동 배치 + 그 보드로 전환.
    * 빈 이름은 i18n 기본명("이름 없는 보드")으로 폴백.
    */
@@ -502,6 +553,11 @@ interface WorkspaceState {
     now?: Date,
   ) => Promise<string>;
   renameBoard: (id: string, name: string) => Promise<void>;
+  /**
+   * glass-surface: 벽 재질을 바꾼다. 보드 행과 보드 문서에 쓴다. 지금 재질과 같으면 아무것도
+   * 쓰지 않고, 모르는 보드·모르는 값은 무시한다. 카드·획 좌표는 건드리지 않는다.
+   */
+  setWallMaterial: (boardId: string, id: WallMaterialId) => Promise<void>;
   removeBoard: (id: string) => Promise<void>;
   /**
    * UI용 삭제 — 5초 동안 undo 가능. 메모는 boardId=null로 이미 보존된다(spec §8).
@@ -519,12 +575,21 @@ interface WorkspaceState {
   /** 표 진입 시점 보드로 복원(메모창 닫힘·캔버스 복귀). 없으면 no-op. */
   restoreTableReturn: () => Promise<void>;
   /** P2-4: 캔버스가 자리 잡았음을 표시 — 재마운트 시 최초 fit을 건너뛰게 한다. */
-  markCanvasFitted: () => void;
+  markViewSettled: (boardId: string) => void;
   /**
    * 표에서 메모로 점프(AC-6) — 메모가 속한 보드로 전환하고 그 카드를 화면 중앙에
    * 선택 상태로 놓은 뒤 캔버스 뷰로 돌아간다. 메모가 없으면 no-op.
    */
   openCardOnCanvas: (noteId: string) => Promise<void>;
+  /**
+   * 검색 결과로 날아가기(KS-5 T5) — 모든 벽 검색에서 고른 포스트잇의 벽으로 바꾸고
+   * 가운데로 옮긴 뒤 둘레를 반짝인다. 고르는 사이 지워진 메모면 아무것도 하지 않는다.
+   */
+  jumpToCardWithFlash: (noteId: string) => Promise<void>;
+  /** 반짝이는 중인 카드(D5). 1.2초 뒤 null. 선택은 그대로 남는다. */
+  flashCardId: string | null;
+  /** 반짝임 시작 시각(ms) — 같은 카드를 다시 골라도 애니메이션이 처음부터 돈다. */
+  flashStartedAt: number | null;
 
   addCardAt: (toolId: ToolId, x: number, y: number) => string;
   /**
@@ -598,6 +663,11 @@ interface WorkspaceState {
    * 자유로 바꿔도 칸 목록은 지우지 않는다(AC-3).
    */
   setFrameSkin: (id: string, skin: FrameSkinId) => void;
+  /**
+   * glass-surface: 메모판 재질을 바꾼다. 벽 재질·스킨·칸 목록·좌표는 그대로다.
+   * 지금 재질과 같으면 아무것도 쓰지 않는다.
+   */
+  setFrameMaterial: (id: string, material: WallMaterialId) => void;
   /** 오른쪽 끝에 이름 빈 칸을 더한다. 최대 8개. 폭이 좁으면 (N+1)×240까지 넓힌다(AC-6). */
   addFrameColumn: (id: string) => void;
   /** 칸 이름을 바꾼다. trim 후 최대 20자, 빈 이름 허용(AC-7). */
@@ -694,34 +764,53 @@ interface WorkspaceState {
   setConnectionDraft: (draft: ConnectionDraft | null) => void;
 
   /**
-   * FEAT-markdown-memo-pen: 펜 모드 — 사이드바 펜 도구로 켜는 전역 그리기 모드.
-   * 켜지면 커서가 펜으로 바뀌고 메모 카드 위 드래그가 그리기가 된다.
-   * 카드 편집(editingId)과 상호배타 — 펜 모드 진입 시 편집을 닫는다.
+   * wall-marker n2: 손에 든 도구 — 내려놓음(null) · 마카 들림(색 하나) · 천 들림.
+   * 동시에 둘을 들 수 없다. 마카·천을 들면 글 편집(editingId)이 닫히고, 글 편집을 시작하면
+   * 든 것을 내려놓는다. 휴대폰 크기에서는 들 수 없다.
    */
-  penMode: boolean;
-  penTool: "pen" | "eraser";
-  penWidth: number;
+  heldTool: HeldTool;
+  /** 다음 획의 굵기 이름 — 패널에서 고른다. */
+  markerWidth: MarkerWidth;
+  /** 마지막으로 쓴 마카 색 — 마카를 안 들어도 태블릿 펜이 닿으면 이 색으로 그린다(D5=A). */
+  lastMarkerColor: MarkerColor;
   /**
-   * FEAT-pen-drawing-engine D3: 펜 모드 그리기 undo/redo 스냅샷.
-   * 전역 cross-card 스택 — "내 마지막 획"을 카드 불문 되돌린다. 각 항목은 변경
-   * "직전"의 overlay 값. 펜 모드 종료 시 비운다(undo는 현재 펜 세션 한정).
+   * 마카 되돌리기 기록(D9=A) — 벽 획과 포스트잇 획을 한 줄로 쌓는다. 보드를 떠나면 비운다.
+   * 되돌리기(⌘Z)는 마카나 천을 든 동안만 이 기록을 돌린다.
    */
-  penUndoStack: { cardId: string; overlay: string }[];
-  penRedoStack: { cardId: string; overlay: string }[];
-  /** 마지막으로 그린 카드 — Cmd+Backspace(전체지움) 대상. */
-  lastPenCardId: string | null;
-  setPenMode: (on: boolean) => void;
-  togglePenMode: () => void;
-  setPenTool: (tool: "pen" | "eraser") => void;
-  setPenWidth: (width: number) => void;
-  /** overlay(손글씨) 레이어만 갱신 — content는 건드리지 않는다. 디바운스 영속. */
+  markerUndoStack: MarkerHistoryEntry[];
+  markerRedoStack: MarkerHistoryEntry[];
+  /** 마카를 집는다(들고 있던 것은 내려놓인다). 휴대폰이면 아무 일도 없다. */
+  holdMarker: (color: MarkerColor) => void;
+  /** 천을 집는다. 휴대폰이면 아무 일도 없다. */
+  holdCloth: () => void;
+  /** 들고 있는 것을 내려놓는다. */
+  releaseTool: () => void;
+  setMarkerWidth: (width: MarkerWidth) => void;
+  /** 내가 한 마카 동작 하나를 기록에 쌓는다. 다시하기 기록은 무효가 된다. */
+  recordMarkerEdit: (entry: MarkerHistoryEntry) => void;
+  /** 마카 기록 되돌리기 — 가장 최근 동작을 거꾸로 돌린다. */
+  markerUndo: () => void;
+  /** 마카 기록 다시하기. */
+  markerRedo: () => void;
+  /** overlay(손글씨) 레이어만 갱신 — content는 건드리지 않는다. 디바운스 영속. 기록에 쌓는다. */
   setOverlay: (id: string, overlay: string) => void;
-  /** 펜 모드 그리기 되돌리기 — 직전 overlay 스냅샷 복원(전역 cross-card). */
-  penUndo: () => void;
-  /** 펜 모드 그리기 다시하기. */
-  penRedo: () => void;
-  /** 마지막으로 그린 카드의 overlay 전체 지움(되돌리기 가능). */
-  penClear: () => void;
+
+  /**
+   * wall-marker n1: 벽 획을 하나 더한다. 화면에 바로 올리고, 문서에 즉시 쓰고, Dexie 미러는
+   * 디바운스로 쓴다. 저장이 실패해도 화면의 획은 지우지 않는다. 점이 없으면 null.
+   */
+  addWallStroke: (input: NewWallStroke) => WallStroke | null;
+  /** wall-marker n1: 벽 획을 지운다(모르는 id는 건너뛴다). */
+  removeWallStrokes: (ids: string[]) => void;
+  /**
+   * wall-marker n1: 지우개 쪼개기 — 원본을 지우고 조각을 더한다. 한 트랜잭션이라 다른 기기에
+   * 반만 보이지 않는다. 더해진 획을 돌려준다.
+   */
+  replaceWallStrokes: (removeIds: string[], add: NewWallStroke[]) => WallStroke[];
+  /** wall-marker n1: 고른 벽 획을 평행 이동한다(보드 단위). 그 사이 지워진 획은 되살리지 않는다. */
+  moveWallStrokes: (ids: string[], dx: number, dy: number) => void;
+  /** wall-marker n6: 벽 획 묶음을 바꾼다. 빈 배열이면 푼다. 중복·없는 id는 거른다. */
+  selectWallStrokes: (ids: string[]) => void;
 
   remove: (id: string) => void;
   /** ids를 주면 그 카드들을, 생략하면 지금 선택을 지운다. */
@@ -989,6 +1078,10 @@ function viewportCenterScreenPoint(viewportSize?: { width: number; height: numbe
 /** n10 브라우저 결함4: 화면 중앙 생성이 겹칠 때 비켜 쌓는 간격(px) — spec §4 드롭 규칙과 동일값. */
 const CENTER_STACK_OFFSET_PX = 24;
 
+/** 검색으로 날아간 포스트잇이 반짝이는 시간(KS-5 D5). CSS 애니메이션 길이와 같다. */
+export const FLASH_DURATION_MS = 1200;
+let flashTimer: ReturnType<typeof setTimeout> | null = null;
+
 function rectsOverlapWorld(
   ax: number,
   ay: number,
@@ -1062,52 +1155,6 @@ function visibleWorldRect(
   return { x: -v.x / v.scale, y: -v.y / v.scale, width: (sx * 2) / v.scale, height: (sy * 2) / v.scale };
 }
 
-const SEED_CARDS: Card[] = [
-  {
-    id: "seed-todo",
-    kind: "text",
-    x: 320,
-    y: 140,
-    width: 460,
-    height: 460,
-    content: "- [ ] 첫구매 전환",
-  },
-  {
-    // FEAT-sticky-redesign n10: 메모는 한 종류(text) — 옛 image 시드를 유지하지 않는다.
-    id: "seed-preview",
-    kind: "text",
-    x: 320,
-    y: 500,
-    width: 130,
-    height: 130,
-    content: "",
-  },
-  {
-    id: "seed-empty",
-    kind: "text",
-    x: 380,
-    y: 620,
-    width: 280,
-    height: 280,
-    content: "",
-  },
-];
-
-/** 예제 시드 카드 id — 시스템 보드에 자동 주입된 "예제"일 뿐 사용자 콘텐츠가 아니다. */
-const SEED_CARD_IDS = new Set(SEED_CARDS.map((c) => c.id));
-
-/**
- * FEAT-onboarding-routes n4 — 첫 보드 고르기 화면을 띄울지 (AC-5·AC-7).
- *
- * 사용자 보드가 하나도 없고, 시스템 보드에 사용자가 만든 카드가 없을 때만 true다.
- * 즉 방금 로그인한 새 사용자(시스템 보드에는 자동 주입된 예제 메모 3장뿐)에는
- * 뜨고, 예전부터 시스템 보드에 메모를 쌓아 둔 기존 사용자에는 뜨지 않는다(AC-7).
- */
-export function needsFirstBoard(boards: Board[], cards: Card[]): boolean {
-  if (boards.some((b) => !b.isSystem)) return false;
-  return cards.every((c) => SEED_CARD_IDS.has(c.id));
-}
-
 let counter = 1;
 const nextId = () => `c-${Date.now().toString(36)}-${counter++}`;
 let connCounter = 1;
@@ -1128,6 +1175,23 @@ export function encodeSubcanvas(boardRef: string): string {
   return JSON.stringify({ [SUBCANVAS_MARKER]: true, boardRef });
 }
 
+/**
+ * 함 카드 content에서 가리키는 보드 id를 복원한다. 마커가 없거나 손상됐거나 boardRef가 비면
+ * undefined — 렌더는 빈 함으로, 공유는 "옮길 파일함 없음"으로 읽는다. 인코딩(`encodeSubcanvas`)의
+ * 짝이라 함 카드 형식을 읽는 곳은 모두 이것을 쓴다.
+ */
+export function decodeSubcanvasRef(content: string): string | undefined {
+  try {
+    const parsed = JSON.parse(content) as {
+      [SUBCANVAS_MARKER]?: boolean;
+      boardRef?: string;
+    };
+    return parsed[SUBCANVAS_MARKER] ? parsed.boardRef || undefined : undefined;
+  } catch {
+    return undefined; // 손상된 content
+  }
+}
+
 function encodeCardContent(card: Card): string {
   if (card.kind === "board") {
     return JSON.stringify({
@@ -1141,16 +1205,7 @@ function encodeCardContent(card: Card): string {
 function decodeNoteToCard(note: Note): Card {
   // FEAT-subcanvas: 함 카드 — content JSON에서 boardRef 복원. migration 경로 전에 처리.
   if (note.kind === "board") {
-    let boardRef: string | undefined;
-    try {
-      const parsed = JSON.parse(note.content) as {
-        [SUBCANVAS_MARKER]?: boolean;
-        boardRef?: string;
-      };
-      if (parsed[SUBCANVAS_MARKER]) boardRef = parsed.boardRef || undefined;
-    } catch {
-      /* 손상된 content — boardRef 없음(렌더 시 빈 함으로 표시) */
-    }
+    const boardRef = decodeSubcanvasRef(note.content);
     return {
       id: note.id,
       kind: "board",
@@ -1449,15 +1504,16 @@ function initialNoteFromCard(card: Card, boardId: string | null): Note {
   };
 }
 
-/** 활성 보드 문서가 있으면 그 안에서 fn을 실행한다(없으면 no-op). */
+/** 활성 보드 문서가 있으면 그 안에서 fn을 실행하고 true를 돌려준다(없으면 no-op, false). */
 function withActiveDoc(
   boardId: string | null,
   fn: (doc: Y.Doc) => void,
-): void {
-  if (!isActiveBoard(boardId)) return;
+): boolean {
+  if (!isActiveBoard(boardId)) return false;
   const doc = getActiveBoardDoc()?.doc;
-  if (!doc) return;
+  if (!doc) return false;
   fn(doc);
+  return true;
 }
 
 /** n23 P2-11: 마지막으로 문서에 쓴 공유 필드 스냅샷. 로컬이 실제로 바꾼 필드만
@@ -1586,7 +1642,20 @@ function bindActiveDocReflection(doc: Y.Doc, storageBoardId: string | null): voi
         notifyNoteChanges();
       });
     }
-    if (dirty) useWorkspace.setState({ cards: nextCards });
+    if (dirty) {
+      // W7: 빈 벽으로 열려 최초 fit이 소진됐는데 원격에서 처음 카드가 들어왔다 — 이 벽의 판정을
+      // 풀어 Canvas가 한 번 fit하게 한다(카드가 화면 밖이면 빈 벽처럼 보인다). 로컬 첫 생성은
+      // 이 경로가 아니라(원격 반영만 온다) 카드가 튀지 않는다.
+      const firstRemoteCards = state.cards.length === 0 && nextCards.length > 0;
+      useWorkspace.setState({
+        cards: nextCards,
+        ...(firstRemoteCards && storageBoardId
+          ? {
+              viewSettledBoardIds: state.viewSettledBoardIds.filter((b) => b !== storageBoardId),
+            }
+          : {}),
+      });
+    }
   };
 
   notesMap(doc).observeDeep(reflect);
@@ -1600,7 +1669,12 @@ function bindActiveDocReflection(doc: Y.Doc, storageBoardId: string | null): voi
     void (async () => {
       const storage = useStorage.getState();
       if (!storage.initialized) return;
-      await storage.saveBoard({ id: storageBoardId, name: board.name });
+      // 벽 재질은 문서에 값이 있을 때만 미러한다 — 값 없는 문서가 로컬 값을 지우지 않게.
+      await storage.saveBoard({
+        id: storageBoardId,
+        name: board.name,
+        ...(typeof board.wallMaterial === "string" ? { wallMaterial: board.wallMaterial } : {}),
+      });
       const boards = await storage.loadBoards();
       useWorkspace.setState({ boards });
     })();
@@ -1667,7 +1741,47 @@ function bindActiveDocReflection(doc: Y.Doc, storageBoardId: string | null): voi
   };
   connectionsMap(doc).observeDeep(reflectConnections);
 
+  // wall-marker n1: 다른 사람·다른 탭이 그은/옮긴/지운 벽 획을 화면과 미러에 반영한다.
+  // 바뀐 획 id만 읽는다 — 문서에서 사라진 획은 화면에서도 지운다(지운 쪽이 이긴다).
+  const docBoardId = storageBoardId ?? SYSTEM_BOARD_ID;
+  const reflectStrokes = (
+    events: Y.YEvent<Y.AbstractType<unknown>>[],
+    transaction: Y.Transaction,
+  ): void => {
+    if (!isRemoteTransaction(transaction)) return;
+    if (!isActiveBoard(storageBoardId)) return;
+    const changed = new Set<string>();
+    for (const ev of events) {
+      if (ev.path.length >= 1) changed.add(String(ev.path[0]));
+      else for (const key of (ev as Y.YMapEvent<unknown>).keysChanged) changed.add(key);
+    }
+    if (changed.size === 0) return;
+    const put: WallStroke[] = [];
+    const remove: string[] = [];
+    for (const id of changed) {
+      const stroke = readStroke(doc, id);
+      // 보드는 이 문서의 것이다 — 원격이 적어 보낸 boardId를 믿지 않는다.
+      if (stroke) put.push({ ...stroke, boardId: docBoardId });
+      else remove.push(id);
+    }
+    const byId = new Map(put.map((x) => [x.id, x]));
+    const gone = new Set(remove);
+    const current = useWorkspace.getState().wallStrokes;
+    const next: WallStroke[] = [];
+    const seen = new Set<string>();
+    for (const x of current) {
+      if (gone.has(x.id)) continue;
+      next.push(byId.get(x.id) ?? x);
+      seen.add(x.id);
+    }
+    for (const x of put) if (!seen.has(x.id)) next.push(x);
+    next.sort(compareStrokeOrder);
+    useWorkspace.setState({ wallStrokes: next });
+  };
+  strokesMap(doc).observeDeep(reflectStrokes);
+
   unbindDocReflection = () => {
+    strokesMap(doc).unobserveDeep(reflectStrokes);
     notesMap(doc).unobserveDeep(reflect);
     metaMap(doc).unobserve(reflectMeta);
     connectionsMap(doc).unobserveDeep(reflectConnections);
@@ -1903,6 +2017,155 @@ export function __resetBoardNavigatorForTest(): void {
   boardNavigator = null;
 }
 
+/* ─────────── wall-marker n1: 벽 획 영속 ───────────
+ *
+ * 원본은 보드 Y.Doc의 `strokes` 맵 하나다(획 하나 = 한 항목). 화면(`wallStrokes`)은 문서에 쓴
+ * 뒤에만 바뀐다 — 문서가 안 써졌는데 화면만 바뀌어 "보이는데 저장 안 된" 획이 생기지 않게.
+ * (예전에는 Dexie `strokes` 미러를 따로 두었으나 두 저장소를 맞추는 틈에서 결함이 나 걷어 냈다.)
+ */
+
+/** 활성 문서의 벽 획. 활성 보드가 아니면 비어 있다. */
+function loadBoardStrokes(storageBid: string | null): WallStroke[] {
+  const doc = getActiveBoardDoc()?.doc;
+  if (!doc || !isActiveBoard(storageBid)) return [];
+  // 보드는 이 문서의 것이다 — 문서에 적힌 boardId(원격이 쓴 값)를 믿지 않는다.
+  const boardId = storageBid ?? SYSTEM_BOARD_ID;
+  return readStrokes(doc).map((x) => (x.boardId === boardId ? x : { ...x, boardId }));
+}
+
+function newStrokeId(): string {
+  return `s-${newBoardId()}`;
+}
+
+/**
+ * 벽 획의 생성 시각. 같은 밀리초에 만든 획도 그린 순서가 남도록 세션 안에서 항상 늘어난다 —
+ * 정렬 키(createdAt)가 쌓임 순서이기 때문이다.
+ */
+let lastStrokeStamp = 0;
+function nextStrokeStamp(): number {
+  lastStrokeStamp = Math.max(Date.now(), lastStrokeStamp + 1);
+  return lastStrokeStamp;
+}
+
+/** 벽 획을 지금 쓸 수 있나 — 이 보드의 문서가 활성이고 입력이 막혀 있지 않다. */
+function wallWritable(get: WsGet): boolean {
+  return !isWallInputBlocked() && isActiveBoard(get().currentBoardId);
+}
+
+/**
+ * 벽 획 변경의 단일 통로 — 문서 → 화면 순이다. 문서에 실제로 써졌을 때만 화면을 바꾼다:
+ * 보드 전환 중이거나 입력이 막혀 있으면 아무것도 바꾸지 않고 false를 돌려준다(반쪽 상태 없음).
+ * `update`는 이미 있는 획만 문서에 쓴다(옮기기가 그 사이 지워진 획을 되살리지 않게).
+ */
+function commitWallStrokes(
+  set: WsSet,
+  get: WsGet,
+  changes: { put?: WallStroke[]; update?: WallStroke[]; remove?: string[] },
+): boolean {
+  if (isWallInputBlocked()) return false;
+  const boardId = get().currentBoardId;
+  const written = withActiveDoc(boardId, (doc) => applyStrokeChanges(doc, changes));
+  if (!written) return false;
+  const replaceById = new Map<string, WallStroke>();
+  for (const x of changes.put ?? []) replaceById.set(x.id, x);
+  for (const x of changes.update ?? []) replaceById.set(x.id, x);
+  const gone = new Set(changes.remove ?? []);
+  set((s) => {
+    const seen = new Set<string>();
+    const next: WallStroke[] = [];
+    for (const x of s.wallStrokes) {
+      if (gone.has(x.id)) continue;
+      next.push(replaceById.get(x.id) ?? x);
+      seen.add(x.id);
+    }
+    // update는 화면에 이미 있는 획만 바꾼다. put은 새 획을 뒤에 쌓는다.
+    for (const x of changes.put ?? []) if (!seen.has(x.id)) next.push(x);
+    // 조각·복원 획은 원본 createdAt을 이어받아 뒤에 붙인 것이 "오래된" 획일 수 있다 — 쌓임 순서를 지킨다.
+    for (let i = 1; i < next.length; i++) {
+      if (compareStrokeOrder(next[i - 1], next[i]) > 0) {
+        next.sort(compareStrokeOrder);
+        break;
+      }
+    }
+    return { wallStrokes: next };
+  });
+  return true;
+}
+
+/**
+ * 포스트잇 한 장의 overlay만 바꾸고 디바운스 영속한다. 기록에는 쌓지 않는다 —
+ * 호출부(setOverlay·되돌리기)가 기록 여부를 정한다. 카드가 없으면 false.
+ */
+function writeCardOverlay(set: WsSet, get: WsGet, id: string, overlay: string): boolean {
+  let updated: Card | undefined;
+  set((s) => ({
+    cards: s.cards.map((c) => {
+      if (c.id !== id) return c;
+      updated = { ...c, overlay };
+      return updated;
+    }),
+  }));
+  if (!updated) return false;
+  persistCardDebounced(updated, get().currentBoardId);
+  return true;
+}
+
+/** 기록 한 항목을 앞(redo)이나 뒤(undo)로 돌린다. 이미 사라진 포스트잇 항목은 건너뛴다. */
+function applyMarkerEntry(
+  get: WsGet,
+  set: WsSet,
+  entry: MarkerHistoryEntry,
+  dir: "undo" | "redo",
+): boolean {
+  if (entry.kind === "sticky") {
+    // 지금 overlay에서 이 동작의 획만 빼거나 되살린다 — 그 사이 남이 그은 획은 그대로 둔다(W6).
+    const card = get().cards.find((c) => c.id === entry.noteId);
+    if (!card) return false;
+    const current = card.overlay ?? "";
+    const next =
+      dir === "undo" ? undoStickyEdit(current, entry) : redoStickyEdit(current, entry);
+    return writeCardOverlay(set, get, entry.noteId, next);
+  }
+  const drop = dir === "undo" ? entry.after : entry.before;
+  const bring = dir === "undo" ? entry.before : entry.after;
+  get().replaceWallStrokes(
+    drop.map((x) => x.id),
+    bring.map((x) => ({
+      id: x.id,
+      points: x.points,
+      color: x.color,
+      width: x.width,
+      // 복원된 획은 원래 쌓임 자리로 돌아온다.
+      createdAt: x.createdAt,
+    })),
+  );
+  return true;
+}
+
+function applyMarkerHistory(set: WsSet, get: WsGet, dir: "undo" | "redo"): void {
+  const source = dir === "undo" ? [...get().markerUndoStack] : [...get().markerRedoStack];
+  while (source.length > 0) {
+    // 벽 획 항목은 문서에 쓸 수 있을 때만 돌린다 — 보드 전환 중·첫 벽 공유 이동 중에는 항목을 그대로 둔다.
+    if (source[source.length - 1].kind === "wall" && !wallWritable(get)) return;
+    const entry = source.pop()!;
+    if (!applyMarkerEntry(get, set, entry, dir)) continue;
+    set((s) =>
+      dir === "undo"
+        ? {
+            markerUndoStack: source,
+            markerRedoStack: [...s.markerRedoStack, entry].slice(-MARKER_HISTORY_LIMIT),
+          }
+        : {
+            markerRedoStack: source,
+            markerUndoStack: [...s.markerUndoStack, entry].slice(-MARKER_HISTORY_LIMIT),
+          },
+    );
+    return;
+  }
+  // 되돌릴 수 있는 항목이 하나도 없었다 — 사라진 포스트잇 항목만 털어 낸다.
+  set(dir === "undo" ? { markerUndoStack: [] } : { markerRedoStack: [] });
+}
+
 /**
  * FEAT-connectors: 현재 보드 카드에 닿은 active 연결만 골라 온다. loadConnections는
  * 한쪽 끝만 닿아도 돌려주므로, 보드 밖 카드가 낀 연결은 화면에 못 그린다 —
@@ -1930,15 +2193,16 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   editingId: null,
   expandedCardId: null,
   connections: [],
+  wallStrokes: [],
+  selectedWallStrokeIds: [],
   selectedConnectionId: null,
   hoveredCardId: null,
   connectionDraft: null,
-  penMode: false,
-  penTool: "pen",
-  penWidth: PEN_DEFAULT_WIDTH,
-  penUndoStack: [],
-  penRedoStack: [],
-  lastPenCardId: null,
+  heldTool: null,
+  markerWidth: DEFAULT_MARKER_WIDTH,
+  lastMarkerColor: DEFAULT_MARKER_COLOR,
+  markerUndoStack: [],
+  markerRedoStack: [],
   viewport: { x: 0, y: 0, scale: 1 },
   pendingAIGate: null,
   lastToolId: "text",
@@ -1949,9 +2213,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   boardTransitioning: false,
   migrationPending: false,
   bootstrapComplete: false,
+  bootstrapFailed: false,
   view: "canvas",
   tableReturnBoardId: null,
-  canvasHasFitted: false,
+  viewSettledBoardIds: [],
   templatePickerOpen: false,
   pendingBoardUndo: null,
   deleteDialogBoardId: null,
@@ -1969,6 +2234,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   // FEAT-memo-fulltext-search (W4): 검색 상태 초기값 — 비활성.
   memoSearchQuery: "",
   memoSearchMatchIds: [],
+  flashCardId: null,
+  flashStartedAt: null,
   // FEAT-trash: 휴지통 패널 닫힘·빈 상태.
   trashOpen: false,
   trashCount: 0,
@@ -1980,7 +2247,6 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   setTemplatePickerOpen: (open) => set({ templatePickerOpen: open }),
   openDeleteDialog: (boardId) => set({ deleteDialogBoardId: boardId }),
   requestRenameBoard: async (boardId) => {
-    if (boardId === SYSTEM_BOARD_ID) return;
     await get().navigateToBoard(boardId);
     set({ pendingRenameBoardId: boardId });
   },
@@ -1995,26 +2261,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     // n23 P1-6: 재로드는 지금 보고 있는 보드를 재활성화한다. activateBoard(null)로
     // 되돌리면 currentBoardId와 activeKey가 어긋나 이후 편집이 시스템 문서로 샌다.
     const storageBid = get().currentBoardId;
-    const activeDoc = await activateBoard(storageBid);
-
-    if (
-      storageBid === SYSTEM_BOARD_ID &&
-      readNotes(activeDoc.doc).length === 0 &&
-      !storage.settings?.installPromptShown &&
-      // 작업 4: 이전이 아직 백그라운드면 시스템 문서가 비어 보일 수 있다 — 시드를
-      // 끼워 넣으면 이전이 끝난 뒤 실제 메모와 섞인다. 이전 완료 뒤에만 시드한다.
-      !get().migrationPending
-    ) {
-      // 첫 실행 — 디자인 시드를 문서·미러에 함께 영속하고 마킹.
-      const seeds = SEED_CARDS.map((c) => ({
-        ...c,
-        height: memoHeight(c.kind, c.width, c.height),
-      }));
-      await Promise.all(seeds.map((card) => persistCard(card, SYSTEM_BOARD_ID)));
-      await storage.updateSettings({ installPromptShown: true });
-      set({ cards: seeds, boards, connections: [] });
-      return;
-    }
+    await activateBoard(storageBid);
 
     // FEAT-text-tool: 빈 textbox는 불러올 때 지운다. 원본 문서와 미러 모두에서.
     const pruned = pruneEmptyTextboxes(await loadBoardCards(storageBid));
@@ -2023,7 +2270,15 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     }
     const cards = pruned.cards;
     const connections = await loadBoardConnections(cards.map((c) => c.id));
-    set({ cards, boards, connections, selectedConnectionId: null });
+    const wallStrokes = loadBoardStrokes(storageBid);
+    set({
+      cards,
+      boards,
+      connections,
+      wallStrokes,
+      selectedWallStrokeIds: [],
+      selectedConnectionId: null,
+    });
     void get().refreshSubcanvasCounts();
     void get().refreshTrashCount();
   },
@@ -2064,6 +2319,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     }
     const cards = pruned.cards;
     const connections = await loadBoardConnections(cards.map((c) => c.id));
+    const wallStrokes = loadBoardStrokes(storageBid);
 
     // 3-1) 보드 메타도 문서가 원본 — 목록의 이 보드 이름을 문서 값으로 맞춘다.
     if (storageBid !== null) {
@@ -2071,6 +2327,14 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       if (typeof meta.name === "string") {
         set((s) => ({
           boards: s.boards.map((b) => (b.id === id ? { ...b, name: meta.name } : b)),
+        }));
+      }
+      // glass-surface: 벽 재질도 문서 값이 원본 — 첫 렌더부터 저장된 재질로 그리게 맞춘다.
+      if (typeof meta.wallMaterial === "string") {
+        set((s) => ({
+          boards: s.boards.map((b) =>
+            b.id === id ? { ...b, wallMaterial: meta.wallMaterial } : b,
+          ),
         }));
       }
     }
@@ -2086,10 +2350,15 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     set({
       cards,
       connections,
+      wallStrokes,
+      selectedWallStrokeIds: [],
       selectedIds: [],
       selectedConnectionId: null,
       editingId: null,
       expandedCardId: null,
+      // D9=A: 마카 기록은 보드를 떠날 때까지 남는다 — 떠나면 비운다.
+      markerUndoStack: [],
+      markerRedoStack: [],
       currentBoardId: id,
       lastNonSystemBoardId: lastNonSystem,
       viewport: restored,
@@ -2140,42 +2409,6 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     set({ boards });
     await get().navigateToBoard(id);
     return id;
-  },
-
-  createExampleBoard: async (name = "") => {
-    // n23 재심사 2R-1: 이전 중 새 보드 생성 차단 — createBoard와 같은 가드.
-    if (get().migrationPending) return get().currentBoardId;
-    const storage = useStorage.getState();
-    if (!storage.initialized) await storage.init();
-
-    const boardId = newBoardId();
-    await storage.saveBoard({ id: boardId, name, isSystem: false });
-    await writeBoardToDoc(boardId);
-
-    // 예제 메모 3장 — 시스템 보드 시드와 같은 내용을 새 id로 복제한다(AC-5).
-    const handle = getOrOpenBoardDoc(boardId);
-    await handle.whenLoaded;
-    for (const seed of SEED_CARDS) {
-      const card: Card = { ...seed, id: nextId() };
-      await storage.saveNote({
-        id: card.id,
-        boardId,
-        kind: card.kind,
-        x: card.x,
-        y: card.y,
-        width: card.width,
-        content: card.content,
-        aiOptOut: false,
-        rotation: 0,
-      });
-      writeCardToDocHandle(handle.doc, card, boardId);
-    }
-    closeBoardDoc(boardId);
-
-    const boards = await storage.loadBoards();
-    set({ boards });
-    await get().navigateToBoard(boardId);
-    return boardId;
   },
 
   createBoardFromTemplate: async (templateId, name, t, now) => {
@@ -2234,13 +2467,32 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   renameBoard: async (id, name) => {
-    if (id === SYSTEM_BOARD_ID) {
-      throw new Error("시스템 보드는 이름을 변경할 수 없습니다.");
-    }
     const storage = useStorage.getState();
     if (!storage.initialized) await storage.init();
-    await storage.saveBoard({ id, name });
+    // 첫 벽(시스템 보드)도 이름을 바꿀 수 있다. 행이 없어 새로 만들어지더라도
+    // 시스템 보드로 남도록 isSystem을 함께 적는다(삭제 가드가 이 플래그를 본다).
+    await storage.saveBoard(
+      id === SYSTEM_BOARD_ID ? { id, name, isSystem: true } : { id, name },
+    );
     await writeBoardToDoc(id);
+    const boards = await storage.loadBoards();
+    set({ boards });
+  },
+
+  setWallMaterial: async (boardId, id) => {
+    if (!isWallMaterialId(id)) return;
+    const storage = useStorage.getState();
+    if (!storage.initialized) await storage.init();
+    const prev = (await storage.loadBoards()).find((b) => b.id === boardId);
+    // 행이 없는 보드에 재질만 든 유령 행을 만들지 않는다. 첫 벽만 행이 없어도 만든다.
+    if (!prev && boardId !== SYSTEM_BOARD_ID) return;
+    if (wallMaterialFor(prev?.wallMaterial).id === id) return;
+    await storage.saveBoard(
+      boardId === SYSTEM_BOARD_ID
+        ? { id: boardId, wallMaterial: id, isSystem: true }
+        : { id: boardId, wallMaterial: id },
+    );
+    await writeBoardToDoc(boardId);
     const boards = await storage.loadBoards();
     set({ boards });
   },
@@ -2281,6 +2533,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       .primaryKeys();
     const board = await db.boards.get(id);
     if (!board) return; // 이미 삭제된 보드 — no-op
+    // 벽 획은 보드 문서에 있고 보드를 지워도 문서는 그대로다 — 되살리면 다시 열 때 같은 획이 보인다.
 
     // 2) 이전 undo가 있었으면 그건 영구 폐기 (스택 1개만 유지)
     set({ pendingBoardUndo: null });
@@ -2383,7 +2636,30 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     get().panToCard(noteId);
   },
 
-  markCanvasFitted: () => set({ canvasHasFitted: true }),
+  jumpToCardWithFlash: async (noteId) => {
+    // 고르는 사이 지워졌으면 벽을 바꾸지 않는다(휴지통은 별도 테이블이라 notes에 없다).
+    const note = await getDB().notes.get(noteId);
+    if (!note) return;
+    await get().openCardOnCanvas(noteId);
+    // 이동 중 다른 벽으로 다시 바뀌었거나 카드가 안 올라왔으면 반짝이지 않는다.
+    if (!get().cards.some((c) => c.id === noteId)) return;
+    if (flashTimer) clearTimeout(flashTimer);
+    const startedAt = Date.now();
+    set({ flashCardId: noteId, flashStartedAt: startedAt });
+    flashTimer = setTimeout(() => {
+      flashTimer = null;
+      if (get().flashStartedAt === startedAt) {
+        set({ flashCardId: null, flashStartedAt: null });
+      }
+    }, FLASH_DURATION_MS);
+  },
+
+  markViewSettled: (boardId) =>
+    set((s) =>
+      s.viewSettledBoardIds.includes(boardId)
+        ? s
+        : { viewSettledBoardIds: [...s.viewSettledBoardIds, boardId] },
+    ),
 
   addCardAt: (toolId, x, y) => {
     const kind = kindForTool(toolId);
@@ -2423,7 +2699,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       cards: [...s.cards, card],
       selectedIds: [id],
       snapCardId: card.frameId ? id : s.snapCardId,
-      editingId: isCapture ? id : null,
+      // 만들자마자 편집에 들어가면 든 마카·T 배치는 내려놓는다(W8). 편집 없이 만들면 편집 id만 비운다.
+      ...(isCapture
+        ? enterMode({ enter: "edit", id }, s)
+        : { editingId: null }),
       lastToolId: isCaptureTool ? (toolId as CaptureToolId) : s.lastToolId,
     }));
     const boardId = get().currentBoardId;
@@ -2765,6 +3044,18 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     }
   },
 
+  setFrameMaterial: (id, material) => {
+    if (!isWallMaterialId(material)) return;
+    const frame = get().cards.find((c) => c.id === id && c.kind === "frame");
+    if (!frame) return;
+    const cfg = readFrameContent(frame.content);
+    if (frameMaterialFor(cfg.material).id === material) return;
+    // 이름·스킨·칸 목록은 읽은 설정 그대로 두고 재질만 갈아 끼운다(좌표는 건드리지 않는다).
+    const updated: Card = { ...frame, content: encodeFrameContent({ ...cfg, material }) };
+    set((s) => ({ cards: s.cards.map((c) => (c.id === id ? updated : c)) }));
+    persistCardDebounced(updated, get().currentBoardId);
+  },
+
   addFrameColumn: (id) => {
     let updated: Card | undefined;
     let widened = false;
@@ -3021,8 +3312,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   textPlacementArmed: false,
   armTextPlacement: () => {
-    // 펜 모드와 상호배타 — 배치 모드 진입 시 펜 모드를 끈다.
-    set({ textPlacementArmed: true, penMode: false, editingId: null });
+    // 마카·천·글 편집·벽 획 묶음과 상호배타 — 진입은 enterMode(W8) 한 곳이 정한다.
+    set(enterMode({ enter: "textPlacement" }, get()));
   },
   disarmTextPlacement: () => set({ textPlacementArmed: false }),
 
@@ -3092,7 +3383,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       return { selectedIds: merged, selectedConnectionId: null };
     }),
   clearSelection: () => set({ selectedIds: [], selectedConnectionId: null }),
-  setEditing: (id) => set({ editingId: id }),
+  // 글 편집을 시작하면 든 마카·천을 내려놓는다 — "마카를 든 채 글 편집" 조합을 만들지 않는다.
+  setEditing: (id) =>
+    set(id !== null ? enterMode({ enter: "edit", id }, get()) : { editingId: null }),
   // FEAT-memo-expand: 모달 진입 시 inline 편집을 닫아 같은 카드 이중 에디터를 막는다.
   setExpandedCard: (id) => {
     set(id ? { expandedCardId: id, editingId: null } : { expandedCardId: null });
@@ -3191,99 +3484,127 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
   setConnectionDraft: (draft) => set({ connectionDraft: draft }),
 
-  // FEAT-markdown-memo-pen: 펜 모드. 진입 시 열린 편집을 닫아 상호배타 보장.
-  setPenMode: (on) =>
-    set(
-      on
-        ? { penMode: true, editingId: null }
-        : // 펜 모드 종료 = 그리기 세션 종료 → undo/redo 히스토리 비움.
-          {
-            penMode: false,
-            penUndoStack: [],
-            penRedoStack: [],
-            lastPenCardId: null,
-          },
-    ),
-  togglePenMode: () => get().setPenMode(!get().penMode),
-  setPenTool: (tool) => set({ penTool: tool }),
-  setPenWidth: (width) =>
-    set({ penWidth: clamp(width, PEN_MIN_WIDTH, PEN_MAX_WIDTH) }),
+  // wall-marker n2: 손에 든 도구. 집으면 열린 글 편집을 닫아 상호배타를 지킨다.
+  holdMarker: (color) => {
+    if (isPhoneViewport()) return;
+    const c = resolveMarkerColor(color);
+    // 불가능한 조합(마카를 든 채 글 편집·T 배치·벽 획 묶음)은 enterMode가 풀어 준다.
+    set({ ...enterMode({ enter: "marker", color: c }, get()), lastMarkerColor: c });
+  },
+  holdCloth: () => {
+    if (isPhoneViewport()) return;
+    set(enterMode({ enter: "cloth" }, get()));
+  },
+  releaseTool: () => {
+    if (get().heldTool === null) return;
+    set({ heldTool: null });
+  },
+  setMarkerWidth: (width) => set({ markerWidth: resolveMarkerWidth(width) }),
+
+  recordMarkerEdit: (entry) =>
+    set((s) => ({
+      markerUndoStack: [...s.markerUndoStack, entry].slice(-MARKER_HISTORY_LIMIT),
+      markerRedoStack: [],
+    })),
+  markerUndo: () => applyMarkerHistory(set, get, "undo"),
+  markerRedo: () => applyMarkerHistory(set, get, "redo"),
+
   setOverlay: (id, overlay) => {
-    // D3: 변경 "직전" overlay를 undo 스택에 적재(새 입력이므로 redo 무효화).
     const prev = get().cards.find((c) => c.id === id)?.overlay ?? "";
-    let updated: Card | undefined;
-    set((s) => ({
-      cards: s.cards.map((c) => {
-        if (c.id !== id) return c;
-        updated = { ...c, overlay };
-        return updated;
-      }),
-      penUndoStack: [...s.penUndoStack, { cardId: id, overlay: prev }],
-      penRedoStack: [],
-      lastPenCardId: id,
-    }));
-    if (updated) {
-      persistCardDebounced(updated, get().currentBoardId);
-    }
+    if (prev === overlay) return;
+    if (!writeCardOverlay(set, get, id, overlay)) return;
+    const entry = stickyEditEntry(id, prev, overlay);
+    if (entry) get().recordMarkerEdit(entry);
   },
-  penUndo: () => {
-    const { penUndoStack, cards } = get();
-    if (penUndoStack.length === 0) return;
-    const entry = penUndoStack[penUndoStack.length - 1];
-    const cur = cards.find((c) => c.id === entry.cardId)?.overlay ?? "";
-    let updated: Card | undefined;
-    set((s) => ({
-      cards: s.cards.map((c) => {
-        if (c.id !== entry.cardId) return c;
-        updated = { ...c, overlay: entry.overlay };
-        return updated;
-      }),
-      penUndoStack: s.penUndoStack.slice(0, -1),
-      penRedoStack: [...s.penRedoStack, { cardId: entry.cardId, overlay: cur }],
-      lastPenCardId: entry.cardId,
-    }));
-    if (updated) {
-      persistCardDebounced(updated, get().currentBoardId);
-    }
+
+  /* ─────────── wall-marker n1: 벽 획 ─────────── */
+
+  addWallStroke: (input) => {
+    // 쓰는 쪽도 읽는 쪽과 같은 한계를 지킨다(W2): 한계 밖 좌표는 버리고 점은 상한까지 솎는다.
+    const points = sanitizeStrokePoints(input.points);
+    if (points.length === 0) return null;
+    if (get().wallStrokes.length >= MAX_WALL_STROKES) return null;
+    const now = nextStrokeStamp();
+    const stroke: WallStroke = {
+      id: input.id ?? newStrokeId(),
+      boardId: get().currentBoardId,
+      points,
+      color: resolveMarkerColor(input.color),
+      width: resolveMarkerWidth(input.width),
+      createdAt: input.createdAt ?? now,
+      updatedAt: now,
+    };
+    return commitWallStrokes(set, get, { put: [stroke] }) ? stroke : null;
   },
-  penRedo: () => {
-    const { penRedoStack, cards } = get();
-    if (penRedoStack.length === 0) return;
-    const entry = penRedoStack[penRedoStack.length - 1];
-    const cur = cards.find((c) => c.id === entry.cardId)?.overlay ?? "";
-    let updated: Card | undefined;
-    set((s) => ({
-      cards: s.cards.map((c) => {
-        if (c.id !== entry.cardId) return c;
-        updated = { ...c, overlay: entry.overlay };
-        return updated;
-      }),
-      penRedoStack: s.penRedoStack.slice(0, -1),
-      penUndoStack: [...s.penUndoStack, { cardId: entry.cardId, overlay: cur }],
-      lastPenCardId: entry.cardId,
-    }));
-    if (updated) {
-      persistCardDebounced(updated, get().currentBoardId);
-    }
+
+  removeWallStrokes: (ids) => {
+    const present = new Set(get().wallStrokes.map((x) => x.id));
+    const remove = ids.filter((id) => present.has(id));
+    if (remove.length === 0) return;
+    commitWallStrokes(set, get, { remove });
   },
-  penClear: () => {
-    const id = get().lastPenCardId;
-    if (!id) return;
-    const cur = get().cards.find((c) => c.id === id)?.overlay ?? "";
-    if (!cur) return; // 지울 게 없으면 no-op (스택 오염 방지).
-    let updated: Card | undefined;
-    set((s) => ({
-      cards: s.cards.map((c) => {
-        if (c.id !== id) return c;
-        updated = { ...c, overlay: "" };
-        return updated;
-      }),
-      penUndoStack: [...s.penUndoStack, { cardId: id, overlay: cur }],
-      penRedoStack: [],
-    }));
-    if (updated) {
-      persistCardDebounced(updated, get().currentBoardId);
+
+  replaceWallStrokes: (removeIds, add) => {
+    const boardId = get().currentBoardId;
+    const put: WallStroke[] = add
+      .map((input) => ({ input, points: sanitizeStrokePoints(input.points) }))
+      .filter(({ points }) => points.length > 0)
+      .map(({ input, points }) => {
+        const now = nextStrokeStamp();
+        return {
+          id: input.id ?? newStrokeId(),
+          boardId,
+          points,
+          color: resolveMarkerColor(input.color),
+          width: resolveMarkerWidth(input.width),
+          createdAt: input.createdAt ?? now,
+          updatedAt: now,
+        };
+      });
+    const present = new Set(get().wallStrokes.map((x) => x.id));
+    const remove = removeIds.filter((id) => present.has(id));
+    if (put.length === 0 && remove.length === 0) return [];
+    // 획 수가 상한이면 늘리는 교체(조각이 원본보다 많음)는 하지 않는다 — 줄이거나 같은 건 허용.
+    if (
+      put.length > remove.length &&
+      get().wallStrokes.length - remove.length + put.length > MAX_WALL_STROKES
+    ) {
+      return [];
     }
+    return commitWallStrokes(set, get, { put, remove }) ? put : [];
+  },
+
+  moveWallStrokes: (ids, dx, dy) => {
+    if ((dx === 0 && dy === 0) || ids.length === 0) return;
+    const pick = new Set(ids);
+    const now = Date.now();
+    const moved = get()
+      .wallStrokes.filter((x) => pick.has(x.id))
+      .map((x) => ({
+        ...x,
+        points: x.points.map((p) => ({
+          x: clampBoardCoord(p.x + dx),
+          y: clampBoardCoord(p.y + dy),
+        })),
+        updatedAt: now,
+      }));
+    if (moved.length === 0) return;
+    commitWallStrokes(set, get, { update: moved });
+  },
+
+  selectWallStrokes: (ids) => {
+    // 마카·천을 들었거나 T 배치 중이면 고를 수 없다 — 그때의 호출은 묶음을 비운다(enterMode).
+    const present = new Set(get().wallStrokes.map((x) => x.id));
+    const next = [...new Set(ids)].filter((id) => present.has(id));
+    const patch = enterMode({ enter: "wallSelection", ids: next }, get());
+    if (
+      patch.selectedWallStrokeIds !== undefined &&
+      patch.selectedWallStrokeIds.length === 0 &&
+      get().selectedWallStrokeIds.length === 0
+    ) {
+      return; // 이미 비어 있다 — 상태를 새로 만들지 않는다
+    }
+    set(patch);
   },
 
   remove: (id) => {
@@ -3480,7 +3801,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const card = get().cards.find((c) => c.id === id);
     if (!card) return;
     if (!isCaptureKind(card.kind)) return;
-    set({ editingId: id });
+    set(enterMode({ enter: "edit", id }, get()));
   },
 
   promoteCardToNewBoard: async (cardId, boardName = "") => {
@@ -3842,7 +4163,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const card = get().cards.find((c) => c.id === id);
     if (!card) return;
     // programmatic 이동도 "자리 잡음"으로 본다 — 재마운트 fit이 이 위치를 덮지 않게(P2-4).
-    set({ canvasHasFitted: true });
+    // 이 벽만이다 — 다른 벽의 최초 fit까지 막지 않는다.
+    get().markViewSettled(get().currentBoardId);
     const v = get().viewport;
     // addCardAtViewportCenter와 동일한 화면 크기 폴백 규약(FEAT-sticky-redesign n8:
     // 사이드바가 걷혀 캔버스가 window 전체 폭이라 폭 차감 없음).
@@ -3897,8 +4219,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
     const cx = (minX + maxX) / 2;
     const cy = (minY + maxY) / 2;
+    get().markViewSettled(get().currentBoardId);
     set({
-      canvasHasFitted: true,
       viewport: {
         x: w / 2 - cx * scale,
         y: h / 2 - cy * scale,
@@ -3917,7 +4239,6 @@ export const __internal = {
   isCaptureKind,
   isDescendantBoard,
   SUBCANVAS_MARKER,
-  SEED_CARDS,
 };
 
 /** n3 테스트·재개 경계 — 열린 보드 문서를 모두 닫는다(멱등). */

@@ -44,7 +44,7 @@ function seed(cards: Card[], selectedIds: string[] = []) {
     selectedIds,
     editingId: null,
     expandedCardId: null,
-    penMode: false,
+    heldTool: null,
     draggingId: null,
     draggingMulti: false,
     viewport: { x: 0, y: 0, scale: 1 },

@@ -33,6 +33,7 @@ import { syncUrl } from "./config";
 import {
   CLOSE_DOCUMENT_TOO_LARGE,
   CLOSE_FORBIDDEN,
+  isRejectingClose,
   realProviderFactory,
   type CollabProviderFactory,
   type CollabProviderHandle,
@@ -306,19 +307,52 @@ export const useCollab = create<CollabState>((set) => ({
   publishDragging: (state) => draggingThrottle(state),
 }));
 
-/** 업로드용 일회 연결이 sync를 기다리는 상한. 넘으면 그냥 끊는다. */
+/** 파일함 업로드용 일회 연결이 sync를 기다리는 상한. 넘으면 그냥 끊는다. */
 export const UPLOAD_SYNC_TIMEOUT_MS = 10_000;
 
 /**
- * spec/share-subboards.md — 사용자가 열지 않은 보드의 로컬 Y.Doc을 서버에 한 번
- * 올린다. 활성 문서가 아닌 파일함은 provider를 임시로 붙여 첫 sync에서 로컬
- * 업데이트를 밀어 넣고, synced(또는 실패·시간 초과) 뒤 바로 끊는다.
- *
- * 활성 보드는 건드리지 않는다 — 이미 화면이 붙였거나 붙일 예정이고(CollabSession),
- * 여기서 두 번째 provider를 만들면 그 연결을 깨뜨린다.
+ * 벽 공유 시작의 확인형 업로드가 "진행 없이" 기다리는 상한. 연결이 붙거나 sync가 끝나는 것을
+ * 진행으로 보고 그때마다 다시 잰다. 사진이 많은 벽은 느린 회선에서 서버 확인까지 10초를 넘기므로
+ * 파일함처럼 10초로 끊으면 영영 공유할 수 없다.
  */
-export async function uploadBoardDoc(boardId: string, accessToken: string): Promise<void> {
-  if (active?.boardId === boardId || isActiveBoard(boardId)) return;
+export const CONFIRMED_UPLOAD_IDLE_TIMEOUT_MS = 60_000;
+
+/** 확인형 업로드의 절대 상한 — 진행이 이어져도 이 시간을 넘기면 끊는다. */
+export const CONFIRMED_UPLOAD_MAX_MS = 5 * 60_000;
+
+/** 일회 업로드가 끝난 이유. `confirmed`만 "서버가 받았다"는 뜻이다. */
+type UploadOutcome = "confirmed" | "timeout" | "closed" | "auth";
+
+/**
+ * 서버가 벽 내용을 받았는지 확인하지 못한 채 일회 업로드가 끝났다.
+ * 공유 시작은 이 오류를 받으면 "공유 중"으로 가지 않는다.
+ * `timeout`은 응답이 늦은 것이고 `closed`·`auth`는 서버가 연결을 끊거나 거절한 것이다 — 문구가 다르다.
+ */
+export class UploadNotConfirmedError extends Error {
+  readonly reason: Exclude<UploadOutcome, "confirmed">;
+  constructor(reason: Exclude<UploadOutcome, "confirmed">) {
+    super(
+      reason === "timeout"
+        ? "서버 응답이 늦어 벽 내용을 받았는지 확인하지 못했어요"
+        : "서버가 벽 내용을 받지 않았어요",
+    );
+    this.name = "UploadNotConfirmedError";
+    this.reason = reason;
+  }
+}
+
+/**
+ * 로컬 Y.Doc을 서버에 한 번 올리는 일회 연결 — 두 업로드 함수가 같이 쓴다.
+ *
+ * `confirmOn`이 끝을 정한다. `synced`는 서버 step2를 받는 순간(파일함처럼 실패해도
+ * 다음 기회가 있는 쓰임), `acknowledged`는 서버가 우리 변경을 받았다고 답한 순간이다.
+ * 실패·시간 초과도 끝으로 보고 provider를 정리한 뒤 이유를 돌려준다.
+ */
+async function syncOnce(
+  boardId: string,
+  accessToken: string,
+  confirmOn: "synced" | "acknowledged",
+): Promise<UploadOutcome> {
   const handle = getOrOpenBoardDoc(boardId);
   try {
     await handle.whenLoaded;
@@ -327,37 +361,88 @@ export async function uploadBoardDoc(boardId: string, accessToken: string): Prom
       value: initial.boardToken,
       expiresAt: deps.now() + initial.expiresInSeconds * 1000,
     };
-    await new Promise<void>((resolve) => {
+    return await new Promise<UploadOutcome>((resolve) => {
       let done = false;
       let provider: CollabProviderHandle | null = null;
       let timer: ReturnType<typeof setTimeout> | null = null;
-      const finish = () => {
+      let maxTimer: ReturnType<typeof setTimeout> | null = null;
+      // 확인형은 서버가 받았다는 답까지 기다리므로 더 길게, 진행이 있으면 다시 잰다.
+      const confirmed = confirmOn === "acknowledged";
+      const idleMs = confirmed ? CONFIRMED_UPLOAD_IDLE_TIMEOUT_MS : UPLOAD_SYNC_TIMEOUT_MS;
+      const armIdle = () => {
+        if (done) return;
+        if (timer !== null) clearTimeout(timer);
+        timer = setTimeout(() => finish("timeout"), idleMs);
+      };
+      const finish = (outcome: UploadOutcome) => {
         if (done) return;
         done = true;
         if (timer !== null) clearTimeout(timer);
+        if (maxTimer !== null) clearTimeout(maxTimer);
         try {
           provider?.destroy();
         } catch {
           /* 이미 닫힌 provider */
         }
-        resolve();
+        resolve(outcome);
       };
       provider = deps.providerFactory.create({
         url: deps.syncUrl(),
         name: boardId,
         document: handle.doc,
         token: async () => cached.value,
-        onStatus: () => {},
-        onAuthenticationFailed: finish,
-        onClose: finish,
-        onSynced: finish,
+        onStatus: (status) => {
+          if (confirmed && status === "connected") armIdle();
+        },
+        onAuthenticationFailed: () => finish("auth"),
+        // 서버가 거절해 끊은 것만 실패다. 일시 끊김은 provider 가 다시 붙기를 기다리고,
+        // 끝내 못 받으면 위의 대기 상한이 timeout 으로 끝낸다.
+        onClose: (code) => {
+          if (isRejectingClose(code)) finish("closed");
+        },
+        onSynced: () => {
+          if (confirmOn === "synced") finish("confirmed");
+          else armIdle();
+        },
+        onAcknowledged: () => {
+          if (confirmOn === "acknowledged") finish("confirmed");
+        },
       });
-      timer = setTimeout(finish, UPLOAD_SYNC_TIMEOUT_MS);
+      armIdle();
+      if (confirmed) maxTimer = setTimeout(() => finish("timeout"), CONFIRMED_UPLOAD_MAX_MS);
       provider.connect();
     });
   } finally {
+    // 활성 보드 문서는 closeBoardDoc이 닫지 않는다 — 화면이 쓰고 있다.
     closeBoardDoc(boardId);
   }
+}
+
+/**
+ * spec/share-subboards.md — 사용자가 열지 않은 보드의 로컬 Y.Doc을 서버에 한 번
+ * 올린다. 활성 문서가 아닌 파일함은 provider를 임시로 붙여 첫 sync에서 로컬
+ * 업데이트를 밀어 넣고, synced(또는 실패·시간 초과) 뒤 바로 끊는다.
+ *
+ * 활성 보드는 건드리지 않는다 — 이미 화면이 붙였거나 붙일 예정이고(CollabSession),
+ * 여기서 두 번째 provider를 만들면 그 연결을 깨뜨린다. 결과를 알려 주지 않는다:
+ * 확인이 필요하면 `uploadBoardDocConfirmed`를 쓴다.
+ */
+export async function uploadBoardDoc(boardId: string, accessToken: string): Promise<void> {
+  if (active?.boardId === boardId || isActiveBoard(boardId)) return;
+  await syncOnce(boardId, accessToken, "synced");
+}
+
+/**
+ * 벽 공유 시작용 업로드 — 서버가 내용을 받았다고 답해야 끝난다. 아니면
+ * `UploadNotConfirmedError`를 던진다(시간 초과·연결 끊김·인증 실패).
+ *
+ * 공유를 시작하는 보드는 지금 보고 있는 활성 보드인 것이 보통이라 `uploadBoardDoc`처럼
+ * 건너뛰지 않는다. 이 시점에는 아직 shared가 아니라 활성 연결이 없으므로(CollabSession은
+ * shared가 된 뒤 붙인다) 일회 연결이 다른 연결을 깨뜨리지 않는다.
+ */
+export async function uploadBoardDocConfirmed(boardId: string, accessToken: string): Promise<void> {
+  const outcome = await syncOnce(boardId, accessToken, "acknowledged");
+  if (outcome !== "confirmed") throw new UploadNotConfirmedError(outcome);
 }
 
 /** 테스트 격리용 — deps·모듈 상태·스토어를 초기화한다. */

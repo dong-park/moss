@@ -10,7 +10,7 @@ import {
   useAuth,
 } from "@/state/auth";
 import type { BoardSummary, InvitePreview } from "@/state/auth/types";
-import { LoginOnboarding } from "./LoginOnboarding";
+import { LoginActions } from "./LoginActions";
 
 type Phase = "idle" | "checking" | "joining" | "expired" | "full" | "error";
 
@@ -105,28 +105,11 @@ export function InviteRoute({
   const boardName =
     board?.name ?? preview?.boardName ?? t("collab.auth.invite.boardFallback");
 
-  // 로그인 전이거나 세션이 만료됐으면 초대 카드 대신 로그인 온보딩을 먼저 보여 준다.
-  // Google·메일 어느 쪽으로든 로그인하면 session이 서고 이 카드의 "참여하기"로 돌아온다 —
+  // 로그인 전이거나 세션이 만료됐으면 "참여하기" 대신 로그인 버튼을 카드 안에 둔다.
+  // 로그인하면 session이 서고 이 카드의 "참여하기"로 돌아온다 —
   // 수락은 여전히 사람이 누르는 동의 지점이다. 만료된 초대는 로그인시키지 않는다(AC-6).
   const needsLogin = phase === "idle" && (!session || status === "expired");
   const showJoin = phase === "idle" && session !== null && status !== "expired";
-
-  if (needsLogin) {
-    return (
-      <LoginOnboarding
-        context={
-          <>
-            {ownerName ? (
-              <p className="text-[12px] text-[#8e8e93]">
-                {t("collab.auth.invite.ownerInvite", { name: ownerName })}
-              </p>
-            ) : null}
-            <p className="text-[15px] font-semibold">{boardName}</p>
-          </>
-        }
-      />
-    );
-  }
 
   return (
     <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center">
@@ -153,6 +136,11 @@ export function InviteRoute({
         ) : null}
         <h3 className="mb-1 text-[17px] font-semibold">{boardName}</h3>
 
+        {needsLogin ? (
+          <div className="mt-4">
+            <LoginActions />
+          </div>
+        ) : null}
         {showJoin ? (
           <button
             type="button"

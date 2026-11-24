@@ -62,7 +62,7 @@ function seed(cards: Card[], selectedIds: string[] = []) {
     selectedIds,
     editingId: null,
     expandedCardId: null,
-    penMode: false,
+    heldTool: null,
     draggingId: null,
     draggingMulti: false,
     dropTargetFunnelId: null,
@@ -352,7 +352,7 @@ describe.skip("FEAT-frame-feel T4 · 따라 흔들림", () => {
     return waitFor(
       () => {
         expect(mEl.style.getPropertyValue("--tilt")).toBe("");
-        expect(mEl.style.transform).toBe(memoBaseTransform(m, false));
+        expect(mEl.style.transform).toBe(memoBaseTransform(m));
       },
       { timeout: 3000 },
     );

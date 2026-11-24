@@ -7,7 +7,7 @@ import {
 } from "@/components/auth/AccountOwnerGuard";
 import { resetAuthStore, useAuth } from "@/state/auth/store";
 import { useStorage } from "@/state/storage";
-import { DEFAULT_SETTINGS } from "@/state/db/schema";
+import { DEFAULT_SETTINGS, getDB, resetDB, type Note } from "@/state/db/schema";
 
 const realUpdateSettings = useStorage.getState().updateSettings;
 
@@ -67,9 +67,43 @@ describe("AccountOwnerGuard (AC-15)", () => {
     mount();
 
     await waitFor(() =>
-      expect(updateSettings).toHaveBeenCalledWith({ ownerUserId: "u1" }),
+      expect(updateSettings).toHaveBeenCalledWith({
+        ownerUserId: "u1",
+        anonymousDataAtClaim: false,
+      }),
     );
     expect(screen.queryByText("다른 계정의 보드가 이 기기에 있어요")).toBeNull();
+  });
+
+  test("로그인하기 전에 쓴 메모가 있는 기기를 기록할 때 그 사실을 함께 남긴다 (G6)", async () => {
+    await resetDB();
+    const note: Note = {
+      id: "n1",
+      boardId: "system",
+      kind: "text",
+      x: 0,
+      y: 0,
+      width: 240,
+      rotation: 0,
+      content: "로그인 전에 쓴 메모",
+      aiOptOut: false,
+      createdAt: 1,
+      updatedAt: 1,
+      lastVisitedAt: 1,
+    };
+    await getDB().notes.put(note);
+    const updateSettings = vi.fn(async () => {});
+    useStorage.setState({ updateSettings });
+    signIn("u1");
+    mount();
+
+    await waitFor(() =>
+      expect(updateSettings).toHaveBeenCalledWith({
+        ownerUserId: "u1",
+        anonymousDataAtClaim: true,
+      }),
+    );
+    await resetDB();
   });
 
   test("같은 계정이면 카드가 뜨지 않는다", () => {

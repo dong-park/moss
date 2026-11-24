@@ -1,0 +1,38 @@
+{
+  "id": "D4",
+  "kind": "decision",
+  "title": "공유 받은 내용을 어디서 처리하나",
+  "given": "공유 받기는 웹앱 주소로 POST가 날아온다",
+  "when": "공유 내용을 받아 포스트잇으로 바꿀 때",
+  "then": "공유하지 않은 벽의 글이 서버를 거치는지가 갈린다. local-promise 약속과 오프라인 붙이기가 여기 달렸다",
+  "options": [
+    {
+      "key": "sw",
+      "label": "휴대폰 안 서비스 워커가 받아 기기 저장소에 바로 쓴다",
+      "why": "서버를 거치지 않아 local-promise를 지키고 오프라인에서도 된다"
+    },
+    {
+      "key": "server",
+      "label": "서버 경로가 받아 처리한 뒤 돌려준다",
+      "why": "만들기 쉽지만 공유 안 한 벽의 글이 서버를 지난다. 오프라인에서 안 된다"
+    }
+  ],
+  "recommend": "sw",
+  "confidence": "high",
+  "reversible": false,
+  "status": "끝남",
+  "blocks": [
+    "T2",
+    "T3",
+    "T4",
+    "T8"
+  ],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": [
+    "2026-10-11 user.answer 반영: sw",
+    "2026-10-11 D4 → sw (사용자, 시트에서)"
+  ]
+}

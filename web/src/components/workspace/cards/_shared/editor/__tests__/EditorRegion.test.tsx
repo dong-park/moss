@@ -13,7 +13,7 @@ function wrap(ui: ReactNode) {
 }
 
 beforeEach(() => {
-  useWorkspace.setState({ penMode: false });
+  useWorkspace.setState({ heldTool: null });
 });
 afterEach(() => cleanup());
 
@@ -100,20 +100,20 @@ describe("EditorRegion — aria-live SR 안내 (AC-4)", () => {
     expect(screen.getAllByRole("status")).toHaveLength(1);
   });
 
-  it("펜 모드 토글이 aria-live로 안내된다", () => {
+  it("마카·천 들기와 내려놓기가 aria-live로 안내된다", () => {
     wrap(
       <EditorRegion editable={false}>
         <div>본문</div>
       </EditorRegion>,
     );
     act(() => {
-      useWorkspace.setState({ penMode: true });
+      useWorkspace.setState({ heldTool: { kind: "marker", color: "blue" } });
     });
-    expect(screen.getByRole("status").textContent).toContain("펜 모드 켜짐");
+    expect(screen.getByRole("status").textContent).toContain("들었어요");
     act(() => {
-      useWorkspace.setState({ penMode: false });
+      useWorkspace.setState({ heldTool: null });
     });
-    expect(screen.getByRole("status").textContent).toContain("펜 모드 꺼짐");
+    expect(screen.getByRole("status").textContent).toContain("내려놓았어요");
   });
 
   it("편집 이탈(저장 커밋)이 aria-live로 안내된다", () => {

@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useWorkspace } from "@/state/workspace";
 import { isExpandable } from "./cards/_shared/expandable";
+import { isCommitEnter } from "./ime";
 
 /**
  * FEAT-card-flow §6: 카드 간 키보드 흐름 단축키.
@@ -28,7 +29,7 @@ export function useCardFlowShortcuts(): void {
       const mod = e.metaKey || e.ctrlKey;
 
       // Cmd+Enter — 편집 중 카드에서 동작, 입력 중에도 발동 (next-card 진행).
-      if (mod && e.key === "Enter" && store.editingId) {
+      if (mod && isCommitEnter(e) && store.editingId) {
         e.preventDefault();
         store.commitAndAddNext(store.editingId);
         return;

@@ -5,6 +5,7 @@ import { I18nProvider } from "@/i18n/Provider";
 import { useWorkspace, type Card } from "@/state/workspace";
 import { DraggableCard } from "@/components/workspace/DraggableCard";
 import { MemoExpandDialog } from "@/components/workspace/cards/MemoExpandDialog";
+import { MARKER_COLOR_VALUE, MARKER_WIDTH_UNITS } from "@/state/marker/tokens";
 
 /**
  * FEAT-memo-expand — 펼치기 버튼 + 모달 배선.
@@ -64,7 +65,7 @@ function seed(cards: Card[]) {
     selectedIds: [],
     editingId: null,
     expandedCardId: null,
-    penMode: false,
+    heldTool: null,
   });
 }
 
@@ -82,10 +83,10 @@ describe("FEAT-memo-expand · 펼치기 버튼", () => {
     expect(screen.getByLabelText("펼쳐서 편집")).toBeTruthy();
   });
 
-  it("펜 모드에선 펼치기 버튼을 숨긴다", () => {
+  it("마카를 든 동안엔 펼치기 버튼을 숨긴다", () => {
     const c = textCard();
     seed([c]);
-    useWorkspace.setState({ penMode: true });
+    useWorkspace.setState({ heldTool: { kind: "marker", color: "blue" } });
     wrap(<DraggableCard card={c} />);
     expect(screen.queryByLabelText("펼쳐서 편집")).toBeNull();
   });
@@ -135,10 +136,10 @@ describe("FEAT-memo-expand · 더블클릭 확대", () => {
     expect(useWorkspace.getState().expandedCardId).toBeNull();
   });
 
-  it("펜 모드에선 더블클릭으로 확대가 열리지 않는다", () => {
+  it("마카를 든 동안엔 더블클릭으로 확대가 열리지 않는다", () => {
     const c = textCard();
     seed([c]);
-    useWorkspace.setState({ penMode: true });
+    useWorkspace.setState({ heldTool: { kind: "marker", color: "blue" } });
     const { container } = wrap(<DraggableCard card={c} />);
     fireEvent.doubleClick(cardRoot(container));
     expect(useWorkspace.getState().expandedCardId).toBeNull();
@@ -248,5 +249,37 @@ describe("FEAT-memo-expand · 펜 overlay 1:1 좌표 (고정 폭 컬럼)", () =>
     useWorkspace.getState().setExpandedCard("c1");
     wrap(<MemoExpandDialog />);
     expect(allPolylines()).toHaveLength(1);
+  });
+
+  it("SC-6: 펼친 메모도 카드 앞면과 같은 색·굵기로 그린다 — 고른 굵기가 옛 획을 키우지 않는다", () => {
+    seed([
+      textCard({
+        overlay: JSON.stringify({
+          paths: [
+            [
+              { x: 0, y: 0 },
+              { x: 10, y: 10 },
+            ],
+            {
+              points: [
+                { x: 0, y: 20 },
+                { x: 30, y: 20 },
+              ],
+              color: "red",
+              width: "thick",
+            },
+          ],
+        }),
+      }),
+    ]);
+    // 지금 트레이에서 고른 굵기가 thick이어도 저장된 획의 굵기를 따른다.
+    useWorkspace.setState({ markerWidth: "thick" });
+    useWorkspace.getState().setExpandedCard("c1");
+    wrap(<MemoExpandDialog />);
+
+    const [old, red] = Array.from(allPolylines());
+    expect(old.getAttribute("stroke-width")).toBe(String(MARKER_WIDTH_UNITS.thin));
+    expect(red.getAttribute("stroke")).toBe(MARKER_COLOR_VALUE.red);
+    expect(red.getAttribute("stroke-width")).toBe(String(MARKER_WIDTH_UNITS.thick));
   });
 });

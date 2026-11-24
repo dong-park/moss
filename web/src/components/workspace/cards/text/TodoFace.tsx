@@ -6,6 +6,7 @@ import { useT } from "@/i18n/Provider";
 import { isFocusInSameCard } from "../_shared/memoTitleFocus";
 import type { Card } from "@/state/workspace";
 import type { TodoItem } from "./face";
+import { isCommitEnter, isComposingKey, useImeSafeBlur } from "../../ime";
 
 /* ─────────────────────────────────────────────────────────────
  * 할 일 메모 앞면 (spec/card-faces.md) — 메모 창 없이 카드에서 바로 고친다.
@@ -67,6 +68,8 @@ export function TodoFace({ card, items, editing, onCommitEdit }: Props) {
     commitTitle(card.id);
     if (editing) onCommitEdit();
   };
+  // 한글 조합 중 blur면 확정된 글자로 제목을 저장한다(T11).
+  const onFieldBlur = useImeSafeBlur<HTMLInputElement>((e) => onBlur(e));
   const onEscape = (e: React.KeyboardEvent) => {
     if (e.key !== "Escape") return false;
     e.preventDefault();
@@ -87,10 +90,10 @@ export function TodoFace({ card, items, editing, onCommitEdit }: Props) {
           onChange={(e) => setTitle(card.id, e.target.value)}
           readOnly={!editing}
           tabIndex={editing ? 0 : -1}
-          onBlur={onBlur}
+          onBlur={onFieldBlur}
           onKeyDown={(e) => {
             if (onEscape(e)) return;
-            if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+            if (isCommitEnter(e)) {
               e.preventDefault();
               if (rows.length === 0) write([{ text: "", done: false }]);
               focusNext.current = 0;
@@ -129,11 +132,11 @@ export function TodoFace({ card, items, editing, onCommitEdit }: Props) {
                 placeholder={t("workspace.todo.itemPlaceholder")}
                 aria-label={t("workspace.todo.itemLabel")}
                 onChange={(e) => write(rows.map((r, j) => (j === i ? { ...r, text: e.target.value } : r)))}
-                onBlur={onBlur}
+                onBlur={onFieldBlur}
                 onKeyDown={(e) => {
                   if (onEscape(e)) return;
-                  if (e.nativeEvent.isComposing) return; // 한글 조합 중 Enter는 글자 확정이다.
-                  if (e.key === "Enter") {
+                  if (isComposingKey(e)) return; // 한글 조합 중 키는 글자 확정이다.
+                  if (isCommitEnter(e)) {
                     e.preventDefault();
                     write([...rows.slice(0, i + 1), { text: "", done: false }, ...rows.slice(i + 1)]);
                     focusNext.current = i + 1;

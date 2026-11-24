@@ -1,0 +1,17 @@
+{
+  "id": "T6",
+  "kind": "task",
+  "title": "고른 재질은 다시 열어도 남는다",
+  "given": "보드 A를 코르크로, 보드 B는 그대로 두었다",
+  "when": "앱을 닫았다가 다시 열고 A와 B를 차례로 연다",
+  "then": "A는 코르크로, B는 유리로 열린다. 처음 그려질 때 유리가 잠깐 비쳤다가 코르크로 바뀌는 깜빡임이 없다.",
+  "confidence": "mid",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

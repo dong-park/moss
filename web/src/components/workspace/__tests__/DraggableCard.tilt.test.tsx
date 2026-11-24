@@ -50,7 +50,7 @@ function seed(cards: Card[]) {
     selectedIds: [],
     editingId: null,
     expandedCardId: null,
-    penMode: false,
+    heldTool: null,
     draggingId: null,
     draggingMulti: false,
     dropTargetFunnelId: null,
@@ -196,7 +196,7 @@ describe("FEAT-drag-tilt · 드래그 중 기울기", () => {
     expect(el.style.transform).toContain("var(--tilt");
 
     // 안착이 끝나면 메모 고유 각도(FEAT-memo-variety)로 돌아온다.
-    await waitFor(() => expect(el.style.transform).toBe(memoBaseTransform(c, false)), {
+    await waitFor(() => expect(el.style.transform).toBe(memoBaseTransform(c)), {
       timeout: 3000,
     });
     expect(el.style.getPropertyValue("--tilt")).toBe("");
@@ -217,7 +217,7 @@ describe("FEAT-drag-tilt · 드래그 중 기울기", () => {
     // 스프링이 끝나기 전에 다시 클릭 — 옛 스프링을 멈추고 기울기 상태를 비운다.
     fireEvent.mouseDown(el, { button: 0, clientX: 90, clientY: 0 });
     fireEvent.mouseUp(window, { clientX: 90, clientY: 0 });
-    expect(el.style.transform).toBe(memoBaseTransform(c, false));
+    expect(el.style.transform).toBe(memoBaseTransform(c));
     expect(el.style.getPropertyValue("--tilt")).toBe("");
   });
 
@@ -233,7 +233,7 @@ describe("FEAT-drag-tilt · 드래그 중 기울기", () => {
     fireEvent.mouseMove(window, { clientX: 90, clientY: 0 });
 
     // FEAT-memo-variety의 고정 lift — 고유 각도에서 -1.5도 더.
-    expect(el.style.transform).toBe(memoLiftedTransform(c, false));
+    expect(el.style.transform).toBe(memoLiftedTransform(c));
     expect(el.style.transition).toContain("transform 170ms");
 
     fireEvent.mouseUp(window, { clientX: 90, clientY: 0 });
@@ -265,7 +265,7 @@ describe("FEAT-drag-tilt · 흡수 거부", () => {
 
       fireEvent.mouseUp(window, { clientX: 90, clientY: 0 });
       vi.useRealTimers();
-      await waitFor(() => expect(el.style.transform).toBe(memoBaseTransform(c, false)));
+      await waitFor(() => expect(el.style.transform).toBe(memoBaseTransform(c)));
       expect(el.style.getPropertyValue("--tilt")).toBe("");
       expect(useWorkspace.getState().draggingId).toBeNull();
     } finally {

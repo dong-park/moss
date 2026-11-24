@@ -1,0 +1,17 @@
+{
+  "id": "T11",
+  "kind": "task",
+  "title": "사진첩이 비었을 때 안내",
+  "given": "아직 한 번도 벽을 닦은 적이 없다",
+  "when": "벽 사진첩을 연다",
+  "then": "'벽을 닦으면 닦기 전 모습이 여기 사진으로 남아요' 한 줄이 보인다.",
+  "confidence": "mid",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

@@ -44,6 +44,12 @@ export interface CollabProviderConfig {
    * 활성 세션은 쓰지 않는다.
    */
   onSynced?(): void;
+  /**
+   * 서버가 이 클라이언트의 로컬 변경을 모두 받아 적용했다고 답했을 때(SyncStatus).
+   * `onSynced`는 서버의 step2를 받는 순간 올라서 "서버가 내 내용을 받았다"는 뜻이
+   * 아니다 — 올린 내용을 확인해야 하는 호출자는 이 신호를 쓴다.
+   */
+  onAcknowledged?(): void;
 }
 
 export interface CollabProviderHandle {
@@ -67,6 +73,18 @@ function mapStatus(status: WebSocketStatus): CollabStatus {
 export const CLOSE_FORBIDDEN = 4403;
 /** 동기화 문서가 한도(10MB)를 넘어 서버가 끊을 때 쓰는 close code (sync/server.ts). */
 export const CLOSE_DOCUMENT_TOO_LARGE = 4413;
+/** 보드의 동시 연결 한도에 닿아 서버가 끊을 때 쓰는 close code (sync/server.ts). */
+export const CLOSE_BOARD_FULL = 4429;
+
+/**
+ * 서버가 이 연결을 받지 않겠다고 끊은 close code인가. 그 밖의 끊김(1006 등 네트워크·재시작)은
+ * 일시적이다 — provider 가 스스로 다시 붙으므로 실패로 치지 않는다.
+ */
+export function isRejectingClose(code: number): boolean {
+  return (
+    code === CLOSE_FORBIDDEN || code === CLOSE_DOCUMENT_TOO_LARGE || code === CLOSE_BOARD_FULL
+  );
+}
 
 export const realProviderFactory: CollabProviderFactory = {
   create(config) {
@@ -79,6 +97,9 @@ export const realProviderFactory: CollabProviderFactory = {
       onAuthenticationFailed: ({ reason }) => config.onAuthenticationFailed(reason),
       onClose: ({ event }) => config.onClose(event.code),
       onSynced: () => config.onSynced?.(),
+      onUnsyncedChanges: ({ number }) => {
+        if (number === 0) config.onAcknowledged?.();
+      },
     });
     return {
       awareness: (provider.awareness as unknown as CollabAwareness | null) ?? null,

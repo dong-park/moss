@@ -34,7 +34,7 @@ afterEach(async () => {
     selectedIds: [],
     currentBoardId: SYSTEM_BOARD_ID,
     view: "canvas",
-    canvasHasFitted: false,
+    viewSettledBoardIds: [],
     tableReturnBoardId: null,
   });
   if (originalStorage) {

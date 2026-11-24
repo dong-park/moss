@@ -5,6 +5,7 @@ import { useWorkspace } from "@/state/workspace";
 import type { Card } from "@/state/workspace";
 import { decodeFrameConfig } from "@/state/frameContent";
 import { ColumnsSkin } from "./skins/ColumnsSkin";
+import { isCommitEnter, useImeSafeBlur } from "../../ime";
 
 /* ─────────────────────────────────────────────────────────────
  * FEAT-sticky-redesign n7 — 메모판(frame) 렌더.
@@ -37,6 +38,8 @@ export function FrameCardContent({ card }: { card: Card }) {
     setEditing(false);
     renameFrame(card.id, draft);
   };
+  // 한글 조합 중 blur면 확정된 글자로 저장한다(T11).
+  const onNameBlur = useImeSafeBlur<HTMLInputElement>(() => commit());
 
   return (
     <div
@@ -81,9 +84,9 @@ export function FrameCardContent({ card }: { card: Card }) {
             value={draft}
             maxLength={40}
             onChange={(e) => setDraft(e.target.value)}
-            onBlur={commit}
+            onBlur={onNameBlur}
             onKeyDown={(e) => {
-              if (e.key === "Enter") {
+              if (isCommitEnter(e)) {
                 e.preventDefault();
                 commit();
               } else if (e.key === "Escape") {

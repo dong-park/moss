@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { I18nProvider } from "@/i18n/Provider";
 import { InviteRoute } from "@/components/auth/InviteRoute";
 import {
@@ -92,6 +92,21 @@ describe("AC-5 · InviteRoute", () => {
     expect(screen.getByText("이번 주 기획")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Google 계정으로 로그인" })).toBeTruthy();
     expect(api.previewInvite).toHaveBeenCalledWith("tok");
+  });
+
+  test("T14 · 로그인 전에는 초대 카드 안에 Google 버튼이 있고 전체 화면 로그인은 없다", async () => {
+    const api = fakeApi();
+    configureAuth({ api, googleIdToken: vi.fn(async () => "id-token") });
+    mount({ token: "tok", onJoined: vi.fn() });
+
+    await screen.findByText("이번 주 기획");
+    const dialogs = screen.getAllByRole("dialog");
+    expect(dialogs).toHaveLength(1);
+    expect(within(dialogs[0]).getByText("이번 주 기획")).toBeTruthy();
+    expect(
+      within(dialogs[0]).getByRole("button", { name: "Google 계정으로 로그인" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("heading", { level: 1 })).toBeNull();
   });
 
   test("로그인만으로는 수락하지 않는다 — 참여하기 1탭이 동의 지점", async () => {

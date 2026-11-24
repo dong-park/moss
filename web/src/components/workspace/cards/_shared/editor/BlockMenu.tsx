@@ -27,6 +27,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { useInstance } from "@milkdown/react";
 import type { Ctx } from "@milkdown/ctx";
 import { editorViewCtx, parserCtx } from "@milkdown/core";
+import { isCommitEnter } from "../../../ime";
 
 import { useT } from "@/i18n/Provider";
 import { useToasts } from "@/state/notifications";
@@ -310,7 +311,7 @@ export function BlockMenu() {
               value={linkUrl}
               onChange={(e) => setLinkUrl(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter") {
+                if (isCommitEnter(e)) {
                   e.preventDefault();
                   submitLink();
                 }
@@ -322,7 +323,7 @@ export function BlockMenu() {
               value={linkTitle}
               onChange={(e) => setLinkTitle(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter") {
+                if (isCommitEnter(e)) {
                   e.preventDefault();
                   submitLink();
                 }

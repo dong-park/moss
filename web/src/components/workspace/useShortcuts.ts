@@ -42,12 +42,12 @@ export function useShortcuts(): void {
       const mod = e.metaKey || e.ctrlKey;
       const store = useWorkspace.getState();
 
-      // FEAT-text-tool AC-2: T = 텍스트 배치 모드(1회성). 입력·편집·펜 모드 중엔 무시.
+      // FEAT-text-tool AC-2: T = 텍스트 배치 모드(1회성). 입력·편집·마카 든 동안엔 무시.
       // 선택된 제목 편집 대상(메모)이 있으면 T를 양보한다 — useCardFlowShortcuts의
       // "글자 키 → 제목 편집"이 이 키를 가져가야 하기 때문. 확대 모달·다이얼로그가
       // 열려 있을 때도 캔버스 배치 모드로 새지 않게 무시한다.
       if (!mod && !e.altKey && !e.shiftKey && (e.key === "t" || e.key === "T")) {
-        if (isTyping() || store.editingId || store.penMode) return;
+        if (isTyping() || store.editingId || store.heldTool) return;
         if (hasTitleEditTarget(store)) return;
         if (isModalOpen(store)) return;
         e.preventDefault();

@@ -55,7 +55,7 @@ function seedSubcanvas(cards: Card[] = []) {
     cards,
     selectedIds: [],
     editingId: null,
-    penMode: false,
+    heldTool: null,
     draggingId: null,
     draggingMulti: false,
     dropTargetFunnelId: null,
@@ -176,7 +176,7 @@ describe("우클릭 메뉴로 밖으로 내보내기", () => {
       cards: [],
       selectedIds: [],
       editingId: null,
-      penMode: false,
+      heldTool: null,
       draggingId: null,
       draggingMulti: false,
       dropTargetCrumbId: null,
@@ -204,7 +204,7 @@ describe("파일함 우클릭 → 이름 바꾸기", () => {
       ] as Board[],
       currentBoardId: "P",
       editingId: null,
-      penMode: false,
+      heldTool: null,
       renameBoard,
     });
     const card: Card = { id: "f1", kind: "board", x: 0, y: 0, width: 200, content: "", boardRef: "sub" };
@@ -230,7 +230,7 @@ describe("사진 우클릭 → 캡션 달기", () => {
       boards: [{ id: "P", name: "부모보드", parentBoardId: null }] as Board[],
       currentBoardId: "P",
       editingId: null,
-      penMode: false,
+      heldTool: null,
     });
     const card: Card = {
       id: "p1", kind: "photo", x: 0, y: 0, width: 240, height: 180, content: "",

@@ -1,5 +1,5 @@
 import type * as Y from "yjs";
-import type { Board, Connection, Note } from "@/state/db/schema";
+import type { Board, Connection, Note, WallStroke } from "@/state/db/schema";
 import { getDB } from "@/state/db/schema";
 import { broadcastDocWrite } from "@/state/db/liveSync";
 import {
@@ -11,6 +11,7 @@ import {
   scheduleInactiveClose,
 } from "./activeDoc";
 import {
+  applyStrokeChanges,
   connectionsMap,
   deleteConnection,
   deleteNote,
@@ -79,6 +80,21 @@ export function deleteNoteRecord(
   // n23 재심사 2R-2: 문서에서 지운 메모의 공유 스냅샷을 버린다(누수 방지).
   forgetSharedSnapshot(id);
   return writeToBoardDoc(storageBoardId, (doc) => deleteNote(doc, id));
+}
+
+/**
+ * wall-marker n1: 벽 획을 그 보드 문서에 쓰고 지운다. 한 트랜잭션이라 지우개 쪼개기(원본 삭제 +
+ * 조각 추가)가 다른 기기에 반만 보이지 않는다.
+ */
+export function writeStrokeRecords(
+  storageBoardId: string | null,
+  changes: {
+    put?: readonly WallStroke[];
+    update?: readonly WallStroke[];
+    remove?: readonly string[];
+  },
+): Promise<void> {
+  return writeToBoardDoc(storageBoardId, (doc) => applyStrokeChanges(doc, changes));
 }
 
 /** 보드 메타를 자기 문서에 쓴다. */

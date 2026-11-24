@@ -1,0 +1,17 @@
+{
+  "id": "T12",
+  "kind": "task",
+  "title": "포스트잇 본문에서 한글 Enter가 줄바꿈을 두 번 만들지 않는다",
+  "given": "포스트잇 본문을 고치는 중이고 줄 끝 글자를 조합하고 있다. Safari와 Chrome 둘 다에서 본다",
+  "when": "Enter를 누른다",
+  "then": "글자가 확정되고 줄은 한 번만 바뀐다. 빈 줄이 하나 더 생기거나 마지막 글자가 다음 줄로 복사되지 않는다",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

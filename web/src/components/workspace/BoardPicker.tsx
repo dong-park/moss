@@ -5,21 +5,24 @@ import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useEffect, useRef, useState } from "react";
 import { useT } from "@/i18n/Provider";
 import { SYSTEM_BOARD_ID, useWorkspace } from "@/state/workspace";
+import { systemBoardName } from "@/state/systemBoardName";
 import type { Board } from "@/state/db/schema";
 import { TemplatePicker } from "./TemplatePicker";
 import { BoardDeleteDialog } from "./BoardDeleteDialog";
 import { BoardUndoToast } from "./BoardUndoToast";
 import { useExportStore } from "@/state/exportStore";
 import { DataTransferMenu } from "@/components/export/DataTransferMenu";
+import { isCommitEnter, useImeSafeBlur } from "./ime";
 
 // 단축키(Cmd+N)와 "+ 새 보드" 진입점이 같은 모달을 공유하기 위해 store 상태 사용.
 
 /**
  * FEAT-boards · 상단 헤더 보드 선택 드롭다운.
- * - 시스템 보드 "머무는 생각" 첫 항목 고정 (체크 마크 + 시스템 배지, 삭제·rename 불가)
+ * - 첫 벽(시스템 보드) 첫 항목 고정 (체크 마크, 삭제 불가·이름 변경 가능). 저장된
+ *   이름이 없으면 "내 벽"
  * - 사용자 보드 최근 수정 순
  * - 빈 이름 → "(이름 없는 보드)" placeholder
- * - 트리거 더블클릭 = 인플레이스 이름 편집 (시스템 보드 제외)
+ * - 트리거 더블클릭 = 인플레이스 이름 편집
  * - "+ 새 보드" — TemplatePicker(FEAT-templates) 모달 진입 → 5종 중 선택 시 새 보드 생성
  */
 export function BoardPicker() {
@@ -45,8 +48,9 @@ export function BoardPicker() {
       ? t("workspace.boardPicker.unnamed")
       : board.name;
 
+  const systemName = systemBoardName(boards, t);
   const triggerLabel = isSystem
-    ? t("workspace.boardPicker.system")
+    ? systemName
     : currentBoard
     ? labelFor(currentBoard)
     : t("workspace.boardPicker.unnamed");
@@ -64,7 +68,7 @@ export function BoardPicker() {
   }, [editing]);
 
   const startEdit = () => {
-    if (isSystem || !currentBoard) return;
+    if (!currentBoard) return;
     setDraft(currentBoard.name);
     setEditing(true);
   };
@@ -93,6 +97,10 @@ export function BoardPicker() {
   };
 
   const cancelEdit = () => setEditing(false);
+  // 한글 조합 중 blur면 확정된 글자로 저장한다(T11).
+  const onRenameBlur = useImeSafeBlur<HTMLInputElement>(() => {
+    void commitEdit();
+  });
 
   return (
     <DropdownMenu.Root>
@@ -102,9 +110,9 @@ export function BoardPicker() {
             ref={inputRef}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            onBlur={commitEdit}
+            onBlur={onRenameBlur}
             onKeyDown={(e) => {
-              if (e.key === "Enter") {
+              if (isCommitEnter(e)) {
                 e.preventDefault();
                 void commitEdit();
               } else if (e.key === "Escape") {
@@ -130,11 +138,6 @@ export function BoardPicker() {
           </DropdownMenu.Trigger>
         )}
 
-        {isSystem && (
-          <span className="text-xs text-text-soft">
-            {t("workspace.boardPicker.systemNote")}
-          </span>
-        )}
       </div>
 
       <DropdownMenu.Portal>
@@ -148,16 +151,13 @@ export function BoardPicker() {
             className="flex cursor-pointer items-center justify-between rounded-md px-3 py-2 text-sm text-text outline-none transition-colors data-[highlighted]:bg-panel"
             onSelect={() => void navigateToBoard(SYSTEM_BOARD_ID)}
           >
-            <span className="flex items-center gap-2">
-              <span>{t("workspace.boardPicker.system")}</span>
-              <span className="rounded-sm bg-accent-lime/30 px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-text-muted">
-                {t("workspace.boardPicker.systemBadge")}
-              </span>
-            </span>
+            <span>{systemName}</span>
             {isSystem && <span className="text-accent-lime">✓</span>}
           </DropdownMenu.Item>
 
-          {boards.map((board) => (
+          {boards
+            .filter((board) => board.id !== SYSTEM_BOARD_ID)
+            .map((board) => (
             <ContextMenu.Root key={board.id}>
               <ContextMenu.Trigger asChild>
                 <DropdownMenu.Item

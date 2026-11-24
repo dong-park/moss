@@ -1,0 +1,17 @@
+{
+  "id": "T6",
+  "kind": "task",
+  "title": "붙일 수 없는 것을 보내면 아무것도 붙지 않고 이유를 알려 준다",
+  "given": "10MB가 넘는 사진이나 동영상을 골랐다",
+  "when": "공유 시트에서 moss로 보낸다",
+  "then": "'붙이지 못했어요 · 사진은 10MB까지예요'처럼 이유가 한 줄로 뜬다. 벽의 포스트잇 수는 그대로다",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

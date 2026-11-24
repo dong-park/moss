@@ -1,8 +1,12 @@
 export {
+  CONFIRMED_UPLOAD_IDLE_TIMEOUT_MS,
+  CONFIRMED_UPLOAD_MAX_MS,
   UPLOAD_SYNC_TIMEOUT_MS,
+  UploadNotConfirmedError,
   configureCollab,
   resetCollabStore,
   uploadBoardDoc,
+  uploadBoardDocConfirmed,
   useCollab,
   type CollabConnectionStatus,
   type CollabDeps,

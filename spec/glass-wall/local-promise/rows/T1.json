@@ -1,0 +1,17 @@
+{
+  "id": "T1",
+  "kind": "task",
+  "title": "로그인 없이 첫 진입",
+  "given": "이 브라우저에서 moss를 처음 연다. 로그인한 적이 없다",
+  "when": "주소창에 moss 주소를 친다",
+  "then": "로그인 화면 없이 바로 벽이 열린다. 오른쪽 위에 '🔒 이 기기에만' 배지가 보인다. 마카로 쓰고 포스트잇을 붙이고 새로고침해도 그대로 남는다",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

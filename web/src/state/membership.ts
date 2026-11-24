@@ -18,7 +18,7 @@ import type { BoardSummary } from "./auth/types";
 import { getDB, type Board } from "./db/schema";
 import { useToasts } from "./notifications";
 import { realShareApi, type ShareApi } from "./share/api";
-import { useShare } from "./share/store";
+import { reconcileDeviceShared, useShare } from "./share/store";
 import { useStorage } from "./storage";
 import { isSystemBoardNote } from "./boardIds";
 import {
@@ -69,7 +69,7 @@ const notified = new Set<string>();
 
 /**
  * 편집자 기기의 보드 사본을 지운다. y-indexeddb 문서 + Dexie 파생 행
- * (notes·connections·embeddings·trash·trashConnections) + board 행.
+ * (notes·connections·embeddings·trash·trashConnections) + board 행. 벽 획은 문서에 있어 문서와 함께 간다.
  */
 export async function purgeLocalBoardCopy(boardId: string): Promise<void> {
   await deps.deleteDoc(boardId);
@@ -77,7 +77,14 @@ export async function purgeLocalBoardCopy(boardId: string): Promise<void> {
   const noteIds = (await db.notes.where("boardId").equals(boardId).primaryKeys()) as string[];
   await db.transaction(
     "rw",
-    [db.notes, db.connections, db.embeddings, db.trash, db.trashConnections, db.boards],
+    [
+      db.notes,
+      db.connections,
+      db.embeddings,
+      db.trash,
+      db.trashConnections,
+      db.boards,
+    ],
     async () => {
       if (noteIds.length > 0) {
         const incident = (await db.connections
@@ -190,10 +197,13 @@ async function removeBoardFromList(boardId: string): Promise<void> {
 export async function handleBoardRevoked(boardId: string): Promise<void> {
   // 소유자는 자기가 해제한 보드를 잃지 않는다(AC-13) — 서버가 그 보드의 모든 연결을
   // 4403으로 끊으므로 소유자 기기도 이 신호를 받는다. 혼자 쓰는 보드로 되돌리기만 한다.
-  if (useShare.getState().byBoard[boardId]?.role === "owner") {
+  const info = useShare.getState().byBoard[boardId];
+  if (info?.role === "owner") {
     useShare.getState().forgetBoard(boardId);
     return;
   }
+  // 주인을 모르는 기기 기록으로는 사본을 지우지 않는다 — 남의 계정으로 받은 신호일 수 있다.
+  if (info?.unconfirmed) return;
   await purgeLocalBoardCopy(boardId);
   await removeBoardFromList(boardId);
   useShare.getState().forgetBoard(boardId);
@@ -221,6 +231,10 @@ export async function syncMyBoards(): Promise<void> {
     return; // 로그인 안 함 — 네트워크를 부르지 않는다 (AC-1)
   }
 
+  // 기기에 남은 공유 기록이 이 계정의 것인지 먼저 가른다 — 다른 계정의 것이면 버려서
+  // 이 계정의 서버 목록에 없다고 남의 원격 사본을 지우지 않는다.
+  reconcileDeviceShared(session.user.id);
+
   let summaries: BoardSummary[];
   try {
     summaries = await deps.api.myBoards(session.accessToken);
@@ -245,6 +259,7 @@ export async function syncMyBoards(): Promise<void> {
   const known = useShare.getState().byBoard;
   for (const [boardId, info] of Object.entries(known)) {
     if (info.status !== "shared") continue;
+    if (info.unconfirmed) continue; // 주인을 모르는 기록은 지울 근거가 아니다.
     if (serverIds.has(boardId)) continue;
     const isRemote = localBoards.find((b) => b.id === boardId)?.remote === true;
     if (isRemote) {

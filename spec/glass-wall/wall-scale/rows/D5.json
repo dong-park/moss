@@ -1,0 +1,40 @@
+{
+  "id": "D5",
+  "kind": "decision",
+  "title": "유리 흐림 비용을 어떻게 막을까",
+  "given": "시안 유리는 화면 전체 backdrop-filter blur(10px)이고, 뒤 방 요소마다 blur 필터가 있다",
+  "when": "흐림 구현 조건을 정한다. glass-surface가 이 조건을 따라야 한다",
+  "then": "팬 프레임마다 화면 전체 흐림을 다시 계산하는지가 갈린다",
+  "options": [
+    {
+      "key": "A",
+      "label": "미리 흐린 정적 배경 그림을 쓰고 라이브 backdrop-filter는 쓰지 않는다",
+      "why": "뒤 방은 움직이지 않으니 한 번만 흐리면 된다. 비용이 거의 0이다"
+    },
+    {
+      "key": "B",
+      "label": "라이브 backdrop-filter를 쓰되 팬·줌 중에는 끈다",
+      "why": "모양은 시안과 같지만 멈출 때 흐림이 다시 켜지며 깜박인다"
+    },
+    {
+      "key": "C",
+      "label": "라이브 backdrop-filter 그대로",
+      "why": "시안과 같다. 2,000장 위에서 프레임마다 화면 전체를 다시 흐릴 위험이 크다"
+    }
+  ],
+  "recommend": "A",
+  "confidence": "high",
+  "reversible": false,
+  "status": "끝남",
+  "blocks": [
+    "T8"
+  ],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": [
+    "2026-10-11 user.answer 반영: A",
+    "2026-10-11 D5 → A (사용자, 시트에서)"
+  ]
+}

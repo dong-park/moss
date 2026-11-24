@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useWorkspace } from "@/state/workspace";
 import { useStorage } from "@/state/storage";
 import { isSystemBoardNote } from "@/state/boardIds";
+import { systemBoardName } from "@/state/systemBoardName";
 import type { TrashEntry } from "@/state/db/schema";
 import { plainText } from "@/state/memoSearch";
 import { useT } from "@/i18n/Provider";
@@ -86,6 +87,7 @@ export function TrashPanel() {
   // FEAT-trash-drag: 패널이 열린 채로 드롭해도 목록이 맞게 — 삭제가 일어나면 이 값이
   // 바뀌고 아래 effect가 재조회한다.
   const trashCount = useWorkspace((s) => s.trashCount);
+  const boards = useWorkspace((s) => s.boards);
   const [entries, setEntries] = useState<TrashEntry[]>([]);
   const panelRef = useRef<HTMLDivElement | null>(null);
   // 본문 파싱은 목록이 바뀔 때만 — 렌더마다 1,000행을 다시 파싱하지 않게.
@@ -204,7 +206,7 @@ export function TrashPanel() {
                 </div>
                 <div className="truncate text-[11px] text-text-muted">
                   {isSystemBoardNote(entry.note)
-                    ? t("workspace.boardPicker.system")
+                    ? systemBoardName(boards, t)
                     : (entry.boardName ??
                       t("workspace.trash.deletedBoard"))}{" "}
                   · {DATE_FMT.format(entry.deletedAt)}

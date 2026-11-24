@@ -65,6 +65,11 @@ interface StorageState {
    * 오름차순으로 안정 정렬해 돌려준다. Dexie 미러를 읽는다 — 보드 문서를 다 열지 않는다.
    */
   loadAllNotes: () => Promise<Note[]>;
+  /**
+   * 모든 벽 검색용 — 본문 검색 대상 종류(text·textbox·photo)만 `kind` 인덱스로 읽는다.
+   * 펜 손글씨(overlay)·함·이미지 행은 읽지 않는다. createdAt 오름차순.
+   */
+  loadSearchableNotes: () => Promise<Note[]>;
   saveNote: (patch: Partial<Note> & { id: string }) => Promise<Note>;
   /**
    * FEAT-memo-table-view P1-2: 표 인라인 제목 확정 전용. 없는 노트는 만들지 않고
@@ -258,6 +263,9 @@ async function requestPersistIfNeeded(
   }
 }
 
+/** 모든 벽 검색이 읽는 노트 종류. `kind` 인덱스를 종류별 한 범위씩 읽는다. */
+const SEARCHABLE_KINDS = ["text", "textbox", "photo"] as const;
+
 export const useStorage = create<StorageState>((set, get) => ({
   initialized: false,
   settings: null,
@@ -303,6 +311,16 @@ export const useStorage = create<StorageState>((set, get) => ({
   loadAllNotes: async () => {
     const db = getDB();
     const notes = await db.notes.toArray();
+    notes.sort((a, b) => a.createdAt - b.createdAt);
+    return notes;
+  },
+
+  loadSearchableNotes: async () => {
+    const db = getDB();
+    const parts = await Promise.all(
+      SEARCHABLE_KINDS.map((kind) => db.notes.where("kind").equals(kind).toArray()),
+    );
+    const notes = parts.flat();
     notes.sort((a, b) => a.createdAt - b.createdAt);
     return notes;
   },
@@ -601,10 +619,7 @@ export const useStorage = create<StorageState>((set, get) => ({
     };
     await db.transaction(
       "rw",
-      db.boards,
-      db.notes,
-      db.connections,
-      db.embeddings,
+      [db.boards, db.notes, db.connections, db.embeddings],
       async () => {
         for (const bid of toDelete) {
           const board = await db.boards.get(bid);

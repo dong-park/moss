@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { isCommitEnter, useImeSafeBlur } from "../../ime";
 
 /* ─────────────────────────────────────────────────────────────
  * 편집 가능한 단일 라인 / 블록
@@ -26,6 +27,8 @@ export function EditableLine({
   useEffect(() => {
     if (editing) ref.current?.focus();
   }, [editing]);
+  // 한글 조합 중 blur면 확정된 글자로 저장한다(T11).
+  const onBlur = useImeSafeBlur<HTMLInputElement>(() => onCommit());
 
   if (editing) {
     return (
@@ -34,9 +37,9 @@ export function EditableLine({
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        onBlur={onCommit}
+        onBlur={onBlur}
         onKeyDown={(e) => {
-          if (e.key === "Escape" || e.key === "Enter") {
+          if (e.key === "Escape" || isCommitEnter(e)) {
             e.preventDefault();
             (e.target as HTMLInputElement).blur();
           }
@@ -79,6 +82,7 @@ export function EditableBlock({
       ref.current?.select();
     }
   }, [editing]);
+  const onBlur = useImeSafeBlur<HTMLTextAreaElement>(() => onCommit());
 
   if (editing) {
     return (
@@ -86,7 +90,7 @@ export function EditableBlock({
         ref={ref}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        onBlur={onCommit}
+        onBlur={onBlur}
         onKeyDown={(e) => {
           if (e.key === "Escape") {
             e.preventDefault();

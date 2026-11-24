@@ -121,7 +121,7 @@ export function EditorRegion({
   const t = useT();
   const resolvedLabel = label ?? t("workspace.memo.editor.label");
   const isOwner = useIsLiveOwner();
-  const penMode = useWorkspace((s) => s.penMode);
+  const toolHeld = useWorkspace((s) => s.heldTool !== null);
 
   // 저장 안내(AC-4): 편집 이탈(editable true→false) = 커밋/영속 시점 → "저장됨".
   // 한 번에 한 카드만 편집 가능하므로 owner가 아니어도 안내가 겹치지 않는다.
@@ -133,21 +133,21 @@ export function EditorRegion({
     wasEditable.current = editable;
   }, [editable, t]);
 
-  // 펜 모드 안내(AC-4): 보드 전역 모드라 owner만 1회 안내. 초기 마운트는 침묵.
-  // prevPen은 owner 여부와 무관하게 동기화 → owner 승계 시 헛안내 방지.
-  const prevPen = useRef(penMode);
+  // 마카·천 안내(AC-4): 보드 전역 상태라 owner만 1회 안내. 초기 마운트는 침묵.
+  // prevHeld는 owner 여부와 무관하게 동기화 → owner 승계 시 헛안내 방지.
+  const prevHeld = useRef(toolHeld);
   useEffect(() => {
-    if (penMode !== prevPen.current) {
+    if (toolHeld !== prevHeld.current) {
       if (isOwner) {
         announceEditor(
-          penMode
-            ? t("workspace.memo.editor.penModeOn")
-            : t("workspace.memo.editor.penModeOff"),
+          toolHeld
+            ? t("workspace.memo.editor.markerHeld")
+            : t("workspace.memo.editor.markerReleased"),
         );
       }
-      prevPen.current = penMode;
+      prevHeld.current = toolHeld;
     }
-  }, [isOwner, penMode, t]);
+  }, [isOwner, toolHeld, t]);
 
   return (
     <>

@@ -95,8 +95,6 @@ describe("AC-1(부분): 재노출 기반 자동 큐레이팅 — '지금 머무�
       await handle.whenLoaded;
       putNote(handle.doc, note);
     }
-    // installPromptShown=true → seed 카드 우회 (이 테스트에서는 우리가 직접 넣음)
-    await useStorage.getState().updateSettings({ installPromptShown: true });
     await useWorkspace.getState().loadFromStorage();
 
     const cards = useWorkspace.getState().cards;

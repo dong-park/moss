@@ -1,0 +1,17 @@
+{
+  "id": "T9",
+  "kind": "task",
+  "title": "하한에서 −는 더 물러나지 않는다",
+  "given": "줌이 D1의 하한이다",
+  "when": "−를 누른다",
+  "then": "−가 흐리게 보이고, 눌러도 비율이 바뀌지 않는다. 상한에서 +도 같다",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

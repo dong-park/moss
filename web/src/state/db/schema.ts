@@ -3,6 +3,7 @@ import { migratedContent } from "../markdownMigration";
 import { blocksToMarkdown } from "../cardContent";
 import { markOpfsPurgePending } from "./opfs";
 import { encodeFrameContent } from "../frameContent";
+import type { MarkerColor, MarkerWidth } from "../marker/tokens";
 
 /**
  * 카드 종류. spec FEAT-storage §5 정의.
@@ -130,6 +131,11 @@ export interface Board {
    * true 면 이 기기에 원본이 없고 서버에서 사라지면 로컬 사본을 지운다. 비인덱스 optional.
    */
   remote?: boolean;
+  /**
+   * glass-surface: 벽 바탕 재질("glass" | "whiteboard" | "cork"). 보드 문서로 동기화된다.
+   * 없거나 모르는 값이면 유리로 읽는다(`wallMaterialFor`). 비인덱스 optional이라 Dexie 버전은 그대로.
+   */
+  wallMaterial?: string;
   createdAt: number;
   updatedAt: number;
   lastOpenedAt: number;
@@ -152,6 +158,28 @@ export interface Connection {
   sourceSide?: ConnectionSide;
   targetSide?: ConnectionSide;
   createdAt: number;
+}
+
+/** wall-marker n1: 벽 획의 점. 보드 좌표다 — 줌·팬과 무관하다. */
+export interface StrokePoint {
+  x: number;
+  y: number;
+}
+
+/**
+ * wall-marker n1 (D1=A): 벽에 그은 획 하나 = 한 행. 보드 좌표로 저장한다.
+ * 색·굵기는 이름이다(`state/marker/tokens`) — 화면 값은 그리는 쪽이 정한다.
+ * 포스트잇 위 획은 이 행이 아니라 노트 `overlay`에 붙는다(D2=A).
+ */
+export interface WallStroke {
+  id: string;
+  boardId: string;
+  points: StrokePoint[];
+  color: MarkerColor;
+  width: MarkerWidth;
+  /** 쌓임 순서의 기준이다(createdAt, 같으면 id) — 조각·복원은 원본 값을 이어받는다. */
+  createdAt: number;
+  updatedAt: number;
 }
 
 export interface EmbeddingCacheEntry {
@@ -216,6 +244,12 @@ export interface Settings {
    * 계정별 저장소 분리는 미룬 질문이라 여기서는 소유자 표시만 남긴다.
    */
   ownerUserId?: string | null;
+  /**
+   * 주인을 기록하던(claim) 시점에 로그인하기 전에 쓴 메모가 이 기기에 있었다. 첫 벽을 공유하면
+   * 그 메모가 모두 서버로 올라가므로, 첫 벽 공유 시트가 한 번 확인을 받고 이 표시를 지운다.
+   * 이미 로그인된 세션이 복원돼 주인이 곧바로 기록되는 기기에서도 확인이 빠지지 않게 하려는 것이다.
+   */
+  anonymousDataAtClaim?: boolean;
   /**
    * P1 AC-8: 이 기기에서 지운 보드 id(최근 순, 상한 있음). 보드 행을 지우는 순간
    * 남겨, `/b/<id>`로 다시 들어올 때 "찾을 수 없는 보드예요"를 띄운다. 휴지통
@@ -319,6 +353,10 @@ export class MossDB extends Dexie {
       trashConnections: "id, sourceNoteId, targetNoteId",
     };
     this.version(6).stores(storesV6);
+    // 벽 획(wall-marker)은 DB 테이블이 아니다 — 원본은 보드 Y.Doc의 `strokes` 맵 하나다.
+    // 한때 이 브랜치에서 v7 `strokes` 테이블(로컬 미러)을 뒀다가 걷어 냈다(두 저장소를 맞추는
+    // 틈에서 정확성 결함이 났다). v7은 배포된 적이 없고, 열려 있던 개발 DB의 남는 테이블은
+    // Dexie 4가 그대로 둔다.
   }
 }
 

@@ -40,7 +40,8 @@ export function MemoExpandDialog() {
   const setTitle = useWorkspace((s) => s.setTitle);
   const commitTitle = useWorkspace((s) => s.commitTitle);
   const setOverlay = useWorkspace((s) => s.setOverlay);
-  const penWidth = useWorkspace((s) => s.penWidth);
+  const markerWidth = useWorkspace((s) => s.markerWidth);
+  const lastMarkerColor = useWorkspace((s) => s.lastMarkerColor);
   // expandedCardId가 가리키는 카드만 좁혀 구독 — 다른 카드 변경에 리렌더되지 않게.
   const card = useWorkspace((s) =>
     s.expandedCardId
@@ -48,8 +49,8 @@ export function MemoExpandDialog() {
       : null,
   );
 
-  // 모달-로컬 그리기 상태. 보드 전역 penMode와 분리해 모달이 보드 상태를 건드리지
-  // 않게 한다(닫으면 보드는 그대로 텍스트 모드). 굵기는 store penWidth를 재사용.
+  // 모달-로컬 그리기 상태. 보드의 손에 든 도구(heldTool)와 분리해 모달이 보드 상태를
+  // 건드리지 않게 한다. 굵기는 store markerWidth(이름)를 보드 단위 수치로 읽어 쓴다.
   const [drawing, setDrawing] = useState(false);
   const [tool, setTool] = useState<DrawingTool>("pen");
 
@@ -149,7 +150,10 @@ export function MemoExpandDialog() {
                   <DrawingLayer
                     value={card.overlay ?? ""}
                     active={drawing}
-                    penWidth={penWidth}
+                    // 카드 앞면과 같은 색·굵기로 보이게 — 굵기는 획마다 저장된 이름을 쓰고,
+                    // 새 획만 고른 마카의 색·굵기를 싣는다.
+                    color={lastMarkerColor}
+                    width={markerWidth}
                     tool={tool}
                     onChange={(json) => setOverlay(card.id, json)}
                   />

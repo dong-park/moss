@@ -1,0 +1,17 @@
+{
+  "id": "T13",
+  "kind": "task",
+  "title": "마카를 내려놓으면 패널이 닫힌다",
+  "given": "마카 패널이 열려 있다",
+  "when": "마카를 트레이에 내려놓거나 Esc를 누른다",
+  "then": "패널이 사라지고, 벽을 누르면 다시 포스트잇을 고르고 옮길 수 있다",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

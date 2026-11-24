@@ -1,0 +1,17 @@
+{
+  "id": "T14",
+  "kind": "task",
+  "title": "초성 매칭 규칙을 순수 함수로 못 박는다",
+  "given": "",
+  "when": "",
+  "then": "초성 분해·혼합 매칭·칠할 구간 계산이 store와 DOM 없이 도는 함수다. ㄲ·ㄸ 같은 된소리, 받침 없는 글자, 영문·숫자 섞인 글, 빈 검색어를 단위 테스트로 덮는다. 확인: memoSearch 단위 테스트 통과",
+  "confidence": "high",
+  "reversible": true,
+  "status": "아직 안 함",
+  "blocks": [],
+  "user": {
+    "answer": "",
+    "fix": ""
+  },
+  "log": []
+}

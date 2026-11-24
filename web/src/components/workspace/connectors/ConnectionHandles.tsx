@@ -78,15 +78,15 @@ export function ConnectionHandles({ card }: { card: Card }) {
 /**
  * hover 중이거나 연결 드래그의 source/target인 연결 가능 카드에만 연결점을 렌더한다.
  * 카드 DOM은 overflow:hidden이라 카드 안에서 8px 바깥으로 못 그린다 — 월드 좌표
- * 오버레이로 카드 위에 얹는다. 펜 모드·카드 드래그 중에는 숨긴다(AC-1).
+ * 오버레이로 카드 위에 얹는다. 마카·천을 든 동안과 카드 드래그 중에는 숨긴다(AC-1).
  */
 export function ConnectionHandlesLayer({ cards }: { cards: Card[] }) {
   const hoveredCardId = useWorkspace((s) => s.hoveredCardId);
   const draft = useWorkspace((s) => s.connectionDraft);
-  const penMode = useWorkspace((s) => s.penMode);
+  const toolHeld = useWorkspace((s) => s.heldTool !== null);
   const dragging = useWorkspace((s) => s.draggingId !== null);
 
-  if (penMode || dragging) return null;
+  if (toolHeld || dragging) return null;
 
   const ids = new Set<string>();
   if (hoveredCardId) ids.add(hoveredCardId);
