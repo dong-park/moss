@@ -7,7 +7,9 @@ import {
   AuthRequestError,
   decodeJwtPayload,
   GoogleClientIdMissingError,
+  googlePromptAvailable,
   loadGis,
+  signInWithGooglePrompt,
   useAuth,
 } from "@/state/auth";
 import { termsVersion } from "@/state/auth/terms";
@@ -232,7 +234,21 @@ export function GoogleSlot({
   const linkClass = "mt-2 text-[12px] text-[#2c2e33] underline disabled:opacity-60 disabled:no-underline";
 
   if (phase.kind === "unavailable") {
-    return <p className="mt-4 text-[12px] text-[#8e8e93]">{t("collab.auth.googleNoClient")}</p>;
+    if (!googlePromptAvailable()) {
+      return <p className="mt-4 text-[12px] text-[#8e8e93]">{t("collab.auth.googleNoClient")}</p>;
+    }
+    return (
+      <button
+        type="button"
+        disabled={!online || mailBusy}
+        onClick={() => {
+          void signInWithGooglePrompt().catch(() => {});
+        }}
+        className="mt-4 w-full rounded-[10px] bg-[#1d1d1f] px-4 py-2.5 text-[13px] font-medium text-white disabled:opacity-60"
+      >
+        {t("collab.auth.googleAria")}
+      </button>
+    );
   }
 
   if (phase.kind === "loadFailed" && online) {

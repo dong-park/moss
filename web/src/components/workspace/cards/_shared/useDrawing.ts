@@ -390,10 +390,12 @@ export interface UseDrawing {
   onPointerMove: (e: React.PointerEvent<SVGSVGElement>) => void;
   onPointerUp: (e: React.PointerEvent<SVGSVGElement>) => void;
   onPointerCancel: (e: React.PointerEvent<SVGSVGElement>) => void;
+  /** 놓친 pointerup 뒤 다음 획이 둘째 손가락으로 오인되지 않게 포인터 상태를 비운다. */
+  endGesture: () => void;
 }
 
 export function useDrawing({
-  strokes,
+  strokes = [],
   active,
   tool,
   color = DEFAULT_MARKER_COLOR,
@@ -405,9 +407,12 @@ export function useDrawing({
   onErase,
   onCancel,
   svgRef,
+  coordinateWidth,
+  paths,
+  onPathsChange,
 }: {
   /** 확정 획 — 천이 닿았는지 판정하는 대상. */
-  strokes: readonly DrawingStroke[];
+  strokes?: readonly DrawingStroke[];
   /** 그리기 활성. false면 포인터 무시(호출측이 pointer-events로 통과 처리). */
   active: boolean;
   tool: DrawingTool;
@@ -418,16 +423,19 @@ export function useDrawing({
   eraserRadius?: number;
   /** 화면 좌표 → 저장 좌표. 없으면 SVG 박스 기준 1:1 상대 픽셀(카드 안 그리기). */
   toLocal?: (clientX: number, clientY: number) => HandwritingPoint;
+  coordinateWidth?: number;
+  paths?: HandwritingPoint[][];
+  onPathsChange?: (paths: HandwritingPoint[][]) => void;
   /**
    * D5: active가 아니어도 태블릿 펜(`pointerType === "pen"`)이 닿으면 이 획은 그린다.
    * 손가락·마우스는 여전히 active일 때만. 닿은 포인터가 이 레이어로 곧바로 오지 않는 자리
    * (pointer-events:none)에서는 호출측이 pointerdown을 넘겨 준다.
    */
   acceptPen?: boolean;
-  /** 펜으로 한 획을 끝냈다. */
-  onCommit: (stroke: NewDrawingStroke) => void;
+  /** 펜으로 한 획을 끝냈다. paths 모드에서는 쓰지 않는다. */
+  onCommit?: (stroke: NewDrawingStroke) => void;
   /** 천으로 문질러 닿은 획이 있다. 닿은 게 없으면 부르지 않는다. */
-  onErase: (result: EraseResult) => void;
+  onErase?: (result: EraseResult) => void;
   /** 그리던 획을 버렸다(두 번째 포인터가 닿음). */
   onCancel?: () => void;
   /**
@@ -451,9 +459,10 @@ export function useDrawing({
     if (toLocalProp) return toLocalProp(clientX, clientY);
     const rect = svgRef.current?.getBoundingClientRect();
     if (!rect) return { x: 0, y: 0 };
+    const scale = coordinateWidth && rect.width > 0 ? rect.width / coordinateWidth : 1;
     return {
-      x: +(clientX - rect.left).toFixed(1),
-      y: +(clientY - rect.top).toFixed(1),
+      x: +((clientX - rect.left) / scale).toFixed(1),
+      y: +((clientY - rect.top) / scale).toFixed(1),
     };
   };
 
@@ -462,12 +471,17 @@ export function useDrawing({
     draftRef.current = [];
     setDraft([]);
   };
+  const endGesture = () => {
+    downPointersRef.current.clear();
+    reset();
+  };
 
   const onPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
     const viaPen = !active && acceptPen && e.pointerType === "pen";
     if (!active && !viaPen) return;
     // 마우스는 포인터가 하나뿐이다 — 놓친 pointerup이 쌓인 흔적은 지운다.
-    if (e.pointerType === "mouse") downPointersRef.current.clear();
+    // 그리던 획이 없으면 새 누름은 새 제스처다. 놓친 pointerup이 둘째 손가락으로 오인되지 않게.
+    if (e.pointerType === "mouse" || drawingPointerRef.current === null) downPointersRef.current.clear();
     downPointersRef.current.add(e.pointerId);
 
     if (downPointersRef.current.size > 1) {
@@ -503,10 +517,21 @@ export function useDrawing({
     const points = draftRef.current;
     reset();
     if (points.length === 0) return;
+    if (onPathsChange && paths) {
+      if (tool === "eraser") {
+        const next = paths.filter((path) => !pathsIntersect(path, points));
+        if (next.length !== paths.length) onPathsChange(next);
+      } else {
+        const kept = dropNearPoints(points);
+        const stroke = kept.length === 1 ? [kept[0], kept[0]] : kept;
+        onPathsChange([...paths, stroke]);
+      }
+      return;
+    }
     if (tool === "eraser") {
       const result = eraseArea(strokes, points, eraserRadius);
-      if (result.removedIds.length > 0) onErase(result);
-    } else {
+      if (result.removedIds.length > 0) onErase?.(result);
+    } else if (onCommit) {
       // 가까운 점은 건너뛴다(W11). D2: 점 1개(탭)는 0-길이 세그먼트로 저장 → round linecap이 dot로 렌더.
       const kept = dropNearPoints(points);
       onCommit({
@@ -534,5 +559,6 @@ export function useDrawing({
     onPointerMove,
     onPointerUp: release,
     onPointerCancel: release,
+    endGesture,
   };
 }

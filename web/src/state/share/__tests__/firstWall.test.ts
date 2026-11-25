@@ -62,6 +62,7 @@ function fakeShareApi(): ShareApi {
     removeMember: vi.fn(async () => undefined),
     members: vi.fn(async () => []),
     myBoards: vi.fn(async () => []),
+    usage: vi.fn(async (_accessToken: string) => ({ boards: 0, maxBoards: 10, fileBytes: 0, maxFileBytes: 1 })),
   };
 }
 
@@ -73,6 +74,9 @@ function fakeAuthApi(): AuthApi {
     refresh: vi.fn(async () => session),
     previewInvite: vi.fn(async () => ({ boardName: "", ownerName: "" })),
     acceptInvite: vi.fn(async (): Promise<BoardSummary> => ({ id: "x", name: "", role: "owner", ownerName: "" })),
+    requestPasswordReset: vi.fn(async () => {}),
+    confirmPasswordReset: vi.fn(async () => {}),
+    logout: vi.fn(async () => {}),
   };
 }
 

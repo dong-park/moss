@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { useWorkspace } from "@/state/workspace";
 import { useT } from "@/i18n/Provider";
+import { isCommitEnter } from "../../ime";
 import type { Card } from "@/state/workspace";
 
 /* ─────────────────────────────────────────────────────────────
@@ -110,7 +111,7 @@ export function BoardCardContent({
           onDoubleClick={(e) => e.stopPropagation()}
           onKeyDown={(e) => {
             e.stopPropagation();
-            if (e.key === "Enter") e.currentTarget.blur();
+            if (isCommitEnter(e)) e.currentTarget.blur();
             if (e.key === "Escape") {
               e.currentTarget.value = rawName;
               e.currentTarget.blur();

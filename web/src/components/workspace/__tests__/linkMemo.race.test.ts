@@ -1,10 +1,12 @@
 import { expect, it, vi } from "vitest";
 import { fillLinkMemo } from "../linkMemo";
 import { fetchLinkPreview, type LinkContent } from "@/state/cardContent";
+import { useShare } from "@/state/share/store";
 import { useWorkspace, type Card } from "@/state/workspace";
 vi.mock("@/state/cardContent", async (original) => ({ ...await original<typeof import("@/state/cardContent")>(), fetchLinkPreview: vi.fn() }));
 it("an obsolete A→B→A preview cannot write while the latest A preview is pending", async () => {
-  useWorkspace.setState({ cards: [{ id: "a", kind: "text", x: 0, y: 0, width: 240, content: "" } as Card] });
+  useShare.setState({ byBoard: { wall: { status: "shared", inviteToken: null } } });
+  useWorkspace.setState({ currentBoardId: "wall", cards: [{ id: "a", kind: "text", x: 0, y: 0, width: 240, content: "" } as Card] });
   let obsolete!: (meta: LinkContent | null) => void;
   let latest!: (meta: LinkContent | null) => void;
   vi.mocked(fetchLinkPreview)

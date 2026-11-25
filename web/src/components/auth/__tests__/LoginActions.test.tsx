@@ -6,6 +6,7 @@ import { configureAuth, resetAuthStore, useAuth } from "@/state/auth/store";
 import { deleteAuthDatabase } from "@/state/auth/tokenStore";
 import type { AuthApi } from "@/state/auth/api";
 import { AuthRequestError } from "@/state/auth/api";
+import { termsVersion } from "@/state/auth/terms";
 import type { AuthSession } from "@/state/auth/types";
 
 const fresh: AuthSession = {
@@ -22,6 +23,9 @@ function fakeApi(overrides: Partial<AuthApi> = {}): AuthApi {
     refresh: vi.fn(async () => fresh),
     previewInvite: vi.fn(),
     acceptInvite: vi.fn(),
+    requestPasswordReset: vi.fn(async () => {}),
+    confirmPasswordReset: vi.fn(async () => {}),
+    logout: vi.fn(async () => {}),
     ...overrides,
   };
 }
@@ -149,10 +153,11 @@ describe("AC-1·2·6 · 메일 폼", () => {
     fireEvent.change(screen.getByLabelText("메일"), { target: { value: " A@x.com " } });
     fireEvent.change(screen.getByLabelText("비밀번호"), { target: { value: "secret123" } });
     fireEvent.change(screen.getByLabelText("이름"), { target: { value: " 동환 " } });
+    fireEvent.click(screen.getByRole("checkbox"));
     fireEvent.click(screen.getByRole("button", { name: "가입하기" }));
 
     await waitFor(() => expect(useAuth.getState().status).toBe("authenticated"));
-    expect(api.signup).toHaveBeenCalledWith("A@x.com", "secret123", "동환");
+    expect(api.signup).toHaveBeenCalledWith("A@x.com", "secret123", "동환", termsVersion());
   });
 
   test("AC-5 · 중복 가입이면 서버 문구를 보여준다", async () => {
@@ -169,6 +174,7 @@ describe("AC-1·2·6 · 메일 폼", () => {
     fireEvent.change(screen.getByLabelText("메일"), { target: { value: "a@x.com" } });
     fireEvent.change(screen.getByLabelText("비밀번호"), { target: { value: "secret123" } });
     fireEvent.change(screen.getByLabelText("이름"), { target: { value: "동환" } });
+    fireEvent.click(screen.getByRole("checkbox"));
     fireEvent.click(screen.getByRole("button", { name: "가입하기" }));
 
     expect(await screen.findByText("이미 가입된 메일이에요")).toBeTruthy();
@@ -226,9 +232,10 @@ describe("AC-1·2·6 · 메일 폼", () => {
     fireEvent.change(screen.getByLabelText("비밀번호"), { target: { value: "secret123" } });
     const emojiName = "😀".repeat(21);
     fireEvent.change(screen.getByLabelText("이름"), { target: { value: emojiName } });
+    fireEvent.click(screen.getByRole("checkbox"));
     fireEvent.click(screen.getByRole("button", { name: "가입하기" }));
 
-    await waitFor(() => expect(api.signup).toHaveBeenCalledWith("a@x.com", "secret123", emojiName));
+    await waitFor(() => expect(api.signup).toHaveBeenCalledWith("a@x.com", "secret123", emojiName, termsVersion()));
   });
 
   test("AC-6 · 메일 형식 오류는 앱 안내를 띄우고 api를 부르지 않는다", async () => {

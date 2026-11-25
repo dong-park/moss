@@ -41,6 +41,9 @@ function fakeAuthApi(): AuthApi {
     refresh: vi.fn(async () => session),
     previewInvite: vi.fn(async () => ({ boardName: "이직 고민", ownerName: "동환" })),
     acceptInvite: vi.fn(async () => board),
+    requestPasswordReset: vi.fn(async () => {}),
+    confirmPasswordReset: vi.fn(async () => {}),
+    logout: vi.fn(async () => {}),
   };
 }
 
@@ -53,6 +56,7 @@ function fakeShareApi(overrides: Partial<ShareApi> = {}): ShareApi {
     removeMember: vi.fn(async () => undefined),
     members: vi.fn(async () => []),
     myBoards: vi.fn(async () => []),
+    usage: vi.fn(async (_accessToken: string) => ({ boards: 0, maxBoards: 10, fileBytes: 0, maxFileBytes: 1 })),
     ...overrides,
   };
 }

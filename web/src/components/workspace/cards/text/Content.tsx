@@ -14,6 +14,7 @@ import type { CardContentProps } from "../_shared/types";
 import { memoFace } from "./face";
 import { TodoFace } from "./TodoFace";
 import { LinkFace } from "./LinkFace";
+import { LinkPreviewAction } from "./LinkPreviewAction";
 import { LinkInputFace } from "./LinkInputFace";
 
 // 종이 사진. 색조 층 mask도 같은 파일이어야 종이 바깥 투명부에 색이 안 칠해진다.
@@ -105,7 +106,12 @@ export function TextCardContent({ card, editing, onCommitEdit }: CardContentProp
     if (editing && face.t === "link") onCommitEdit();
   }, [editing, face.t, onCommitEdit]);
   if (face.t === "link") {
-    return <LinkFace cardId={card.id} face={face} />;
+    return (
+      <>
+        <LinkFace cardId={card.id} face={face} />
+        <LinkPreviewAction cardId={card.id} url={face.url} title={face.title} />
+      </>
+    );
   }
 
   if (face.t === "linkEmpty") {

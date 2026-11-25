@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { useT } from "@/i18n/Provider";
-import { GoogleButton } from "@/components/auth/GoogleButton";
 import { useAuth } from "@/state/auth";
 import { ShareStartError, useShare } from "@/state/share";
 import { shareFirstWall } from "@/state/share/firstWall";
@@ -304,7 +303,14 @@ export function ShareSheet({ boardId, boardName, firstWall = false, onClose, onS
               {primaryLabel}
             </button>
           ) : (
-            <GoogleButton onClick={() => void share()} disabled={busy} label={primaryLabel} />
+            <button
+              type="button"
+              onClick={() => void share()}
+              disabled={busy}
+              className="mt-4 block w-full cursor-pointer rounded-[10px] bg-[#1d1d1f] px-4 py-2.5 text-center text-[13px] font-medium text-white disabled:cursor-default disabled:opacity-60"
+            >
+              {primaryLabel}
+            </button>
           )}
           <button
             type="button"

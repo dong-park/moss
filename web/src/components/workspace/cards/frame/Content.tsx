@@ -6,6 +6,7 @@ import type { Card } from "@/state/workspace";
 import { decodeFrameConfig } from "@/state/frameContent";
 import { usePhotoUrl } from "../photo/usePhotoUrl";
 import { useT } from "@/i18n/Provider";
+import { isCommitEnter } from "../../ime";
 
 /* ─────────────────────────────────────────────────────────────
  * FEAT-sticky-redesign n7 — 메모판(frame) 렌더.
@@ -119,7 +120,7 @@ export function FrameCardContent({ card }: { card: Card }) {
             onChange={(e) => setDraft(e.target.value)}
             onBlur={commit}
             onKeyDown={(e) => {
-              if (e.key === "Enter") {
+              if (isCommitEnter(e)) {
                 e.preventDefault();
                 commit();
               } else if (e.key === "Escape") {

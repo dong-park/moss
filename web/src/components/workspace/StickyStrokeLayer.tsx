@@ -99,6 +99,7 @@ export const StickyStrokeLayer = memo(function StickyStrokeLayer({
       const s = useWorkspace.getState();
       // 이 포스트잇의 획이 아니면(주인 규칙 한 곳: strokeOwner) 시작하지 않는다.
       if (strokeOwnerOfCard({ id: card.id, kind: card.kind }).kind !== "sticky") return;
+      if (e.currentTarget.closest("[data-canvas-root]")?.getAttribute("data-space-pan") === "true") return;
       if (s.heldTool) return; // 든 동안은 레이어가 직접 받는다
       if (s.editingId === card.id) return;
       if (isPhoneViewport()) return;

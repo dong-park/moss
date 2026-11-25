@@ -2,11 +2,13 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 import { I18nProvider } from "@/i18n/Provider";
 import { fillLinkMemo, useLinkPreviewStatus } from "../../../linkMemo";
+import { useShare } from "@/state/share/store";
 import { useWorkspace, type Card } from "@/state/workspace";
 import { LinkFace } from "../LinkFace";
 beforeEach(() => {
   useLinkPreviewStatus.setState({ byCard: {} });
-  useWorkspace.setState({ cards: [{ id: "a", kind: "text", x: 0, y: 0, width: 240, content: "" } as Card] });
+  useShare.setState({ byBoard: { wall: { status: "shared", inviteToken: null } } });
+  useWorkspace.setState({ currentBoardId: "wall", cards: [{ id: "a", kind: "text", x: 0, y: 0, width: 240, content: "" } as Card] });
 });
 it("announces preview failure and keeps URL and exposes retry without bubbling card actions", async () => {
   vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false })));

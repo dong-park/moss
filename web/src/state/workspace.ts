@@ -92,6 +92,7 @@ import {
   clampBoardCoord,
   sanitizeStrokePoints,
 } from "./marker/limits";
+import { isWallMaterialId, wallMaterialFor, type WallMaterialId } from "./wallMaterials";
 import {
   currentWriteOrigin,
   isRemoteTransaction,
@@ -885,6 +886,21 @@ interface WorkspaceState {
    */
   markerUndoStack: MarkerHistoryEntry[];
   markerRedoStack: MarkerHistoryEntry[];
+  penMode: boolean;
+  penUndoStack: { cardId: string; overlay: string }[];
+  penRedoStack: { cardId: string; overlay: string }[];
+  lastPenCardId: string | null;
+  penTool: string;
+  penWidth: number;
+  canvasHasFitted: boolean;
+  setPenMode: (on: boolean) => void;
+  togglePenMode: () => void;
+  setPenTool: (tool: string) => void;
+  setPenWidth: (width: number) => void;
+  penUndo: () => void;
+  penRedo: () => void;
+  penClear: () => void;
+  markCanvasFitted: () => void;
   /** 마카를 집는다(들고 있던 것은 내려놓인다). 휴대폰이면 아무 일도 없다. */
   holdMarker: (color: MarkerColor) => void;
   /** 천을 집는다. 휴대폰이면 아무 일도 없다. */
@@ -2937,6 +2953,13 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   lastMarkerColor: DEFAULT_MARKER_COLOR,
   markerUndoStack: [],
   markerRedoStack: [],
+  penMode: false,
+  penUndoStack: [],
+  penRedoStack: [],
+  lastPenCardId: null,
+  penTool: "pen",
+  penWidth: 2,
+  canvasHasFitted: false,
   viewport: { x: 0, y: 0, scale: 1 },
   pendingAIGate: null,
   lastToolId: "text",
@@ -3168,6 +3191,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   createExampleBoard: async (name = "") => {
+    const SEED_CARDS: Card[] = [
+      { id: "seed-todo", kind: "text", x: 320, y: 140, width: 460, height: 460, content: "- [ ] 첫구매 전환" },
+      { id: "seed-preview", kind: "text", x: 320, y: 500, width: 130, height: 130, content: "" },
+      { id: "seed-empty", kind: "text", x: 380, y: 620, width: 280, height: 280, content: "" },
+    ];
     // n23 재심사 2R-1: 이전 중 새 보드 생성 차단 — createBoard와 같은 가드.
     if (get().migrationPending) return get().currentBoardId;
     if (!(await serverStoreAllowsNewBoard())) return get().currentBoardId;
@@ -4325,6 +4353,49 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     set({ heldTool: null });
   },
   setMarkerWidth: (width) => set({ markerWidth: resolveMarkerWidth(width) }),
+  setPenMode: (on) =>
+    set(
+      on
+        ? { penMode: true, editingId: null }
+        : { penMode: false, penUndoStack: [], penRedoStack: [], lastPenCardId: null },
+    ),
+  togglePenMode: () => get().setPenMode(!get().penMode),
+  setPenTool: (tool) => set({ penTool: tool }),
+  setPenWidth: (width) => set({ penWidth: width }),
+  penUndo: () => {
+    const entry = get().penUndoStack.at(-1);
+    if (!entry) return;
+    const cur = get().cards.find((c) => c.id === entry.cardId)?.overlay ?? "";
+    writeCardOverlay(set, get, entry.cardId, entry.overlay);
+    set((s) => ({
+      penUndoStack: s.penUndoStack.slice(0, -1),
+      penRedoStack: [...s.penRedoStack, { cardId: entry.cardId, overlay: cur }],
+      lastPenCardId: entry.cardId,
+    }));
+  },
+  penRedo: () => {
+    const entry = get().penRedoStack.at(-1);
+    if (!entry) return;
+    const cur = get().cards.find((c) => c.id === entry.cardId)?.overlay ?? "";
+    writeCardOverlay(set, get, entry.cardId, entry.overlay);
+    set((s) => ({
+      penRedoStack: s.penRedoStack.slice(0, -1),
+      penUndoStack: [...s.penUndoStack, { cardId: entry.cardId, overlay: cur }],
+      lastPenCardId: entry.cardId,
+    }));
+  },
+  penClear: () => {
+    const id = get().lastPenCardId;
+    if (!id) return;
+    const cur = get().cards.find((c) => c.id === id)?.overlay ?? "";
+    if (!cur) return;
+    writeCardOverlay(set, get, id, "");
+    set((s) => ({
+      penUndoStack: [...s.penUndoStack, { cardId: id, overlay: cur }],
+      penRedoStack: [],
+    }));
+  },
+  markCanvasFitted: () => set({ canvasHasFitted: true }),
 
   recordMarkerEdit: (entry) =>
     set((s) => ({
@@ -4338,6 +4409,13 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const prev = get().cards.find((c) => c.id === id)?.overlay ?? "";
     if (prev === overlay) return;
     if (!writeCardOverlay(set, get, id, overlay)) return;
+    if (get().penMode) {
+      set((s) => ({
+        penUndoStack: [...s.penUndoStack, { cardId: id, overlay: prev }],
+        penRedoStack: [],
+        lastPenCardId: id,
+      }));
+    }
     const entry = stickyEditEntry(id, prev, overlay);
     if (entry) get().recordMarkerEdit(entry);
   },

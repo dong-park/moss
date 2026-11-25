@@ -17,6 +17,9 @@ export interface SharePopoverProps {
   busy: boolean;
   error: string | null;
   copied: boolean;
+  status?: string;
+  onStart?: () => void;
+  authenticated?: boolean;
   onCopy: () => void;
   onReissue: () => void;
   onRemove: (userId: string) => void;
@@ -89,6 +92,11 @@ export function SharePopover({
             onLeave={onLeave}
           />
         ))}
+      </div>
+      <div className="mt-3 space-y-2 text-[12px] text-text-soft">
+        <p>{t("reviewGuidance.share.scope")}</p>
+        <p>{t("reviewGuidance.share.access")}</p>
+        <p>{t("reviewGuidance.share.unshare")}</p>
       </div>
       {error ? (
         <p role="alert" className="mt-2 text-[12px] text-red-600">

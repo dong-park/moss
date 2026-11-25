@@ -3,6 +3,7 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { useT } from "@/i18n/Provider";
+import { isImeEnter } from "./ime";
 import { commitMobileLink, useMobileCanvas, type MobileOperation } from "./mobileCanvas";
 import styles from "./mobileCanvas.module.css";
 import { mobileHistoryKey, useMobileHistory } from "./useMobileHistory";
@@ -63,7 +64,7 @@ export function MobileLinkEditor({ operation }: { operation: Extract<MobileOpera
               <input ref={input} type="url" inputMode="url" autoCapitalize="none" autoCorrect="off" autoComplete="url"
                 value={draft} onChange={(e) => { setDraft(e.target.value); setError(null); }}
                 aria-invalid={!!error} aria-describedby={error ? `link-error-${operation.token}` : undefined}
-                onKeyDown={(e) => { if (e.key === "Enter" && e.nativeEvent.isComposing) e.preventDefault(); }} />
+                onKeyDown={(e) => { if (isImeEnter(e)) e.preventDefault(); }} />
             </label>
             {error && <p role="alert" id={`link-error-${operation.token}`}>{t(`workspace.mobile.${error}`)}</p>}
             <div className={styles.buttons}>

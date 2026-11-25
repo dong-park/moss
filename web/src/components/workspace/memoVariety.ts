@@ -111,7 +111,7 @@ export function cardTilt(card: TiltCard): number {
 /** 들지 않은 상태의 transform. 기울일 수 없는 kind(메모판 등)는 undefined(무변화). */
 export function memoBaseTransform(
   card: TiltCard,
-  penMode: boolean,
+  penMode = false,
 ): string | undefined {
   if (!rotatable(card.kind) && !hasStoredTilt(card)) return undefined;
   const deg = penMode ? 0 : cardTilt(card);
@@ -127,7 +127,7 @@ export function memoBaseTransform(
  */
 export function memoLiftedTransform(
   card: TiltCard,
-  penMode: boolean,
+  penMode = false,
 ): string | undefined {
   if (card.kind === "frame") return undefined;
   // FEAT-text-tool: textbox는 회전 0 — 들 때도 기울이지 않고 살짝 뜨기만 한다.

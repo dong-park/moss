@@ -1,5 +1,6 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import { fillLinkMemo, retryLinkPreview, useLinkPreviewStatus } from "../linkMemo";
+import { useShare } from "@/state/share/store";
 import { useWorkspace, type Card } from "@/state/workspace";
 import { serializeBlock } from "@/state/blocks";
 import { fetchLinkPreview, type LinkContent } from "@/state/cardContent";
@@ -9,7 +10,8 @@ const status = () => useLinkPreviewStatus.getState().byCard.a?.status;
 beforeEach(() => {
   vi.mocked(fetchLinkPreview).mockReset();
   useLinkPreviewStatus.setState({ byCard: {} });
-  useWorkspace.setState({ cards: [{ id: "a", kind: "text", width: 240, x: 0, y: 0, content: "" } as Card] });
+  useShare.setState({ byBoard: { wall: { status: "shared", inviteToken: null } } });
+  useWorkspace.setState({ currentBoardId: "wall", cards: [{ id: "a", kind: "text", width: 240, x: 0, y: 0, content: "" } as Card] });
 });
 it("saves the URL immediately, distinguishes preview failure and retries without discarding it", async () => {
   vi.mocked(fetchLinkPreview).mockResolvedValueOnce(null).mockResolvedValueOnce({ url: "https://example.com", title: "Example" });

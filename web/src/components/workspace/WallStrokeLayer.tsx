@@ -23,6 +23,7 @@ import {
 } from "./cards/_shared/useDrawing";
 import { strokeBounds, unionBounds, type BoardRect } from "./wallStrokeHit";
 
+
 /* ─────────────────────────────────────────────────────────────
  * wall-marker n4 — 벽 획 레이어. 빈 벽에 쓰고, 지우고, 동기화한다.
  *
@@ -396,6 +397,10 @@ export const WallStrokeLayer = memo(function WallStrokeLayer({
     if (e.pointerType !== "touch") return;
     touchesRef.current.delete(e.pointerId);
     if (touchesRef.current.size < 2) pinchRef.current = null;
+    if (touchesRef.current.size === 0) {
+      delegatedRef.current.clear();
+      drawing.endGesture();
+    }
   };
 
   // 지금 화면에 있는 고른 획만 — 그 사이 지워진 id는 묶음에서 빠진다(지운 쪽이 이긴다).
@@ -477,6 +482,10 @@ export const WallStrokeLayer = memo(function WallStrokeLayer({
       trackTouchDown(e);
       // 마우스는 포인터가 하나뿐이다 — 창 밖에서 놓쳐 쌓인 흔적은 지운다.
       if (e.pointerType === "mouse") delegatedRef.current.clear();
+      if (delegatedRef.current.size === 0 && touchesRef.current.size > 1) {
+        touchesRef.current.clear();
+        touchesRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      }
       // 휴대폰에는 입력이 없다(T14) — 이미 있는 획만 보인다.
       if (isPhoneViewport()) return;
       const drawingNow = delegatedRef.current.size > 0;
@@ -504,9 +513,8 @@ export const WallStrokeLayer = memo(function WallStrokeLayer({
       drawing.onPointerMove(forDrawing(e));
     },
     onPointerUp: (e) => {
+      if (delegatedRef.current.delete(e.pointerId)) drawing.onPointerUp(forDrawing(e));
       trackTouchUp(e);
-      if (!delegatedRef.current.delete(e.pointerId)) return;
-      drawing.onPointerUp(forDrawing(e));
     },
     onPointerCancel: (e) => {
       trackTouchUp(e);

@@ -215,7 +215,8 @@ export async function ensureShareSession(login: boolean): Promise<AuthSession> {
   } catch (err) {
     if (!login || !(err instanceof SessionExpiredError)) throw err;
   }
-  await auth.loginWithGoogle();
+  const { signInWithGooglePrompt } = await import("@/state/auth/store");
+  await signInWithGooglePrompt();
   return useAuth.getState().ensureSession();
 }
 

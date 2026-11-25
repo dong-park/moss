@@ -50,6 +50,8 @@ const ALLOWED_FILES: Record<string, string> = {
   "web/src/state/collab/provider.ts": "공유 벽 동기화",
   // 링크 미리보기(/api/preview). 혼자 쓰는 벽에서는 사용자가 "미리보기 가져오기"를 누를 때만 — n6.
   "web/src/state/cardContent.ts": "링크 미리보기. 혼자 쓰는 벽에서는 누를 때만 (n6)",
+  // 로그인한 뒤 계정 화면에서만. 로그인하지 않으면 ensureSession이 막는다.
+  "web/src/state/connectedApps.ts": "로그인한 뒤 연결된 앱 목록과 해제",
   // 127.0.0.1 로컬 브리지와 그 미리보기. NEXT_PUBLIC_MOSS_BRIDGE=1 빌드에서만 켜진다 — 바깥이 아니다.
   "web/src/state/bridge/mossBridge.ts":
     "127.0.0.1 로컬 브리지와 그 미리보기. NEXT_PUBLIC_MOSS_BRIDGE=1일 때만",

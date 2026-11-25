@@ -1,7 +1,9 @@
+import { create } from "zustand";
+import { memoFace } from "@/state/memoFace";
 import { blocksToMarkdown, fetchLinkPreview, isUrlOnly } from "@/state/cardContent";
 import { parseBlock, serializeBlock } from "@/state/blocks";
 import { useShare } from "@/state/share/store";
-import { useWorkspace } from "@/state/workspace";
+import { runAsUserAction, useWorkspace } from "@/state/workspace";
 
 /**
  * 이 벽이 공유 중인가 — 공유하지 않은 벽의 주소는 사용자가 누르기 전엔 moss 서버로 나가지 않는다
@@ -24,14 +26,18 @@ export function createLinkMemo(
   opts: { at?: { x: number; y: number }; centerSize?: { width: number; height: number } } = {},
 ): string | null {
   if (!isUrlOnly(raw.trim())) return null;
-  const ws = useWorkspace.getState();
-  const id = opts.at
-    ? ws.addCardAt("text", opts.at.x, opts.at.y)
-    : ws.addCardAtViewportCenter("text", opts.centerSize);
-  // 위젯(표시 형태)으로 바로 보이게 — 편집 모드 진입 없이 링크 블록만 채운다.
-  ws.setEditing(null);
-  fillLinkMemo(id, raw);
-  return id;
+  return runAsUserAction(
+    () => {
+      const ws = useWorkspace.getState();
+      const id = opts.at
+        ? ws.addCardAt("text", opts.at.x, opts.at.y)
+        : ws.addCardAtViewportCenter("text", opts.centerSize);
+      ws.setEditing(null);
+      fillLinkMemo(id, raw);
+      return id;
+    },
+    { creates: true },
+  );
 }
 
 /**
@@ -46,7 +52,7 @@ export function fillLinkMemo(id: string, raw: string): boolean {
   if (!block) return false;
   const ws = useWorkspace.getState();
   ws.setContent(id, block);
-  if (isWallShared(ws.currentBoardId)) void loadLinkPreview(id);
+  if (isWallShared(ws.currentBoardId)) requestPreview(id, url, block);
   return true;
 }
 
@@ -67,4 +73,46 @@ export async function loadLinkPreview(id: string): Promise<boolean> {
   if (current !== before) return false;
   useWorkspace.getState().setContent(id, withTitle);
   return true;
+}
+
+type PreviewStatus = { url: string; status: "loading" | "failed" | "ready"; token: number };
+export const useLinkPreviewStatus = create<{ byCard: Record<string, PreviewStatus> }>(() => ({ byCard: {} }));
+let requestToken = 0;
+
+function requestPreview(id: string, url: string, originalContent: string) {
+  const token = ++requestToken;
+  const update = (status: PreviewStatus["status"]) =>
+    useLinkPreviewStatus.setState((s) => ({
+      byCard: { ...s.byCard, [id]: { url, status, token } },
+    }));
+  update("loading");
+  void fetchLinkPreview(url)
+    .catch(() => null)
+    .then((meta) => {
+      if (useLinkPreviewStatus.getState().byCard[id]?.token !== token) return;
+      const current = useWorkspace.getState().cards.find((c) => c.id === id)?.content;
+      if (current !== originalContent) {
+        useLinkPreviewStatus.setState((s) => {
+          const byCard = { ...s.byCard };
+          delete byCard[id];
+          return { byCard };
+        });
+        return;
+      }
+      const bare = serializeBlock({ type: "link", url });
+      const withTitle =
+        meta?.title && originalContent === bare
+          ? serializeBlock({ type: "link", url, title: meta.title })
+          : null;
+      if (withTitle && withTitle !== originalContent) useWorkspace.getState().setContent(id, withTitle);
+      update(meta?.title ? "ready" : "failed");
+    });
+}
+
+export function retryLinkPreview(id: string): void {
+  const card = useWorkspace.getState().cards.find((c) => c.id === id);
+  if (!card) return;
+  const face = memoFace(card.content);
+  if (face.t !== "link") return;
+  requestPreview(id, face.url, card.content);
 }

@@ -1,6 +1,6 @@
 /**
- * wall-marker 리뷰 W5 — Dexie는 v6로 돌아왔다. 벽 획의 원본은 보드 Y.Doc 하나뿐이고 로컬 미러
- * (`strokes` 테이블)는 없다. v7은 이 브랜치 밖으로 나간 적이 없다.
+ * 벽 획의 원본은 보드 Y.Doc이다. 로컬 strokes 테이블은 없다.
+ * v7은 remote-mcp의 serverDeletes 테이블이다. strokes 테이블은 여전히 없다.
  */
 import Dexie from "dexie";
 import { afterEach, describe, expect, it } from "vitest";
@@ -22,7 +22,7 @@ describe("Dexie v6 — strokes 테이블 없음", () => {
     const db = createDB(nextName());
     dbs.push(db);
     await db.open();
-    expect(db.verno).toBe(6);
+    expect(db.verno).toBe(7);
     expect(db.tables.map((t) => t.name)).not.toContain("strokes");
     expect((db as unknown as { strokes?: unknown }).strokes).toBeUndefined();
   });
@@ -53,7 +53,7 @@ describe("Dexie v6 — strokes 테이블 없음", () => {
     const db = createDB(name);
     dbs.push(db);
     await db.open();
-    expect(db.verno).toBe(6);
+    expect(db.verno).toBe(7);
     expect((await db.boards.get("b1"))?.name).toBe("옛 보드");
   });
 

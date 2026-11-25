@@ -112,7 +112,7 @@ describe("AC-5 · InviteRoute", () => {
     expect(dialogs).toHaveLength(1);
     expect(within(dialogs[0]).getByText("이번 주 기획")).toBeTruthy();
     expect(
-      within(dialogs[0]).getByRole("button", { name: "Google 계정으로 로그인" }),
+      await within(dialogs[0]).findByRole("button", { name: "Google 계정으로 로그인" }),
     ).toBeTruthy();
     expect(screen.queryByRole("heading", { level: 1 })).toBeNull();
   });

@@ -733,7 +733,7 @@ export function Canvas() {
       onDrop={onCanvasDrop}
       className={`relative h-full overflow-clip bg-bg ${cursorClass}`}
       style={{
-        touchAction: "none",
+        touchAction: heldTool ? "none" : "manipulation",
         ...(heldTool ? { cursor: heldToolCursor(heldTool) } : {}),
       }}
     >

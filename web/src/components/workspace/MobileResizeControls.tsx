@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { useT } from "@/i18n/Provider";
+import { isCommitEnter } from "./ime";
 import { FRAME_DEFAULT_HEIGHT, type Card } from "@/state/workspace";
 import { cardWidthLimits, frameHasAspect, isAutoHeightCard } from "./cardSizing";
 import styles from "./mobileCanvas.module.css";
@@ -44,7 +45,7 @@ function Dimension({ axis, value, commit, min = 1, max }: { axis: "width" | "hei
     <button type="button" aria-label={`${label} ${t("workspace.mobile.smaller")}`} onClick={() => commit(value - 16)}>−</button>
     <input ref={inputRef} aria-label={label} type="number" inputMode="decimal" min={min} max={max} step="any" defaultValue={Math.round(value * 100) / 100}
       aria-invalid={invalid} onChange={() => setInvalid(false)} onBlur={e => submit(e.currentTarget)}
-      onKeyDown={e => { if (e.key === "Enter" && !e.nativeEvent.isComposing) { e.preventDefault(); e.currentTarget.blur(); } }} />
+      onKeyDown={e => { if (isCommitEnter(e)) { e.preventDefault(); e.currentTarget.blur(); } }} />
     <button type="button" aria-label={`${label} ${t("workspace.mobile.larger")}`} onClick={() => commit(value + 16)}>+</button>
     {invalid && <span role="alert">{t("workspace.mobile.invalidSize")}</span>}
   </div>;

@@ -96,7 +96,7 @@ export const CONNECTION_FIELDS = [
 ] as const;
 
 export const BOARD_FIELDS = [
-  "id", "name", "isSystem", "templateId", "parentBoardId", "createdAt", "updatedAt",
+  "id", "name", "isSystem", "templateId", "parentBoardId", "createdAt", "updatedAt", "wallMaterial",
 ] as const;
 
 /** Y.Map 중 이 모듈이 쓰는 부분만. yjs에 의존하지 않으려고 구조 타입으로 받는다. */

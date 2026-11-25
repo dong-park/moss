@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useT } from "@/i18n/Provider";
 import { fillLinkMemo } from "../../linkMemo";
-import { useImeSafeBlur } from "../../ime";
+import { isImeEnter, useImeSafeBlur } from "../../ime";
 import { useTouchControls } from "../../useTouchControls";
 import { useMobileCanvas } from "../../mobileCanvas";
 
@@ -18,6 +18,10 @@ export function LinkInputFace({ cardId, editing, onCommitEdit }: { cardId: strin
   const inputRef = useRef<HTMLInputElement>(null);
   const [value, setValue] = useState("");
   const [invalid, setInvalid] = useState(false);
+  // 한글 조합 중 blur면 조합이 끝난 뒤 편집을 끝낸다 — 글자가 확정되기 전에 칸이 닫히지 않는다(T11).
+  const onBlur = useImeSafeBlur<HTMLInputElement>(() => {
+    if (editing) onCommitEdit();
+  });
 
   // 도크에서 막 만든 카드는 편집 상태로 온다 — 바로 붙여넣게 포커스.
   useEffect(() => {
@@ -31,11 +35,6 @@ export function LinkInputFace({ cardId, editing, onCommitEdit }: { cardId: strin
       <div className="card face link"><small>{t("workspace.tool.link")}</small><p>{t("workspace.mobile.linkEmpty")}</p></div>
     </div>
   );
-
-  // 한글 조합 중 blur면 조합이 끝난 뒤 편집을 끝낸다 — 글자가 확정되기 전에 칸이 닫히지 않는다(T11).
-  const onBlur = useImeSafeBlur<HTMLInputElement>(() => {
-    if (editing) onCommitEdit();
-  });
 
   return (
     <div className="moss-card-face" data-memo-face="linkEmpty">
@@ -68,7 +67,7 @@ export function LinkInputFace({ cardId, editing, onCommitEdit }: { cardId: strin
               setInvalid(false);
             }}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && e.nativeEvent.isComposing) e.preventDefault();
+              if (isImeEnter(e)) e.preventDefault();
               if (e.key === "Escape") e.currentTarget.blur();
             }}
             onBlur={onBlur}

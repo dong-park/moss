@@ -8,7 +8,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as Y from "yjs";
-import { useWorkspace, SYSTEM_BOARD_ID, __internal, __resetBoardDocsForTest } from "@/state/workspace";
+import { useWorkspace, SYSTEM_BOARD_ID, __resetBoardDocsForTest } from "@/state/workspace";
 import { useStorage } from "@/state/storage";
 import { getDB, resetDB } from "@/state/db/schema";
 import { flushAll } from "@/state/cardPersist";
@@ -408,13 +408,10 @@ describe("T23 새로고침하거나 보드를 막 열었을 때 cmd+z는 아무�
     expect(ws().migrationPending).toBe(false);
 
     await ws().loadFromStorage();
-    const seedIds = __internal.SEED_CARDS.map((c) => c.id);
-    expect(seedIds.length).toBeGreaterThan(0);
-    for (const id of seedIds) expect(readNote(doc(), id)).toBeDefined();
+    expect(readNotes(doc()).length).toBe(0);
 
     press();
-    for (const id of seedIds) expect(readNote(doc(), id)).toBeDefined();
-    expect(ws().cards.map((c) => c.id).sort()).toEqual([...seedIds].sort());
+    expect(ws().cards).toEqual([]);
     expect(um().undoStack.length).toBe(0);
     expect(warnToasts()).toEqual([]);
   });

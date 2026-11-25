@@ -27,7 +27,12 @@ export function installFakeGoogle({ loaded = true }: { loaded?: boolean } = {}):
     initialize: vi.fn((cfg: { callback: Callback }) => {
       callback = cfg.callback;
     }),
-    renderButton: vi.fn(),
+    renderButton: vi.fn((parent: HTMLElement) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = "Google 계정으로 로그인";
+      parent.appendChild(button);
+    }),
     prompt: vi.fn(),
     press: (token) => act(() => callback?.({ credential: token })),
   };

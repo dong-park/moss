@@ -194,7 +194,8 @@ export const DraggableCard = memo(function DraggableCard({ card }: { card: Card 
       s.wobbleFrameId === card.frameId,
   );
   // FEAT-memo-variety: 메모 고유 각도·색조는 id 해시로 정해진다. 비메모는 무변화.
-  const baseTransform = memoBaseTransform(card);
+  const penMode = useWorkspace((s) => s.penMode);
+  const baseTransform = memoBaseTransform(card, penMode);
   const liftedTransform = memoLiftedTransform(card);
   // FEAT-drag-tilt: 흔들림이 얹힐 고유 각도. memoBaseTransform과 같은 규칙(메모·함).
   const baseDeg = cardTilt(card);

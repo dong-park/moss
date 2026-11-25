@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render } from "@testing-library/react";
+import { TooltipProvider } from "@radix-ui/react-tooltip";
 import { I18nProvider } from "@/i18n/Provider";
 import { Canvas } from "@/components/workspace/Canvas";
 import { SYSTEM_BOARD_ID, useWorkspace } from "@/state/workspace";
@@ -61,7 +62,9 @@ afterEach(async () => {
 async function mountCanvas() {
   const utils = render(
     <I18nProvider locale="ko">
-      <Canvas />
+      <TooltipProvider>
+        <Canvas />
+      </TooltipProvider>
     </I18nProvider>,
   );
   await act(async () => {

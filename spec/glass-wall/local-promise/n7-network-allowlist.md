@@ -34,6 +34,7 @@
 | `web/src/state/share/files.ts` | 공유 벽 첨부 |
 | `web/src/state/collab/provider.ts` | 공유 벽 동기화 |
 | `web/src/state/cardContent.ts` | 링크 미리보기. 혼자 쓰는 벽에서는 누를 때만 — n6 |
+| `web/src/state/connectedApps.ts` | 로그인한 뒤 연결된 앱 목록과 해제 |
 | `web/src/state/bridge/mossBridge.ts` | `127.0.0.1` 로컬 브리지와 그 미리보기. `NEXT_PUBLIC_MOSS_BRIDGE=1`일 때만 |
 | `web/src/server/**`, `web/src/app/api/**` | 서버 쪽 코드. 브라우저에서 돌지 않는다 |
 

@@ -3,6 +3,7 @@ import type { Board, Connection, Note, StrokePoint, WallStroke } from "@/state/d
 import {
   MAX_STROKE_POINTS,
   MAX_STROKE_POINTS_CHARS,
+  MAX_WALL_STROKES,
   isBoardCoord,
 } from "@/state/marker/limits";
 import { resolveMarkerColor, resolveMarkerWidth } from "@/state/marker/tokens";

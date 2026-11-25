@@ -11,6 +11,8 @@
  * 순수 함수 모듈 — store/DOM 의존 없음. workspace.ts가 셀렉터/액션으로 감싸 노출한다.
  */
 import { blocksToMarkdown } from "./cardContent";
+import { EMPTY_LINK_CONTENT } from "./linkContent";
+import { presentMemo } from "./memoPresentation";
 import type { Card } from "./workspace";
 
 /**
@@ -28,6 +30,7 @@ export function plainText(markdown: string): string {
  * ([[plainText]]는 검색용으로 소문자화한 결과를 돌려준다).
  */
 export function plainTextRaw(markdown: string): string {
+  if (markdown === EMPTY_LINK_CONTENT) return "";
   const md = blocksToMarkdown(markdown ?? "");
   if (!md) return "";
   let s = md;
@@ -325,6 +328,12 @@ function matchIndex(tokens: QueryToken[], index: TextIndex): TextMatch | null {
   return { count, ranges: mergeRanges(all) };
 }
 
+/** 표와 같은 보이는 문구. 제목·본문에 없는 빈 메모 이름도 여기서 맞춘다. */
+function semanticIndex(card: Card): TextIndex {
+  const raw = card.kind === "photo" ? (card.content ?? "") : plainTextRaw(card.content ?? "");
+  return indexOfRaw(presentMemo(card, raw).searchText);
+}
+
 /** [[searchMemos]] 결과 한 건. */
 export interface MemoSearchHit {
   id: string;
@@ -347,6 +356,8 @@ export interface MemoSearchHit {
 export function searchMemos(cards: Card[], query: string): MemoSearchHit[] {
   const tokens = compileQuery(query);
   if (!tokens) return [];
+  // 초성만인 검색은 본문 인덱스만 본다. 빈 메모 이름 같은 보이는 문구는 완성 글자가 있을 때만.
+  const wantSemantic = /[^\s\u3131-\u314e]/.test(query);
 
   const results: MemoSearchHit[] = [];
   for (const card of cards) {
@@ -365,11 +376,13 @@ export function searchMemos(cards: Card[], query: string): MemoSearchHit[] {
     for (const tok of tokens) {
       const inTitle = title ? scanToken(title, tok) : [];
       const inBody = body.raw ? scanToken(body, tok) : [];
-      if (inTitle.length + inBody.length === 0) {
+      const inSemantic =
+        wantSemantic && inTitle.length + inBody.length === 0 ? scanToken(semanticIndex(card), tok) : [];
+      if (inTitle.length + inBody.length + inSemantic.length === 0) {
         allPresent = false;
         break;
       }
-      score += inTitle.length + inBody.length;
+      score += inTitle.length + inBody.length + inSemantic.length;
       titleRanges.push(...inTitle);
       bodyRanges.push(...inBody);
     }
@@ -391,4 +404,37 @@ export function searchMemos(cards: Card[], query: string): MemoSearchHit[] {
 export function __clearPlainCache(): void {
   plainCache.clear();
   rawCache.clear();
+}
+
+export function searchMemoEntries(
+  entries: { id: string; searchText: string }[],
+  query: string,
+): { id: string; score: number }[] {
+  const tokens = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return [];
+  const results: { id: string; score: number }[] = [];
+  for (const card of entries) {
+    const haystack = card.searchText.toLowerCase();
+    if (!haystack) continue;
+    let total = 0;
+    let allPresent = true;
+    for (const tok of tokens) {
+      let count = 0;
+      let from = 0;
+      while (from <= haystack.length) {
+        const at = haystack.indexOf(tok, from);
+        if (at < 0) break;
+        count += 1;
+        from = at + tok.length;
+      }
+      if (count === 0) {
+        allPresent = false;
+        break;
+      }
+      total += count;
+    }
+    if (allPresent) results.push({ id: card.id, score: total });
+  }
+  results.sort((a, b) => b.score - a.score);
+  return results;
 }

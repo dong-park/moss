@@ -17,9 +17,11 @@ export {
 } from "./googleIdentity";
 export {
   configureAuth,
+  googlePromptAvailable,
   resetAuthDeps,
   resetAuthStore,
   SessionExpiredError,
+  signInWithGooglePrompt,
   useAuth,
   type AuthDeps,
   type AuthState,

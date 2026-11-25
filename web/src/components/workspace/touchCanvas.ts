@@ -32,6 +32,8 @@ export function useTouchCanvas(ref: RefObject<HTMLDivElement | null>, boardId: s
       return { x: b ? (a.clientX + b.clientX) / 2 : a.clientX, y: b ? (a.clientY + b.clientY) / 2 : a.clientY, distance: b ? Math.hypot(b.clientX - a.clientX, b.clientY - a.clientY) : 0 };
     };
     const down = (e: PointerEvent) => {
+      // 마카·천을 든 터치는 벽 획 레이어가 그린다. 여기서 막으면 두 손가락 뒤에도 획이 안 남는다.
+      if (useWorkspace.getState().heldTool) return;
       const connecting = useMobileCanvas.getState().operation.kind === "connect";
       if (e.pointerType !== "touch" && !connecting) return;
       if (!connecting) connectionClickUntil = 0;

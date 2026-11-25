@@ -550,7 +550,7 @@ describe("compact dock", () => {
     window.innerWidth = width;
     renderDock();
     expect(screen.getAllByRole("button").map(b => b.getAttribute("aria-label")))
-      .toEqual(["메모", "할 일", "사진", "더 보기", "휴지통"]);
+      .toEqual(["마카", "메모", "할 일", "사진", "더 보기", "휴지통"]);
     expect(screen.queryByLabelText("펜")).toBeNull();
     expect(screen.queryByLabelText("시그널스")).toBeNull();
   });

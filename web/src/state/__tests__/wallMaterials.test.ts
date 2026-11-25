@@ -129,25 +129,19 @@ describe("레지스트리 — T7 예전·깨진 값", () => {
   });
 });
 
-describe("메모판 내용 JSON의 material", () => {
-  it("없거나 깨진 값은 코르크로 읽고, 기존 skin·columns 읽기는 그대로다", () => {
-    expect(decodeFrameConfig('{"name":"옛 판"}').material).toBe("cork");
-    expect(decodeFrameConfig('{"material":"marble"}').material).toBe("cork");
-    expect(decodeFrameConfig('{"material":7}').material).toBe("cork");
-    expect(decodeFrameConfig("not json").material).toBe("cork");
-    const cfg = decodeFrameConfig('{"name":"옛 판","material":"marble"}');
-    expect(cfg.skin).toBe("free");
-    expect(cfg.columns).toHaveLength(3);
+describe("메모판 내용 JSON은 벽 재질과 칸 스킨을 담지 않는다", () => {
+  it("재질·깨진 값이 있어도 이름만 읽는다", () => {
+    expect(decodeFrameConfig('{"name":"옛 판"}')).toEqual({ name: "옛 판" });
+    expect(decodeFrameConfig('{"material":"marble"}').name).toBe("새 메모판");
+    expect(decodeFrameConfig('{"material":7}').name).toBe("새 메모판");
+    expect(decodeFrameConfig("not json").name).toBe("새 메모판");
+    expect("material" in decodeFrameConfig('{"name":"옛 판","material":"whiteboard"}')).toBe(false);
   });
 
-  it("알려진 재질만 담고, 없으면 키를 만들지 않는다", () => {
+  it("다시 쓸 때 재질 키를 만들지 않는다", () => {
     expect(JSON.parse(encodeFrameContent({ name: "판" }))).toEqual({ name: "판" });
-    expect(JSON.parse(encodeFrameContent({ name: "판", material: "whiteboard" }))).toEqual({
-      name: "판",
-      material: "whiteboard",
-    });
-    const dropped = encodeFrameContent({ name: "판", material: "marble" as never });
-    expect(JSON.parse(dropped)).toEqual({ name: "판" });
+    const withMaterial = { name: "판", material: "whiteboard" } as Parameters<typeof encodeFrameContent>[0];
+    expect(JSON.parse(encodeFrameContent(withMaterial))).toEqual({ name: "판" });
   });
 });
 
@@ -273,82 +267,36 @@ describe("문서 왕복", () => {
   });
 });
 
-describe("T14 — 벽 재질·메모판 재질·메모판 스킨은 서로 바꾸지 않는다", () => {
-  it("메모판 재질·스킨을 바꿔도 벽 재질은 그대로다", async () => {
+describe("T14 — 벽 재질은 메모판 내용을 바꾸지 않는다", () => {
+  it("메모판 이름을 바꿔도 벽 재질은 그대로다", async () => {
     await boot();
     const boardId = await ws().createBoard("독립");
     await ws().setWallMaterial(boardId, "cork");
     const frame = ws().addFrameAt(0, 0);
-
-    ws().setFrameMaterial(frame, "whiteboard");
-    ws().setFrameSkin(frame, "columns");
+    ws().renameFrame(frame, "새 이름");
 
     expect(boardRow(boardId)?.wallMaterial).toBe("cork");
     expect(readBoard(getActiveBoardDoc()!.doc).wallMaterial).toBe("cork");
+    expect(decodeFrameConfig(card(frame).content).name).toBe("새 이름");
   });
 
-  it("벽 재질을 바꿔도 메모판 재질·스킨·칸 목록은 그대로다", async () => {
+  it("벽 재질을 바꿔도 메모판 이름·좌표는 그대로다", async () => {
     await boot();
     const boardId = await ws().createBoard("독립2");
-    const frame = ws().addFrameAt(0, 0);
-    ws().setFrameSkin(frame, "columns");
-    ws().setFrameMaterial(frame, "glass");
-    ws().renameFrameColumn(frame, decodeFrameConfig(card(frame).content).columns[0].id, "아이디어");
-    const before = decodeFrameConfig(card(frame).content);
+    const frame = ws().addFrameAt(12, 34);
+    ws().renameFrame(frame, "그대로");
+    const before = card(frame);
 
     await ws().setWallMaterial(boardId, "whiteboard");
     await ws().setWallMaterial(boardId, "cork");
 
-    const after = decodeFrameConfig(card(frame).content);
-    expect(after).toEqual(before);
-    expect(after.material).toBe("glass");
-    expect(after.skin).toBe("columns");
-    expect(after.columns[0].name).toBe("아이디어");
-  });
-
-  it("스킨·이름·칸을 바꿔도 메모판 재질이 남는다", async () => {
-    await boot();
-    const frame = ws().addFrameAt(0, 0);
-    expect(decodeFrameConfig(card(frame).content).material).toBe("cork");
-
-    ws().setFrameMaterial(frame, "whiteboard");
-    ws().setFrameSkin(frame, "columns");
-    ws().renameFrame(frame, "새 이름");
-    ws().addFrameColumn(frame);
-
-    const cfg = decodeFrameConfig(card(frame).content);
-    expect(cfg.material).toBe("whiteboard");
-    expect(cfg.skin).toBe("columns");
-    expect(cfg.name).toBe("새 이름");
-  });
-
-  it("setFrameMaterial은 좌표를 건드리지 않고, 같은 값이면 쓰지 않는다", async () => {
-    await boot();
-    const frame = ws().addFrameAt(12, 34);
-    const before = card(frame);
-
-    ws().setFrameMaterial(frame, "glass");
-    const changed = card(frame);
-    expect({ x: changed.x, y: changed.y, w: changed.width, h: changed.height }).toEqual({
+    const after = card(frame);
+    expect(decodeFrameConfig(after.content)).toEqual(decodeFrameConfig(before.content));
+    expect({ x: after.x, y: after.y, w: after.width, h: after.height }).toEqual({
       x: before.x,
       y: before.y,
       w: before.width,
       h: before.height,
     });
-    expect(decodeFrameConfig(changed.content).material).toBe("glass");
-
-    // 같은 값 — 카드 객체가 그대로여야 한다(set이 일어나지 않는다).
-    ws().setFrameMaterial(frame, "glass");
-    expect(card(frame)).toBe(changed);
-    // 코르크는 이미 기본값이라 값 없는 판에 고르는 것도 쓰기가 아니다.
-    const fresh = ws().addFrameAt(500, 500);
-    const freshCard = card(fresh);
-    ws().setFrameMaterial(fresh, "cork");
-    expect(card(fresh)).toBe(freshCard);
-    // 판이 아닌 카드·없는 카드는 무시한다.
-    const memo = ws().addCardAt("text", 0, 0);
-    const memoCard = card(memo);
-    ws().setFrameMaterial(memo, "glass");
-    expect(card(memo)).toBe(memoCard);
   });
 });

@@ -19,6 +19,19 @@ const ACCESS_SKEW_MS = 30_000;
 export interface AuthDeps {
   api: AuthApi;
   now: () => number;
+  /** 테스트와 비-GIS 경로가 Google ID 토큰을 받는 자리. 없으면 GIS 버튼만 쓴다. */
+  googleIdToken?: () => Promise<string>;
+}
+
+export function googlePromptAvailable(): boolean {
+  return typeof deps.googleIdToken === "function";
+}
+
+/** 주입된 토큰 받기로 로그인한다. 공유 시트의 로그인 허용이 이 길을 쓴다. */
+export async function signInWithGooglePrompt(): Promise<AuthUser> {
+  if (!deps.googleIdToken) throw new SessionExpiredError();
+  const idToken = await deps.googleIdToken();
+  return useAuth.getState().loginWithGoogle(idToken);
 }
 
 const defaultDeps: AuthDeps = {
